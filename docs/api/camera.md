@@ -1,0 +1,1528 @@
+# Camera
+
+Camera entities and runtime device API: `CameraDevice` (the per-camera handle your plugin receives in `ConfigureCameras`), camera sources, snapshots, streaming URL helpers, video frame data, detection events, and the property-change observables.
+
+!!! note
+    The reference below is auto-generated from Go doc comments via [`gomarkdoc`](https://github.com/princjef/gomarkdoc). Re-run `scripts/gen-api-docs.sh` to refresh it.
+
+## func BuildSnapshotUrl
+
+	func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *SnapshotUrlOptions) (string, error)
+
+BuildSnapshotUrl constructs a go2rtc\-compatible snapshot URL for the given camera/source pair. Optional dimensions, rotation, cache and hardware transcode flags are appended as query parameters.
+
+<a name="BuildTargetUrl"></a>
+
+## func BuildTargetUrl
+
+	func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error)
+
+BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP URL and a set of stream selection options \(video/audio tracks, GOP, prebuffer, timeout\). Returns the URL with all selected query parameters.
+
+<a name="CanCreateCameras"></a>
+
+## type AudioStreamInfo
+
+AudioStreamInfo is audio stream information from a probe.
+
+	type AudioStreamInfo struct {
+	    // Codec is the audio codec.
+	    Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	    // FFmpegCodec is the FFmpeg codec name.
+	    FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
+	    // SampleRate is the audio sample rate in Hz.
+	    SampleRate int `msgpack:"sampleRate,omitempty" json:"sampleRate,omitempty"`
+	    // Channels is the number of audio channels.
+	    Channels int `msgpack:"channels,omitempty" json:"channels,omitempty"`
+	    // Properties are the codec properties.
+	    Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	    // Direction is the stream direction.
+	    Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	}
+
+<a name="BasePlugin"></a>
+
+## type CallbackInvoker
+
+CallbackInvoker is the pull\-callback dispatch handle passed to NvrPlayback\-style handlers. Mirrors \*rpc.CallbackInvoker's surface so the SDK does not force a hard import on the RPC package at the type level — the concrete \*rpc.CallbackInvoker satisfies this interface.
+
+	type CallbackInvoker interface {
+	    Invoke(method string, args ...any)
+	    Active() bool
+	}
+
+<a name="Camera"></a>
+
+## type Camera
+
+Camera is the raw camera data structure delivered from the server \(database row \+ resolved sources\).
+
+	type Camera struct {
+	    // ID is the unique camera ID.
+	    ID  string `msgpack:"_id" json:"_id"`
+	    // Name is the camera display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // Room is the room this camera belongs to.
+	    Room string `msgpack:"room" json:"room"`
+	    // NativeID is the native device ID from the source plugin.
+	    NativeID string `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	    // PluginInfo identifies the source plugin.
+	    PluginInfo *CameraPluginInfo `msgpack:"pluginInfo,omitempty" json:"pluginInfo,omitempty"`
+	    // Type is the camera type (camera/doorbell).
+	    Type CameraType `msgpack:"type,omitempty" json:"type,omitempty"`
+	    // Disabled indicates whether the camera is disabled.
+	    Disabled bool `msgpack:"disabled,omitempty" json:"disabled,omitempty"`
+	    // IsCloud indicates whether the camera streams from cloud.
+	    IsCloud bool `msgpack:"isCloud,omitempty" json:"isCloud,omitempty"`
+	    // Info is the camera hardware information.
+	    Info CameraInformation `msgpack:"info,omitempty" json:"info"`
+	    // Sources are the video input sources.
+	    Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
+	    // Assignments are sensor-to-plugin assignments.
+	    Assignments PluginAssignments `msgpack:"assignments,omitempty" json:"assignments"`
+	    // SnapshotSettings are the snapshot settings.
+	    SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
+	    // DetectionZones are the detection zone configurations.
+	    DetectionZones []DetectionZone `msgpack:"detectionZones,omitempty" json:"detectionZones,omitempty"`
+	    // DetectionLines are the detection line configurations (virtual tripwires).
+	    DetectionLines []DetectionLine `msgpack:"detectionLines,omitempty" json:"detectionLines,omitempty"`
+	    // DetectionSettings are the detection settings.
+	    DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
+	    // PtzAutotrack is the PTZ autotracking configuration.
+	    PtzAutotrack PtzAutotrackSettings `msgpack:"ptzAutotrack,omitempty" json:"ptzAutotrack"`
+	    // FrameWorkerSettings is the frame worker configuration.
+	    FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
+	    // InterfaceSettings is the UI display settings.
+	    InterfaceSettings CameraUiSettings `msgpack:"interfaceSettings,omitempty" json:"interfaceSettings"`
+	    // Interface is a server-side alias for InterfaceSettings (kept for compatibility).
+	    Interface CameraUiSettings `msgpack:"interface,omitempty" json:"interface"`
+	    // Plugins are the installed plugins for this camera.
+	    Plugins []AssignedPlugin `msgpack:"plugins,omitempty" json:"plugins,omitempty"`
+	}
+
+<a name="CameraAspectRatio"></a>
+
+## type CameraAspectRatio
+
+CameraAspectRatio is the camera aspect ratio for UI display.
+
+	type CameraAspectRatio string
+
+<a name="CameraAspectRatio16x9"></a>
+
+	const (
+	    CameraAspectRatio16x9 CameraAspectRatio = "16:9"
+	    CameraAspectRatio9x16 CameraAspectRatio = "9:16"
+	    CameraAspectRatio8x3  CameraAspectRatio = "8:3"
+	    CameraAspectRatio4x3  CameraAspectRatio = "4:3"
+	    CameraAspectRatioAuto CameraAspectRatio = "1:1"
+	)
+
+<a name="CameraDetectionSettings"></a>
+
+## type CameraDetectionSettings
+
+CameraDetectionSettings is the combined detection settings for a camera.
+
+	type CameraDetectionSettings struct {
+	    Motion MotionDetectionSettings `msgpack:"motion" json:"motion"`
+	    Object ObjectDetectionSettings `msgpack:"object" json:"object"`
+	    Audio  AudioDetectionSettings  `msgpack:"audio" json:"audio"`
+	    Sensor SensorTriggerSettings   `msgpack:"sensor" json:"sensor"`
+	    // CascadeDetection enables the detection cascade.
+	    CascadeDetection *bool `msgpack:"cascadeDetection,omitempty" json:"cascadeDetection,omitempty"`
+	    // CascadeTimeout is the cascade hold-open window in seconds.
+	    CascadeTimeout int `msgpack:"cascadeTimeout,omitempty" json:"cascadeTimeout,omitempty"`
+	    // Snooze indicates whether detections are snoozed (paused).
+	    Snooze bool `msgpack:"snooze,omitempty" json:"snooze,omitempty"`
+	}
+
+<a name="CameraDevice"></a>
+
+## type CameraDevice
+
+CameraDevice represents a camera assigned to this plugin. Plugins receive CameraDevice instances in ConfigureCameras and OnCameraAdded.
+
+	type CameraDevice struct {
+	    // contains filtered or unexported fields
+	}
+
+<a name="CameraDevice.AddSensor"></a>
+### func \(\*CameraDevice\) AddSensor
+
+	func (d *CameraDevice) AddSensor(s Sensor) error
+
+AddSensor adds a sensor to this camera.
+
+<a name="CameraDevice.Connect"></a>
+### func \(\*CameraDevice\) Connect
+
+	func (d *CameraDevice) Connect() error
+
+Connect tells the server this camera is online. Only the plugin that owns this camera \(via pluginInfo\) may connect it.
+
+<a name="CameraDevice.Connected"></a>
+### func \(\*CameraDevice\) Connected
+
+	func (d *CameraDevice) Connected() bool
+
+Connected returns whether the camera is currently connected.
+
+<a name="CameraDevice.DetectionLines"></a>
+### func \(\*CameraDevice\) DetectionLines
+
+	func (d *CameraDevice) DetectionLines() []DetectionLine
+
+DetectionLines returns the detection line configurations \(virtual tripwires\).
+
+<a name="CameraDevice.DetectionSettings"></a>
+### func \(\*CameraDevice\) DetectionSettings
+
+	func (d *CameraDevice) DetectionSettings() CameraDetectionSettings
+
+DetectionSettings returns the detection settings.
+
+<a name="CameraDevice.DetectionZones"></a>
+### func \(\*CameraDevice\) DetectionZones
+
+	func (d *CameraDevice) DetectionZones() []DetectionZone
+
+DetectionZones returns the detection zone configurations.
+
+<a name="CameraDevice.Disabled"></a>
+### func \(\*CameraDevice\) Disabled
+
+	func (d *CameraDevice) Disabled() bool
+
+Disabled returns whether the camera is disabled.
+
+<a name="CameraDevice.Disconnect"></a>
+### func \(\*CameraDevice\) Disconnect
+
+	func (d *CameraDevice) Disconnect() error
+
+Disconnect tells the server this camera is offline. Only the plugin that owns this camera \(via pluginInfo\) may disconnect it.
+
+<a name="CameraDevice.FrameWorkerConnected"></a>
+### func \(\*CameraDevice\) FrameWorkerConnected
+
+	func (d *CameraDevice) FrameWorkerConnected() bool
+
+FrameWorkerConnected returns whether the frame worker is currently connected.
+
+<a name="CameraDevice.FrameWorkerSettings"></a>
+### func \(\*CameraDevice\) FrameWorkerSettings
+
+	func (d *CameraDevice) FrameWorkerSettings() CameraFrameWorkerSettings
+
+FrameWorkerSettings returns the frame worker settings.
+
+<a name="CameraDevice.GetSensor"></a>
+### func \(\*CameraDevice\) GetSensor
+
+	func (d *CameraDevice) GetSensor(id string) Sensor
+
+GetSensor returns a sensor by its ID \(checks both owned and foreign\).
+
+<a name="CameraDevice.GetSensors"></a>
+### func \(\*CameraDevice\) GetSensors
+
+	func (d *CameraDevice) GetSensors() []Sensor
+
+GetSensors returns all sensors on this camera \(owned \+ foreign\).
+
+<a name="CameraDevice.GetSensorsByType"></a>
+### func \(\*CameraDevice\) GetSensorsByType
+
+	func (d *CameraDevice) GetSensorsByType(sensorType SensorType) []Sensor
+
+GetSensorsByType returns all sensors of the given type \(owned \+ foreign\).
+
+<a name="CameraDevice.GetSourceByID"></a>
+### func \(\*CameraDevice\) GetSourceByID
+
+	func (d *CameraDevice) GetSourceByID(id string) *CameraDeviceSource
+
+GetSourceByID returns a source by its ID.
+
+<a name="CameraDevice.GetStreamStatus"></a>
+### func \(\*CameraDevice\) GetStreamStatus
+
+	func (d *CameraDevice) GetStreamStatus(sourceID string) (string, error)
+
+GetStreamStatus returns the current stream connection status for a source.
+
+<a name="CameraDevice.HighResolutionSource"></a>
+### func \(\*CameraDevice\) HighResolutionSource
+
+	func (d *CameraDevice) HighResolutionSource() *CameraDeviceSource
+
+HighResolutionSource returns the high\-resolution source.
+
+<a name="CameraDevice.ID"></a>
+### func \(\*CameraDevice\) ID
+
+	func (d *CameraDevice) ID() string
+
+ID returns the camera ID.
+
+<a name="CameraDevice.Implement"></a>
+### func \(\*CameraDevice\) Implement
+
+	func (d *CameraDevice) Implement(impl any) error
+
+Implement registers a camera implementation for streaming and/or snapshot. The impl value should implement StreamingInterface, SnapshotInterface, or both.
+
+<a name="CameraDevice.Info"></a>
+### func \(\*CameraDevice\) Info
+
+	func (d *CameraDevice) Info() CameraInformation
+
+Info returns the camera hardware information.
+
+<a name="CameraDevice.InterfaceSettings"></a>
+### func \(\*CameraDevice\) InterfaceSettings
+
+	func (d *CameraDevice) InterfaceSettings() CameraUiSettings
+
+InterfaceSettings returns the UI display settings.
+
+<a name="CameraDevice.IsCloud"></a>
+### func \(\*CameraDevice\) IsCloud
+
+	func (d *CameraDevice) IsCloud() bool
+
+IsCloud returns whether the camera streams from cloud.
+
+<a name="CameraDevice.Logger"></a>
+### func \(\*CameraDevice\) Logger
+
+	func (d *CameraDevice) Logger() *Logger
+
+Logger returns the camera's logger.
+
+<a name="CameraDevice.LowResolutionSource"></a>
+### func \(\*CameraDevice\) LowResolutionSource
+
+	func (d *CameraDevice) LowResolutionSource() *CameraDeviceSource
+
+LowResolutionSource returns the low\-resolution source.
+
+<a name="CameraDevice.MidResolutionSource"></a>
+### func \(\*CameraDevice\) MidResolutionSource
+
+	func (d *CameraDevice) MidResolutionSource() *CameraDeviceSource
+
+MidResolutionSource returns the mid\-resolution source.
+
+<a name="CameraDevice.Name"></a>
+### func \(\*CameraDevice\) Name
+
+	func (d *CameraDevice) Name() string
+
+Name returns the camera name.
+
+<a name="CameraDevice.NativeID"></a>
+### func \(\*CameraDevice\) NativeID
+
+	func (d *CameraDevice) NativeID() string
+
+NativeID returns the native device ID from the plugin, or empty string if not set.
+
+<a name="CameraDevice.OnConnected"></a>
+### func \(\*CameraDevice\) OnConnected
+
+	func (d *CameraDevice) OnConnected() *Observable[bool]
+
+OnConnected returns an Observable that emits distinct connection state changes.
+
+<a name="CameraDevice.OnDetectionEvent"></a>
+### func \(\*CameraDevice\) OnDetectionEvent
+
+	func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable
+
+OnDetectionEvent registers a callback for detection events \(start/update/end\). Thumbnails are inline in the event's segment structures, only populated on 'end' events. Returns a Disposable to unsubscribe.
+
+<a name="CameraDevice.OnFrameWorkerConnected"></a>
+### func \(\*CameraDevice\) OnFrameWorkerConnected
+
+	func (d *CameraDevice) OnFrameWorkerConnected() *Observable[bool]
+
+OnFrameWorkerConnected returns an Observable that emits distinct frame worker state changes.
+
+<a name="CameraDevice.OnPropertyChange"></a>
+### func \(\*CameraDevice\) OnPropertyChange
+
+	func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent]
+
+OnPropertyChange returns an Observable that emits when any of the specified camera properties change. Uses Pairwise \+ MergeMap \+ Filter on cameraSubject \(consistent with Node/Python SDKs\).
+
+<a name="CameraDevice.OnSensorAdded"></a>
+### func \(\*CameraDevice\) OnSensorAdded
+
+	func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable
+
+OnSensorAdded registers a callback for when a sensor from another plugin is added. The callback receives \(sensorID, sensorType\). Returns a Disposable to unsubscribe.
+
+<a name="CameraDevice.OnSensorProperty"></a>
+### func \(\*CameraDevice\) OnSensorProperty
+
+	func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, callback func(value any, timestamp int64, sensor Sensor)) *Disposable
+
+OnSensorProperty subscribes to a specific property on a sensor type with full lifecycle management. Automatically subscribes/unsubscribes when sensors of the given type are added/removed.
+
+<a name="CameraDevice.OnSensorRemoved"></a>
+### func \(\*CameraDevice\) OnSensorRemoved
+
+	func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable
+
+OnSensorRemoved registers a callback for when a sensor from another plugin is removed. Returns a Disposable to unsubscribe.
+
+<a name="CameraDevice.PluginInfo"></a>
+### func \(\*CameraDevice\) PluginInfo
+
+	func (d *CameraDevice) PluginInfo() *CameraPluginInfo
+
+PluginInfo returns the source plugin information, or nil if not set.
+
+<a name="CameraDevice.ProbeStream"></a>
+### func \(\*CameraDevice\) ProbeStream
+
+	func (d *CameraDevice) ProbeStream(sourceID string) (*ProbeStream, error)
+
+ProbeStream probes a stream URL for codec information.
+
+<a name="CameraDevice.RemoveSensor"></a>
+### func \(\*CameraDevice\) RemoveSensor
+
+	func (d *CameraDevice) RemoveSensor(sensorID string) error
+
+RemoveSensor removes a sensor from this camera.
+
+<a name="CameraDevice.Room"></a>
+### func \(\*CameraDevice\) Room
+
+	func (d *CameraDevice) Room() string
+
+Room returns the room this camera belongs to.
+
+<a name="CameraDevice.SnapshotSettings"></a>
+### func \(\*CameraDevice\) SnapshotSettings
+
+	func (d *CameraDevice) SnapshotSettings() SnapshotSettings
+
+SnapshotSettings returns the snapshot settings.
+
+<a name="CameraDevice.SnapshotSource"></a>
+### func \(\*CameraDevice\) SnapshotSource
+
+	func (d *CameraDevice) SnapshotSource() *CameraDeviceSource
+
+SnapshotSource returns the snapshot source.
+
+<a name="CameraDevice.Snooze"></a>
+### func \(\*CameraDevice\) Snooze
+
+	func (d *CameraDevice) Snooze() bool
+
+Snooze returns whether detections are snoozed \(paused\).
+
+<a name="CameraDevice.Sources"></a>
+### func \(\*CameraDevice\) Sources
+
+	func (d *CameraDevice) Sources() []*CameraDeviceSource
+
+Sources returns the camera's source list.
+
+<a name="CameraDevice.Storage"></a>
+### func \(\*CameraDevice\) Storage
+
+	func (d *CameraDevice) Storage() *DeviceStorage
+
+Storage returns the camera's device storage.
+
+<a name="CameraDevice.StreamSource"></a>
+### func \(\*CameraDevice\) StreamSource
+
+	func (d *CameraDevice) StreamSource() *CameraDeviceSource
+
+StreamSource returns the primary streaming source \(first high\-resolution, or first available\).
+
+<a name="CameraDevice.Type"></a>
+### func \(\*CameraDevice\) Type
+
+	func (d *CameraDevice) Type() CameraType
+
+Type returns the camera type \(camera/doorbell\).
+
+<a name="CameraDeviceSource"></a>
+
+## type CameraDeviceSource
+
+CameraDeviceSource is a camera source \(one of the camera's video inputs\) with snapshot, probe and URL\-generation capabilities.
+
+	type CameraDeviceSource struct {
+	    // contains filtered or unexported fields
+	}
+
+<a name="CameraDeviceSource.GenerateRTSPUrl"></a>
+### func \(\*CameraDeviceSource\) GenerateRTSPUrl
+
+	func (s *CameraDeviceSource) GenerateRTSPUrl(options *RTSPUrlOptions) (string, error)
+
+GenerateRTSPUrl generates an RTSP URL for this source with the given options.
+
+<a name="CameraDeviceSource.GenerateSnapshotUrl"></a>
+### func \(\*CameraDeviceSource\) GenerateSnapshotUrl
+
+	func (s *CameraDeviceSource) GenerateSnapshotUrl(options *SnapshotUrlOptions) (string, error)
+
+GenerateSnapshotUrl generates a snapshot URL for this source with the given options.
+
+<a name="CameraDeviceSource.GetStreamStatus"></a>
+### func \(\*CameraDeviceSource\) GetStreamStatus
+
+	func (s *CameraDeviceSource) GetStreamStatus() (string, error)
+
+GetStreamStatus returns the current stream connection status \(e.g. "connected", "connecting", "error", "idle"\).
+
+<a name="CameraDeviceSource.HotMode"></a>
+### func \(\*CameraDeviceSource\) HotMode
+
+	func (s *CameraDeviceSource) HotMode() bool
+
+HotMode returns whether hot mode \(always\-on connection\) is enabled.
+
+<a name="CameraDeviceSource.ID"></a>
+### func \(\*CameraDeviceSource\) ID
+
+	func (s *CameraDeviceSource) ID() string
+
+ID returns the unique source ID.
+
+<a name="CameraDeviceSource.Name"></a>
+### func \(\*CameraDeviceSource\) Name
+
+	func (s *CameraDeviceSource) Name() string
+
+Name returns the source display name.
+
+<a name="CameraDeviceSource.Prebuffer"></a>
+### func \(\*CameraDeviceSource\) Prebuffer
+
+	func (s *CameraDeviceSource) Prebuffer() bool
+
+Prebuffer returns whether stream prebuffering is enabled.
+
+<a name="CameraDeviceSource.Preload"></a>
+### func \(\*CameraDeviceSource\) Preload
+
+	func (s *CameraDeviceSource) Preload() bool
+
+Preload returns whether the stream is preloaded on startup.
+
+<a name="CameraDeviceSource.ProbeStream"></a>
+### func \(\*CameraDeviceSource\) ProbeStream
+
+	func (s *CameraDeviceSource) ProbeStream() (*ProbeStream, error)
+
+ProbeStream probes this source for codec and track information.
+
+<a name="CameraDeviceSource.Role"></a>
+### func \(\*CameraDeviceSource\) Role
+
+	func (s *CameraDeviceSource) Role() CameraRole
+
+Role returns the resolution role of this source.
+
+<a name="CameraDeviceSource.Snapshot"></a>
+### func \(\*CameraDeviceSource\) Snapshot
+
+	func (s *CameraDeviceSource) Snapshot(forceNew bool) ([]byte, error)
+
+Snapshot returns a JPEG snapshot for this source. If forceNew is true, the snapshot cache is bypassed.
+
+<a name="CameraDeviceSource.SourceURL"></a>
+### func \(\*CameraDeviceSource\) SourceURL
+
+	func (s *CameraDeviceSource) SourceURL() string
+
+SourceURL returns the default RTSP URL for this source.
+
+<a name="CameraDeviceSource.Urls"></a>
+### func \(\*CameraDeviceSource\) Urls
+
+	func (s *CameraDeviceSource) Urls() StreamUrls
+
+Urls returns the generated stream URLs for this source.
+
+<a name="CameraDeviceSource.UseForSnapshot"></a>
+### func \(\*CameraDeviceSource\) UseForSnapshot
+
+	func (s *CameraDeviceSource) UseForSnapshot() bool
+
+UseForSnapshot returns whether this source is used for snapshots.
+
+<a name="CameraFrameWorkerSettings"></a>
+
+## type CameraFrameWorkerSettings
+
+CameraFrameWorkerSettings is frame worker \(decoder\) settings.
+
+	type CameraFrameWorkerSettings struct {
+	    // FPS is the target frames per second for detection.
+	    FPS int `msgpack:"fps" json:"fps"`
+	}
+
+<a name="CameraInformation"></a>
+
+## type CameraInformation
+
+CameraInformation is camera hardware/firmware information.
+
+	type CameraInformation struct {
+	    // Manufacturer is the manufacturer name.
+	    Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
+	    // Model is the camera model name.
+	    Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+	    // Hardware is the hardware version/revision.
+	    Hardware string `msgpack:"hardware,omitempty" json:"hardware,omitempty"`
+	    // SerialNumber is the device serial number.
+	    SerialNumber string `msgpack:"serialNumber,omitempty" json:"serialNumber,omitempty"`
+	    // FirmwareVersion is the current firmware version.
+	    FirmwareVersion string `msgpack:"firmwareVersion,omitempty" json:"firmwareVersion,omitempty"`
+	    // SupportUrl is the manufacturer support URL.
+	    SupportUrl string `msgpack:"supportUrl,omitempty" json:"supportUrl,omitempty"`
+	}
+
+<a name="CameraInput"></a>
+
+## type CameraInput
+
+CameraInput is a camera video input/source with resolved URLs.
+
+	type CameraInput struct {
+	    // ID is the unique source ID.
+	    ID  string `msgpack:"_id" json:"_id"`
+	    // Name is the source display name.
+	    Name string `msgpack:"name,omitempty" json:"name,omitempty"`
+	    // Role is the resolution role of this source.
+	    Role CameraRole `msgpack:"role,omitempty" json:"role,omitempty"`
+	    // UseForSnapshot indicates whether this source is used for snapshots.
+	    UseForSnapshot bool `msgpack:"useForSnapshot,omitempty" json:"useForSnapshot,omitempty"`
+	    // HotMode keeps the connection always active.
+	    HotMode bool `msgpack:"hotMode,omitempty" json:"hotMode,omitempty"`
+	    // Preload toggles stream preloading on startup.
+	    Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
+	    // Prebuffer enables stream prebuffering.
+	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer,omitempty"`
+	    // Urls are the generated streaming URLs.
+	    Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
+	    // ChildSourceId is the child source ID (for snapshot fallback).
+	    ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
+	}
+
+<a name="CameraPluginInfo"></a>
+
+## type CameraPluginInfo
+
+CameraPluginInfo identifies the plugin that provides a camera \(id \+ display name\).
+
+	type CameraPluginInfo struct {
+	    // ID is the plugin ID.
+	    ID  string `msgpack:"id" json:"id"`
+	    // Name is the plugin display name.
+	    Name string `msgpack:"name" json:"name"`
+	}
+
+<a name="CameraRole"></a>
+
+## type CameraRole
+
+CameraRole identifies the resolution tier of a camera source. Used to identify different quality streams from the same camera.
+
+	type CameraRole string
+
+<a name="CameraRoleHighRes"></a>
+
+	const (
+	    CameraRoleHighRes  CameraRole = "high-resolution"
+	    CameraRoleMidRes   CameraRole = "mid-resolution"
+	    CameraRoleLowRes   CameraRole = "low-resolution"
+	    CameraRoleSnapshot CameraRole = "snapshot"
+	)
+
+<a name="CameraStorageStats"></a>
+
+## type CameraType
+
+CameraType is the camera device type.
+
+- camera: Standard surveillance camera
+- doorbell: Doorbell camera
+
+	type CameraType string
+
+<a name="CameraTypeCamera"></a>
+
+	const (
+	    CameraTypeCamera   CameraType = "camera"
+	    CameraTypeDoorbell CameraType = "doorbell"
+	)
+
+<a name="CameraUiSettings"></a>
+
+## type CameraUiSettings
+
+CameraUiSettings is UI display settings for a camera.
+
+	type CameraUiSettings struct {
+	    // StreamingMode is the preferred streaming method.
+	    StreamingMode VideoStreamingMode `msgpack:"streamingMode" json:"streamingMode"`
+	    // StreamingSource is the preferred stream quality (StreamingRole).
+	    StreamingSource string `msgpack:"streamingSource" json:"streamingSource"`
+	    // AspectRatio is the display aspect ratio.
+	    AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
+	}
+
+<a name="ChargingState"></a>
+
+## type DecoderFormat
+
+DecoderFormat is the internal decoder output format.
+
+	type DecoderFormat string
+
+<a name="DecoderFormatNV12"></a>
+
+	const (
+	    DecoderFormatNV12 DecoderFormat = "nv12"
+	)
+
+<a name="Detection"></a>
+
+## type DetectionEvent
+
+DetectionEvent is an aggregated detection event with lifecycle \(start \-\> update \-\> end\). Groups individual sensor detections into structured events.
+
+	type DetectionEvent struct {
+	    // ID is the unique event ID.
+	    ID  string `msgpack:"id" json:"id"`
+	    // CameraID is the camera that produced this event.
+	    CameraID string `msgpack:"cameraId" json:"cameraId"`
+	    // State is the event lifecycle state.
+	    State DetectionEventState `msgpack:"state" json:"state"`
+	    // StartTime is the event start time (Unix ms).
+	    StartTime int64 `msgpack:"startTime" json:"startTime"`
+	    // EndTime is the event end time (Unix ms, only when ended).
+	    EndTime int64 `msgpack:"endTime,omitempty" json:"endTime,omitempty"`
+	    // LastUpdate is the last activity timestamp (Unix ms).
+	    LastUpdate int64 `msgpack:"lastUpdate" json:"lastUpdate"`
+	    // Types lists the detection types present in this event (for filtering).
+	    Types []string `msgpack:"types" json:"types"`
+	    // Triggers are the event triggers (motion/audio/sensor/line-crossing).
+	    Triggers []EventTrigger `msgpack:"triggers" json:"triggers"`
+	    // Segments are detection segments (object detection phases).
+	    // For segment-* messages: contains only the current segment.
+	    // For start/end messages: empty.
+	    Segments []EventSegment `msgpack:"segments" json:"segments"`
+	    // SegmentIndex is the index of the segment in segments[0] for segment-* messages.
+	    SegmentIndex int `msgpack:"segmentIndex,omitempty" json:"segmentIndex,omitempty"`
+	    // ExpectedEndTime is the expected event end time (Unix ms) — the latest dwell expiry across all
+	    // currently-active triggers. Monotonically non-decreasing during the event lifetime.
+	    // Updated on each update / segment-* message.
+	    ExpectedEndTime int64 `msgpack:"expectedEndTime,omitempty" json:"expectedEndTime,omitempty"`
+	    // Thumbnail is a full-frame downscaled JPEG captured at event start. Inline only
+	    // on the first message that delivers it (start or the first update); the NVR
+	    // plugin persists it and clients fetch it on demand via GetEventThumbnails.
+	    Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
+	}
+
+<a name="DetectionEventData"></a>
+
+## type DetectionEventData
+
+DetectionEventData wraps a detection event with its lifecycle type. Emitted to OnDetectionEvent subscribers for each start/update/end/segment\-\* message.
+
+	type DetectionEventData struct {
+	    Type  DetectionEventType
+	    Event DetectionEvent
+	}
+
+<a name="DetectionEventState"></a>
+
+## type DetectionEventState
+
+DetectionEventState is the lifecycle state of a detection event.
+
+	type DetectionEventState = string
+
+<a name="DetectionEventStateActive"></a>
+
+	const (
+	    DetectionEventStateActive DetectionEventState = "active"
+	    DetectionEventStateEnded  DetectionEventState = "ended"
+	)
+
+<a name="DetectionEventType"></a>
+
+## type DetectionEventType
+
+DetectionEventType is the lifecycle phase of a detection event message.
+
+	type DetectionEventType = string
+
+<a name="DetectionEventStart"></a>
+
+	const (
+	    DetectionEventStart         DetectionEventType = "start"
+	    DetectionEventEnd           DetectionEventType = "end"
+	    DetectionEventUpdate        DetectionEventType = "update"
+	    DetectionEventSegmentStart  DetectionEventType = "segment-start"
+	    DetectionEventSegmentUpdate DetectionEventType = "segment-update"
+	    DetectionEventSegmentEnd    DetectionEventType = "segment-end"
+	)
+
+<a name="DetectionHeatmapResult"></a>
+
+## type DetectionLine
+
+DetectionLine is a virtual tripwire for line crossing detection. The two points define grab\-handle positions; the actual crossing line is perpendicular through their midpoint.
+
+	type DetectionLine struct {
+	    // Name is the line display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // Points are the grab-handle positions (0-100%). The crossing line is perpendicular through the midpoint.
+	    Points [2]Point `msgpack:"points" json:"points"`
+	    // Direction controls which crossing direction(s) trigger events.
+	    Direction LineDirection `msgpack:"direction" json:"direction"`
+	    // Labels are the labels to filter (empty = all labels).
+	    Labels []DetectionLabel `msgpack:"labels" json:"labels"`
+	    // Color is the line display color (hex).
+	    Color string `msgpack:"color" json:"color"`
+	}
+
+<a name="DetectionZone"></a>
+
+## type DetectionZone
+
+DetectionZone is a polygon zone used for detection filtering or privacy masking.
+
+	type DetectionZone struct {
+	    // Name is the zone display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // Points are the polygon points (0-100 percentage coordinates).
+	    Points []Point `msgpack:"points" json:"points"`
+	    // Type is the intersection detection type.
+	    Type ZoneType `msgpack:"type" json:"type"`
+	    // Filter is the include/exclude filter mode.
+	    Filter ZoneFilter `msgpack:"filter" json:"filter"`
+	    // Labels are the labels to filter (empty = all labels).
+	    Labels []DetectionLabel `msgpack:"labels" json:"labels"`
+	    // IsPrivacyMask indicates whether this is a privacy mask (blur/block area).
+	    IsPrivacyMask bool `msgpack:"isPrivacyMask" json:"isPrivacyMask"`
+	    // Color is the zone display color (hex).
+	    Color string `msgpack:"color" json:"color"`
+	}
+
+<a name="DeviceManager"></a>
+
+## type FrameBuffer
+
+FrameBuffer is a processed image as a raw pixel buffer with metadata.
+
+	type FrameBuffer struct {
+	    // Image is the raw pixel data.
+	    Image []byte `msgpack:"image" json:"image"`
+	    // Info is the image information.
+	    Info ImageInformation `msgpack:"info" json:"info"`
+	}
+
+<a name="FrameData"></a>
+
+## type FrameData
+
+FrameData is raw frame data from the decoder.
+
+	type FrameData struct {
+	    // ID is the unique frame identifier.
+	    ID  string `msgpack:"id" json:"id"`
+	    // Data is the raw frame pixel data.
+	    Data []byte `msgpack:"data" json:"data"`
+	    // Timestamp is the frame capture timestamp.
+	    Timestamp int64 `msgpack:"timestamp" json:"timestamp"`
+	    // Metadata is the decoder metadata.
+	    Metadata FrameMetadata `msgpack:"metadata" json:"metadata"`
+	    // Info is the image information.
+	    Info ImageInformation `msgpack:"info" json:"info"`
+	}
+
+<a name="FrameFormat"></a>
+
+## type FrameFormat
+
+FrameFormat identifies the pixel layout of a video frame.
+
+	type FrameFormat string
+
+<a name="FrameFormatNV12"></a>Supported video frame pixel formats.
+
+	const (
+	    FrameFormatNV12 FrameFormat = "nv12" // YUV 4:2:0 semi-planar
+	    FrameFormatRGB  FrameFormat = "rgb"  // 3 bytes/pixel interleaved
+	    FrameFormatRGBA FrameFormat = "rgba" // 4 bytes/pixel interleaved
+	    FrameFormatGray FrameFormat = "gray" // 1 byte/pixel grayscale
+	)
+
+<a name="FrameImage"></a>
+
+## type FrameImage
+
+FrameImage is a processed image as a Go standard\-library image with metadata.
+
+	type FrameImage struct {
+	    // Image is the standard-library image instance for further processing.
+	    Image image.Image `msgpack:"-" json:"-"`
+	    // Info is the image information.
+	    Info ImageInformation `msgpack:"info" json:"info"`
+	}
+
+<a name="FrameMetadata"></a>
+
+## type FrameMetadata
+
+FrameMetadata is decoded frame metadata from the video decoder.
+
+	type FrameMetadata struct {
+	    // Format is the decoder format.
+	    Format DecoderFormat `msgpack:"format" json:"format"`
+	    // FrameSize is the total frame data size in bytes.
+	    FrameSize int `msgpack:"frameSize" json:"frameSize"`
+	    // Width is the current frame width (may be scaled).
+	    Width int `msgpack:"width" json:"width"`
+	    // Height is the current frame height (may be scaled).
+	    Height int `msgpack:"height" json:"height"`
+	    // OrigWidth is the original video width before scaling.
+	    OrigWidth int `msgpack:"origWidth" json:"origWidth"`
+	    // OrigHeight is the original video height before scaling.
+	    OrigHeight int `msgpack:"origHeight" json:"origHeight"`
+	}
+
+<a name="GarageControl"></a>
+
+## type Go2RtcRTSPSource
+
+Go2RtcRTSPSource contains RTSP streaming URLs from the stream provider.
+
+	type Go2RtcRTSPSource struct {
+	    // Base is the base RTSP URL.
+	    Base string `msgpack:"base,omitempty" json:"base,omitempty"`
+	    // Default is the default stream (video + audio).
+	    Default string `msgpack:"default,omitempty" json:"default,omitempty"`
+	    // Muted is the video-only stream.
+	    Muted string `msgpack:"muted,omitempty" json:"muted,omitempty"`
+	    // AudioOnly is the audio-only stream (no video).
+	    AudioOnly string `msgpack:"audioOnly,omitempty" json:"audioOnly,omitempty"`
+	    // AAC is the stream URL with AAC audio.
+	    AAC string `msgpack:"aac,omitempty" json:"aac,omitempty"`
+	    // Opus is the stream URL with Opus audio.
+	    Opus string `msgpack:"opus,omitempty" json:"opus,omitempty"`
+	    // PCMA is the stream URL with PCMA audio.
+	    PCMA string `msgpack:"pcma,omitempty" json:"pcma,omitempty"`
+	    // ONVIF is the ONVIF URL.
+	    ONVIF string `msgpack:"onvif,omitempty" json:"onvif,omitempty"`
+	    // Prebuffered is the prebuffered stream URL.
+	    Prebuffered string `msgpack:"prebuffered,omitempty" json:"prebuffered,omitempty"`
+	    // NoGop is the stream URL with GOP cache disabled.
+	    NoGop string `msgpack:"noGop,omitempty" json:"noGop,omitempty"`
+	}
+
+<a name="Go2RtcSnapshotSource"></a>
+
+## type Go2RtcSnapshotSource
+
+Go2RtcSnapshotSource contains snapshot/image URLs from the stream provider.
+
+	type Go2RtcSnapshotSource struct {
+	    // MP4 is the MP4 single-frame video URL.
+	    MP4 string `msgpack:"mp4,omitempty" json:"mp4,omitempty"`
+	    // JPEG is the JPEG snapshot URL.
+	    JPEG string `msgpack:"jpeg,omitempty" json:"jpeg,omitempty"`
+	    // MJPEG is the MJPEG stream URL.
+	    MJPEG string `msgpack:"mjpeg,omitempty" json:"mjpeg,omitempty"`
+	}
+
+<a name="Go2RtcWSSource"></a>
+
+## type Go2RtcWSSource
+
+Go2RtcWSSource contains WebSocket streaming URLs from the stream provider.
+
+	type Go2RtcWSSource struct {
+	    // WebRTC is the WebRTC signaling endpoint.
+	    WebRTC string `msgpack:"webrtc,omitempty" json:"webrtc,omitempty"`
+	    // MSE is the MSE streaming endpoint.
+	    MSE string `msgpack:"mse,omitempty" json:"mse,omitempty"`
+	}
+
+<a name="HeatmapPoint"></a>
+
+## type ImageCrop
+
+ImageCrop is a crop region for image processing.
+
+	type ImageCrop struct {
+	    // Top is the top offset in pixels.
+	    Top int `msgpack:"top" json:"top"`
+	    // Left is the left offset in pixels.
+	    Left int `msgpack:"left" json:"left"`
+	    // Width is the crop width in pixels.
+	    Width int `msgpack:"width" json:"width"`
+	    // Height is the crop height in pixels.
+	    Height int `msgpack:"height" json:"height"`
+	}
+
+<a name="ImageFormat"></a>
+
+## type ImageFormat
+
+ImageFormat is an output format conversion option.
+
+	type ImageFormat struct {
+	    // To is the target pixel format.
+	    To ImageOutputFormat `msgpack:"to" json:"to"`
+	}
+
+<a name="ImageInformation"></a>
+
+## type ImageInformation
+
+ImageInformation describes image dimensions and format.
+
+	type ImageInformation struct {
+	    // Width is the image width in pixels.
+	    Width int `msgpack:"width" json:"width"`
+	    // Height is the image height in pixels.
+	    Height int `msgpack:"height" json:"height"`
+	    // Channels is the number of color channels (1=gray, 3=RGB, 4=RGBA).
+	    Channels int `msgpack:"channels" json:"channels"`
+	    // Format is the pixel format.
+	    Format ImageInputFormat `msgpack:"format" json:"format"`
+	}
+
+<a name="ImageInputFormat"></a>
+
+## type ImageInputFormat
+
+ImageInputFormat is a supported image input format for processing.
+
+	type ImageInputFormat string
+
+<a name="ImageInputFormatNV12"></a>
+
+	const (
+	    ImageInputFormatNV12 ImageInputFormat = "nv12"
+	    ImageInputFormatRGB  ImageInputFormat = "rgb"
+	    ImageInputFormatRGBA ImageInputFormat = "rgba"
+	    ImageInputFormatGray ImageInputFormat = "gray"
+	)
+
+<a name="ImageMetadata"></a>
+
+## type ImageOptions
+
+ImageOptions combines image processing options.
+
+	type ImageOptions struct {
+	    // Format is the output format conversion option.
+	    Format *ImageFormat `msgpack:"format,omitempty" json:"format,omitempty"`
+	    // Crop is the optional crop region.
+	    Crop *ImageCrop `msgpack:"crop,omitempty" json:"crop,omitempty"`
+	    // Resize is the optional resize dimensions.
+	    Resize *ImageResize `msgpack:"resize,omitempty" json:"resize,omitempty"`
+	}
+
+<a name="ImageOutputFormat"></a>
+
+## type ImageOutputFormat
+
+ImageOutputFormat is a supported image output format after processing.
+
+	type ImageOutputFormat string
+
+<a name="ImageOutputFormatRGB"></a>
+
+	const (
+	    ImageOutputFormatRGB  ImageOutputFormat = "rgb"
+	    ImageOutputFormatRGBA ImageOutputFormat = "rgba"
+	    ImageOutputFormatGray ImageOutputFormat = "gray"
+	)
+
+<a name="ImageResize"></a>
+
+## type ImageResize
+
+ImageResize is the target dimensions for resize processing.
+
+	type ImageResize struct {
+	    // Width is the target width in pixels.
+	    Width int `msgpack:"width" json:"width"`
+	    // Height is the target height in pixels.
+	    Height int `msgpack:"height" json:"height"`
+	}
+
+<a name="JsonSchema"></a>
+
+## type LineDirection
+
+LineDirection is the line crossing direction filter.
+
+- both: Trigger on crossings in either direction
+- a\-to\-b: Trigger only when crossing from A side to B side
+- b\-to\-a: Trigger only when crossing from B side to A side
+
+	type LineDirection = string
+
+<a name="LineDirectionBoth"></a>
+
+	const (
+	    LineDirectionBoth LineDirection = "both"
+	    LineDirectionAToB LineDirection = "a-to-b"
+	    LineDirectionBToA LineDirection = "b-to-a"
+	)
+
+<a name="LockControl"></a>
+
+## type MotionResolution
+
+MotionResolution is the motion detection resolution setting. Higher resolution = more accurate but slower.
+
+	type MotionResolution string
+
+<a name="MotionResolutionLow"></a>
+
+	const (
+	    MotionResolutionLow    MotionResolution = "low"
+	    MotionResolutionMedium MotionResolution = "medium"
+	    MotionResolutionHigh   MotionResolution = "high"
+	)
+
+<a name="MotionResult"></a>
+
+## type PTZCapability
+
+PTZCapability defines PTZ capabilities.
+
+	type PTZCapability string
+
+<a name="PTZCapabilityPan"></a>
+
+	const (
+	    PTZCapabilityPan     PTZCapability = "pan"
+	    PTZCapabilityTilt    PTZCapability = "tilt"
+	    PTZCapabilityZoom    PTZCapability = "zoom"
+	    PTZCapabilityPresets PTZCapability = "presets"
+	    PTZCapabilityHome    PTZCapability = "home"
+	)
+
+<a name="PTZControl"></a>
+
+## type PTZDirection
+
+PTZDirection represents PTZ movement speed for continuous move commands.
+
+	type PTZDirection struct {
+	    PanSpeed  float64 `msgpack:"panSpeed" json:"panSpeed"`
+	    TiltSpeed float64 `msgpack:"tiltSpeed" json:"tiltSpeed"`
+	    ZoomSpeed float64 `msgpack:"zoomSpeed" json:"zoomSpeed"`
+	}
+
+<a name="PTZPosition"></a>
+
+## type PTZPosition
+
+PTZPosition represents an absolute PTZ position.
+
+	type PTZPosition struct {
+	    Pan  float64 `msgpack:"pan" json:"pan"`
+	    Tilt float64 `msgpack:"tilt" json:"tilt"`
+	    Zoom float64 `msgpack:"zoom" json:"zoom"`
+	}
+
+<a name="Plugin"></a>
+
+## type Point
+
+Point is a zone polygon coordinate as \[x, y\] \(0\-100 percentage\).
+
+	type Point [2]float64
+
+<a name="ProbeStream"></a>
+
+## type ProbeStream
+
+ProbeStream is the result of a stream probe — SDP plus track information.
+
+	type ProbeStream struct {
+	    Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
+	    Audio []AudioStreamInfo `msgpack:"audio,omitempty" json:"audio,omitempty"`
+	    SDP   string            `msgpack:"sdp,omitempty" json:"sdp,omitempty"`
+	}
+
+<a name="PropertyChangeEvent"></a>
+
+## type PropertyChangeEvent
+
+PropertyChangeEvent is emitted when a camera property changes.
+
+	type PropertyChangeEvent struct {
+	    // Property is the JSON name of the property that changed.
+	    Property string
+	    // OldCamera is the camera snapshot before the change.
+	    OldCamera Camera
+	    // NewCamera is the camera snapshot after the change.
+	    NewCamera Camera
+	}
+
+<a name="PtzAutotrackSettings"></a>
+
+## type PtzAutotrackSettings
+
+PtzAutotrackSettings configures automatic PTZ tracking of detected objects.
+
+	type PtzAutotrackSettings struct {
+	    // Enabled toggles PTZ autotracking.
+	    Enabled bool `msgpack:"enabled" json:"enabled"`
+	    // TargetLabels are the object labels to track (e.g. "person", "vehicle").
+	    TargetLabels []string `msgpack:"targetLabels" json:"targetLabels"`
+	    // MinConfidence is the minimum detection confidence to track (0.3 - 1.0).
+	    MinConfidence float64 `msgpack:"minConfidence" json:"minConfidence"`
+	    // TriggerDeadZone is the dead zone around frame center (0 - 0.3).
+	    // No motor command is issued while the target is inside this zone.
+	    TriggerDeadZone float64 `msgpack:"triggerDeadZone" json:"triggerDeadZone"`
+	    // ReturnToHome enables returning to the home position when no target is found for HomeWaitMs.
+	    ReturnToHome bool `msgpack:"returnToHome" json:"returnToHome"`
+	    // HomeWaitMs is how long to wait (ms) without a target before returning home.
+	    HomeWaitMs int `msgpack:"homeWaitMs" json:"homeWaitMs"`
+	}
+
+<a name="RTSPAudioCodec"></a>
+
+## type RTSPAudioCodec
+
+RTSPAudioCodec is an audio codec supported for RTSP streaming.
+
+	type RTSPAudioCodec string
+
+<a name="RTSPAudioCodecAAC"></a>
+
+	const (
+	    RTSPAudioCodecAAC  RTSPAudioCodec = "aac"
+	    RTSPAudioCodecOpus RTSPAudioCodec = "opus"
+	    RTSPAudioCodecPCMA RTSPAudioCodec = "pcma"
+	)
+
+<a name="RTSPUrlOptions"></a>
+
+## type RTSPUrlOptions
+
+RTSPUrlOptions is options for generating RTSP URLs.
+
+	type RTSPUrlOptions struct {
+	    // Video toggles inclusion of the video track.
+	    Video bool `msgpack:"video,omitempty" json:"video"`
+	    // Audio is the list of audio codecs to include.
+	    Audio []RTSPAudioCodec `msgpack:"audio,omitempty" json:"audio"`
+	    // GOP requests a keyframe at start.
+	    GOP bool `msgpack:"gop,omitempty" json:"gop"`
+	    // Prebuffer requests the prebuffered stream.
+	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
+	    // AudioSingleTrack combines audio tracks into a single track.
+	    AudioSingleTrack bool `msgpack:"audioSingleTrack,omitempty" json:"audioSingleTrack"`
+	    // Backchannel enables backchannel (two-way audio).
+	    Backchannel bool `msgpack:"backchannel,omitempty" json:"backchannel"`
+	    // Timeout is the connection timeout in seconds.
+	    Timeout int `msgpack:"timeout,omitempty" json:"timeout"`
+	}
+
+<a name="RecordingSegment"></a>
+
+## type RecordingSegment
+
+RecordingSegment represents a continuous recording time range.
+
+	type RecordingSegment struct {
+	    StartTime int64 `msgpack:"startTime" json:"startTime"` // Unix ms
+	    EndTime   int64 `msgpack:"endTime" json:"endTime"`     // Unix ms
+	}
+
+<a name="RecordingState"></a>
+
+## type RecordingState
+
+RecordingState represents the current recording status of a camera.
+
+	type RecordingState struct {
+	    CameraID  string          `msgpack:"cameraId" json:"cameraId"`
+	    State     RecordingStatus `msgpack:"state" json:"state"`
+	    Timestamp int64           `msgpack:"timestamp" json:"timestamp"` // Unix ms
+	}
+
+<a name="RecordingStatus"></a>
+
+## type RecordingStatus
+
+RecordingStatus represents whether a camera is currently recording.
+
+	type RecordingStatus string
+
+<a name="RecordingStatusRecording"></a>
+
+	const (
+	    RecordingStatusRecording RecordingStatus = "recording"
+	    RecordingStatusStopped   RecordingStatus = "stopped"
+	)
+
+<a name="ReplaySubject"></a>
+
+## type SnapshotInterface
+
+SnapshotInterface is optionally implemented to provide snapshots.
+
+	type SnapshotInterface interface {
+	    Snapshot(sourceID string, forceNew bool) ([]byte, error)
+	}
+
+<a name="SnapshotSettings"></a>
+
+## type SnapshotSettings
+
+SnapshotSettings is snapshot configuration for a camera.
+
+	type SnapshotSettings struct {
+	    // AutoRefresh enables automatic snapshot refresh.
+	    AutoRefresh bool `msgpack:"autoRefresh" json:"autoRefresh"`
+	    // TTL is the cache TTL in seconds (how long a snapshot is valid).
+	    TTL int `msgpack:"ttl" json:"ttl"`
+	    // Interval is the auto-refresh interval in seconds (min: 10, max: 60).
+	    Interval int `msgpack:"interval" json:"interval"`
+	}
+
+<a name="SnapshotUrlOptions"></a>
+
+## type SnapshotUrlOptions
+
+SnapshotUrlOptions is options for generating snapshot URLs.
+
+	type SnapshotUrlOptions struct {
+	    // Width is the output width in pixels.
+	    Width int `msgpack:"width,omitempty" json:"width"`
+	    // Height is the output height in pixels.
+	    Height int `msgpack:"height,omitempty" json:"height"`
+	    // Rotate is the rotation in degrees.
+	    Rotate int `msgpack:"rotate,omitempty" json:"rotate"`
+	    // Cache is the cache key/strategy.
+	    Cache string `msgpack:"cache,omitempty" json:"cache"`
+	    // HW is the hardware acceleration backend.
+	    HW  string `msgpack:"hw,omitempty" json:"hw"`
+	    // GOP requests a keyframe at start.
+	    GOP bool `msgpack:"gop,omitempty" json:"gop"`
+	    // Prebuffer requests the prebuffered stream.
+	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
+	}
+
+<a name="StorageController"></a>
+
+## type StreamDirection
+
+StreamDirection is the direction of a media stream \(from SDP\).
+
+	type StreamDirection string
+
+<a name="StreamDirectionSendOnly"></a>
+
+	const (
+	    StreamDirectionSendOnly StreamDirection = "sendonly"
+	    StreamDirectionRecvOnly StreamDirection = "recvonly"
+	    StreamDirectionSendRecv StreamDirection = "sendrecv"
+	    StreamDirectionInactive StreamDirection = "inactive"
+	)
+
+<a name="StreamProperties"></a>
+
+## type StreamProperties
+
+StreamProperties contains codec properties from a stream probe.
+
+	type StreamProperties struct {
+	    // ClockRate is the codec clock rate.
+	    ClockRate int `msgpack:"clockRate,omitempty" json:"clockRate,omitempty"`
+	    // PayloadType is the RTP payload type number.
+	    PayloadType int `msgpack:"payloadType,omitempty" json:"payloadType,omitempty"`
+	    // FmtpInfo is the codec-specific fmtp configuration string.
+	    FmtpInfo string `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+	}
+
+<a name="StreamUrls"></a>
+
+## type StreamUrls
+
+StreamUrls is the collection of all streaming URLs for a camera source.
+
+	type StreamUrls struct {
+	    // WS are the WebSocket streaming URLs.
+	    WS  Go2RtcWSSource `msgpack:"ws,omitempty" json:"ws"`
+	    // RTSP are the RTSP streaming URLs.
+	    RTSP Go2RtcRTSPSource `msgpack:"rtsp,omitempty" json:"rtsp"`
+	    // Snapshot are the snapshot/image URLs.
+	    Snapshot Go2RtcSnapshotSource `msgpack:"snapshot,omitempty" json:"snapshot"`
+	}
+
+<a name="StreamingInterface"></a>
+
+## type StreamingInterface
+
+StreamingInterface is optionally implemented to provide stream URLs.
+
+	type StreamingInterface interface {
+	    StreamUrl(sourceID string) (string, error)
+	}
+
+<a name="StreamingRole"></a>
+
+## type StreamingRole
+
+StreamingRole is the resolution role for live streaming \(excludes snapshot\).
+
+	type StreamingRole string
+
+<a name="StreamingRoleHighRes"></a>
+
+	const (
+	    StreamingRoleHighRes StreamingRole = "high-resolution"
+	    StreamingRoleMidRes  StreamingRole = "mid-resolution"
+	    StreamingRoleLowRes  StreamingRole = "low-resolution"
+	)
+
+<a name="StringFormat"></a>
+
+## type VideoFrame
+
+VideoFrame is a video frame with processing capabilities. Provides methods to convert raw decoder output to usable image formats.
+
+	type VideoFrame interface {
+	    ID() string
+	    Data() []byte
+	    Metadata() FrameMetadata
+	    Info() ImageInformation
+	    Timestamp() int64
+	    InputWidth() int
+	    InputHeight() int
+	    InputFormat() DecoderFormat
+	    ToBuffer() (*FrameBuffer, error)
+	    ToImage() (*FrameImage, error)
+	}
+
+<a name="VideoFrameData"></a>
+
+## type VideoFrameData
+
+VideoFrameData is the video frame payload delivered to detector sensors by the backend pipeline. The backend handles capture, decoding, and scaling — detectors only need to process the pixel buffer.
+
+	type VideoFrameData struct {
+	    ID        string      `msgpack:"id" json:"id"`                           // Unique frame or crop identifier used to map batch results back to inputs
+	    CameraID  string      `msgpack:"cameraId" json:"cameraId"`               // Camera the frame originated from
+	    Data      []byte      `msgpack:"data" json:"data"`                       // Raw pixel buffer
+	    Width     int         `msgpack:"width" json:"width"`                     // Frame width in pixels
+	    Height    int         `msgpack:"height" json:"height"`                   // Frame height in pixels
+	    Format    FrameFormat `msgpack:"format" json:"format"`                   // Pixel format (nv12, rgb, rgba, gray)
+	    Timestamp int64       `msgpack:"timestamp" json:"timestamp"`             // Capture timestamp in milliseconds since epoch
+	    Label     string      `msgpack:"label,omitempty" json:"label,omitempty"` // Trigger label propagated by the coordinator for secondary detectors
+	}
+
+<a name="VideoStreamInfo"></a>
+
+## type VideoStreamInfo
+
+VideoStreamInfo is video stream information from a probe.
+
+	type VideoStreamInfo struct {
+	    // Codec is the video codec.
+	    Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	    // FFmpegCodec is the FFmpeg codec name.
+	    FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
+	    // Width is the video width in pixels.
+	    Width int `msgpack:"width,omitempty" json:"width,omitempty"`
+	    // Height is the video height in pixels.
+	    Height int `msgpack:"height,omitempty" json:"height,omitempty"`
+	    // FPS is the framerate.
+	    FPS int `msgpack:"fps,omitempty" json:"fps,omitempty"`
+	    // Bitrate is the video bitrate.
+	    Bitrate int `msgpack:"bitrate,omitempty" json:"bitrate,omitempty"`
+	    // Properties are the codec properties.
+	    Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	    // Direction is the stream direction.
+	    Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	}
+
+<a name="VideoStreamingMode"></a>
+
+## type VideoStreamingMode
+
+VideoStreamingMode is the video streaming mode for UI playback.
+
+- auto: Automatically select best method
+- webrtc: WebRTC with UDP \(lowest latency\)
+- webrtc/tcp: WebRTC with TCP fallback
+- mse: Media Source Extensions \(browser native\)
+- webcodecs: WebCodecs API \(frame\-accurate scrubbing for NVR playback\)
+
+	type VideoStreamingMode string
+
+<a name="VideoStreamingModeAuto"></a>
+
+	const (
+	    VideoStreamingModeAuto      VideoStreamingMode = "auto"
+	    VideoStreamingModeWebRTC    VideoStreamingMode = "webrtc"
+	    VideoStreamingModeMSE       VideoStreamingMode = "mse"
+	    VideoStreamingModeWebRTCTCP VideoStreamingMode = "webrtc/tcp"
+	    VideoStreamingModeWebCodecs VideoStreamingMode = "webcodecs"
+	)
+
+<a name="ZoneFilter"></a>
+
+## type ZoneFilter
+
+ZoneFilter is the detection zone filter mode.
+
+- include: Only consider detections inside this zone
+- exclude: Only consider detections outside this zone
+
+	type ZoneFilter string
+
+<a name="ZoneFilterInclude"></a>
+
+	const (
+	    ZoneFilterInclude ZoneFilter = "include"
+	    ZoneFilterExclude ZoneFilter = "exclude"
+	)
+
+<a name="ZoneType"></a>
+
+## type ZoneType
+
+ZoneType is the detection zone intersection type.
+
+- intersect: Trigger when object touches the zone boundary
+- contain: Trigger only when object is fully inside the zone
+
+	type ZoneType string
+
+<a name="ZoneTypeIntersect"></a>
+
+	const (
+	    ZoneTypeIntersect ZoneType = "intersect"
+	    ZoneTypeContain   ZoneType = "contain"
+	)
+
+Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)

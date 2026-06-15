@@ -1,0 +1,861 @@
+# Plugin API
+
+Core plugin lifecycle and capability surface: the `Plugin` interface every plugin implements, the `BasePlugin` boilerplate-saver, the `PluginContract` manifest, lifecycle event names (`APIEvent*`), and every optional interface — `DiscoveryProvider`, `NotifierInterface`, and the seven detection interfaces.
+
+!!! note
+    The reference below is auto-generated from Go doc comments via [`gomarkdoc`](https://github.com/princjef/gomarkdoc). Re-run `scripts/gen-api-docs.sh` to refresh it.
+
+## func CanCreateCameras
+
+	func CanCreateCameras(contract PluginContract) bool
+
+CanCreateCameras reports whether the plugin can create cameras \(role is CameraController or CameraAndSensorProvider\).
+
+<a name="CanProvideSensorsToAnyCameras"></a>
+
+## func CanProvideSensorsToAnyCameras
+
+	func CanProvideSensorsToAnyCameras(contract PluginContract) bool
+
+CanProvideSensorsToAnyCameras reports whether the plugin is allowed to add sensors to cameras owned by other plugins.
+
+<a name="FirstValueFrom"></a>
+
+## func GetContractValidationErrors
+
+	func GetContractValidationErrors(c *PluginContract) []string
+
+GetContractValidationErrors checks the structural validity of a contract \(required fields present, enum values inside the accepted sets\) and returns one human\-readable error per problem found. Returns an empty slice when the contract is valid.
+
+<a name="HasInterface"></a>
+
+## func HasInterface
+
+	func HasInterface(contract PluginContract, iface PluginInterface) bool
+
+HasInterface reports whether the plugin implements the given capability.
+
+<a name="Int"></a>
+
+## func IsHub
+
+	func IsHub(contract PluginContract) bool
+
+IsHub reports whether the plugin's role is Hub.
+
+<a name="Run"></a>
+
+## func Run
+
+	func Run(constructor pluginConstructor)
+
+Run is the entry point a Go plugin's main package calls to hand control to the SDK runtime. It performs the full handshake with the host \(RPC connect, ready/start/stop messages\), opens the per\-plugin storage, instantiates the plugin via constructor, calls ConfigureCameras with the assigned cameras, emits APIEventFinishLaunching, then blocks until SIGTERM/SIGINT or a stop command from the host. On exit it emits APIEventShutdown and tears down the RPC connection. This mirrors the lifecycle the Node/Python plugin runtimes implement \(server/src/plugins/runtime/\{node,python\}/\).
+
+<a name="ValidateContractConsistency"></a>
+
+## func ValidateContractConsistency
+
+	func ValidateContractConsistency(contract PluginContract, pluginName string) error
+
+ValidateContractConsistency enforces role\-specific consistency rules on top of the structural check \(e.g. SensorProvider plugins must declare at least one provided sensor; Hub plugins cannot expose sensors\). Returns a non\-nil error on the first violation.
+
+<a name="APIEvent"></a>
+
+## type APIEvent
+
+APIEvent identifies a lifecycle event emitted on the PluginAPI eventEmitter. Plugins subscribe with api.On\(string\(APIEventX\), handler\) to react to host\-driven phase changes.
+
+	type APIEvent string
+
+<a name="APIEventFinishLaunching"></a>
+
+	const (
+	    // APIEventFinishLaunching is emitted exactly once after the plugin has
+	    // been constructed, all assigned cameras have been wired up, and
+	    // ConfigureCameras has returned. Use it to start background work that
+	    // must wait until the camera set is stable (timers, model warm-up,
+	    // outbound connections).
+	    APIEventFinishLaunching APIEvent = "finishLaunching"
+	    // APIEventShutdown is emitted when the host is tearing the plugin down
+	    // (graceful stop, reload or process exit). Listeners must release
+	    // resources synchronously enough to finish before the host kills the
+	    // process — open files, sockets, timers, child processes.
+	    APIEventShutdown APIEvent = "shutdown"
+	    // APIEventCloudAccountChanged is emitted when the user-level cloud
+	    // account is connected or disconnected. Plugins that depend on cloud
+	    // credentials use this to (re)authenticate or pause work.
+	    APIEventCloudAccountChanged APIEvent = "cloudAccountChanged"
+	)
+
+<a name="AssignedPlugin"></a>
+
+## type AssignedPlugin
+
+AssignedPlugin is plugin assignment info \(id \+ display name\).
+
+	type AssignedPlugin struct {
+	    // ID is the plugin ID.
+	    ID  string `msgpack:"id" json:"id"`
+	    // Name is the plugin display name.
+	    Name string `msgpack:"name" json:"name"`
+	}
+
+<a name="AudioDetectionInterface"></a>
+
+## type AudioDetectionInterface
+
+AudioDetectionInterface is implemented by plugins that perform audio event or keyword detection.
+
+	type AudioDetectionInterface interface {
+	    // TestAudio runs detection on an audio buffer captured by the UI test
+	    // panel; metadata carries the input MIME type (mpeg/wav/ogg).
+	    TestAudio(audioData []byte, metadata AudioMetadata, config map[string]any) (*AudioDetectionResponse, error)
+	    // AudioSettings returns the JSON schema used to render the
+	    // audio-detection settings form in the UI. Return nil for no schema.
+	    AudioSettings() ([]JsonSchema, error)
+	}
+
+<a name="AudioDetectionResponse"></a>
+
+## type AudioDetectionResponse
+
+AudioDetectionResponse is the result of an audio detection run. Decibels is optional and reports the measured loudness when the plugin computes it.
+
+	type AudioDetectionResponse struct {
+	    Detected   bool        `msgpack:"detected" json:"detected"`
+	    Detections []Detection `msgpack:"detections" json:"detections"`
+	    Decibels   float64     `msgpack:"decibels,omitempty" json:"decibels,omitempty"`
+	}
+
+<a name="AudioDetectionSettings"></a>
+
+## type AudioDetectionSettings
+
+AudioDetectionSettings is audio detection configuration.
+
+	type AudioDetectionSettings struct {
+	    // MinDecibels is the minimum volume threshold in dBFS (-100 to 0). Audio below this level is skipped.
+	    MinDecibels float64 `msgpack:"minDecibels" json:"minDecibels"`
+	    // Timeout is the audio dwell time in seconds.
+	    Timeout int `msgpack:"timeout" json:"timeout"`
+	}
+
+<a name="AudioDetector"></a>
+
+## type AudioMetadata
+
+AudioMetadata is audio metadata passed to audio detector test methods.
+
+	type AudioMetadata struct {
+	    MimeType string `msgpack:"mimeType" json:"mimeType"`
+	}
+
+<a name="AudioModelSpec"></a>
+
+## type BasePlugin
+
+BasePlugin embeds the three dependencies every plugin needs \(logger, API handle, storage\). Embed it in your plugin struct to avoid repeating that boilerplate.
+
+Example:
+
+	type MyPlugin struct {
+	    sdk.BasePlugin
+	    cameras map[string]*sdk.CameraDevice
+	}
+	
+	func NewPlugin(logger *sdk.Logger, api *sdk.PluginAPI, storage *sdk.DeviceStorage) sdk.Plugin {
+	    return &MyPlugin{
+	        BasePlugin: sdk.NewBasePlugin(logger, api, storage),
+	        cameras:    make(map[string]*sdk.CameraDevice),
+	    }
+	}
+	
+
+	type BasePlugin struct {
+	    // Logger is the per-plugin logger; messages are tagged with the plugin
+	    // name and forwarded to the host.
+	    Logger *Logger
+	    // API is the PluginAPI handle injected by the host (managers + lifecycle
+	    // eventEmitter).
+	    API *PluginAPI
+	    // Storage is the plugin-level storage instance (per-camera storage is
+	    // obtained via API.DeviceManager).
+	    Storage *DeviceStorage
+	}
+
+<a name="NewBasePlugin"></a>
+### func NewBasePlugin
+
+	func NewBasePlugin(logger *Logger, api *PluginAPI, storage *DeviceStorage) BasePlugin
+
+NewBasePlugin builds a BasePlugin value from the constructor arguments. Use it inside your pluginConstructor implementation.
+
+<a name="BaseSensor"></a>
+
+## type ClassifierDetectionInterface
+
+ClassifierDetectionInterface is implemented by plugins that run a generic image classifier and emit attribute/label pairs \(e.g. weather, scene, activity\).
+
+	type ClassifierDetectionInterface interface {
+	    // TestClassifier runs classification on a single image captured by the
+	    // UI test panel and returns the result for preview rendering.
+	    TestClassifier(imageData []byte, metadata ImageMetadata, config map[string]any) (*ClassifierDetectionResponse, error)
+	    // DetectClassifications runs classification on a pre-decoded video frame.
+	    DetectClassifications(frame VideoFrameData, config map[string]any) (*ClassifierDetectionResponse, error)
+	    // ClassifierSettings returns the JSON schema for the
+	    // classifier-detection settings form in the UI. Return nil for no
+	    // schema.
+	    ClassifierSettings() ([]JsonSchema, error)
+	}
+
+<a name="ClassifierDetectionResponse"></a>
+
+## type ClassifierDetectionResponse
+
+ClassifierDetectionResponse is the result of a classifier detection run.
+
+	type ClassifierDetectionResponse struct {
+	    Detected   bool                  `msgpack:"detected" json:"detected"`
+	    Detections []ClassifierDetection `msgpack:"detections" json:"detections"`
+	}
+
+<a name="ClassifierDetector"></a>
+
+## type ClipDetectionInterface
+
+ClipDetectionInterface is implemented by plugins that generate CLIP image and text embeddings used for semantic search over recorded events.
+
+	type ClipDetectionInterface interface {
+	    // TestClipEmbedding runs the CLIP image branch on a single image
+	    // captured by the UI test panel.
+	    TestClipEmbedding(imageData []byte, metadata ImageMetadata, config map[string]any) (*ClipResult, error)
+	    // DetectClipEmbedding runs the CLIP image branch on a pre-decoded
+	    // video frame.
+	    DetectClipEmbedding(frame VideoFrameData, config map[string]any) (*ClipResult, error)
+	    // GetTextEmbedding runs the CLIP text branch and returns a single
+	    // embedding vector usable for semantic-search queries against
+	    // previously stored image embeddings.
+	    GetTextEmbedding(text string) (*ClipTextEmbeddingResult, error)
+	    // ClipSettings returns the JSON schema for the CLIP settings form in
+	    // the UI. Return nil for no schema.
+	    ClipSettings() ([]JsonSchema, error)
+	}
+
+<a name="ClipDetector"></a>
+
+## type ClipTextEmbeddingResult
+
+ClipTextEmbeddingResult is the return type for ClipDetectionInterface.GetTextEmbedding — a single embedding vector plus the model name used to produce it \(so downstream code can refuse to mix embeddings from different models\).
+
+	type ClipTextEmbeddingResult struct {
+	    Embedding      []float64 `msgpack:"embedding" json:"embedding"`
+	    EmbeddingModel string    `msgpack:"embeddingModel" json:"embeddingModel"`
+	}
+
+<a name="ContactSensor"></a>
+
+## type DiscoveredCamera
+
+DiscoveredCamera is a camera found during discovery by a discovery provider plugin.
+
+	type DiscoveredCamera struct {
+	    // ID is the discovery ID (typically a stable native identifier).
+	    ID  string `msgpack:"id" json:"id"`
+	    // Name is the discovered camera display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // Manufacturer is the manufacturer name (if known).
+	    Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
+	    // Model is the model name (if known).
+	    Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+	}
+
+<a name="DiscoveryProvider"></a>
+
+## type DiscoveryProvider
+
+DiscoveryProvider is implemented by plugins that can scan the network for new cameras and adopt them. Only plugins with a camera\-controlling role \(CameraController or CameraAndSensorProvider\) are queried for discovery.
+
+	type DiscoveryProvider interface {
+	    // OnDiscoverCameras scans the network and returns the cameras the
+	    // plugin can offer for adoption. Called by the host on demand (UI
+	    // rescan button) or on a polling schedule.
+	    OnDiscoverCameras() ([]DiscoveredCamera, error)
+	    // OnGetCameraSettings returns a JSON schema describing the form fields
+	    // (credentials, transport options, ...) the user must fill in to adopt
+	    // this specific discovered camera.
+	    OnGetCameraSettings(camera DiscoveredCamera) ([]JsonSchema, error)
+	    // OnAdoptCamera probes the device with the user-provided settings and
+	    // returns the camera configuration the host should persist. The host
+	    // then creates the camera and invokes the plugin's OnCameraAdded.
+	    OnAdoptCamera(camera DiscoveredCamera, cameraSettings map[string]any) (map[string]any, error)
+	}
+
+<a name="Disposable"></a>
+
+## type FaceDetectionInterface
+
+FaceDetectionInterface is implemented by plugins that locate faces and emit per\-face embeddings. The NVR owns matching against enrolled faces; the plugin only emits raw detections \+ embeddings.
+
+	type FaceDetectionInterface interface {
+	    // TestFaces runs face detection on a single image captured by the UI
+	    // test panel and returns the result for preview rendering.
+	    TestFaces(imageData []byte, metadata ImageMetadata, config map[string]any) (*FaceDetectionResponse, error)
+	    // DetectFaces runs face detection on a pre-decoded video frame.
+	    DetectFaces(frame VideoFrameData, config map[string]any) (*FaceDetectionResponse, error)
+	    // FaceSettings returns the JSON schema for the face-detection settings
+	    // form in the UI. Return nil for no schema.
+	    FaceSettings() ([]JsonSchema, error)
+	}
+
+<a name="FaceDetectionResponse"></a>
+
+## type FaceDetectionResponse
+
+FaceDetectionResponse is the result of a face detection run. EmbeddingModel names the model that produced the embeddings so the NVR can refuse to mix different models when matching.
+
+	type FaceDetectionResponse struct {
+	    Detected       bool            `msgpack:"detected" json:"detected"`
+	    Detections     []FaceDetection `msgpack:"detections" json:"detections"`
+	    EmbeddingModel string          `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
+	}
+
+<a name="FaceDetector"></a>
+
+## type ImageMetadata
+
+ImageMetadata is image metadata passed to detector test methods.
+
+	type ImageMetadata struct {
+	    Width  int `msgpack:"width" json:"width"`
+	    Height int `msgpack:"height" json:"height"`
+	}
+
+<a name="ImageOptions"></a>
+
+## type LicensePlateDetectionInterface
+
+LicensePlateDetectionInterface is implemented by plugins that locate license plates and run OCR on them.
+
+	type LicensePlateDetectionInterface interface {
+	    // TestPlates runs detection on a single image captured by the UI test
+	    // panel and returns the result for preview rendering.
+	    TestPlates(imageData []byte, metadata ImageMetadata, config map[string]any) (*LicensePlateDetectionResponse, error)
+	    // DetectLicensePlates runs detection on a pre-decoded video frame.
+	    DetectLicensePlates(frame VideoFrameData, config map[string]any) (*LicensePlateDetectionResponse, error)
+	    // PlateSettings returns the JSON schema for the license-plate-detection
+	    // settings form in the UI. Return nil for no schema.
+	    PlateSettings() ([]JsonSchema, error)
+	}
+
+<a name="LicensePlateDetectionResponse"></a>
+
+## type LicensePlateDetectionResponse
+
+LicensePlateDetectionResponse is the result of a license plate detection run.
+
+	type LicensePlateDetectionResponse struct {
+	    Detected   bool                    `msgpack:"detected" json:"detected"`
+	    Detections []LicensePlateDetection `msgpack:"detections" json:"detections"`
+	}
+
+<a name="LicensePlateDetector"></a>
+
+## type MotionDetectionInterface
+
+MotionDetectionInterface is implemented by plugins that perform video\-based motion detection. The host invokes TestMotion from the UI test panel and DetectMotion from automation / benchmarking pipelines.
+
+	type MotionDetectionInterface interface {
+	    // TestMotion runs detection on a raw video buffer captured by the UI
+	    // test panel and returns the result for preview rendering.
+	    TestMotion(videoData []byte, config map[string]any) (*MotionDetectionResponse, error)
+	    // DetectMotion runs detection on already-decoded VideoFrameData.
+	    // Called from automation / benchmark pipelines that supply pre-decoded
+	    // frames directly to avoid re-encoding.
+	    DetectMotion(frames []VideoFrameData, config map[string]any) (*MotionDetectionResponse, error)
+	    // MotionSettings returns the JSON schema used to render the
+	    // motion-detection settings form in the UI. Return nil for no schema.
+	    MotionSettings() ([]JsonSchema, error)
+	}
+
+<a name="MotionDetectionResponse"></a>
+
+## type MotionDetectionResponse
+
+MotionDetectionResponse is the result of a motion detection run. VideoData optionally carries an annotated re\-encoded clip for the UI test panel.
+
+	type MotionDetectionResponse struct {
+	    Detected   bool        `msgpack:"detected" json:"detected"`
+	    Detections []Detection `msgpack:"detections" json:"detections"`
+	    VideoData  []byte      `msgpack:"videoData,omitempty" json:"videoData,omitempty"`
+	}
+
+<a name="MotionDetectionSettings"></a>
+
+## type MotionDetectionSettings
+
+MotionDetectionSettings is motion detection configuration.
+
+	type MotionDetectionSettings struct {
+	    // Resolution is the detection resolution quality.
+	    Resolution MotionResolution `msgpack:"resolution" json:"resolution"`
+	    // Timeout is the motion dwell time in seconds.
+	    Timeout int `msgpack:"timeout" json:"timeout"`
+	}
+
+<a name="MotionDetector"></a>
+
+## type Notification
+
+Notification is the generic, domain\-agnostic payload routed through the NotificationManager. Sources \(detection\-pipeline, plugins, etc.\) populate it; notifiers translate it to platform\-specific shapes.
+
+\`Type\` is intentionally a free\-form string — there is no enum — so plugins can introduce new categories without an SDK release. Convention: dotted namespaces, e.g. "detection", "system.disk\_full", "plugin.\<name\>.\<event\>".
+
+	type Notification struct {
+	    ID       string   `msgpack:"id" json:"id"`
+	    Type     string   `msgpack:"type" json:"type"`
+	    Title    string   `msgpack:"title" json:"title"`
+	    Body     string   `msgpack:"body,omitempty" json:"body,omitempty"`
+	    Severity Severity `msgpack:"severity,omitempty" json:"severity,omitempty"`
+	    // Tag is a collapse-key for dedup and rate-limiting at both manager and
+	    // notifier level (e.g. "motion:cam-1" — multiple events with the same tag
+	    // inside the throttle window collapse into one notification).
+	    Tag       string `msgpack:"tag,omitempty" json:"tag,omitempty"`
+	    Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
+	    // DeepLink is a router-relative path consumed by mobile / web tap-handlers.
+	    // Convention: path + query string, no host (e.g. "/cameras/cam-1?startTs=…").
+	    DeepLink string `msgpack:"deepLink,omitempty" json:"deepLink,omitempty"`
+	    // Data carries domain-specific context (cameraId, eventId, plugin-defined
+	    // keys). Routing rules can match against these. String values keep the
+	    // wire format predictable across mobile / FCM / APNs / SMTP / etc.
+	    Data      map[string]string `msgpack:"data,omitempty" json:"data,omitempty"`
+	    CreatedAt time.Time         `msgpack:"createdAt" json:"createdAt"`
+	}
+
+<a name="NotificationTypeInfo"></a>
+
+## type NotificationTypeInfo
+
+NotificationTypeInfo lets a notifier expose human\-readable labels for the \`Type\` strings it understands. Used by the settings UI to render rule editors with friendly names instead of raw type identifiers.
+
+	type NotificationTypeInfo struct {
+	    Type        string `msgpack:"type" json:"type"`
+	    Label       string `msgpack:"label" json:"label"`
+	    Description string `msgpack:"description,omitempty" json:"description,omitempty"`
+	}
+
+<a name="NotifierDevice"></a>
+
+## type NotifierDevice
+
+NotifierDevice represents a single push\-target managed by a notifier plugin \(one phone, one chat, one mailbox, ...\). Devices are owned by the plugin that registered them; the NotificationManager queries plugins for their device list rather than maintaining a shared registry.
+
+	type NotifierDevice struct {
+	    ID          string `msgpack:"id" json:"id"`
+	    OwnerUserID string `msgpack:"ownerUserId" json:"ownerUserId"`
+	    // Type is a plugin-defined string used as a UI hint and grouping key.
+	    // Conventional values: "mobile", "telegram", "email" — but plugins are
+	    // free to coin their own.
+	    Type     string         `msgpack:"type" json:"type"`
+	    Name     string         `msgpack:"name" json:"name"`
+	    Active   bool           `msgpack:"active" json:"active"`
+	    Metadata map[string]any `msgpack:"metadata,omitempty" json:"metadata,omitempty"`
+	}
+
+<a name="NotifierInterface"></a>
+
+## type NotifierInterface
+
+NotifierInterface is implemented by plugins that deliver notifications. The NotificationManager invokes these methods over RPC. Plugins own their device storage — the manager never persists devices itself.
+
+	type NotifierInterface interface {
+	    // GetDevices returns every device this notifier currently knows about
+	    // for the given user. May return nil/empty when the notifier is
+	    // unavailable (e.g. license invalid). Called frequently — keep cheap.
+	    GetDevices(ownerUserID string) ([]NotifierDevice, error)
+	    // GetDevice fetches a single device by id. Returns nil if not found.
+	    GetDevice(deviceID string) (*NotifierDevice, error)
+	    // SendNotification delivers a notification to a specific device. Errors
+	    // here are logged; the manager dispatches in parallel and never aborts a
+	    // fan-out because one notifier failed.
+	    //
+	    // `n` is taken by pointer because Notification is heavy (~168 bytes of
+	    // header plus an embedded thumbnail slice header). The wire format over
+	    // NATS+msgpack is identical regardless — the RPC layer decodes a map
+	    // payload into either shape (see camera-ui-rpc/go/handler.go).
+	    SendNotification(deviceID string, n *Notification) error
+	    // RegisterDevice creates a new device on this notifier. The `input` shape
+	    // is plugin-specific (e.g. NVR-Plugin expects { fcmToken, platform,
+	    // deviceName }; Telegram expects { chatId, label }) — the
+	    // NotificationManager just forwards the JSON. Returns the persisted
+	    // device so the caller can echo it back to the user.
+	    RegisterDevice(ownerUserID string, input map[string]any) (*NotifierDevice, error)
+	    // RevokeDevice deletes a device permanently. Used on logout (for mobile)
+	    // or when the user removes a chat from the Telegram config UI.
+	    RevokeDevice(deviceID string) error
+	    // UpdateDevice mutates a subset of fields on an existing device.
+	    // `patch` is plugin-agnostic (`name`, `active`); plugins ignore unknown
+	    // keys. Returns the updated device or nil if the id isn't ours so the
+	    // manager can probe the next plugin.
+	    UpdateDevice(deviceID string, patch map[string]any) (*NotifierDevice, error)
+	    // GetSupportedTypes is optional UI metadata. Returning an empty slice
+	    // just means the settings UI falls back to raw type strings.
+	    GetSupportedTypes() []NotificationTypeInfo
+	}
+
+<a name="NvrExportOptions"></a>
+
+## type ObjectDetectionInterface
+
+ObjectDetectionInterface is implemented by plugins that perform object detection \(person, vehicle, animal, ...\).
+
+	type ObjectDetectionInterface interface {
+	    // TestObjects runs detection on a single image captured by the UI test
+	    // panel; metadata carries the image dimensions.
+	    TestObjects(imageData []byte, metadata ImageMetadata, config map[string]any) (*ObjectDetectionResponse, error)
+	    // DetectObjects runs detection on a pre-decoded video frame. Called
+	    // from automation / benchmark pipelines.
+	    DetectObjects(frame VideoFrameData, config map[string]any) (*ObjectDetectionResponse, error)
+	    // ObjectSettings returns the JSON schema used to render the
+	    // object-detection settings form in the UI. Return nil for no schema.
+	    ObjectSettings() ([]JsonSchema, error)
+	}
+
+<a name="ObjectDetectionResponse"></a>
+
+## type ObjectDetectionResponse
+
+ObjectDetectionResponse is the result of an object detection run.
+
+	type ObjectDetectionResponse struct {
+	    Detected   bool        `msgpack:"detected" json:"detected"`
+	    Detections []Detection `msgpack:"detections" json:"detections"`
+	}
+
+<a name="ObjectDetectionSettings"></a>
+
+## type ObjectDetectionSettings
+
+ObjectDetectionSettings is object detection configuration.
+
+	type ObjectDetectionSettings struct {
+	    // Confidence is the minimum confidence threshold (0-1).
+	    Confidence float64 `msgpack:"confidence" json:"confidence"`
+	}
+
+<a name="ObjectDetector"></a>
+
+## type Plugin
+
+Plugin is the lifecycle contract every camera.ui plugin must implement. The host calls these methods in a strict order: ConfigureCameras once at startup, then OnCameraAdded / OnCameraReleased as the user adds or removes cameras at runtime.
+
+	type Plugin interface {
+	    // ConfigureCameras is called once on startup with every camera that is
+	    // already assigned to this plugin. The plugin should attach handlers,
+	    // open vendor sessions, and warm up models. Returning an error aborts
+	    // plugin startup.
+	    ConfigureCameras(cameras []*CameraDevice) error
+	    // OnCameraAdded is called whenever a camera is assigned to this plugin
+	    // at runtime — after a discovery adoption (DiscoveryProvider.OnAdoptCamera)
+	    // or after the user re-assigns an existing camera in the UI. The plugin
+	    // should set up the same per-camera state as in ConfigureCameras.
+	    OnCameraAdded(camera *CameraDevice) error
+	    // OnCameraReleased is called when a camera is unassigned from this
+	    // plugin or deleted from the system. The plugin must release per-camera
+	    // resources (sessions, timers, decoders) before returning.
+	    OnCameraReleased(cameraID string) error
+	}
+
+<a name="PluginAPI"></a>
+
+## type PluginAPI
+
+PluginAPI is injected into the plugin at runtime and exposes the system services the plugin is allowed to talk to. It also acts as an eventEmitter for plugin lifecycle events \(see APIEvent constants in plugin.go\).
+
+	type PluginAPI struct {
+	
+	    // CoreManager exposes system-level operations such as the FFmpeg path
+	    // and server addresses.
+	    CoreManager *CoreManager
+	    // DeviceManager owns the camera devices assigned to this plugin and
+	    // publishes camera-state changes.
+	    DeviceManager *DeviceManager
+	    // DownloadManager mints token-protected download URLs for files the
+	    // plugin wants to expose to the UI.
+	    DownloadManager *DownloadManager
+	    // StoragePath is the absolute path to the plugin's writable storage
+	    // directory (created and cleaned up by the host).
+	    StoragePath string
+	    // contains filtered or unexported fields
+	}
+
+<a name="PluginAssignments"></a>
+
+## type PluginAssignments
+
+PluginAssignments maps sensor types to their assigned plugin\(s\) for a camera. Single\-provider sensor types use \*AssignedPlugin \(nil when unassigned\). Multi\-provider sensor types use \[\]AssignedPlugin.
+
+	type PluginAssignments struct {
+	
+	    // Motion is the assigned motion detection plugin.
+	    Motion *AssignedPlugin `msgpack:"motion,omitempty" json:"motion,omitempty"`
+	    // Object is the assigned object detection plugin.
+	    Object *AssignedPlugin `msgpack:"object,omitempty" json:"object,omitempty"`
+	    // Audio is the assigned audio detection plugin.
+	    Audio *AssignedPlugin `msgpack:"audio,omitempty" json:"audio,omitempty"`
+	    // Face is the assigned face detection plugin.
+	    Face *AssignedPlugin `msgpack:"face,omitempty" json:"face,omitempty"`
+	    // LicensePlate is the assigned license plate detection plugin.
+	    LicensePlate *AssignedPlugin `msgpack:"licensePlate,omitempty" json:"licensePlate,omitempty"`
+	    // PTZ is the assigned PTZ control plugin.
+	    PTZ *AssignedPlugin `msgpack:"ptz,omitempty" json:"ptz,omitempty"`
+	    // Battery is the assigned battery info plugin.
+	    Battery *AssignedPlugin `msgpack:"battery,omitempty" json:"battery,omitempty"`
+	    // CameraController is the assigned camera controller plugin.
+	    CameraController *AssignedPlugin `msgpack:"cameraController,omitempty" json:"cameraController,omitempty"`
+	
+	    // Light are the assigned light control plugins.
+	    Light []AssignedPlugin `msgpack:"light,omitempty" json:"light,omitempty"`
+	    // Siren are the assigned siren control plugins.
+	    Siren []AssignedPlugin `msgpack:"siren,omitempty" json:"siren,omitempty"`
+	    // Contact are the assigned contact sensor plugins.
+	    Contact []AssignedPlugin `msgpack:"contact,omitempty" json:"contact,omitempty"`
+	    // Doorbell are the assigned doorbell trigger plugins.
+	    Doorbell []AssignedPlugin `msgpack:"doorbell,omitempty" json:"doorbell,omitempty"`
+	    // Hub are the assigned hub/bridge plugins.
+	    Hub []AssignedPlugin `msgpack:"hub,omitempty" json:"hub,omitempty"`
+	}
+
+<a name="PluginContract"></a>
+
+## type PluginContract
+
+PluginContract is the manifest contract a plugin declares so the host knows what it does and what it needs at load time. Validated by ValidateContract \(contract.go\) before the plugin is started.
+
+	type PluginContract struct {
+	    // Name is the stable, unique identifier for the plugin instance — used
+	    // as the registry key, log prefix and the storage namespace.
+	    Name string `msgpack:"name" json:"name"`
+	    // Role is the plugin's role (see PluginRole).
+	    Role PluginRole `msgpack:"role,omitempty" json:"role,omitempty"`
+	    // Provides lists the sensor types the plugin produces. Empty for hubs
+	    // and pure camera-controllers; required for sensor providers.
+	    Provides []SensorType `msgpack:"provides" json:"provides"`
+	    // Consumes lists the sensor types the plugin reads from other plugins
+	    // (e.g. a face plugin consumes camera video frames).
+	    Consumes []SensorType `msgpack:"consumes" json:"consumes"`
+	    // Interfaces are the capability flags the plugin implements (see
+	    // PluginInterface).
+	    Interfaces []PluginInterface `msgpack:"interfaces,omitempty" json:"interfaces,omitempty"`
+	    // Dependencies are extra package dependencies installed into the
+	    // plugin's runtime (Go module paths for Go plugins; PyPI / npm names
+	    // for Python and Node plugins).
+	    Dependencies []string `msgpack:"dependencies,omitempty" json:"dependencies,omitempty"`
+	}
+
+<a name="PluginInfo"></a>
+
+## type PluginInfo
+
+PluginInfo is a lightweight handle identifying an installed plugin — used in RPC payloads and managers to refer to the plugin without shipping its full state.
+
+	type PluginInfo struct {
+	    // ID is the unique runtime ID assigned by the host (stable across
+	    // restarts).
+	    ID  string `msgpack:"id" json:"id"`
+	    // Name is the plugin package name (matches PluginContract.Name).
+	    Name string `msgpack:"name" json:"name"`
+	    // Contract is the full contract the plugin was loaded with.
+	    Contract PluginContract `msgpack:"contract" json:"contract"`
+	}
+
+<a name="PluginInterface"></a>
+
+## type PluginInterface
+
+PluginInterface is a capability flag a plugin advertises in its contract. The host uses these to decide which RPC handlers to wire up and which UI affordances to show.
+
+	type PluginInterface string
+
+<a name="PluginInterfaceMotionDetection"></a>
+
+	const (
+	    // PluginInterfaceMotionDetection — plugin implements
+	    // MotionDetectionInterface (video-based motion detection).
+	    PluginInterfaceMotionDetection PluginInterface = "MotionDetection"
+	    // PluginInterfaceObjectDetection — plugin implements
+	    // ObjectDetectionInterface (e.g. person, vehicle, animal).
+	    PluginInterfaceObjectDetection PluginInterface = "ObjectDetection"
+	    // PluginInterfaceAudioDetection — plugin implements
+	    // AudioDetectionInterface (event/keyword audio detection).
+	    PluginInterfaceAudioDetection PluginInterface = "AudioDetection"
+	    // PluginInterfaceFaceDetection — plugin implements FaceDetectionInterface
+	    // (face localisation + embeddings). The NVR owns matching against
+	    // enrolled faces; the plugin only emits detections + embeddings.
+	    PluginInterfaceFaceDetection PluginInterface = "FaceDetection"
+	    // PluginInterfaceLicensePlateDetection — plugin implements
+	    // LicensePlateDetectionInterface (plate localisation + OCR).
+	    PluginInterfaceLicensePlateDetection PluginInterface = "LicensePlateDetection"
+	    // PluginInterfaceClassifierDetection — plugin implements
+	    // ClassifierDetectionInterface (generic image classification emitting
+	    // attribute/label pairs).
+	    PluginInterfaceClassifierDetection PluginInterface = "ClassifierDetection"
+	    // PluginInterfaceClipDetection — plugin implements ClipDetectionInterface
+	    // (CLIP image and text embeddings used for semantic search).
+	    PluginInterfaceClipDetection PluginInterface = "ClipDetection"
+	    // PluginInterfaceDiscoveryProvider — plugin implements DiscoveryProvider
+	    // and can scan the network for new cameras and adopt them. Only valid
+	    // for camera-controlling roles.
+	    PluginInterfaceDiscoveryProvider PluginInterface = "DiscoveryProvider"
+	    // PluginInterfaceNVR — plugin implements NVRInterface, persisting events
+	    // and recordings and serving them back to the UI / mobile clients.
+	    // Exactly one plugin per host fills this role at runtime.
+	    PluginInterfaceNVR PluginInterface = "NVR"
+	    // PluginInterfaceNotifier — plugin implements NotifierInterface
+	    // (GetDevices, SendNotification, ...). Allows it to register as a
+	    // delivery target for the central NotificationManager regardless of
+	    // role. See sdk/go/notifier.go.
+	    PluginInterfaceNotifier PluginInterface = "Notifier"
+	)
+
+<a name="PluginRole"></a>
+
+## type PluginRole
+
+PluginRole identifies the role a plugin plays in the system. The role decides which lifecycle hooks the host invokes and which contract validations apply \(see contract.go\).
+
+	type PluginRole string
+
+<a name="PluginRoleHub"></a>
+
+	const (
+	    // PluginRoleHub is a cloud-service integration that manages its own
+	    // cameras end-to-end via a vendor account. The hub owns camera creation,
+	    // streaming and sensors; it cannot expose sensors for cameras owned by
+	    // other plugins.
+	    PluginRoleHub PluginRole = "hub"
+	    // PluginRoleSensorProvider adds sensors to existing cameras without
+	    // owning the camera itself. Typical use: a detection plugin that
+	    // consumes another plugin's video frames and emits motion / object /
+	    // face detections back into the system.
+	    PluginRoleSensorProvider PluginRole = "sensorProvider"
+	    // PluginRoleCameraController manages cameras and their media streams
+	    // (ONVIF, RTSP, generic IP, ...). The plugin is responsible for stream
+	    // URLs, PTZ, snapshots, and the lifecycle hooks in BasePlugin. It does
+	    // not produce sensors for foreign cameras.
+	    PluginRoleCameraController PluginRole = "cameraController"
+	    // PluginRoleCameraAndSensorProvider is the combined role: plugin both
+	    // manages cameras and exposes sensors (its own cameras and, when
+	    // consumes is set, also foreign cameras).
+	    PluginRoleCameraAndSensorProvider PluginRole = "cameraAndSensorProvider"
+	)
+
+<a name="PluginStatus"></a>
+
+## type PluginStatus
+
+PluginStatus reports the lifecycle state of the plugin process as seen by the host. Sent over the private bootstrap channel during startup and shutdown \(see run.go\).
+
+	type PluginStatus string
+
+<a name="PluginStatusReady"></a>
+
+	const (
+	    // PluginStatusReady is sent after the plugin process has connected and
+	    // registered its message handler — it is now waiting for the start
+	    // command from the host.
+	    PluginStatusReady PluginStatus = "ready"
+	    // PluginStatusStarting indicates the plugin is currently bootstrapping
+	    // (constructing managers, opening storage, configuring cameras).
+	    PluginStatusStarting PluginStatus = "starting"
+	    // PluginStatusStarted is sent once ConfigureCameras has returned and the
+	    // plugin is fully operational.
+	    PluginStatusStarted PluginStatus = "started"
+	    // PluginStatusStopping indicates the plugin is in graceful shutdown.
+	    PluginStatusStopping PluginStatus = "stopping"
+	    // PluginStatusStopped indicates the plugin has finished shutdown and the
+	    // process is about to exit.
+	    PluginStatusStopped PluginStatus = "stopped"
+	    // PluginStatusError is sent when the plugin failed to start; an `Error`
+	    // message accompanies it.
+	    PluginStatusError PluginStatus = "error"
+	    // PluginStatusUnknown is the zero-value placeholder.
+	    PluginStatusUnknown PluginStatus = "unknown"
+	    // PluginStatusDisabled indicates the plugin is installed but disabled
+	    // in the host configuration.
+	    PluginStatusDisabled PluginStatus = "disabled"
+	)
+
+<a name="PluginStorage"></a>
+
+## type PluginStorage
+
+PluginStorage carries the storage paths the host hands to the plugin during the start handshake. Only used inside the bootstrap message; plugin code should read PluginAPI.StoragePath instead.
+
+	type PluginStorage struct {
+	    // InstallPath is the read-only directory where the plugin binary /
+	    // package was installed by the host.
+	    InstallPath string `msgpack:"installPath" json:"installPath"`
+	    // StoragePath is the writable directory the plugin owns for caches,
+	    // models, sqlite/bolt files. The same string is exposed as
+	    // PluginAPI.StoragePath.
+	    StoragePath string `msgpack:"storagePath" json:"storagePath"`
+	}
+
+<a name="Point"></a>
+
+## type Severity
+
+Severity classifies how urgent a Notification is. Notifiers map this to platform\-specific delivery characteristics — e.g. Mobile maps \`Critical\` to APNs Critical Alerts \(DND\-bypass\) and Android Importance\-MAX channels.
+
+	type Severity string
+
+<a name="SeverityInfo"></a>
+
+	const (
+	    // SeverityInfo is a standard notification — default delivery (sound +
+	    // banner) on every notifier.
+	    SeverityInfo Severity = "info"
+	    // SeverityWarn signals heightened attention; notifiers may use a
+	    // different sound / colour.
+	    SeverityWarn Severity = "warn"
+	    // SeverityError signals a failure or action-required notification.
+	    SeverityError Severity = "error"
+	    // SeverityCritical asks supporting notifiers to bypass DND / silent
+	    // mode (iOS Critical Alerts, Android Importance-MAX channels).
+	    SeverityCritical Severity = "critical"
+	)
+
+<a name="SignedRequest"></a>
+
+## type SignedRequest
+
+SignedRequest is the HMAC\-signed request envelope returned by CoreManager.SignRequest.
+
+Used to authenticate requests to the cloud proxy when the local server is bound to a cloud account. The host injects "server\_id" into the body before signing, so callers must use the returned Body verbatim when sending the request.
+
+	type SignedRequest struct {
+	    // ServerID is the server ID assigned by the cloud account.
+	    ServerID string `msgpack:"serverId" json:"serverId"`
+	    // Token is the server-scoped authentication token issued by the cloud account.
+	    Token string `msgpack:"token" json:"token"`
+	    // Timestamp is the unix timestamp (seconds) used in the signature payload.
+	    Timestamp string `msgpack:"timestamp" json:"timestamp"`
+	    // Signature is the HMAC-SHA256 of "method\npath\ntimestamp\nbody".
+	    Signature string `msgpack:"signature" json:"signature"`
+	    // Body is the final request body with server_id injected. Send this verbatim.
+	    Body string `msgpack:"body" json:"body"`
+	}
+
+<a name="SirenControl"></a>
+
+## type StorageSchemaProvider
+
+StorageSchemaProvider is an optional interface plugins can implement to register a JSON schema for their plugin\-level storage. The host renders it as a settings form in the UI.
+
+	type StorageSchemaProvider interface {
+	    // StorageSchema returns the schemas describing the plugin-level config.
+	    // Called once after plugin construction; see run.go.
+	    StorageSchema() []JsonSchema
+	}
+
+<a name="StorageStats"></a>
