@@ -12,7 +12,7 @@
 # The split logic is keyed on Go symbol *names* — each public symbol is
 # routed to exactly one of the 7 buckets via the BUCKETS lookup below.
 # Symbols that don't fit any bucket are skipped (private types, helpers
-# we don't want to surface, NVR-only types we explicitly drop).
+# we don't want to surface, internal event/detection types we drop).
 #
 # Re-run this script after editing any doc comments in `sdk/go/*.go` to
 # refresh the published API reference. Output is checked in.

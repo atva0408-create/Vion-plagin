@@ -11,6 +11,11 @@ Lightweight reactive primitives: `Observable`, `Subject`, `BehaviorSubject`, `Re
 
 FirstValueFrom subscribes to the source, blocks until it emits its first value, returns that value, and then disposes the subscription. Returns ErrNoValue if the source completes without emitting.
 
+Example:
+
+	value, err := FirstValueFrom(behaviorSubject)
+	
+
 <a name="Float64"></a>
 
 ## type BehaviorSubject
@@ -104,6 +109,11 @@ Observable is a cold producer of a push\-based value stream. The subscribeFn pas
 
 DistinctUntilChanged emits a value only when it differs from the previous one \(uses == for comparable types\). For custom equality use DistinctUntilChangedFunc.
 
+Example:
+
+	stream := DistinctUntilChanged(source)
+	
+
 <a name="DistinctUntilChangedFunc"></a>
 ### func DistinctUntilChangedFunc
 
@@ -118,6 +128,13 @@ DistinctUntilChangedFunc emits a value only when it differs from the previous on
 
 Filter emits only the values for which predicate returns true.
 
+Example:
+
+	detected := Filter(sensor.OnPropertyChanged(), func(e PropertyChange) bool {
+	    return e.Property == "detected"
+	})
+	
+
 <a name="Map"></a>
 ### func Map
 
@@ -125,12 +142,24 @@ Filter emits only the values for which predicate returns true.
 
 Map applies transform to each emitted value and emits the result.
 
+Example:
+
+	values := Map(sensor.OnPropertyChanged(), func(e PropertyChange) any {
+	    return e.Value
+	})
+	
+
 <a name="MergeMap"></a>
 ### func MergeMap
 
 	func MergeMap[T any, R any](source *Observable[T], project func(T, int) []R) *Observable[R]
 
 MergeMap projects each source value to a slice and flattens the results into the output stream.
+
+Example:
+
+	stream := MergeMap(source, func(v int, i int) []int { return []int{v, v * 2} })
+	
 
 <a name="NewObservable"></a>
 ### func NewObservable
@@ -146,12 +175,25 @@ NewObservable creates a new Observable with the given subscribe function.
 
 Pairwise emits \[previous, current\] pairs \(as \[2\]T arrays\) for every value after the first.
 
+Example:
+
+	pairs := Pairwise(source)
+	pairs.Subscribe(func(p [2]int) { fmt.Println(p[0], p[1]) })
+	
+
 <a name="Share"></a>
 ### func Share
 
 	func Share[T any](source *Observable[T], connector func() *Subject[T]) *Observable[T]
 
-Share multicasts a cold Observable through a Subject, sharing a single upstream subscription among all subscribers \(reference\-counted\).
+Share multicasts a cold Observable through a Subject, sharing a single upstream subscription among all subscribers \(reference\-counted\). Supply a custom connector \(e.g. NewReplaySubject\[T\]\(1\)\) to change buffering.
+
+Example:
+
+	events := Share(source, func() *Subject[int] { return NewReplaySubject[int](1).Subject })
+	events.Subscribe(func(v int) { fmt.Println("a", v) })
+	events.Subscribe(func(v int) { fmt.Println("b", v) })
+	
 
 <a name="Observable[T].Subscribe"></a>
 ### func \(\*Observable\[T\]\) Subscribe

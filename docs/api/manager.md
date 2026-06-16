@@ -1,6 +1,6 @@
 # Manager
 
-System-level services injected onto `PluginAPI`: `CoreManager` for FFmpeg path / inter-plugin RPC / cloud signing, `DeviceManager` for camera lookup and async discovery, and `DownloadManager` for token-protected downloads.
+System-level services injected onto `PluginAPI`: `CoreManager` for FFmpeg path / inter-plugin RPC / cloud signing, `DeviceManager` for camera lookup and async discovery, `DownloadManager` for token-protected downloads, and `NotificationManager` for publishing notifications into the host.
 
 !!! note
     The reference below is auto-generated from Go doc comments via [`gomarkdoc`](https://github.com/princjef/gomarkdoc). Re-run `scripts/gen-api-docs.sh` to refresh it.
@@ -63,13 +63,6 @@ GetServerAddresses returns the server addresses.
 	func (cm *CoreManager) OnEvent() *Observable[CoreManagerEvent]
 
 OnEvent returns an Observable for core manager events \(e.g. cloud account changes\).
-
-<a name="CoreManager.SignRequest"></a>
-### func \(\*CoreManager\) SignRequest
-
-	func (cm *CoreManager) SignRequest(method, path, body string) (*SignedRequest, error)
-
-SignRequest asks the server to HMAC\-sign a request. Returns nil if no cloud account is configured.
 
 <a name="CoreManagerEvent"></a>
 
@@ -226,14 +219,49 @@ Pass either URL \(in\-app\) or PublicURL \(cloud\) to whoever should fetch the f
 	    // for callers already authenticated against this server (UI, plugins
 	    // going through the proxy).
 	    URL string `msgpack:"url" json:"url"`
-	    // PublicURL is the cloud-proxy session-less URL when the server is
-	    // bound to a cloud account: "https://<proxy-host>/m/<serverId>/<token>".
-	    // Empty string when no cloud binding exists. Use this for notification
-	    // image attachments where the phone OS does the fetch and has no
-	    // session — the token in the URL is the auth.
+	    // PublicURL is the externally-reachable, session-less URL the server
+	    // publishes for out-of-band fetchers (push-notification image
+	    // attachments, FCM / APNs payloads, share recipients). Shape:
+	    // "<externalUrl>/api/download/<token>" — the token in the URL is the
+	    // auth. Empty string when the server has no external URL configured
+	    // (LAN-only deployments); fall back to URL for in-app callers.
 	    PublicURL string `msgpack:"publicUrl" json:"publicUrl"`
 	    // ExpiresAt is the unix timestamp (ms) when the token expires.
 	    ExpiresAt int64 `msgpack:"expiresAt" json:"expiresAt"`
 	}
 
 <a name="EventAttribute"></a>
+
+## type NotificationManager
+
+NotificationManager hands out the plugin's outgoing notification API.
+
+Plugins call Publish to ask the host to fan a Notification out to every installed Notifier\-plugin and the in\-app UI. The host applies user settings \(master toggle, per\-source toggle, quiet hours\) and the publishing plugin's declared capabilities; calls from plugins without CapabilityPublishNotifications are silently dropped.
+
+Accessed via api.NotificationManager from within a plugin.
+
+	type NotificationManager struct {
+	    // contains filtered or unexported fields
+	}
+
+<a name="NotificationManager.Publish"></a>
+### func \(\*NotificationManager\) Publish
+
+	func (nm *NotificationManager) Publish(n *Notification) error
+
+Publish sends a notification to the host for fan\-out to every installed Notifier\-plugin and the in\-app UI. Fire\-and\-forget: errors marshalling the payload or transmitting on NATS are returned, but the host's downstream processing \(recipient resolve, notifier delivery\) is async and failures there never propagate back here.
+
+The plugin's contract MUST declare CapabilityPublishNotifications; otherwise the host drops the notification and logs an error.
+
+Example:
+
+	api.NotificationManager.Publish(&sdk.Notification{
+	    Title:    "Camera offline",
+	    Body:     "Front Door stopped recording",
+	    Severity: sdk.SeverityWarn,
+	    DeepLink: "/cameras/front-door",
+	    Data:     map[string]string{"cameraId": "front-door"},
+	})
+	
+
+<a name="NotifierDevice"></a>

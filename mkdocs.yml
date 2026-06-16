@@ -8,6 +8,7 @@ edit_uri: edit/main/sdk/go/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   language: en
@@ -43,6 +44,10 @@ extra_css:
   - stylesheets/extra.css
 
 extra:
+  # Per-SDK version shown in the header (rendered by overrides/partials/source.html).
+  # Kept in sync by scripts/release.sh. All three SDKs share one repo, so the
+  # auto-fetched GitHub "latest release" tag would be wrong here.
+  sdk_version: "go/v1.0.0"
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/seydx/camera.ui

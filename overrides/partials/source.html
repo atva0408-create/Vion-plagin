@@ -1,0 +1,27 @@
+{#-
+  Override of Material's repository source partial.
+
+  All three SDKs (go, node, python) live in one GitHub repo, so Material's
+  default behaviour — fetching the repo's single "latest release" tag from
+  api.github.com — shows the same version (currently go/v1.0.0) on every
+  site, regardless of which SDK you're reading. We drop the
+  data-md-component="source" hook so that fetch never runs, and render a
+  static, per-SDK version from extra.sdk_version instead. (Stars/forks facts
+  are dropped along with the fetch — an acceptable trade for a correct badge.)
+-#}
+<a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source">
+  <div class="md-source__icon md-icon">
+    {% set icon = config.theme.icon.repo or "fontawesome/brands/git-alt" %}
+    {% include ".icons/" ~ icon ~ ".svg" %}
+  </div>
+  <div class="md-source__repository">
+    {{ config.repo_name }}
+    {% if config.extra.sdk_version %}
+      <ul class="md-source__facts">
+        <li class="md-source__fact md-source__fact--version">
+          {{ config.extra.sdk_version }}
+        </li>
+      </ul>
+    {% endif %}
+  </div>
+</a>

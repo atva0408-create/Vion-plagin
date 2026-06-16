@@ -24,24 +24,7 @@ ButtonColor controls the color variant of a button\-type schema.
 	    ButtonColorDanger ButtonColor = "danger"
 	)
 
-<a name="CallbackInvoker"></a>
-
-## type CameraStorageStats
-
-CameraStorageStats represents storage usage for a single camera.
-
-	type CameraStorageStats struct {
-	    UsedBytes     int64   `msgpack:"usedBytes" json:"usedBytes"`
-	    SegmentCount  int64   `msgpack:"segmentCount" json:"segmentCount"`
-	    OldestDay     string  `msgpack:"oldestDay" json:"oldestDay"`
-	    NewestDay     string  `msgpack:"newestDay" json:"newestDay"`
-	    DaysCount     int     `msgpack:"daysCount" json:"daysCount"`
-	    BandwidthMBh  float64 `msgpack:"bandwidthMBh" json:"bandwidthMBh"`
-	    RecordingMode string  `msgpack:"recordingMode" json:"recordingMode"`
-	    IsRecording   bool    `msgpack:"isRecording" json:"isRecording"`
-	}
-
-<a name="CameraType"></a>
+<a name="Camera"></a>
 
 ## type DeviceStorage
 
@@ -327,23 +310,6 @@ StorageController manages storage instances for plugins, cameras, and sensors.
 	}
 
 <a name="StorageSchemaProvider"></a>
-
-## type StorageStats
-
-StorageStats represents overall storage and per\-camera usage statistics.
-
-	type StorageStats struct {
-	    DiskTotalGB     float64                       `msgpack:"diskTotalGB" json:"diskTotalGB"`
-	    DiskUsedGB      float64                       `msgpack:"diskUsedGB" json:"diskUsedGB"`
-	    DiskFreeGB      float64                       `msgpack:"diskFreeGB" json:"diskFreeGB"`
-	    DiskFreePercent float64                       `msgpack:"diskFreePercent" json:"diskFreePercent"`
-	    NvrUsedGB       float64                       `msgpack:"nvrUsedGB" json:"nvrUsedGB"`
-	    NvrQuotaGB      float64                       `msgpack:"nvrQuotaGB" json:"nvrQuotaGB"`
-	    RetentionDays   int                           `msgpack:"retentionDays" json:"retentionDays"`
-	    Cameras         map[string]CameraStorageStats `msgpack:"cameras" json:"cameras"`
-	}
-
-<a name="StreamDirection"></a>
 
 ## type StringFormat
 

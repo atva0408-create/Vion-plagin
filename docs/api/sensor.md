@@ -64,7 +64,7 @@ AudioFrameData is audio frame data delivered to audio detector sensors by the ba
 	    Timestamp  int64       `msgpack:"timestamp" json:"timestamp"`   // Capture timestamp in milliseconds since epoch
 	}
 
-<a name="AudioLabel"></a>
+<a name="AudioInputSpec"></a>
 
 ## type AudioLabel
 
@@ -79,7 +79,7 @@ AudioLabel is one of the built\-in audio labels or any custom string emitted by 
 AudioModelSpec describes an audio detection model.
 
 	type AudioModelSpec struct {
-	    Input audioInputSpec `msgpack:"input" json:"input"` // Required input audio format
+	    Input AudioInputSpec `msgpack:"input" json:"input"` // Required input audio format
 	}
 
 <a name="AudioResult"></a>
@@ -151,6 +151,14 @@ ReportDetections reports detected audio events.
 - ReportDetections\(true, nil\) — audio detected without specifics. The SDK synthesizes a single full\-frame "audio" detection.
 - ReportDetections\(true, \[...\]\) — audio detected with explicit detections.
 - ReportDetections\(false, nil\) — clear.
+
+Example:
+
+	sensor.ReportDetections(true, []Detection{
+	    {Label: "glass_break", Confidence: 0.91, Box: &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}},
+	})
+	sensor.ReportDetections(false, nil)
+	
 
 <a name="AudioSensor.SetDecibels"></a>
 ### func \(\*AudioSensor\) SetDecibels
@@ -277,7 +285,7 @@ OnCapabilitiesChanged returns a Disposable that fires when capabilities change.
 <a name="BaseSensor.OnPropertyChanged"></a>
 ### func \(\*BaseSensor\) OnPropertyChanged
 
-	func (s *BaseSensor) OnPropertyChanged(callback func(sensorPropertyChange)) *Disposable
+	func (s *BaseSensor) OnPropertyChanged(callback func(SensorPropertyChange)) *Disposable
 
 OnPropertyChanged subscribes to property changes. Returns a Disposable to unsubscribe.
 
@@ -527,6 +535,14 @@ ReportDetections reports classification results. The \`detected\` flag and \`lab
 - ReportDetections\(true, \[...\]\) — explicit classifier detections.
 - ReportDetections\(false, nil\) — clear.
 
+Example:
+
+	sensor.ReportDetections(true, []ClassifierDetection{
+	    {Detection: Detection{Label: "animal", Confidence: 0.88, Box: &BoundingBox{X: 0.1, Y: 0.2, Width: 0.3, Height: 0.4}, Attribute: "bird"}, SubAttribute: "woodpecker"},
+	})
+	sensor.ReportDetections(false, nil)
+	
+
 <a name="ClassifierSensor.ToJSON"></a>
 ### func \(\*ClassifierSensor\) ToJSON
 
@@ -623,7 +639,7 @@ ClipResult is the return value of ClipDetector.DetectEmbeddings.
 	    EmbeddingModel string          `msgpack:"embeddingModel" json:"embeddingModel"` // Identifier of the embedding model used to produce the vectors
 	}
 
-<a name="ClipSearchResult"></a>
+<a name="ClipTextEmbeddingResult"></a>
 
 ## type ContactSensor
 
@@ -664,7 +680,12 @@ IsDetected returns whether the contact is open.
 
 	func (s *ContactSensor) SetDetected(detected bool)
 
-SetDetected sets the contact sensor open/close state.
+SetDetected reports contact state \(true = open, false = closed\).
+
+Example:
+
+	contact.SetDetected(true)
+	
 
 <a name="ContactSensor.ToJSON"></a>
 ### func \(\*ContactSensor\) ToJSON
@@ -760,7 +781,12 @@ IsRinging returns whether the doorbell is currently ringing.
 
 	func (s *DoorbellTrigger) Trigger()
 
-Trigger fires a doorbell ring event. Sets \`ring=true\` and auto\-resets after ringAutoResetMs. Re\-triggering while ringing resets the timer.
+Trigger fires a doorbell ring event. Sets \`ring=true\` and auto\-resets after ringAutoResetMs. Re\-triggering while ringing resets the timer \(extends the ring phase\).
+
+Example:
+
+	doorbell.Trigger()
+	
 
 <a name="DoorbellTrigger.UpdateValue"></a>
 ### func \(\*DoorbellTrigger\) UpdateValue
@@ -813,7 +839,7 @@ FaceDetectorSensor is a face sensor that consumes video frames from the backend 
 
 NewFaceDetectorSensor creates a new FaceDetectorSensor with the given name.
 
-<a name="FaceImageData"></a>
+<a name="FaceResult"></a>
 
 ## type FaceResult
 
@@ -879,6 +905,14 @@ ReportDetections reports detected faces.
 - ReportDetections\(true, nil\) — face detected without specifics; the SDK synthesizes a single full\-frame face detection without identity.
 - ReportDetections\(true, \[...\]\) — explicit face detections with identity, embedding, and/or thumbnail.
 - ReportDetections\(false, nil\) — clear.
+
+Example:
+
+	sensor.ReportDetections(true, []FaceDetection{
+	    {Detection: Detection{Label: "person", Confidence: 0.94, Box: &BoundingBox{X: 0.4, Y: 0.2, Width: 0.15, Height: 0.25}, Attribute: "face"}, Identity: "Alice"},
+	})
+	sensor.ReportDetections(false, nil)
+	
 
 <a name="FaceSensor.ToJSON"></a>
 ### func \(\*FaceSensor\) ToJSON
@@ -997,7 +1031,7 @@ GarageState defines garage door states \(HomeKit\-compatible values\).
 	    GarageStateStopped GarageState = 4 // Garage door is stopped
 	)
 
-<a name="GetEventsOptions"></a>
+<a name="Go2RtcRTSPSource"></a>
 
 ## type HumidityInfo
 
@@ -1095,7 +1129,12 @@ IsDetected returns whether a leak is detected.
 
 	func (s *LeakSensor) SetDetected(detected bool)
 
-SetDetected sets the leak detection state.
+SetDetected reports leak detection state \(true when a water leak is currently detected\).
+
+Example:
+
+	leak.SetDetected(true)
+	
 
 <a name="LeakSensor.ToJSON"></a>
 ### func \(\*LeakSensor\) ToJSON
@@ -1221,6 +1260,14 @@ ReportDetections reports detected license plates.
 - ReportDetections\(true, \[...\]\) — explicit plate detections with OCR text.
 - ReportDetections\(false, nil\) — clear.
 
+Example:
+
+	sensor.ReportDetections(true, []LicensePlateDetection{
+	    {Detection: Detection{Label: "vehicle", Confidence: 0.93, Box: &BoundingBox{X: 0.2, Y: 0.5, Width: 0.2, Height: 0.08}, Attribute: "license_plate"}, PlateText: "ABC 1234"},
+	})
+	sensor.ReportDetections(false, nil)
+	
+
 <a name="LicensePlateSensor.ToJSON"></a>
 ### func \(\*LicensePlateSensor\) ToJSON
 
@@ -1239,7 +1286,11 @@ UpdateValue is a no\-op for read\-only license plate sensors. State is reported 
 
 ## type LightControl
 
-LightControl is a light on/off and brightness control sensor.
+LightControl is a light on/off and brightness control sensor. Override SetOn / SetOff \(by embedding LightControl in your own type and shadowing the methods\) to drive your hardware, then call the embedded LightControl's methods to sync the SDK state.
+
+Plugins that have no hardware\-action use case can leave the methods unoverridden — the base implementation just updates the state.
+
+For hardware\-pushed updates \(someone manually flipped the switch\), call the embedded LightControl's SetOn / SetOff directly from your event handler — that bypasses any plugin override and only syncs state.
 
 	type LightControl struct{ BaseSensor }
 
@@ -1283,21 +1334,36 @@ IsOn returns whether the light is on.
 
 	func (s *LightControl) SetBrightness(value int)
 
-SetBrightness sets the brightness level \(clamped to \[0,100\]\).
+SetBrightness sets the brightness level \(clamped to \[0, 100\]\). Override \(via embedding\) to drive hardware and call the embedded LightControl's SetBrightness to sync the SDK state.
+
+Example:
+
+	light.SetBrightness(75)
+	
 
 <a name="LightControl.SetOff"></a>
 ### func \(\*LightControl\) SetOff
 
 	func (s *LightControl) SetOff()
 
-SetOff turns the light off.
+SetOff turns the light off. Override \(via embedding\) to drive hardware and call the embedded LightControl's SetOff to sync the SDK state.
+
+Example:
+
+	light.SetOff()
+	
 
 <a name="LightControl.SetOn"></a>
 ### func \(\*LightControl\) SetOn
 
 	func (s *LightControl) SetOn()
 
-SetOn turns the light on.
+SetOn turns the light on. Override \(via embedding\) to drive hardware and call the embedded LightControl's SetOn to sync the SDK state.
+
+Example:
+
+	light.SetOn()
+	
 
 <a name="LightControl.ToJSON"></a>
 ### func \(\*LightControl\) ToJSON
@@ -1407,7 +1473,7 @@ LockState defines lock states \(HomeKit\-compatible values\).
 ModelSpec describes a detection model with fixed output labels \(face, classifier, license plate\). It declares the input shape the backend should produce and the trigger labels that should activate this detector.
 
 	type ModelSpec struct {
-	    Input          videoInputSpec `msgpack:"input" json:"input"`                                       // Required input frame dimensions and pixel format
+	    Input          VideoInputSpec `msgpack:"input" json:"input"`                                       // Required input frame dimensions and pixel format
 	    TriggerLabels  []string       `msgpack:"triggerLabels" json:"triggerLabels"`                       // Labels emitted by an upstream object detector that activate this detector
 	    EmbeddingModel string         `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"` // Embedding model identifier for face recognition
 	}
@@ -1518,6 +1584,14 @@ ReportDetections reports a motion detection result.
 
 No\-op while the sensor is blocked by the backend dwell logic.
 
+Example:
+
+	sensor.ReportDetections(true, []Detection{
+	    {Label: "motion", Confidence: 0.85, Box: &BoundingBox{X: 0.1, Y: 0.2, Width: 0.3, Height: 0.4}},
+	})
+	sensor.ReportDetections(false, nil)
+	
+
 <a name="MotionSensor.ToJSON"></a>
 ### func \(\*MotionSensor\) ToJSON
 
@@ -1532,7 +1606,7 @@ ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
 
 UpdateValue is a no\-op for read\-only motion sensors. State is reported via ReportDetections.
 
-<a name="NVRInterface"></a>
+<a name="Notification"></a>
 
 ## type ObjectDetector
 
@@ -1569,7 +1643,7 @@ NewObjectDetectorSensor creates a new ObjectDetectorSensor with the given name.
 ObjectModelSpec describes an object detection model. Only declares input dimensions — the output label set is dynamic and comes from the model itself.
 
 	type ObjectModelSpec struct {
-	    Input videoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
+	    Input VideoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
 	}
 
 <a name="ObjectResult"></a>
@@ -1641,6 +1715,14 @@ ReportDetections reports detected objects. The \`detected\` flag and \`labels\` 
 - ReportDetections\(true, \[...\]\) — explicit detections.
 - ReportDetections\(false, nil\) — clear.
 
+Example:
+
+	sensor.ReportDetections(true, []TrackedDetection{
+	    {Detection: Detection{Label: "person", Confidence: 0.92, Box: &BoundingBox{X: 0.1, Y: 0.2, Width: 0.3, Height: 0.4}}},
+	})
+	sensor.ReportDetections(false, nil)
+	
+
 <a name="ObjectSensor.ToJSON"></a>
 ### func \(\*ObjectSensor\) ToJSON
 
@@ -1696,7 +1778,12 @@ IsDetected returns whether occupancy is detected.
 
 	func (s *OccupancySensor) SetDetected(detected bool)
 
-SetDetected sets the occupancy detection state.
+SetDetected reports occupancy state \(true when the area is currently occupied\).
+
+Example:
+
+	occupancy.SetDetected(true)
+	
 
 <a name="OccupancySensor.ToJSON"></a>
 ### func \(\*OccupancySensor\) ToJSON
@@ -1937,7 +2024,7 @@ Plugin\-author state\-modifying methods \(\`SetOn\`, \`ReportDetections\`, etc.\
 	    // Read-only sensors implement it as a no-op. Plugin authors **must not** call
 	    // this — they should call the semantic methods directly.
 	    UpdateValue(property string, value any) error
-	    OnPropertyChanged(callback func(sensorPropertyChange)) *Disposable
+	    OnPropertyChanged(callback func(SensorPropertyChange)) *Disposable
 	    OnCapabilitiesChanged(callback func([]string)) *Disposable
 	    OnAssignmentChanged(callback func(bool)) *Disposable
 	    ToJSON() sensorJSON
@@ -1960,7 +2047,7 @@ SensorCategory categorizes a sensor's role in the system.
 	    SensorCategoryInfo    SensorCategory = "info"    // Read-only informational data (battery level)
 	)
 
-<a name="SensorTriggerRef"></a>
+<a name="SensorPropertyChange"></a>
 
 ## type SensorTriggerRef
 
@@ -2142,7 +2229,12 @@ IsDetected returns whether smoke is detected.
 
 	func (s *SmokeSensor) SetDetected(detected bool)
 
-SetDetected sets the smoke detection state.
+SetDetected reports smoke detection state \(true when smoke is currently detected\).
+
+Example:
+
+	smoke.SetDetected(true)
+	
 
 <a name="SmokeSensor.ToJSON"></a>
 ### func \(\*SmokeSensor\) ToJSON
@@ -2305,4 +2397,4 @@ TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity
 	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
 	}
 
-<a name="UnknownFace"></a>
+<a name="VideoFrame"></a>

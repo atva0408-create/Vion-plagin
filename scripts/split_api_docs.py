@@ -314,40 +314,14 @@ BUCKETS: dict[str, str] = {
     "Float64": "types",
 }
 
-# NVR is a paid first-party plugin. Drop these symbols entirely from the
-# public API reference.
 DROP: set[str] = {
-    "NVRInterface",
-    "NvrExportOptions",
-    "NvrExportResult",
-    "NvrPlaybackAudio",
-    "NvrPlaybackCommand",
-    "NvrPlaybackNoData",
-    "NvrPlaybackReady",
-    "NvrPlaybackVideo",
-    "NvrPreviewResult",
-    "NvrScrubFrame",
-    "NvrScrubResult",
     "EventAttribute",
     "EventDescription",
     "EventDetection",
     "EventSegment",
-    "EventThumbnails",
     "EventTrigger",
     "EventTriggerType",
-    "GetEventsOptions",
-    "GetEventsResult",
-    "DetectionHeatmapResult",
-    "HeatmapPoint",
-    "FaceImageData",
-    "FaceMatchResult",
-    "FaceProfile",
-    "UnknownFace",
-    "ClipSearchResult",
-    "Subscribable",  # exported but only useful for FirstValueFrom — leave
 }
-# Re-include Subscribable since FirstValueFrom references it.
-DROP.discard("Subscribable")
 
 PAGE_TITLES: dict[str, str] = {
     "plugin": "Plugin API",

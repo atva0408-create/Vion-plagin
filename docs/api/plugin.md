@@ -7,17 +7,31 @@ Core plugin lifecycle and capability surface: the `Plugin` interface every plugi
 
 ## func CanCreateCameras
 
-	func CanCreateCameras(contract PluginContract) bool
+	func CanCreateCameras(c *PluginContract) bool
 
-CanCreateCameras reports whether the plugin can create cameras \(role is CameraController or CameraAndSensorProvider\).
+CanCreateCameras reports whether the plugin can create cameras \(role is CameraController or CameraAndSensorProvider\). Used to gate camera\-creating operations such as DiscoveryProvider adoption.
+
+Example:
+
+	if CanCreateCameras(contract) {
+	    enableAdoption()
+	}
+	
 
 <a name="CanProvideSensorsToAnyCameras"></a>
 
 ## func CanProvideSensorsToAnyCameras
 
-	func CanProvideSensorsToAnyCameras(contract PluginContract) bool
+	func CanProvideSensorsToAnyCameras(c *PluginContract) bool
 
-CanProvideSensorsToAnyCameras reports whether the plugin is allowed to add sensors to cameras owned by other plugins.
+CanProvideSensorsToAnyCameras reports whether the plugin is allowed to add sensors to cameras owned by other plugins \(true for SensorProvider and CameraAndSensorProvider\). Hub and pure CameraController plugins only see their own cameras.
+
+Example:
+
+	if CanProvideSensorsToAnyCameras(contract) {
+	    listAllCameras()
+	}
+	
 
 <a name="FirstValueFrom"></a>
 
@@ -27,21 +41,58 @@ CanProvideSensorsToAnyCameras reports whether the plugin is allowed to add senso
 
 GetContractValidationErrors checks the structural validity of a contract \(required fields present, enum values inside the accepted sets\) and returns one human\-readable error per problem found. Returns an empty slice when the contract is valid.
 
+Example:
+
+	errs := GetContractValidationErrors(rawManifest)
+	if len(errs) > 0 {
+	    return fmt.Errorf("invalid contract: %s", strings.Join(errs, "; "))
+	}
+	
+
+<a name="HasCapability"></a>
+
+## func HasCapability
+
+	func HasCapability(c *PluginContract, cap PluginCapability) bool
+
+HasCapability reports whether the plugin requested the given capability \(i.e. cap is listed in the contract's Capabilities\).
+
+Example:
+
+	if HasCapability(contract, CapabilityPublishNotifications) {
+	    allowPublish()
+	}
+	
+
 <a name="HasInterface"></a>
 
 ## func HasInterface
 
-	func HasInterface(contract PluginContract, iface PluginInterface) bool
+	func HasInterface(c *PluginContract, iface PluginInterface) bool
 
-HasInterface reports whether the plugin implements the given capability.
+HasInterface reports whether the plugin implements the given capability \(i.e. iface is listed in the contract's Interfaces\).
+
+Example:
+
+	if HasInterface(contract, PluginInterfaceDiscoveryProvider) {
+	    startScan()
+	}
+	
 
 <a name="Int"></a>
 
 ## func IsHub
 
-	func IsHub(contract PluginContract) bool
+	func IsHub(c *PluginContract) bool
 
-IsHub reports whether the plugin's role is Hub.
+IsHub reports whether the plugin's role is Hub \(vendor cloud integration that manages its own cameras end\-to\-end\).
+
+Example:
+
+	if IsHub(contract) {
+	    skipLocalDiscovery()
+	}
+	
 
 <a name="Run"></a>
 
@@ -55,9 +106,16 @@ Run is the entry point a Go plugin's main package calls to hand control to the S
 
 ## func ValidateContractConsistency
 
-	func ValidateContractConsistency(contract PluginContract, pluginName string) error
+	func ValidateContractConsistency(c *PluginContract, pluginName string) error
 
 ValidateContractConsistency enforces role\-specific consistency rules on top of the structural check \(e.g. SensorProvider plugins must declare at least one provided sensor; Hub plugins cannot expose sensors\). Returns a non\-nil error on the first violation.
+
+Example:
+
+	if err := ValidateContractConsistency(contract, "my-plugin"); err != nil {
+	    return err
+	}
+	
 
 <a name="APIEvent"></a>
 
@@ -406,59 +464,58 @@ MotionDetectionSettings is motion detection configuration.
 
 ## type Notification
 
-Notification is the generic, domain\-agnostic payload routed through the NotificationManager. Sources \(detection\-pipeline, plugins, etc.\) populate it; notifiers translate it to platform\-specific shapes.
-
-\`Type\` is intentionally a free\-form string — there is no enum — so plugins can introduce new categories without an SDK release. Convention: dotted namespaces, e.g. "detection", "system.disk\_full", "plugin.\<name\>.\<event\>".
+Notification is the payload published via api.NotificationManager.Publish or routed by the host. Plugins fill the user\-visible fields; the host stamps the message id, timestamp and source identifier on receive — plugins do not set those.
 
 	type Notification struct {
-	    ID       string   `msgpack:"id" json:"id"`
-	    Type     string   `msgpack:"type" json:"type"`
-	    Title    string   `msgpack:"title" json:"title"`
-	    Body     string   `msgpack:"body,omitempty" json:"body,omitempty"`
+	    // Title is the headline shown by every notifier.
+	    Title string `msgpack:"title" json:"title"`
+	    // Subtitle is an optional second bold line between Title and Body.
+	    // Honoured natively on iOS (APNs alert.subtitle); other notifiers may
+	    // fold it into the body or ignore it.
+	    Subtitle string `msgpack:"subtitle,omitempty" json:"subtitle,omitempty"`
+	    // Body is the optional secondary text.
+	    Body string `msgpack:"body,omitempty" json:"body,omitempty"`
+	    // Severity drives DND / Critical-Alerts behaviour and Quiet-Hours
+	    // bypass. Defaults to SeverityInfo if empty.
 	    Severity Severity `msgpack:"severity,omitempty" json:"severity,omitempty"`
-	    // Tag is a collapse-key for dedup and rate-limiting at both manager and
-	    // notifier level (e.g. "motion:cam-1" — multiple events with the same tag
-	    // inside the throttle window collapse into one notification).
-	    Tag       string `msgpack:"tag,omitempty" json:"tag,omitempty"`
+	    // Tag is a collapse-key for dedup at both manager and notifier level
+	    // (e.g. "motion:cam-1" — multiple events with the same tag inside the
+	    // throttle window collapse into one notification on the device).
+	    Tag string `msgpack:"tag,omitempty" json:"tag,omitempty"`
+	    // Thumbnail is an optional inline JPEG attached to the notification.
 	    Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
-	    // DeepLink is a router-relative path consumed by mobile / web tap-handlers.
-	    // Convention: path + query string, no host (e.g. "/cameras/cam-1?startTs=…").
+	    // ImageURL is a publicly-fetchable URL to a rich image (e.g. a detection
+	    // snapshot). Notifier-agnostic: FCM/APNs and other notifiers fetch it to
+	    // render the image. Preferred over inline Thumbnail bytes when a URL is
+	    // available; empty renders text-only.
+	    ImageURL string `msgpack:"imageUrl,omitempty" json:"imageUrl,omitempty"`
+	    // DeepLink is a router-relative path consumed by mobile / web tap
+	    // handlers (e.g. "/cameras/cam-1?startTs=…"). No host, no scheme.
 	    DeepLink string `msgpack:"deepLink,omitempty" json:"deepLink,omitempty"`
-	    // Data carries domain-specific context (cameraId, eventId, plugin-defined
-	    // keys). Routing rules can match against these. String values keep the
-	    // wire format predictable across mobile / FCM / APNs / SMTP / etc.
-	    Data      map[string]string `msgpack:"data,omitempty" json:"data,omitempty"`
-	    CreatedAt time.Time         `msgpack:"createdAt" json:"createdAt"`
+	    // Data carries plugin-specific context (cameraId, eventId, plugin-
+	    // defined keys). String values keep the wire format predictable across
+	    // notifier implementations.
+	    Data map[string]string `msgpack:"data,omitempty" json:"data,omitempty"`
+	    // AdminOnly restricts delivery to users with the master or admin role.
+	    // Use it for operational alerts that concern whoever runs the instance —
+	    // camera offline, disk full, plugin failures — so they don't reach guests
+	    // the instance is merely shared with. Defaults to false (every user of the
+	    // instance receives it, subject to their own notification settings).
+	    AdminOnly bool `msgpack:"adminOnly,omitempty" json:"adminOnly,omitempty"`
 	}
 
-<a name="NotificationTypeInfo"></a>
-
-## type NotificationTypeInfo
-
-NotificationTypeInfo lets a notifier expose human\-readable labels for the \`Type\` strings it understands. Used by the settings UI to render rule editors with friendly names instead of raw type identifiers.
-
-	type NotificationTypeInfo struct {
-	    Type        string `msgpack:"type" json:"type"`
-	    Label       string `msgpack:"label" json:"label"`
-	    Description string `msgpack:"description,omitempty" json:"description,omitempty"`
-	}
-
-<a name="NotifierDevice"></a>
+<a name="NotificationManager"></a>
 
 ## type NotifierDevice
 
 NotifierDevice represents a single push\-target managed by a notifier plugin \(one phone, one chat, one mailbox, ...\). Devices are owned by the plugin that registered them; the NotificationManager queries plugins for their device list rather than maintaining a shared registry.
 
 	type NotifierDevice struct {
-	    ID          string `msgpack:"id" json:"id"`
-	    OwnerUserID string `msgpack:"ownerUserId" json:"ownerUserId"`
-	    // Type is a plugin-defined string used as a UI hint and grouping key.
-	    // Conventional values: "mobile", "telegram", "email" — but plugins are
-	    // free to coin their own.
-	    Type     string         `msgpack:"type" json:"type"`
-	    Name     string         `msgpack:"name" json:"name"`
-	    Active   bool           `msgpack:"active" json:"active"`
-	    Metadata map[string]any `msgpack:"metadata,omitempty" json:"metadata,omitempty"`
+	    ID          string         `msgpack:"id" json:"id"`
+	    OwnerUserID string         `msgpack:"ownerUserId" json:"ownerUserId"`
+	    Name        string         `msgpack:"name" json:"name"`
+	    Active      bool           `msgpack:"active" json:"active"`
+	    Metadata    map[string]any `msgpack:"metadata,omitempty" json:"metadata,omitempty"`
 	}
 
 <a name="NotifierInterface"></a>
@@ -468,41 +525,212 @@ NotifierDevice represents a single push\-target managed by a notifier plugin \(o
 NotifierInterface is implemented by plugins that deliver notifications. The NotificationManager invokes these methods over RPC. Plugins own their device storage — the manager never persists devices itself.
 
 	type NotifierInterface interface {
-	    // GetDevices returns every device this notifier currently knows about
-	    // for the given user. May return nil/empty when the notifier is
-	    // unavailable (e.g. license invalid). Called frequently — keep cheap.
-	    GetDevices(ownerUserID string) ([]NotifierDevice, error)
+	    // GetDevices returns every device this notifier knows about for the given
+	    // users. Each returned device carries its OwnerUserID so the caller can
+	    // map results back. May return nil/empty when the notifier is unavailable
+	    // (e.g. license invalid). Called frequently — keep cheap.
+	    GetDevices(ownerUserIDs []string) ([]NotifierDevice, error)
 	    // GetDevice fetches a single device by id. Returns nil if not found.
 	    GetDevice(deviceID string) (*NotifierDevice, error)
-	    // SendNotification delivers a notification to a specific device. Errors
-	    // here are logged; the manager dispatches in parallel and never aborts a
-	    // fan-out because one notifier failed.
-	    //
-	    // `n` is taken by pointer because Notification is heavy (~168 bytes of
-	    // header plus an embedded thumbnail slice header). The wire format over
-	    // NATS+msgpack is identical regardless — the RPC layer decodes a map
-	    // payload into either shape (see camera-ui-rpc/go/handler.go).
-	    SendNotification(deviceID string, n *Notification) error
-	    // RegisterDevice creates a new device on this notifier. The `input` shape
-	    // is plugin-specific (e.g. NVR-Plugin expects { fcmToken, platform,
-	    // deviceName }; Telegram expects { chatId, label }) — the
-	    // NotificationManager just forwards the JSON. Returns the persisted
-	    // device so the caller can echo it back to the user.
+	    // SendNotification delivers a notification to the given devices in one
+	    // call. Errors are logged; the manager never aborts a fan-out because one
+	    // notifier failed.
+	    SendNotification(deviceIDs []string, n *Notification) error
+	    // RegisterDevice creates a new device on this notifier. The `input`
+	    // shape is plugin-specific JSON whose schema the notifier defines; the
+	    // NotificationManager forwards it opaquely.
 	    RegisterDevice(ownerUserID string, input map[string]any) (*NotifierDevice, error)
-	    // RevokeDevice deletes a device permanently. Used on logout (for mobile)
-	    // or when the user removes a chat from the Telegram config UI.
+	    // RevokeDevice deletes a device permanently. Called when the user
+	    // revokes the device through their notifier-specific UI.
 	    RevokeDevice(deviceID string) error
 	    // UpdateDevice mutates a subset of fields on an existing device.
 	    // `patch` is plugin-agnostic (`name`, `active`); plugins ignore unknown
 	    // keys. Returns the updated device or nil if the id isn't ours so the
 	    // manager can probe the next plugin.
 	    UpdateDevice(deviceID string, patch map[string]any) (*NotifierDevice, error)
-	    // GetSupportedTypes is optional UI metadata. Returning an empty slice
-	    // just means the settings UI falls back to raw type strings.
-	    GetSupportedTypes() []NotificationTypeInfo
 	}
 
-<a name="NvrExportOptions"></a>
+<a name="OAuthAuthCodeFlowCapable"></a>
+
+## type OAuthAuthCodeFlowCapable
+
+OAuthAuthCodeFlowCapable is implemented by plugins that use the OAuth 2.0 Authorization Code Flow with PKCE. The plugin builds the auth URL \(keeping the PKCE verifier internal\); the host opens it and, on IdP redirect to /oauth/callback/:pluginId, forwards the code\+state to CompleteAuthCodeFlow.
+
+	type OAuthAuthCodeFlowCapable interface {
+	    OAuthCapable
+	    // StartAuthCodeFlow builds the authorization URL for the given scopes and
+	    // returns the awaiting-user state (AuthURL set).
+	    StartAuthCodeFlow(scope []string) (*OAuthState, error)
+	    // CompleteAuthCodeFlow exchanges the IdP-returned code for tokens after
+	    // validating state against the value bound in StartAuthCodeFlow.
+	    CompleteAuthCodeFlow(code, state string) (*OAuthState, error)
+	    // CancelAuthCodeFlow aborts an in-progress authorization-code flow.
+	    CancelAuthCodeFlow() error
+	}
+
+<a name="OAuthCapable"></a>
+
+## type OAuthCapable
+
+OAuthCapable is the base interface every OAuth\-capable plugin implements, alongside at least one flow sub\-interface \(Device / AuthCode / ClientCredentials\). It is IdP\-agnostic — the plugin brings its own endpoint config and knows nothing about the host's internals.
+
+	type OAuthCapable interface {
+	    // GetOAuthMetadata returns the IdP display info, scope descriptions and
+	    // which flow sub-interfaces the plugin implements. Called on UI mount.
+	    GetOAuthMetadata() (*OAuthMetadata, error)
+	    // GetOAuthState returns a snapshot of the current lifecycle state. The
+	    // host polls this (~1.5s during a flow, ~30s otherwise) to reflect
+	    // progress; there is no streaming.
+	    GetOAuthState() (*OAuthState, error)
+	    // Disconnect revokes the current grant at the IdP and clears the stored
+	    // tokens.
+	    Disconnect() error
+	}
+
+<a name="OAuthClientCredentialsCapable"></a>
+
+## type OAuthClientCredentialsCapable
+
+OAuthClientCredentialsCapable is implemented by plugins that authenticate with a user\-supplied client\_id \+ client\_secret \(no user redirect\). The plugin validates by fetching a token immediately.
+
+	type OAuthClientCredentialsCapable interface {
+	    OAuthCapable
+	    // ConfigureClientCredentials stores the supplied credentials and fetches
+	    // an initial token to validate them, returning the resulting state.
+	    ConfigureClientCredentials(clientID, clientSecret string) (*OAuthState, error)
+	}
+
+<a name="OAuthDeviceFlowCapable"></a>
+
+## type OAuthDeviceFlowCapable
+
+OAuthDeviceFlowCapable is implemented by plugins whose IdP supports the RFC 8628 Device Authorization Grant. The plugin polls the IdP internally; the host only polls GetOAuthState to mirror progress.
+
+	type OAuthDeviceFlowCapable interface {
+	    OAuthCapable
+	    // StartDeviceFlow requests a device code for the given scopes and begins
+	    // polling the IdP. Returns the awaiting-user state (code + verification
+	    // URI) for the UI to render.
+	    StartDeviceFlow(scope []string) (*OAuthState, error)
+	    // CancelDeviceFlow aborts an in-progress device flow.
+	    CancelDeviceFlow() error
+	}
+
+<a name="OAuthMetadata"></a>
+
+## type OAuthMetadata
+
+OAuthMetadata is informational data the host renders in the connect dialog. The plugin author hardcodes it; the host shows IdpDisplayName plus the scope descriptions for the scopes it is about to request.
+
+	type OAuthMetadata struct {
+	    // IdpDisplayName is the human name of the identity provider, e.g.
+	    // "cameraui.com", "Spotify", "GitHub".
+	    IdpDisplayName string `msgpack:"idpDisplayName" json:"idpDisplayName"`
+	    // ScopeDescriptions maps each scope to a human-readable description.
+	    ScopeDescriptions map[string]string `msgpack:"scopeDescriptions" json:"scopeDescriptions"`
+	    // SupportedFlows lists the flow sub-interfaces the plugin implements, so
+	    // the host knows which connect affordance to render.
+	    SupportedFlows []PluginInterface `msgpack:"supportedFlows" json:"supportedFlows"`
+	}
+
+<a name="OAuthProviderConfig"></a>
+
+## type OAuthProviderConfig
+
+OAuthProviderConfig points the plugin's OAuth manager at an identity provider. Preset selects a built\-in endpoint set \(e.g. "cameraui.com"\); otherwise the explicit endpoints are used.
+
+	type OAuthProviderConfig struct {
+	    // Preset names a built-in IdP endpoint set. When empty the explicit
+	    // endpoint fields are used.
+	    Preset string `msgpack:"preset,omitempty" json:"preset,omitempty"`
+	    // DeviceAuthURL / TokenURL / RevokeURL are the IdP endpoints used when
+	    // Preset is empty.
+	    DeviceAuthURL string `msgpack:"deviceAuthUrl,omitempty" json:"deviceAuthUrl,omitempty"`
+	    AuthURL       string `msgpack:"authUrl,omitempty" json:"authUrl,omitempty"`
+	    TokenURL      string `msgpack:"tokenUrl,omitempty" json:"tokenUrl,omitempty"`
+	    RevokeURL     string `msgpack:"revokeUrl,omitempty" json:"revokeUrl,omitempty"`
+	}
+
+<a name="OAuthProviderDeclaration"></a>
+
+## type OAuthProviderDeclaration
+
+OAuthProviderDeclaration is one provider a plugin integrates with, returned from the plugin so the host can render the connection affordance. A single\-provider plugin \(e.g. camera\-ui\-nvr\) declares exactly one.
+
+	type OAuthProviderDeclaration struct {
+	    // ID is the plugin-local provider identifier (storage key dimension for
+	    // multi-provider plugins).
+	    ID  string `msgpack:"id" json:"id"`
+	    // Provider configures the IdP endpoints.
+	    Provider OAuthProviderConfig `msgpack:"provider" json:"provider"`
+	    // ClientID is the OAuth client id the plugin authenticates as.
+	    ClientID string `msgpack:"clientId" json:"clientId"`
+	    // Scopes are the scopes requested for this provider.
+	    Scopes []string `msgpack:"scopes" json:"scopes"`
+	    // Required marks the provider as mandatory for the plugin to function.
+	    Required bool `msgpack:"required,omitempty" json:"required,omitempty"`
+	    // Description is a one-line UI hint shown alongside the connect button.
+	    Description string `msgpack:"description,omitempty" json:"description,omitempty"`
+	}
+
+<a name="OAuthState"></a>
+
+## type OAuthState
+
+OAuthState is a snapshot of a provider connection's lifecycle. It lives in the plugin and is the source of truth for both the host UI and downstream plugin code that needs a token. The host polls it via GetOAuthState while a flow is in progress.
+
+	type OAuthState struct {
+	    // Status is the current lifecycle phase (see OAuthStatus values).
+	    Status OAuthStatus `msgpack:"status" json:"status"`
+	
+	    // UserCode / VerificationURI / VerificationURIComplete are set while a
+	    // Device Flow is awaiting the user. VerificationURIComplete embeds the
+	    // user code and is what the host renders as a QR code.
+	    UserCode                string `msgpack:"userCode,omitempty" json:"userCode,omitempty"`
+	    VerificationURI         string `msgpack:"verificationUri,omitempty" json:"verificationUri,omitempty"`
+	    VerificationURIComplete string `msgpack:"verificationUriComplete,omitempty" json:"verificationUriComplete,omitempty"`
+	
+	    // AuthURL is set while an Authorization Code Flow is awaiting the user —
+	    // the URL the browser must open to authorize.
+	    AuthURL string `msgpack:"authUrl,omitempty" json:"authUrl,omitempty"`
+	
+	    // UserEmail / ConnectedAt / ScopesGranted describe an established grant
+	    // (Status connected). ConnectedAt is a Unix timestamp.
+	    UserEmail     string   `msgpack:"userEmail,omitempty" json:"userEmail,omitempty"`
+	    ConnectedAt   int64    `msgpack:"connectedAt,omitempty" json:"connectedAt,omitempty"`
+	    ScopesGranted []string `msgpack:"scopesGranted,omitempty" json:"scopesGranted,omitempty"`
+	
+	    // ErrorCode / ErrorMessage are set while Status is error. ErrorCode uses
+	    // OAuth spec values ("access_denied", "expired_token", "server_error").
+	    ErrorCode    string `msgpack:"errorCode,omitempty" json:"errorCode,omitempty"`
+	    ErrorMessage string `msgpack:"errorMessage,omitempty" json:"errorMessage,omitempty"`
+	}
+
+<a name="OAuthStatus"></a>
+
+## type OAuthStatus
+
+OAuthStatus is the lifecycle phase of an OAuth provider connection, carried in OAuthState.Status. It drives the host UI's button/dialog state machine.
+
+	type OAuthStatus = string
+
+<a name="OAuthStatusDisconnected"></a>
+
+	const (
+	    // OAuthStatusDisconnected — no grant; the user can start a flow.
+	    OAuthStatusDisconnected OAuthStatus = "disconnected"
+	    // OAuthStatusAwaitingUser — a flow is in progress and waiting on the user
+	    // (device code shown / browser redirect pending).
+	    OAuthStatusAwaitingUser OAuthStatus = "awaiting_user"
+	    // OAuthStatusPolling — the plugin is polling the IdP for the token.
+	    OAuthStatusPolling OAuthStatus = "polling"
+	    // OAuthStatusConnected — a valid grant is stored.
+	    OAuthStatusConnected OAuthStatus = "connected"
+	    // OAuthStatusError — the last attempt failed; see ErrorCode/ErrorMessage.
+	    OAuthStatusError OAuthStatus = "error"
+	)
+
+<a name="ObjectDetectionInterface"></a>
 
 ## type ObjectDetectionInterface
 
@@ -582,6 +810,10 @@ PluginAPI is injected into the plugin at runtime and exposes the system services
 	    // DownloadManager mints token-protected download URLs for files the
 	    // plugin wants to expose to the UI.
 	    DownloadManager *DownloadManager
+	    // NotificationManager publishes notifications into the host so they fan
+	    // out to every installed Notifier-plugin and the in-app UI. Requires
+	    // CapabilityPublishNotifications in the plugin contract.
+	    NotificationManager *NotificationManager
 	    // StoragePath is the absolute path to the plugin's writable storage
 	    // directory (created and cleaned up by the host).
 	    StoragePath string
@@ -625,6 +857,23 @@ PluginAssignments maps sensor types to their assigned plugin\(s\) for a camera. 
 	    Hub []AssignedPlugin `msgpack:"hub,omitempty" json:"hub,omitempty"`
 	}
 
+<a name="PluginCapability"></a>
+
+## type PluginCapability
+
+PluginCapability is a permission a plugin requests so it can call a host\-provided system feature. Each capability gates one outgoing SDK call — calls without the matching capability are rejected by the host.
+
+	type PluginCapability string
+
+<a name="CapabilityPublishNotifications"></a>
+
+	const (
+	    // CapabilityPublishNotifications grants the plugin permission to call
+	    // api.NotificationManager.Publish. Without this capability the host
+	    // silently drops published notifications and logs an error.
+	    CapabilityPublishNotifications PluginCapability = "publishNotifications"
+	)
+
 <a name="PluginContract"></a>
 
 ## type PluginContract
@@ -646,6 +895,10 @@ PluginContract is the manifest contract a plugin declares so the host knows what
 	    // Interfaces are the capability flags the plugin implements (see
 	    // PluginInterface).
 	    Interfaces []PluginInterface `msgpack:"interfaces,omitempty" json:"interfaces,omitempty"`
+	    // Capabilities are permissions the plugin requests to call host system
+	    // features (see PluginCapability). The host enforces these — calls
+	    // without a matching capability are rejected.
+	    Capabilities []PluginCapability `msgpack:"capabilities,omitempty" json:"capabilities,omitempty"`
 	    // Dependencies are extra package dependencies installed into the
 	    // plugin's runtime (Go module paths for Go plugins; PyPI / npm names
 	    // for Python and Node plugins).
@@ -711,10 +964,23 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 	    // Exactly one plugin per host fills this role at runtime.
 	    PluginInterfaceNVR PluginInterface = "NVR"
 	    // PluginInterfaceNotifier — plugin implements NotifierInterface
-	    // (GetDevices, SendNotification, ...). Allows it to register as a
-	    // delivery target for the central NotificationManager regardless of
-	    // role. See sdk/go/notifier.go.
+	    // (GetDevices, SendNotification, ...). Lets the central
+	    // NotificationManager dispatch notifications to this plugin regardless
+	    // of role. See notifier.go.
 	    PluginInterfaceNotifier PluginInterface = "Notifier"
+	    // PluginInterfaceOAuthCapable — plugin implements the OAuthCapable base
+	    // interface (GetOAuthMetadata, GetOAuthState, Disconnect) plus at least
+	    // one of the flow sub-interfaces below. See interface_oauth.go.
+	    PluginInterfaceOAuthCapable PluginInterface = "OAuthCapable"
+	    // PluginInterfaceOAuthDeviceFlow — plugin implements
+	    // OAuthDeviceFlowCapable (RFC 8628 Device Authorization Grant).
+	    PluginInterfaceOAuthDeviceFlow PluginInterface = "OAuthDeviceFlow"
+	    // PluginInterfaceOAuthAuthCodeFlow — plugin implements
+	    // OAuthAuthCodeFlowCapable (Authorization Code Flow + PKCE).
+	    PluginInterfaceOAuthAuthCodeFlow PluginInterface = "OAuthAuthCodeFlow"
+	    // PluginInterfaceOAuthClientCredentials — plugin implements
+	    // OAuthClientCredentialsCapable (user-supplied client_id + client_secret).
+	    PluginInterfaceOAuthClientCredentials PluginInterface = "OAuthClientCredentials"
 	)
 
 <a name="PluginRole"></a>
@@ -805,7 +1071,7 @@ PluginStorage carries the storage paths the host hands to the plugin during the 
 
 ## type Severity
 
-Severity classifies how urgent a Notification is. Notifiers map this to platform\-specific delivery characteristics — e.g. Mobile maps \`Critical\` to APNs Critical Alerts \(DND\-bypass\) and Android Importance\-MAX channels.
+Severity classifies how urgent a Notification is. Notifiers map this to platform\-specific delivery characteristics; the host bypasses user\-configured Quiet Hours for SeverityCritical.
 
 	type Severity string
 
@@ -820,31 +1086,10 @@ Severity classifies how urgent a Notification is. Notifiers map this to platform
 	    SeverityWarn Severity = "warn"
 	    // SeverityError signals a failure or action-required notification.
 	    SeverityError Severity = "error"
-	    // SeverityCritical asks supporting notifiers to bypass DND / silent
-	    // mode (iOS Critical Alerts, Android Importance-MAX channels).
+	    // SeverityCritical requests highest-priority delivery on supporting
+	    // notifiers; bypasses user-configured Quiet Hours on the host.
 	    SeverityCritical Severity = "critical"
 	)
-
-<a name="SignedRequest"></a>
-
-## type SignedRequest
-
-SignedRequest is the HMAC\-signed request envelope returned by CoreManager.SignRequest.
-
-Used to authenticate requests to the cloud proxy when the local server is bound to a cloud account. The host injects "server\_id" into the body before signing, so callers must use the returned Body verbatim when sending the request.
-
-	type SignedRequest struct {
-	    // ServerID is the server ID assigned by the cloud account.
-	    ServerID string `msgpack:"serverId" json:"serverId"`
-	    // Token is the server-scoped authentication token issued by the cloud account.
-	    Token string `msgpack:"token" json:"token"`
-	    // Timestamp is the unix timestamp (seconds) used in the signature payload.
-	    Timestamp string `msgpack:"timestamp" json:"timestamp"`
-	    // Signature is the HMAC-SHA256 of "method\npath\ntimestamp\nbody".
-	    Signature string `msgpack:"signature" json:"signature"`
-	    // Body is the final request body with server_id injected. Send this verbatim.
-	    Body string `msgpack:"body" json:"body"`
-	}
 
 <a name="SirenControl"></a>
 
@@ -858,4 +1103,4 @@ StorageSchemaProvider is an optional interface plugins can implement to register
 	    StorageSchema() []JsonSchema
 	}
 
-<a name="StorageStats"></a>
+<a name="StreamDirection"></a>

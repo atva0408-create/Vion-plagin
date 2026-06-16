@@ -42,17 +42,6 @@ AudioStreamInfo is audio stream information from a probe.
 
 <a name="BasePlugin"></a>
 
-## type CallbackInvoker
-
-CallbackInvoker is the pull\-callback dispatch handle passed to NvrPlayback\-style handlers. Mirrors \*rpc.CallbackInvoker's surface so the SDK does not force a hard import on the RPC package at the type level — the concrete \*rpc.CallbackInvoker satisfies this interface.
-
-	type CallbackInvoker interface {
-	    Invoke(method string, args ...any)
-	    Active() bool
-	}
-
-<a name="Camera"></a>
-
 ## type Camera
 
 Camera is the raw camera data structure delivered from the server \(database row \+ resolved sources\).
@@ -245,13 +234,6 @@ GetSensorsByType returns all sensors of the given type \(owned \+ foreign\).
 
 GetSourceByID returns a source by its ID.
 
-<a name="CameraDevice.GetStreamStatus"></a>
-### func \(\*CameraDevice\) GetStreamStatus
-
-	func (d *CameraDevice) GetStreamStatus(sourceID string) (string, error)
-
-GetStreamStatus returns the current stream connection status for a source.
-
 <a name="CameraDevice.HighResolutionSource"></a>
 ### func \(\*CameraDevice\) HighResolutionSource
 
@@ -378,19 +360,19 @@ OnSensorProperty subscribes to a specific property on a sensor type with full li
 
 OnSensorRemoved registers a callback for when a sensor from another plugin is removed. Returns a Disposable to unsubscribe.
 
+<a name="CameraDevice.PTZAutotrack"></a>
+### func \(\*CameraDevice\) PTZAutotrack
+
+	func (d *CameraDevice) PTZAutotrack() PtzAutotrackSettings
+
+PTZAutotrack returns the PTZ autotracking settings.
+
 <a name="CameraDevice.PluginInfo"></a>
 ### func \(\*CameraDevice\) PluginInfo
 
 	func (d *CameraDevice) PluginInfo() *CameraPluginInfo
 
 PluginInfo returns the source plugin information, or nil if not set.
-
-<a name="CameraDevice.ProbeStream"></a>
-### func \(\*CameraDevice\) ProbeStream
-
-	func (d *CameraDevice) ProbeStream(sourceID string) (*ProbeStream, error)
-
-ProbeStream probes a stream URL for codec information.
 
 <a name="CameraDevice.RemoveSensor"></a>
 ### func \(\*CameraDevice\) RemoveSensor
@@ -652,7 +634,7 @@ CameraRole identifies the resolution tier of a camera source. Used to identify d
 	    CameraRoleSnapshot CameraRole = "snapshot"
 	)
 
-<a name="CameraStorageStats"></a>
+<a name="CameraType"></a>
 
 ## type CameraType
 
@@ -783,7 +765,7 @@ DetectionEventType is the lifecycle phase of a detection event message.
 	    DetectionEventSegmentEnd    DetectionEventType = "segment-end"
 	)
 
-<a name="DetectionHeatmapResult"></a>
+<a name="DetectionLabel"></a>
 
 ## type DetectionLine
 
@@ -965,7 +947,7 @@ Go2RtcWSSource contains WebSocket streaming URLs from the stream provider.
 	    MSE string `msgpack:"mse,omitempty" json:"mse,omitempty"`
 	}
 
-<a name="HeatmapPoint"></a>
+<a name="HumidityInfo"></a>
 
 ## type ImageCrop
 
@@ -1245,44 +1227,6 @@ RTSPUrlOptions is options for generating RTSP URLs.
 	    Timeout int `msgpack:"timeout,omitempty" json:"timeout"`
 	}
 
-<a name="RecordingSegment"></a>
-
-## type RecordingSegment
-
-RecordingSegment represents a continuous recording time range.
-
-	type RecordingSegment struct {
-	    StartTime int64 `msgpack:"startTime" json:"startTime"` // Unix ms
-	    EndTime   int64 `msgpack:"endTime" json:"endTime"`     // Unix ms
-	}
-
-<a name="RecordingState"></a>
-
-## type RecordingState
-
-RecordingState represents the current recording status of a camera.
-
-	type RecordingState struct {
-	    CameraID  string          `msgpack:"cameraId" json:"cameraId"`
-	    State     RecordingStatus `msgpack:"state" json:"state"`
-	    Timestamp int64           `msgpack:"timestamp" json:"timestamp"` // Unix ms
-	}
-
-<a name="RecordingStatus"></a>
-
-## type RecordingStatus
-
-RecordingStatus represents whether a camera is currently recording.
-
-	type RecordingStatus string
-
-<a name="RecordingStatusRecording"></a>
-
-	const (
-	    RecordingStatusRecording RecordingStatus = "recording"
-	    RecordingStatusStopped   RecordingStatus = "stopped"
-	)
-
 <a name="ReplaySubject"></a>
 
 ## type SnapshotInterface
@@ -1440,7 +1384,7 @@ VideoFrameData is the video frame payload delivered to detector sensors by the b
 	    Label     string      `msgpack:"label,omitempty" json:"label,omitempty"` // Trigger label propagated by the coordinator for secondary detectors
 	}
 
-<a name="VideoStreamInfo"></a>
+<a name="VideoInputSpec"></a>
 
 ## type VideoStreamInfo
 
@@ -1475,7 +1419,6 @@ VideoStreamingMode is the video streaming mode for UI playback.
 - webrtc: WebRTC with UDP \(lowest latency\)
 - webrtc/tcp: WebRTC with TCP fallback
 - mse: Media Source Extensions \(browser native\)
-- webcodecs: WebCodecs API \(frame\-accurate scrubbing for NVR playback\)
 
 	type VideoStreamingMode string
 
@@ -1486,7 +1429,6 @@ VideoStreamingMode is the video streaming mode for UI playback.
 	    VideoStreamingModeWebRTC    VideoStreamingMode = "webrtc"
 	    VideoStreamingModeMSE       VideoStreamingMode = "mse"
 	    VideoStreamingModeWebRTCTCP VideoStreamingMode = "webrtc/tcp"
-	    VideoStreamingModeWebCodecs VideoStreamingMode = "webcodecs"
 	)
 
 <a name="ZoneFilter"></a>

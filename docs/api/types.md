@@ -14,10 +14,6 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 	    BatteryCapabilityCharging   = "charging"
 	)
 
-<a name="EventTypeOther"></a>EventTypeOther is a special filter value that matches classifier\-produced event types not in the standard set \(DetectionLabels, DetectionAttributes, EventTriggerTypes\).
-
-	const EventTypeOther = "__other__"
-
 <a name="LightCapabilityBrightness"></a>LightCapability defines optional capabilities for light controls.
 
 	const (
