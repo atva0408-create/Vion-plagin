@@ -1088,7 +1088,7 @@ SetCurrent sets the current relative humidity \(clamped to \[0,100\]\).
 
 UpdateValue is a no\-op for read\-only humidity sensors.
 
-<a name="ImageCrop"></a>
+<a name="ImageMetadata"></a>
 
 ## type LeakSensor
 
@@ -2397,4 +2397,4 @@ TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity
 	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
 	}
 
-<a name="VideoFrame"></a>
+<a name="VideoFrameData"></a>

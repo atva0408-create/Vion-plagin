@@ -669,20 +669,6 @@ CameraUiSettings is UI display settings for a camera.
 
 <a name="ChargingState"></a>
 
-## type DecoderFormat
-
-DecoderFormat is the internal decoder output format.
-
-	type DecoderFormat string
-
-<a name="DecoderFormatNV12"></a>
-
-	const (
-	    DecoderFormatNV12 DecoderFormat = "nv12"
-	)
-
-<a name="Detection"></a>
-
 ## type DetectionEvent
 
 DetectionEvent is an aggregated detection event with lifecycle \(start \-\> update \-\> end\). Groups individual sensor detections into structured events.
@@ -809,38 +795,6 @@ DetectionZone is a polygon zone used for detection filtering or privacy masking.
 
 <a name="DeviceManager"></a>
 
-## type FrameBuffer
-
-FrameBuffer is a processed image as a raw pixel buffer with metadata.
-
-	type FrameBuffer struct {
-	    // Image is the raw pixel data.
-	    Image []byte `msgpack:"image" json:"image"`
-	    // Info is the image information.
-	    Info ImageInformation `msgpack:"info" json:"info"`
-	}
-
-<a name="FrameData"></a>
-
-## type FrameData
-
-FrameData is raw frame data from the decoder.
-
-	type FrameData struct {
-	    // ID is the unique frame identifier.
-	    ID  string `msgpack:"id" json:"id"`
-	    // Data is the raw frame pixel data.
-	    Data []byte `msgpack:"data" json:"data"`
-	    // Timestamp is the frame capture timestamp.
-	    Timestamp int64 `msgpack:"timestamp" json:"timestamp"`
-	    // Metadata is the decoder metadata.
-	    Metadata FrameMetadata `msgpack:"metadata" json:"metadata"`
-	    // Info is the image information.
-	    Info ImageInformation `msgpack:"info" json:"info"`
-	}
-
-<a name="FrameFormat"></a>
-
 ## type FrameFormat
 
 FrameFormat identifies the pixel layout of a video frame.
@@ -855,40 +809,6 @@ FrameFormat identifies the pixel layout of a video frame.
 	    FrameFormatRGBA FrameFormat = "rgba" // 4 bytes/pixel interleaved
 	    FrameFormatGray FrameFormat = "gray" // 1 byte/pixel grayscale
 	)
-
-<a name="FrameImage"></a>
-
-## type FrameImage
-
-FrameImage is a processed image as a Go standard\-library image with metadata.
-
-	type FrameImage struct {
-	    // Image is the standard-library image instance for further processing.
-	    Image image.Image `msgpack:"-" json:"-"`
-	    // Info is the image information.
-	    Info ImageInformation `msgpack:"info" json:"info"`
-	}
-
-<a name="FrameMetadata"></a>
-
-## type FrameMetadata
-
-FrameMetadata is decoded frame metadata from the video decoder.
-
-	type FrameMetadata struct {
-	    // Format is the decoder format.
-	    Format DecoderFormat `msgpack:"format" json:"format"`
-	    // FrameSize is the total frame data size in bytes.
-	    FrameSize int `msgpack:"frameSize" json:"frameSize"`
-	    // Width is the current frame width (may be scaled).
-	    Width int `msgpack:"width" json:"width"`
-	    // Height is the current frame height (may be scaled).
-	    Height int `msgpack:"height" json:"height"`
-	    // OrigWidth is the original video width before scaling.
-	    OrigWidth int `msgpack:"origWidth" json:"origWidth"`
-	    // OrigHeight is the original video height before scaling.
-	    OrigHeight int `msgpack:"origHeight" json:"origHeight"`
-	}
 
 <a name="GarageControl"></a>
 
@@ -948,112 +868,6 @@ Go2RtcWSSource contains WebSocket streaming URLs from the stream provider.
 	}
 
 <a name="HumidityInfo"></a>
-
-## type ImageCrop
-
-ImageCrop is a crop region for image processing.
-
-	type ImageCrop struct {
-	    // Top is the top offset in pixels.
-	    Top int `msgpack:"top" json:"top"`
-	    // Left is the left offset in pixels.
-	    Left int `msgpack:"left" json:"left"`
-	    // Width is the crop width in pixels.
-	    Width int `msgpack:"width" json:"width"`
-	    // Height is the crop height in pixels.
-	    Height int `msgpack:"height" json:"height"`
-	}
-
-<a name="ImageFormat"></a>
-
-## type ImageFormat
-
-ImageFormat is an output format conversion option.
-
-	type ImageFormat struct {
-	    // To is the target pixel format.
-	    To ImageOutputFormat `msgpack:"to" json:"to"`
-	}
-
-<a name="ImageInformation"></a>
-
-## type ImageInformation
-
-ImageInformation describes image dimensions and format.
-
-	type ImageInformation struct {
-	    // Width is the image width in pixels.
-	    Width int `msgpack:"width" json:"width"`
-	    // Height is the image height in pixels.
-	    Height int `msgpack:"height" json:"height"`
-	    // Channels is the number of color channels (1=gray, 3=RGB, 4=RGBA).
-	    Channels int `msgpack:"channels" json:"channels"`
-	    // Format is the pixel format.
-	    Format ImageInputFormat `msgpack:"format" json:"format"`
-	}
-
-<a name="ImageInputFormat"></a>
-
-## type ImageInputFormat
-
-ImageInputFormat is a supported image input format for processing.
-
-	type ImageInputFormat string
-
-<a name="ImageInputFormatNV12"></a>
-
-	const (
-	    ImageInputFormatNV12 ImageInputFormat = "nv12"
-	    ImageInputFormatRGB  ImageInputFormat = "rgb"
-	    ImageInputFormatRGBA ImageInputFormat = "rgba"
-	    ImageInputFormatGray ImageInputFormat = "gray"
-	)
-
-<a name="ImageMetadata"></a>
-
-## type ImageOptions
-
-ImageOptions combines image processing options.
-
-	type ImageOptions struct {
-	    // Format is the output format conversion option.
-	    Format *ImageFormat `msgpack:"format,omitempty" json:"format,omitempty"`
-	    // Crop is the optional crop region.
-	    Crop *ImageCrop `msgpack:"crop,omitempty" json:"crop,omitempty"`
-	    // Resize is the optional resize dimensions.
-	    Resize *ImageResize `msgpack:"resize,omitempty" json:"resize,omitempty"`
-	}
-
-<a name="ImageOutputFormat"></a>
-
-## type ImageOutputFormat
-
-ImageOutputFormat is a supported image output format after processing.
-
-	type ImageOutputFormat string
-
-<a name="ImageOutputFormatRGB"></a>
-
-	const (
-	    ImageOutputFormatRGB  ImageOutputFormat = "rgb"
-	    ImageOutputFormatRGBA ImageOutputFormat = "rgba"
-	    ImageOutputFormatGray ImageOutputFormat = "gray"
-	)
-
-<a name="ImageResize"></a>
-
-## type ImageResize
-
-ImageResize is the target dimensions for resize processing.
-
-	type ImageResize struct {
-	    // Width is the target width in pixels.
-	    Width int `msgpack:"width" json:"width"`
-	    // Height is the target height in pixels.
-	    Height int `msgpack:"height" json:"height"`
-	}
-
-<a name="JsonSchema"></a>
 
 ## type LineDirection
 
@@ -1349,25 +1163,6 @@ StreamingRole is the resolution role for live streaming \(excludes snapshot\).
 	)
 
 <a name="StringFormat"></a>
-
-## type VideoFrame
-
-VideoFrame is a video frame with processing capabilities. Provides methods to convert raw decoder output to usable image formats.
-
-	type VideoFrame interface {
-	    ID() string
-	    Data() []byte
-	    Metadata() FrameMetadata
-	    Info() ImageInformation
-	    Timestamp() int64
-	    InputWidth() int
-	    InputHeight() int
-	    InputFormat() DecoderFormat
-	    ToBuffer() (*FrameBuffer, error)
-	    ToImage() (*FrameImage, error)
-	}
-
-<a name="VideoFrameData"></a>
 
 ## type VideoFrameData
 

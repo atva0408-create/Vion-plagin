@@ -144,7 +144,7 @@ Used to react to a user\-triggered submit \(e.g. "Test connection", "Pair device
 	    Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
 	}
 
-<a name="FrameBuffer"></a>
+<a name="FrameFormat"></a>
 
 ## type JsonSchema
 

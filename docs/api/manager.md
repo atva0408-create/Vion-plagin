@@ -123,7 +123,7 @@ CreateStreamDownloadOptions specifies how to register a file that is still being
 	    MarkerPath string `msgpack:"markerPath" json:"markerPath"`
 	}
 
-<a name="DecoderFormat"></a>
+<a name="Detection"></a>
 
 ## type DeviceManager
 

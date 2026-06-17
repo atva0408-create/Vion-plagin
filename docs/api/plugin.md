@@ -388,7 +388,7 @@ ImageMetadata is image metadata passed to detector test methods.
 	    Height int `msgpack:"height" json:"height"`
 	}
 
-<a name="ImageOptions"></a>
+<a name="JsonSchema"></a>
 
 ## type LicensePlateDetectionInterface
 

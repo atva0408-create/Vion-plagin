@@ -138,21 +138,8 @@ BUCKETS: dict[str, str] = {
     "ProbeStream": "camera",
     "VideoStreamInfo": "camera",
     "AudioStreamInfo": "camera",
-    "VideoFrame": "camera",
     "VideoFrameData": "camera",
-    "FrameData": "camera",
-    "FrameImage": "camera",
-    "FrameBuffer": "camera",
-    "FrameMetadata": "camera",
     "FrameFormat": "camera",
-    "DecoderFormat": "camera",
-    "ImageFormat": "camera",
-    "ImageInputFormat": "camera",
-    "ImageOutputFormat": "camera",
-    "ImageInformation": "camera",
-    "ImageOptions": "camera",
-    "ImageResize": "camera",
-    "ImageCrop": "camera",
     "DetectionEvent": "camera",
     "DetectionEventData": "camera",
     "DetectionEventType": "camera",
@@ -383,7 +370,11 @@ def parse_index(text: str) -> int:
     # The simplest landmark is the "## Constants" / "## Variables" line — which
     # both come before the first symbol heading.
     for i, line in enumerate(text.splitlines()):
-        if line.startswith("## Constants") or line.startswith("## func ") or line.startswith("## type "):
+        if (
+            line.startswith("## Constants")
+            or line.startswith("## func ")
+            or line.startswith("## type ")
+        ):
             return i
     return 0
 
@@ -401,7 +392,9 @@ def split_into_blocks(text: str) -> list[tuple[str, str]]:
     current_key: str | None = None
     current_buf: list[str] = []
 
-    heading_re = re.compile(r"^## (Constants|Variables|func ([A-Za-z0-9_]+)|type ([A-Za-z0-9_]+))")
+    heading_re = re.compile(
+        r"^## (Constants|Variables|func ([A-Za-z0-9_]+)|type ([A-Za-z0-9_]+))"
+    )
 
     for line in body_lines:
         m = heading_re.match(line)
@@ -481,7 +474,9 @@ def main() -> None:
     for bucket, blist in by_bucket.items():
         out_file = out_dir / f"{bucket}.md"
         out_file.write_text(render_page(bucket, blist), encoding="utf-8")
-        print(f"  wrote {out_file.relative_to(out_dir.parent.parent)}  ({len(blist)} blocks)")
+        print(
+            f"  wrote {out_file.relative_to(out_dir.parent.parent)}  ({len(blist)} blocks)"
+        )
 
 
 if __name__ == "__main__":
