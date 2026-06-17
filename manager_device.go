@@ -8,6 +8,18 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+// DiscoveredCamera is a camera found during discovery by a discovery provider plugin.
+type DiscoveredCamera struct {
+	// ID is the discovery ID (typically a stable native identifier).
+	ID string `msgpack:"id" json:"id"`
+	// Name is the discovered camera display name.
+	Name string `msgpack:"name" json:"name"`
+	// Manufacturer is the manufacturer name (if known).
+	Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
+	// Model is the model name (if known).
+	Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+}
+
 // DeviceManager provides camera lookup and discovery operations via RPC.
 //
 // Handles camera lifecycle events from the backend (cameraAdded /

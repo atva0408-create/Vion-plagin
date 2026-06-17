@@ -878,7 +878,7 @@ PluginCapability is a permission a plugin requests so it can call a host\-provid
 
 ## type PluginContract
 
-PluginContract is the manifest contract a plugin declares so the host knows what it does and what it needs at load time. Validated by ValidateContract \(contract.go\) before the plugin is started.
+PluginContract is the manifest contract a plugin declares so the host knows what it does and what it needs at load time. Validated by ValidateContract \(plugin\_helper.go\) before the plugin is started.
 
 	type PluginContract struct {
 	    // Name is the stable, unique identifier for the plugin instance — used
@@ -966,11 +966,11 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 	    // PluginInterfaceNotifier — plugin implements NotifierInterface
 	    // (GetDevices, SendNotification, ...). Lets the central
 	    // NotificationManager dispatch notifications to this plugin regardless
-	    // of role. See notifier.go.
+	    // of role. See plugin_notifier.go.
 	    PluginInterfaceNotifier PluginInterface = "Notifier"
 	    // PluginInterfaceOAuthCapable — plugin implements the OAuthCapable base
 	    // interface (GetOAuthMetadata, GetOAuthState, Disconnect) plus at least
-	    // one of the flow sub-interfaces below. See interface_oauth.go.
+	    // one of the flow sub-interfaces below. See plugin_oauth.go.
 	    PluginInterfaceOAuthCapable PluginInterface = "OAuthCapable"
 	    // PluginInterfaceOAuthDeviceFlow — plugin implements
 	    // OAuthDeviceFlowCapable (RFC 8628 Device Authorization Grant).
@@ -987,7 +987,7 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 
 ## type PluginRole
 
-PluginRole identifies the role a plugin plays in the system. The role decides which lifecycle hooks the host invokes and which contract validations apply \(see contract.go\).
+PluginRole identifies the role a plugin plays in the system. The role decides which lifecycle hooks the host invokes and which contract validations apply \(see plugin\_helper.go\).
 
 	type PluginRole string
 
