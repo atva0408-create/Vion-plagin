@@ -8,7 +8,7 @@ const (
 
 // LightCapability defines optional capabilities for light controls.
 const (
-	LightCapabilityBrightness = "brightness"
+	LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0–100)
 )
 
 // LightControl is a light on/off and brightness control sensor. Override

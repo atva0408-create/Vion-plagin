@@ -10,14 +10,14 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 <a name="BatteryCapabilityLowBattery"></a>BatteryCapability defines optional capabilities for battery info sensors.
 
 	const (
-	    BatteryCapabilityLowBattery = "lowBattery"
-	    BatteryCapabilityCharging   = "charging"
+	    BatteryCapabilityLowBattery = "lowBattery" // Sensor reports low-battery alerts
+	    BatteryCapabilityCharging   = "charging"   // Sensor reports charging state
 	)
 
 <a name="LightCapabilityBrightness"></a>LightCapability defines optional capabilities for light controls.
 
 	const (
-	    LightCapabilityBrightness = "brightness"
+	    LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0–100)
 	)
 
 ## Variables

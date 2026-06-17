@@ -39,7 +39,7 @@ Example:
 
 	func GetContractValidationErrors(c *PluginContract) []string
 
-GetContractValidationErrors checks the structural validity of a contract \(required fields present, enum values inside the accepted sets\) and returns one human\-readable error per problem found. Returns an empty slice when the contract is valid.
+GetContractValidationErrors checks a typed contract's values: the name is non\-empty and the role, provided/consumed sensor types, interfaces and capabilities are all members of their accepted enum sets. It returns one human\-readable error per problem found, or an empty slice when the contract is valid.
 
 Example:
 
@@ -798,6 +798,12 @@ Plugin is the lifecycle contract every camera.ui plugin must implement. The host
 ## type PluginAPI
 
 PluginAPI is injected into the plugin at runtime and exposes the system services the plugin is allowed to talk to. It also acts as an eventEmitter for plugin lifecycle events \(see APIEvent constants in plugin.go\).
+
+Example:
+
+	// Access FFmpeg path
+	ffmpeg, err := api.CoreManager.GetFFmpegPath()
+	
 
 	type PluginAPI struct {
 	

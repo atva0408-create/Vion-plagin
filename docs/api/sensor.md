@@ -59,7 +59,7 @@ AudioFrameData is audio frame data delivered to audio detector sensors by the ba
 	    Data       []byte      `msgpack:"data" json:"data"`             // Raw audio sample buffer
 	    SampleRate int         `msgpack:"sampleRate" json:"sampleRate"` // Sample rate of the buffer in Hz
 	    Channels   int         `msgpack:"channels" json:"channels"`     // Channel count of the buffer (typically 1 = mono)
-	    Format     AudioFormat `msgpack:"format" json:"format"`         // Sample format (pcm16 or float32)
+	    Format     AudioFormat `msgpack:"format" json:"format"`         // Sample format: pcm16 = 16-bit signed integer PCM, float32 = 32-bit float
 	    Decibels   float64     `msgpack:"decibels" json:"decibels"`     // Pre-computed decibel level for this frame, if available
 	    Timestamp  int64       `msgpack:"timestamp" json:"timestamp"`   // Capture timestamp in milliseconds since epoch
 	}
@@ -167,6 +167,11 @@ Example:
 
 SetDecibels updates the current audio level \(in decibels\).
 
+Example:
+
+	sensor.SetDecibels(72)
+	
+
 <a name="AudioSensor.ToJSON"></a>
 ### func \(\*AudioSensor\) ToJSON
 
@@ -254,6 +259,12 @@ GetValue returns the current value of a sensor property.
 
 GetValues returns a snapshot of all property values.
 
+Example:
+
+	snapshot := sensor.GetValues()
+	fmt.Println(snapshot)
+	
+
 <a name="BaseSensor.HasCapability"></a>
 ### func \(\*BaseSensor\) HasCapability
 
@@ -301,7 +312,12 @@ OnPropertyChanged subscribes to property changes. Returns a Disposable to unsubs
 
 	func (s *BaseSensor) SetDisplayName(name string)
 
+SetDisplayName sets the display name \(the only mutable identifier on a sensor\). name is the human\-readable label shown in the UI.
 
+Example:
+
+	sensor.SetDisplayName("Front Door Motion")
+	
 
 <a name="BaseSensor.Storage"></a>
 ### func \(\*BaseSensor\) Storage
@@ -367,6 +383,11 @@ IsLow returns whether the battery is critically low.
 
 SetCharging sets the charging state.
 
+Example:
+
+	battery.SetCharging(ChargingStateCharging)
+	
+
 <a name="BatteryInfo.SetLevel"></a>
 ### func \(\*BatteryInfo\) SetLevel
 
@@ -374,12 +395,22 @@ SetCharging sets the charging state.
 
 SetLevel sets the battery level \(clamped to \[0,100\]\).
 
+Example:
+
+	battery.SetLevel(87)
+	
+
 <a name="BatteryInfo.SetLow"></a>
 ### func \(\*BatteryInfo\) SetLow
 
 	func (s *BatteryInfo) SetLow(value bool)
 
 SetLow sets the low\-battery alert flag.
+
+Example:
+
+	battery.SetLow(true)
+	
 
 <a name="BatteryInfo.ToJSON"></a>
 ### func \(\*BatteryInfo\) ToJSON
@@ -443,7 +474,8 @@ ClassifierDetection is a classifier detection result with an open attribute for 
 ClassifierDetector is implemented by plugins that run image classification models against pre\-cropped trigger regions.
 
 	type ClassifierDetector interface {
-	    // ModelSpec declares the expected input dimensions and trigger labels.
+	    // ModelSpec declares the expected input dimensions and trigger labels. The
+	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
 	    // DetectClassifications classifies a batch of pre-cropped, pre-scaled
 	    // trigger regions and must return exactly one ClassifierResult per input
@@ -815,7 +847,8 @@ FaceDetection is a face detection result, extending Detection with face\-specifi
 FaceDetector is implemented by plugins that perform face detection and recognition on pre\-cropped person regions.
 
 	type FaceDetector interface {
-	    // ModelSpec declares the expected input dimensions and trigger labels.
+	    // ModelSpec declares the expected input dimensions and trigger labels. The
+	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
 	    // DetectFaces analyzes a batch of pre-cropped, pre-scaled person regions
 	    // and must return exactly one FaceResult per input frame, in the same order.
@@ -932,7 +965,9 @@ UpdateValue is a no\-op for read\-only face sensors. State is reported via Repor
 
 ## type GarageControl
 
-GarageControl is a garage door control sensor.
+GarageControl is a garage door control sensor. Override SetTargetState \(by embedding GarageControl in your own type and shadowing the method\) to drive hardware and call the embedded GarageControl's SetTargetState once the hardware confirms — the base implementation updates both targetState and currentState.
+
+For long\-running transitions \(Opening/Closing intermediate states\) override SetTargetState and write currentState separately as the door moves.
 
 	type GarageControl struct{ BaseSensor }
 
@@ -985,6 +1020,11 @@ IsObstructionDetected returns whether an obstruction is detected.
 
 SetCurrentState publishes the actual door state. Use this to drive long\-running transitions \(e.g. Open → Closing → Closed\) independently of the user\-requested target state. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
 
+Example:
+
+	garage.SetCurrentState(GarageStateClosing)
+	
+
 <a name="GarageControl.SetObstructionDetected"></a>
 ### func \(\*GarageControl\) SetObstructionDetected
 
@@ -992,12 +1032,22 @@ SetCurrentState publishes the actual door state. Use this to drive long\-running
 
 SetObstructionDetected publishes the obstruction detection state.
 
+Example:
+
+	garage.SetObstructionDetected(true)
+	
+
 <a name="GarageControl.SetTargetState"></a>
 ### func \(\*GarageControl\) SetTargetState
 
 	func (s *GarageControl) SetTargetState(value GarageState)
 
 SetTargetState sets the target state. Writes both targetState and currentState.
+
+Example:
+
+	garage.SetTargetState(GarageStateOpen)
+	
 
 <a name="GarageControl.ToJSON"></a>
 ### func \(\*GarageControl\) ToJSON
@@ -1168,7 +1218,8 @@ LicensePlateDetection is a license plate detection result, extending Detection w
 LicensePlateDetector is implemented by plugins that perform license plate detection and OCR on pre\-cropped vehicle regions.
 
 	type LicensePlateDetector interface {
-	    // ModelSpec declares the expected input dimensions and trigger labels.
+	    // ModelSpec declares the expected input dimensions and trigger labels. The
+	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
 	    // DetectLicensePlates analyzes a batch of pre-cropped, pre-scaled vehicle
 	    // regions and must return exactly one LicensePlateResult per input frame,
@@ -1383,7 +1434,9 @@ UpdateValue dispatches generic property writes to semantic methods. Numeric valu
 
 ## type LockControl
 
-LockControl is a lock/unlock control sensor.
+LockControl is a lock/unlock control sensor. Override SetTargetState \(by embedding LockControl in your own type and shadowing the method\) to drive hardware and call the embedded LockControl's SetTargetState once the hardware confirms — the base implementation updates both targetState and currentState to the new value.
+
+For asymmetric flows \(long\-running unlock with intermediate state\) override SetTargetState and write currentState separately when transitions complete.
 
 	type LockControl struct{ BaseSensor }
 
@@ -1429,12 +1482,22 @@ GetTargetState returns the target lock state.
 
 SetCurrentState publishes the actual lock state. Use this to drive transitions where the physical state diverges from the user\-requested target — e.g. motorized smart locks that take time to rotate \(publish LockStateUnknown while moving\), or hardware reporting an out\-of\-band state change. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
 
+Example:
+
+	lock.SetCurrentState(LockStateUnknown)
+	
+
 <a name="LockControl.SetTargetState"></a>
 ### func \(\*LockControl\) SetTargetState
 
 	func (s *LockControl) SetTargetState(value LockState)
 
 SetTargetState sets the target lock state. Writes both targetState and currentState.
+
+Example:
+
+	lock.SetTargetState(LockStateSecured)
+	
 
 <a name="LockControl.ToJSON"></a>
 ### func \(\*LockControl\) ToJSON
@@ -1803,7 +1866,9 @@ UpdateValue is a no\-op for read\-only occupancy sensors.
 
 ## type PTZControl
 
-PTZControl is a pan\-tilt\-zoom camera control sensor.
+PTZControl is a pan\-tilt\-zoom camera control sensor. Override SetPosition / SetVelocity / SetTargetPreset \(by embedding PTZControl in your own type and shadowing the methods\) to drive hardware, then call the corresponding embedded method after success to sync the SDK state. For hardware\-pushed state updates \(e.g. PTZ position change events\), call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
+
+Set capabilities to advertise supported axes and features. Use SetPresets to publish the discovered preset list and SetMoving to publish movement state.
 
 	type PTZControl struct{ BaseSensor }
 
@@ -1849,6 +1914,11 @@ GetPresets returns the list of available preset names.
 
 GoHome moves the PTZ to the home position \(0, 0, 0\).
 
+Example:
+
+	ptz.GoHome()
+	
+
 <a name="PTZControl.IsMoving"></a>
 ### func \(\*PTZControl\) IsMoving
 
@@ -1863,12 +1933,22 @@ IsMoving returns whether the PTZ is currently moving.
 
 SetMoving publishes the movement state.
 
+Example:
+
+	ptz.SetMoving(true)
+	
+
 <a name="PTZControl.SetPosition"></a>
 ### func \(\*PTZControl\) SetPosition
 
 	func (s *PTZControl) SetPosition(value PTZPosition)
 
 SetPosition sets the absolute PTZ position.
+
+Example:
+
+	ptz.SetPosition(PTZPosition{Pan: 0.25, Tilt: -0.1, Zoom: 0.5})
+	
 
 <a name="PTZControl.SetPresets"></a>
 ### func \(\*PTZControl\) SetPresets
@@ -1877,6 +1957,11 @@ SetPosition sets the absolute PTZ position.
 
 SetPresets publishes the discovered preset list.
 
+Example:
+
+	ptz.SetPresets([]string{"Home", "Driveway", "Backyard"})
+	
+
 <a name="PTZControl.SetTargetPreset"></a>
 ### func \(\*PTZControl\) SetTargetPreset
 
@@ -1884,12 +1969,22 @@ SetPresets publishes the discovered preset list.
 
 SetTargetPreset sets the target preset ID.
 
+Example:
+
+	ptz.SetTargetPreset("Driveway")
+	
+
 <a name="PTZControl.SetVelocity"></a>
 ### func \(\*PTZControl\) SetVelocity
 
 	func (s *PTZControl) SetVelocity(value PTZDirection)
 
 SetVelocity sets the continuous\-move velocity.
+
+Example:
+
+	ptz.SetVelocity(PTZDirection{PanSpeed: 0.5, TiltSpeed: 0, ZoomSpeed: 0})
+	
 
 <a name="PTZControl.ToJSON"></a>
 ### func \(\*PTZControl\) ToJSON
@@ -1955,12 +2050,22 @@ GetTargetState returns the target security system state.
 
 SetCurrentState publishes the actual security system state. Use this to drive transitions that diverge from the user\-requested target — most notably the AlarmTriggered state when an intruder is detected, or arming\-delay intermediate states. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
 
+Example:
+
+	alarm.SetCurrentState(SecuritySystemStateAlarmTriggered)
+	
+
 <a name="SecuritySystem.SetTargetState"></a>
 ### func \(\*SecuritySystem\) SetTargetState
 
 	func (s *SecuritySystem) SetTargetState(value SecuritySystemState)
 
 SetTargetState sets the target state. Writes both targetState and currentState.
+
+Example:
+
+	alarm.SetTargetState(SecuritySystemStateAwayArm)
+	
 
 <a name="SecuritySystem.ToJSON"></a>
 ### func \(\*SecuritySystem\) ToJSON
@@ -2114,7 +2219,7 @@ SensorType identifies the kind of sensor. Each maps to a smart\-home concept.
 
 ## type SirenControl
 
-SirenControl is a siren on/off and volume control sensor.
+SirenControl is a siren on/off and volume control sensor. Override SetActive / SetInactive \(by embedding SirenControl in your own type and shadowing the methods\) to drive your hardware, then call the embedded SirenControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
 
 	type SirenControl struct{ BaseSensor }
 
@@ -2160,6 +2265,11 @@ IsActive returns whether the siren is active.
 
 SetActive activates the siren.
 
+Example:
+
+	siren.SetActive()
+	
+
 <a name="SirenControl.SetInactive"></a>
 ### func \(\*SirenControl\) SetInactive
 
@@ -2167,12 +2277,22 @@ SetActive activates the siren.
 
 SetInactive deactivates the siren.
 
+Example:
+
+	siren.SetInactive()
+	
+
 <a name="SirenControl.SetVolume"></a>
 ### func \(\*SirenControl\) SetVolume
 
 	func (s *SirenControl) SetVolume(value int)
 
 SetVolume sets the siren volume \(clamped to \[0,100\]\).
+
+Example:
+
+	siren.SetVolume(80)
+	
 
 <a name="SirenControl.ToJSON"></a>
 ### func \(\*SirenControl\) ToJSON
@@ -2254,7 +2374,7 @@ UpdateValue is a no\-op for read\-only smoke sensors.
 
 ## type SwitchControl
 
-SwitchControl is a generic on/off switch control sensor.
+SwitchControl is a generic on/off switch control sensor. Override SetOn / SetOff \(by embedding SwitchControl in your own type and shadowing the methods\) to drive hardware, then call the embedded SwitchControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
 
 	type SwitchControl struct{ BaseSensor }
 
@@ -2293,12 +2413,22 @@ IsOn returns whether the switch is on.
 
 SetOff turns the switch off.
 
+Example:
+
+	sw.SetOff()
+	
+
 <a name="SwitchControl.SetOn"></a>
 ### func \(\*SwitchControl\) SetOn
 
 	func (s *SwitchControl) SetOn()
 
 SetOn turns the switch on.
+
+Example:
+
+	sw.SetOn()
+	
 
 <a name="SwitchControl.ToJSON"></a>
 ### func \(\*SwitchControl\) ToJSON
@@ -2375,7 +2505,7 @@ UpdateValue is a no\-op for read\-only temperature sensors.
 
 ## type TrackVelocity
 
-TrackVelocity is the signed centroid velocity vector in normalized units per frame. Positive X = moving right, positive Y = moving down.
+TrackVelocity is the signed centroid velocity vector in normalized units per frame. Positive X = moving right, positive Y = moving down. Consumers doing motion prediction \(PTZ autotrack, trajectory estimation\) should use this instead of deriving velocity from frame\-to\-frame position deltas.
 
 	type TrackVelocity struct {
 	    X   float64 `msgpack:"x" json:"x"`

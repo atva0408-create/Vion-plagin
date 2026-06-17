@@ -5,7 +5,12 @@ const (
 	switchPropertyOn = "on"
 )
 
-// SwitchControl is a generic on/off switch control sensor.
+// SwitchControl is a generic on/off switch control sensor. Override SetOn /
+// SetOff (by embedding SwitchControl in your own type and shadowing the
+// methods) to drive hardware, then call the embedded SwitchControl's methods
+// to sync the SDK state. For hardware-pushed updates, call the embedded
+// methods directly from your event handler — that bypasses any plugin
+// override and only syncs state.
 type SwitchControl struct{ BaseSensor }
 
 // NewSwitchControl creates a new SwitchControl.
@@ -28,11 +33,19 @@ func (s *SwitchControl) IsOn() bool {
 }
 
 // SetOn turns the switch on.
+//
+// Example:
+//
+//	sw.SetOn()
 func (s *SwitchControl) SetOn() {
 	s.writeState(map[string]any{switchPropertyOn: true})
 }
 
 // SetOff turns the switch off.
+//
+// Example:
+//
+//	sw.SetOff()
 func (s *SwitchControl) SetOff() {
 	s.writeState(map[string]any{switchPropertyOn: false})
 }

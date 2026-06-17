@@ -107,7 +107,7 @@ const (
 // This is a unified struct that covers every schema variant — Type acts as
 // the discriminator. Only the fields meaningful for the chosen Type are
 // honored; the rest are ignored. Use this struct in the slice you pass to
-// DeviceStorage.DefineSchemas, .AddSchema, or .ChangeSchema.
+// DeviceStorage.DefineSchemas or .AddSchema.
 type JsonSchema struct {
 	// Type is the field type (string/number/boolean/array/button/submit).
 	Type JsonSchemaType `json:"type" msgpack:"type"`

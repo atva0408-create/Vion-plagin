@@ -114,10 +114,14 @@ CameraAspectRatio is the camera aspect ratio for UI display.
 CameraDetectionSettings is the combined detection settings for a camera.
 
 	type CameraDetectionSettings struct {
+	    // Motion is the motion detection settings.
 	    Motion MotionDetectionSettings `msgpack:"motion" json:"motion"`
+	    // Object is the object detection settings.
 	    Object ObjectDetectionSettings `msgpack:"object" json:"object"`
-	    Audio  AudioDetectionSettings  `msgpack:"audio" json:"audio"`
-	    Sensor SensorTriggerSettings   `msgpack:"sensor" json:"sensor"`
+	    // Audio is the audio detection settings.
+	    Audio AudioDetectionSettings `msgpack:"audio" json:"audio"`
+	    // Sensor is the sensor trigger settings.
+	    Sensor SensorTriggerSettings `msgpack:"sensor" json:"sensor"`
 	    // CascadeDetection enables the detection cascade.
 	    CascadeDetection *bool `msgpack:"cascadeDetection,omitempty" json:"cascadeDetection,omitempty"`
 	    // CascadeTimeout is the cascade hold-open window in seconds.
@@ -927,6 +931,8 @@ PTZCapability defines PTZ capabilities.
 
 PTZDirection represents PTZ movement speed for continuous move commands.
 
+Speeds are in normalized range \[\-1, 1\] where \-1 is maximum speed in the negative direction, 0 stops movement, and 1 is maximum speed in the positive direction. Conventions: positive PanSpeed = right, positive TiltSpeed = up, positive ZoomSpeed = zoom in. Plugins should clamp values to \[\-1, 1\] and map them to hardware\-specific speeds.
+
 	type PTZDirection struct {
 	    PanSpeed  float64 `msgpack:"panSpeed" json:"panSpeed"`
 	    TiltSpeed float64 `msgpack:"tiltSpeed" json:"tiltSpeed"`
@@ -1048,6 +1054,7 @@ RTSPUrlOptions is options for generating RTSP URLs.
 SnapshotInterface is optionally implemented to provide snapshots.
 
 	type SnapshotInterface interface {
+	    // Snapshot returns a snapshot image from the camera. When forceNew is true, the cache is bypassed for a fresh snapshot.
 	    Snapshot(sourceID string, forceNew bool) ([]byte, error)
 	}
 
@@ -1143,6 +1150,7 @@ StreamUrls is the collection of all streaming URLs for a camera source.
 StreamingInterface is optionally implemented to provide stream URLs.
 
 	type StreamingInterface interface {
+	    // StreamUrl returns the streaming URL for a source (e.g. rtsp://, rtmp://, or custom protocol).
 	    StreamUrl(sourceID string) (string, error)
 	}
 
@@ -1174,7 +1182,7 @@ VideoFrameData is the video frame payload delivered to detector sensors by the b
 	    Data      []byte      `msgpack:"data" json:"data"`                       // Raw pixel buffer
 	    Width     int         `msgpack:"width" json:"width"`                     // Frame width in pixels
 	    Height    int         `msgpack:"height" json:"height"`                   // Frame height in pixels
-	    Format    FrameFormat `msgpack:"format" json:"format"`                   // Pixel format (nv12, rgb, rgba, gray)
+	    Format    FrameFormat `msgpack:"format" json:"format"`                   // Pixel format: rgb = 3 bytes/pixel interleaved, rgba = 4 bytes/pixel, gray = 1 byte/pixel, nv12 = YUV semi-planar
 	    Timestamp int64       `msgpack:"timestamp" json:"timestamp"`             // Capture timestamp in milliseconds since epoch
 	    Label     string      `msgpack:"label,omitempty" json:"label,omitempty"` // Trigger label propagated by the coordinator for secondary detectors
 	}

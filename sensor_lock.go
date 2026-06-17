@@ -15,7 +15,14 @@ const (
 	lockPropertyTargetState  = "targetState"
 )
 
-// LockControl is a lock/unlock control sensor.
+// LockControl is a lock/unlock control sensor. Override SetTargetState (by
+// embedding LockControl in your own type and shadowing the method) to drive
+// hardware and call the embedded LockControl's SetTargetState once the
+// hardware confirms — the base implementation updates both targetState and
+// currentState to the new value.
+//
+// For asymmetric flows (long-running unlock with intermediate state) override
+// SetTargetState and write currentState separately when transitions complete.
 type LockControl struct{ BaseSensor }
 
 // NewLockControl creates a new LockControl.
@@ -49,6 +56,10 @@ func (s *LockControl) GetTargetState() LockState {
 }
 
 // SetTargetState sets the target lock state. Writes both targetState and currentState.
+//
+// Example:
+//
+//	lock.SetTargetState(LockStateSecured)
 func (s *LockControl) SetTargetState(value LockState) {
 	s.writeState(map[string]any{
 		lockPropertyTargetState:  int(value),
@@ -61,6 +72,10 @@ func (s *LockControl) SetTargetState(value LockState) {
 // target — e.g. motorized smart locks that take time to rotate (publish
 // LockStateUnknown while moving), or hardware reporting an out-of-band state
 // change. Read-only from cross-process consumers (`UpdateValue` ignores it).
+//
+// Example:
+//
+//	lock.SetCurrentState(LockStateUnknown)
 func (s *LockControl) SetCurrentState(value LockState) {
 	s.writeState(map[string]any{lockPropertyCurrentState: int(value)})
 }

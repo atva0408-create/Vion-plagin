@@ -18,7 +18,14 @@ const (
 	garagePropertyObstructionDetected = "obstructionDetected"
 )
 
-// GarageControl is a garage door control sensor.
+// GarageControl is a garage door control sensor. Override SetTargetState (by
+// embedding GarageControl in your own type and shadowing the method) to drive
+// hardware and call the embedded GarageControl's SetTargetState once the
+// hardware confirms — the base implementation updates both targetState and
+// currentState.
+//
+// For long-running transitions (Opening/Closing intermediate states) override
+// SetTargetState and write currentState separately as the door moves.
 type GarageControl struct{ BaseSensor }
 
 // NewGarageControl creates a new GarageControl.
@@ -59,6 +66,10 @@ func (s *GarageControl) IsObstructionDetected() bool {
 }
 
 // SetTargetState sets the target state. Writes both targetState and currentState.
+//
+// Example:
+//
+//	garage.SetTargetState(GarageStateOpen)
 func (s *GarageControl) SetTargetState(value GarageState) {
 	s.writeState(map[string]any{
 		garagePropertyTargetState:  int(value),
@@ -70,11 +81,19 @@ func (s *GarageControl) SetTargetState(value GarageState) {
 // long-running transitions (e.g. Open → Closing → Closed) independently of
 // the user-requested target state. Read-only from cross-process consumers
 // (`UpdateValue` ignores it).
+//
+// Example:
+//
+//	garage.SetCurrentState(GarageStateClosing)
 func (s *GarageControl) SetCurrentState(value GarageState) {
 	s.writeState(map[string]any{garagePropertyCurrentState: int(value)})
 }
 
 // SetObstructionDetected publishes the obstruction detection state.
+//
+// Example:
+//
+//	garage.SetObstructionDetected(true)
 func (s *GarageControl) SetObstructionDetected(detected bool) {
 	s.writeState(map[string]any{garagePropertyObstructionDetected: detected})
 }

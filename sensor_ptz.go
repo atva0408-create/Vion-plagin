@@ -12,6 +12,12 @@ const (
 )
 
 // PTZDirection represents PTZ movement speed for continuous move commands.
+//
+// Speeds are in normalized range [-1, 1] where -1 is maximum speed in the
+// negative direction, 0 stops movement, and 1 is maximum speed in the positive
+// direction. Conventions: positive PanSpeed = right, positive TiltSpeed = up,
+// positive ZoomSpeed = zoom in. Plugins should clamp values to [-1, 1] and map
+// them to hardware-specific speeds.
 type PTZDirection struct {
 	PanSpeed  float64 `msgpack:"panSpeed" json:"panSpeed"`
 	TiltSpeed float64 `msgpack:"tiltSpeed" json:"tiltSpeed"`
@@ -34,7 +40,16 @@ const (
 	ptzPropertyTargetPreset = "targetPreset"
 )
 
-// PTZControl is a pan-tilt-zoom camera control sensor.
+// PTZControl is a pan-tilt-zoom camera control sensor. Override SetPosition /
+// SetVelocity / SetTargetPreset (by embedding PTZControl in your own type and
+// shadowing the methods) to drive hardware, then call the corresponding
+// embedded method after success to sync the SDK state. For hardware-pushed
+// state updates (e.g. PTZ position change events), call the embedded methods
+// directly from your event handler — that bypasses any plugin override and
+// only syncs state.
+//
+// Set capabilities to advertise supported axes and features. Use SetPresets to
+// publish the discovered preset list and SetMoving to publish movement state.
 type PTZControl struct{ BaseSensor }
 
 // NewPTZControl creates a new PTZControl.
@@ -75,31 +90,55 @@ func (s *PTZControl) GetPresets() []string {
 }
 
 // SetPosition sets the absolute PTZ position.
+//
+// Example:
+//
+//	ptz.SetPosition(PTZPosition{Pan: 0.25, Tilt: -0.1, Zoom: 0.5})
 func (s *PTZControl) SetPosition(value PTZPosition) {
 	s.writeState(map[string]any{ptzPropertyPosition: value})
 }
 
 // SetVelocity sets the continuous-move velocity.
+//
+// Example:
+//
+//	ptz.SetVelocity(PTZDirection{PanSpeed: 0.5, TiltSpeed: 0, ZoomSpeed: 0})
 func (s *PTZControl) SetVelocity(value PTZDirection) {
 	s.writeState(map[string]any{ptzPropertyVelocity: value})
 }
 
 // SetTargetPreset sets the target preset ID.
+//
+// Example:
+//
+//	ptz.SetTargetPreset("Driveway")
 func (s *PTZControl) SetTargetPreset(value string) {
 	s.writeState(map[string]any{ptzPropertyTargetPreset: value})
 }
 
 // SetPresets publishes the discovered preset list.
+//
+// Example:
+//
+//	ptz.SetPresets([]string{"Home", "Driveway", "Backyard"})
 func (s *PTZControl) SetPresets(value []string) {
 	s.writeState(map[string]any{ptzPropertyPresets: value})
 }
 
 // SetMoving publishes the movement state.
+//
+// Example:
+//
+//	ptz.SetMoving(true)
 func (s *PTZControl) SetMoving(value bool) {
 	s.writeState(map[string]any{ptzPropertyMoving: value})
 }
 
 // GoHome moves the PTZ to the home position (0, 0, 0).
+//
+// Example:
+//
+//	ptz.GoHome()
 func (s *PTZControl) GoHome() {
 	s.SetPosition(PTZPosition{Pan: 0, Tilt: 0, Zoom: 0})
 }

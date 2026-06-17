@@ -73,7 +73,7 @@ type VideoFrameData struct {
 	Data      []byte      `msgpack:"data" json:"data"`                       // Raw pixel buffer
 	Width     int         `msgpack:"width" json:"width"`                     // Frame width in pixels
 	Height    int         `msgpack:"height" json:"height"`                   // Frame height in pixels
-	Format    FrameFormat `msgpack:"format" json:"format"`                   // Pixel format (nv12, rgb, rgba, gray)
+	Format    FrameFormat `msgpack:"format" json:"format"`                   // Pixel format: rgb = 3 bytes/pixel interleaved, rgba = 4 bytes/pixel, gray = 1 byte/pixel, nv12 = YUV semi-planar
 	Timestamp int64       `msgpack:"timestamp" json:"timestamp"`             // Capture timestamp in milliseconds since epoch
 	Label     string      `msgpack:"label,omitempty" json:"label,omitempty"` // Trigger label propagated by the coordinator for secondary detectors
 }

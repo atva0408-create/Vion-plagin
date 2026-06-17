@@ -8,7 +8,9 @@ const (
 )
 
 // TrackVelocity is the signed centroid velocity vector in normalized units
-// per frame. Positive X = moving right, positive Y = moving down.
+// per frame. Positive X = moving right, positive Y = moving down. Consumers
+// doing motion prediction (PTZ autotrack, trajectory estimation) should use
+// this instead of deriving velocity from frame-to-frame position deltas.
 type TrackVelocity struct {
 	X float64 `msgpack:"x" json:"x"`
 	Y float64 `msgpack:"y" json:"y"`

@@ -12,11 +12,13 @@ import (
 
 // StreamingInterface is optionally implemented to provide stream URLs.
 type StreamingInterface interface {
+	// StreamUrl returns the streaming URL for a source (e.g. rtsp://, rtmp://, or custom protocol).
 	StreamUrl(sourceID string) (string, error)
 }
 
 // SnapshotInterface is optionally implemented to provide snapshots.
 type SnapshotInterface interface {
+	// Snapshot returns a snapshot image from the camera. When forceNew is true, the cache is bypassed for a fresh snapshot.
 	Snapshot(sourceID string, forceNew bool) ([]byte, error)
 }
 

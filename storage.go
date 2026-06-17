@@ -21,6 +21,16 @@ var configBucket = []byte("config")
 // schemas drive transactional flows via SubmitValue.
 //
 // It implements the storage protocol expected by the server via RPC.
+//
+// Example:
+//
+//	storage.DefineSchemas([]JsonSchema{
+//	    {Type: JsonSchemaTypeString, Key: "username", Title: "Username", Description: "Account username", Store: Bool(true)},
+//	    {Type: JsonSchemaTypeString, Key: "password", Title: "Password", Description: "Account password", Format: StringFormatPassword, Store: Bool(true)},
+//	})
+//
+//	threshold := storage.GetValue("motionThreshold", 50)
+//	storage.SetValue("motionThreshold", 75)
 type DeviceStorage struct {
 	mu      sync.RWMutex
 	db      *bolt.DB

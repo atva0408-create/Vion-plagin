@@ -34,6 +34,17 @@ Define the fields the UI should render via DefineSchemas \(typically once at sta
 
 It implements the storage protocol expected by the server via RPC.
 
+Example:
+
+	storage.DefineSchemas([]JsonSchema{
+	    {Type: JsonSchemaTypeString, Key: "username", Title: "Username", Description: "Account username", Store: Bool(true)},
+	    {Type: JsonSchemaTypeString, Key: "password", Title: "Password", Description: "Account password", Format: StringFormatPassword, Store: Bool(true)},
+	})
+	
+	threshold := storage.GetValue("motionThreshold", 50)
+	storage.SetValue("motionThreshold", 75)
+	
+
 	type DeviceStorage struct {
 	    Schemas []JsonSchema
 	    Values  map[string]any
@@ -150,7 +161,7 @@ Used to react to a user\-triggered submit \(e.g. "Test connection", "Pair device
 
 JsonSchema represents a single configuration field rendered in the UI.
 
-This is a unified struct that covers every schema variant — Type acts as the discriminator. Only the fields meaningful for the chosen Type are honored; the rest are ignored. Use this struct in the slice you pass to DeviceStorage.DefineSchemas, .AddSchema, or .ChangeSchema.
+This is a unified struct that covers every schema variant — Type acts as the discriminator. Only the fields meaningful for the chosen Type are honored; the rest are ignored. Use this struct in the slice you pass to DeviceStorage.DefineSchemas or .AddSchema.
 
 	type JsonSchema struct {
 	    // Type is the field type (string/number/boolean/array/button/submit).

@@ -158,6 +158,12 @@ func (s *BaseSensor) GetDisplayName() string {
 	return s.displayName
 }
 
+// SetDisplayName sets the display name (the only mutable identifier on a
+// sensor). name is the human-readable label shown in the UI.
+//
+// Example:
+//
+//	sensor.SetDisplayName("Front Door Motion")
 func (s *BaseSensor) SetDisplayName(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -224,6 +230,11 @@ func (s *BaseSensor) GetValue(property string) any {
 }
 
 // GetValues returns a snapshot of all property values.
+//
+// Example:
+//
+//	snapshot := sensor.GetValues()
+//	fmt.Println(snapshot)
 func (s *BaseSensor) GetValues() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -366,6 +377,17 @@ func (s *BaseSensor) OnAssignmentChanged(callback func(bool)) *Disposable {
 // break assignment bookkeeping; handle errors inside your implementation.
 //
 // Sensors that don't need lifecycle hooks simply omit the methods.
+//
+// Example:
+//
+//	func (s *MySensor) OnAssigned() {
+//	    s.stop = make(chan struct{})
+//	    go s.poll(s.stop)
+//	}
+//
+//	func (s *MySensor) OnDeassigned() {
+//	    close(s.stop)
+//	}
 type assignmentLifecycle interface {
 	OnAssigned()
 	OnDeassigned()

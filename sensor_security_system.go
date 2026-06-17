@@ -51,6 +51,10 @@ func (s *SecuritySystem) GetTargetState() SecuritySystemState {
 }
 
 // SetTargetState sets the target state. Writes both targetState and currentState.
+//
+// Example:
+//
+//	alarm.SetTargetState(SecuritySystemStateAwayArm)
 func (s *SecuritySystem) SetTargetState(value SecuritySystemState) {
 	s.writeState(map[string]any{
 		securitySystemPropertyTargetState:  int(value),
@@ -63,6 +67,10 @@ func (s *SecuritySystem) SetTargetState(value SecuritySystemState) {
 // the AlarmTriggered state when an intruder is detected, or arming-delay
 // intermediate states. Read-only from cross-process consumers (`UpdateValue`
 // ignores it).
+//
+// Example:
+//
+//	alarm.SetCurrentState(SecuritySystemStateAlarmTriggered)
 func (s *SecuritySystem) SetCurrentState(value SecuritySystemState) {
 	s.writeState(map[string]any{securitySystemPropertyCurrentState: int(value)})
 }

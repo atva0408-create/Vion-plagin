@@ -5,7 +5,7 @@ package sdk
 type VideoInputSpec struct {
 	Width  int         `msgpack:"width" json:"width"`   // Expected frame width in pixels
 	Height int         `msgpack:"height" json:"height"` // Expected frame height in pixels
-	Format FrameFormat `msgpack:"format" json:"format"` // Pixel format (rgb, nv12, gray)
+	Format FrameFormat `msgpack:"format" json:"format"` // Pixel format: rgb = 3 bytes/pixel, gray = 1 byte/pixel, nv12 = YUV semi-planar
 }
 
 // AudioInputSpec describes the expected audio input format for an audio

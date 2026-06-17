@@ -34,7 +34,7 @@ type AudioFrameData struct {
 	Data       []byte      `msgpack:"data" json:"data"`             // Raw audio sample buffer
 	SampleRate int         `msgpack:"sampleRate" json:"sampleRate"` // Sample rate of the buffer in Hz
 	Channels   int         `msgpack:"channels" json:"channels"`     // Channel count of the buffer (typically 1 = mono)
-	Format     AudioFormat `msgpack:"format" json:"format"`         // Sample format (pcm16 or float32)
+	Format     AudioFormat `msgpack:"format" json:"format"`         // Sample format: pcm16 = 16-bit signed integer PCM, float32 = 32-bit float
 	Decibels   float64     `msgpack:"decibels" json:"decibels"`     // Pre-computed decibel level for this frame, if available
 	Timestamp  int64       `msgpack:"timestamp" json:"timestamp"`   // Capture timestamp in milliseconds since epoch
 }
@@ -117,6 +117,10 @@ func (s *AudioSensor) ClearDetections() {
 }
 
 // SetDecibels updates the current audio level (in decibels).
+//
+// Example:
+//
+//	sensor.SetDecibels(72)
 func (s *AudioSensor) SetDecibels(value float64) {
 	s.writeState(map[string]any{audioPropertyDecibels: value})
 }

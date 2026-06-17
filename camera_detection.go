@@ -78,10 +78,14 @@ type SensorTriggerSettings struct {
 
 // CameraDetectionSettings is the combined detection settings for a camera.
 type CameraDetectionSettings struct {
+	// Motion is the motion detection settings.
 	Motion MotionDetectionSettings `msgpack:"motion" json:"motion"`
+	// Object is the object detection settings.
 	Object ObjectDetectionSettings `msgpack:"object" json:"object"`
-	Audio  AudioDetectionSettings  `msgpack:"audio" json:"audio"`
-	Sensor SensorTriggerSettings   `msgpack:"sensor" json:"sensor"`
+	// Audio is the audio detection settings.
+	Audio AudioDetectionSettings `msgpack:"audio" json:"audio"`
+	// Sensor is the sensor trigger settings.
+	Sensor SensorTriggerSettings `msgpack:"sensor" json:"sensor"`
 	// CascadeDetection enables the detection cascade.
 	CascadeDetection *bool `msgpack:"cascadeDetection,omitempty" json:"cascadeDetection,omitempty"`
 	// CascadeTimeout is the cascade hold-open window in seconds.

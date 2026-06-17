@@ -19,8 +19,8 @@ const (
 
 // BatteryCapability defines optional capabilities for battery info sensors.
 const (
-	BatteryCapabilityLowBattery = "lowBattery"
-	BatteryCapabilityCharging   = "charging"
+	BatteryCapabilityLowBattery = "lowBattery" // Sensor reports low-battery alerts
+	BatteryCapabilityCharging   = "charging"   // Sensor reports charging state
 )
 
 // BatteryInfo reports battery level, charging state, and low-battery alerts.
@@ -64,6 +64,10 @@ func (s *BatteryInfo) IsLow() bool {
 }
 
 // SetLevel sets the battery level (clamped to [0,100]).
+//
+// Example:
+//
+//	battery.SetLevel(87)
 func (s *BatteryInfo) SetLevel(value int) {
 	if value < 0 {
 		value = 0
@@ -75,11 +79,19 @@ func (s *BatteryInfo) SetLevel(value int) {
 }
 
 // SetCharging sets the charging state.
+//
+// Example:
+//
+//	battery.SetCharging(ChargingStateCharging)
 func (s *BatteryInfo) SetCharging(value ChargingState) {
 	s.writeState(map[string]any{batteryPropertyCharging: string(value)})
 }
 
 // SetLow sets the low-battery alert flag.
+//
+// Example:
+//
+//	battery.SetLow(true)
 func (s *BatteryInfo) SetLow(value bool) {
 	s.writeState(map[string]any{batteryPropertyLow: value})
 }

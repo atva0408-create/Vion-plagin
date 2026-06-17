@@ -23,7 +23,8 @@ type LicensePlateResult struct {
 // LicensePlateDetector is implemented by plugins that perform license plate
 // detection and OCR on pre-cropped vehicle regions.
 type LicensePlateDetector interface {
-	// ModelSpec declares the expected input dimensions and trigger labels.
+	// ModelSpec declares the expected input dimensions and trigger labels. The
+	// runtime scales frames to match.
 	ModelSpec() ModelSpec
 	// DetectLicensePlates analyzes a batch of pre-cropped, pre-scaled vehicle
 	// regions and must return exactly one LicensePlateResult per input frame,

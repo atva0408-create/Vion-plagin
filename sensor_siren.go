@@ -6,7 +6,12 @@ const (
 	sirenPropertyVolume = "volume"
 )
 
-// SirenControl is a siren on/off and volume control sensor.
+// SirenControl is a siren on/off and volume control sensor. Override
+// SetActive / SetInactive (by embedding SirenControl in your own type and
+// shadowing the methods) to drive your hardware, then call the embedded
+// SirenControl's methods to sync the SDK state. For hardware-pushed updates,
+// call the embedded methods directly from your event handler — that bypasses
+// any plugin override and only syncs state.
 type SirenControl struct{ BaseSensor }
 
 // NewSirenControl creates a new SirenControl.
@@ -38,16 +43,28 @@ func (s *SirenControl) GetVolume() int {
 }
 
 // SetActive activates the siren.
+//
+// Example:
+//
+//	siren.SetActive()
 func (s *SirenControl) SetActive() {
 	s.writeState(map[string]any{sirenPropertyActive: true})
 }
 
 // SetInactive deactivates the siren.
+//
+// Example:
+//
+//	siren.SetInactive()
 func (s *SirenControl) SetInactive() {
 	s.writeState(map[string]any{sirenPropertyActive: false})
 }
 
 // SetVolume sets the siren volume (clamped to [0,100]).
+//
+// Example:
+//
+//	siren.SetVolume(80)
 func (s *SirenControl) SetVolume(value int) {
 	if value < 0 {
 		value = 0

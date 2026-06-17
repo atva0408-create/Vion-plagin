@@ -3,6 +3,11 @@ package sdk
 // PluginAPI is injected into the plugin at runtime and exposes the system
 // services the plugin is allowed to talk to. It also acts as an eventEmitter
 // for plugin lifecycle events (see APIEvent constants in plugin.go).
+//
+// Example:
+//
+//	// Access FFmpeg path
+//	ffmpeg, err := api.CoreManager.GetFFmpegPath()
 type PluginAPI struct {
 	*eventEmitter
 	// CoreManager exposes system-level operations such as the FFmpeg path

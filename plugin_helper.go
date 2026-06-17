@@ -44,10 +44,11 @@ var validCapabilities = []PluginCapability{
 	CapabilityPublishNotifications,
 }
 
-// GetContractValidationErrors checks the structural validity of a contract
-// (required fields present, enum values inside the accepted sets) and
-// returns one human-readable error per problem found. Returns an empty
-// slice when the contract is valid.
+// GetContractValidationErrors checks a typed contract's values: the name is
+// non-empty and the role, provided/consumed sensor types, interfaces and
+// capabilities are all members of their accepted enum sets. It returns one
+// human-readable error per problem found, or an empty slice when the
+// contract is valid.
 //
 // Example:
 //

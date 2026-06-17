@@ -24,7 +24,8 @@ type ClassifierResult struct {
 // ClassifierDetector is implemented by plugins that run image classification
 // models against pre-cropped trigger regions.
 type ClassifierDetector interface {
-	// ModelSpec declares the expected input dimensions and trigger labels.
+	// ModelSpec declares the expected input dimensions and trigger labels. The
+	// runtime scales frames to match.
 	ModelSpec() ModelSpec
 	// DetectClassifications classifies a batch of pre-cropped, pre-scaled
 	// trigger regions and must return exactly one ClassifierResult per input
