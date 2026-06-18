@@ -9,7 +9,9 @@ Lightweight reactive primitives: `Observable`, `Subject`, `BehaviorSubject`, `Re
 
 	func FirstValueFrom[T any](source Subscribable[T]) (T, error)
 
-FirstValueFrom subscribes to the source, blocks until it emits its first value, returns that value, and then disposes the subscription. Returns ErrNoValue if the source completes without emitting.
+FirstValueFrom subscribes to the source, blocks until it emits its first value, returns that value, and then disposes the subscription.
+
+Returns ErrNoValue if the source completes before emitting \(for sources that signal completion — Subject, BehaviorSubject, ReplaySubject\). A bare Observable has no completion signal, so FirstValueFrom blocks until it emits.
 
 Example:
 
@@ -262,7 +264,7 @@ AsObservable returns a read\-only Observable that mirrors this Subject without e
 
 	func (s *Subject[T]) Complete()
 
-Complete marks the subject as complete.
+Complete marks the subject as complete, releases all value subscribers, and notifies any completion handlers registered via onCompleteNotify.
 
 <a name="Subject[T].Next"></a>
 ### func \(\*Subject\[T\]\) Next
