@@ -134,6 +134,16 @@ func TestBehaviorSubjectLateSubscriberGetsLatest(t *testing.T) {
 	}
 }
 
+func TestBehaviorSubjectNoEmitAfterComplete(t *testing.T) {
+	s := NewBehaviorSubject(0)
+	s.Complete()
+	var got []int
+	s.Subscribe(func(v int) { got = append(got, v) })
+	if len(got) != 0 {
+		t.Fatalf("got %v, want empty", got)
+	}
+}
+
 func TestReplaySubjectReplaysBuffered(t *testing.T) {
 	s := NewReplaySubject[int](2)
 	s.Next(1)

@@ -165,6 +165,13 @@ func (s *Subject[T]) Subscribe(callback func(T)) *Disposable {
 	})
 }
 
+// isCompleted reports whether the subject has completed.
+func (s *Subject[T]) isCompleted() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.completed
+}
+
 // AsObservable returns a read-only Observable that mirrors this Subject
 // without exposing Next or Complete.
 func (s *Subject[T]) AsObservable() *Observable[T] {
@@ -213,9 +220,13 @@ func (bs *BehaviorSubject[T]) AsObservable() *Observable[T] {
 	})
 }
 
-// Subscribe registers a callback and immediately invokes it with the current value.
+// Subscribe registers a callback and immediately invokes it with the current
+// value, unless the subject has already completed.
 func (bs *BehaviorSubject[T]) Subscribe(callback func(T)) *Disposable {
 	disposable := bs.Subject.Subscribe(callback)
+	if bs.isCompleted() {
+		return disposable
+	}
 	bs.mu.RLock()
 	v := bs.value
 	bs.mu.RUnlock()

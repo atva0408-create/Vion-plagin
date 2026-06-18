@@ -54,7 +54,7 @@ Next sets the value and notifies subscribers.
 
 	func (bs *BehaviorSubject[T]) Subscribe(callback func(T)) *Disposable
 
-Subscribe registers a callback and immediately invokes it with the current value.
+Subscribe registers a callback and immediately invokes it with the current value, unless the subject has already completed.
 
 <a name="BehaviorSubject[T].Value"></a>
 ### func \(\*BehaviorSubject\[T\]\) Value
