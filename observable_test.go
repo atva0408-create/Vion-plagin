@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -371,20 +372,23 @@ func TestFirstValueFromAsyncEmit(t *testing.T) {
 	}
 }
 
-// TestFirstValueFromHangsOnCompletedEmpty documents that a source which
-// completes without ever emitting never resolves (matches the Python SDK).
-func TestFirstValueFromHangsOnCompletedEmpty(t *testing.T) {
+func TestFirstValueFromErrNoValueOnCompletedEmpty(t *testing.T) {
 	s := NewSubject[int]()
 	s.Complete()
-	done := make(chan struct{})
+	_, err := FirstValueFrom(s)
+	if !errors.Is(err, ErrNoValue) {
+		t.Fatalf("err=%v, want ErrNoValue", err)
+	}
+}
+
+func TestFirstValueFromErrNoValueOnAsyncComplete(t *testing.T) {
+	s := NewSubject[int]()
 	go func() {
-		_, _ = FirstValueFrom(s) // intentionally blocks forever
-		close(done)
+		time.Sleep(10 * time.Millisecond)
+		s.Complete()
 	}()
-	select {
-	case <-done:
-		t.Fatal("FirstValueFrom returned; expected it to block on a completed empty source")
-	case <-time.After(50 * time.Millisecond):
-		// expected: still blocked
+	_, err := FirstValueFrom(s)
+	if !errors.Is(err, ErrNoValue) {
+		t.Fatalf("err=%v, want ErrNoValue", err)
 	}
 }
