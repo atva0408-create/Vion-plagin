@@ -21,32 +21,93 @@ BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP 
 
 <a name="CanCreateCameras"></a>
 
+## type AudioCodec
+
+AudioCodec is a supported audio codec \(RTP/SDP format name\).
+
+	type AudioCodec string
+
+<a name="AudioCodecPCMU"></a>
+
+	const (
+	    AudioCodecPCMU         AudioCodec = "PCMU"
+	    AudioCodecPCMA         AudioCodec = "PCMA"
+	    AudioCodecMPEG4Generic AudioCodec = "MPEG4-GENERIC"
+	    AudioCodecOpus         AudioCodec = "opus"
+	    AudioCodecG722         AudioCodec = "G722"
+	    AudioCodecG726         AudioCodec = "G726"
+	    AudioCodecMPA          AudioCodec = "MPA"
+	    AudioCodecPCM          AudioCodec = "PCM"
+	    AudioCodecFLAC         AudioCodec = "FLAC"
+	    AudioCodecELD          AudioCodec = "ELD"
+	    AudioCodecPCML         AudioCodec = "PCML"
+	    AudioCodecL16          AudioCodec = "L16"
+	)
+
+<a name="AudioCodecProperties"></a>
+
+## type AudioCodecProperties
+
+AudioCodecProperties holds audio codec properties from a stream probe.
+
+	type AudioCodecProperties struct {
+	    // SampleRate is the audio sample rate in Hz.
+	    SampleRate int `msgpack:"sampleRate" json:"sampleRate"`
+	    // Channels is the number of audio channels.
+	    Channels int `msgpack:"channels" json:"channels"`
+	    // PayloadType is the RTP payload type number.
+	    PayloadType int `msgpack:"payloadType" json:"payloadType"`
+	    // FmtpInfo holds optional format parameters.
+	    FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+	}
+
+<a name="AudioDetectionInterface"></a>
+
+## type AudioFFmpegCodec
+
+AudioFFmpegCodec is an FFmpeg audio codec name used for transcoding.
+
+	type AudioFFmpegCodec string
+
+<a name="AudioFFmpegCodecPCMMulaw"></a>
+
+	const (
+	    AudioFFmpegCodecPCMMulaw AudioFFmpegCodec = "pcm_mulaw"
+	    AudioFFmpegCodecPCMAlaw  AudioFFmpegCodec = "pcm_alaw"
+	    AudioFFmpegCodecAAC      AudioFFmpegCodec = "aac"
+	    AudioFFmpegCodecLibopus  AudioFFmpegCodec = "libopus"
+	    AudioFFmpegCodecG722     AudioFFmpegCodec = "g722"
+	    AudioFFmpegCodecG726     AudioFFmpegCodec = "g726"
+	    AudioFFmpegCodecMP3      AudioFFmpegCodec = "mp3"
+	    AudioFFmpegCodecPCMS16BE AudioFFmpegCodec = "pcm_s16be"
+	    AudioFFmpegCodecPCMS16LE AudioFFmpegCodec = "pcm_s16le"
+	    AudioFFmpegCodecFLAC     AudioFFmpegCodec = "flac"
+	)
+
+<a name="AudioFormat"></a>
+
 ## type AudioStreamInfo
 
 AudioStreamInfo is audio stream information from a probe.
 
 	type AudioStreamInfo struct {
 	    // Codec is the audio codec.
-	    Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	    Codec AudioCodec `msgpack:"codec" json:"codec"`
 	    // FFmpegCodec is the FFmpeg codec name.
-	    FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
-	    // SampleRate is the audio sample rate in Hz.
-	    SampleRate int `msgpack:"sampleRate,omitempty" json:"sampleRate,omitempty"`
-	    // Channels is the number of audio channels.
-	    Channels int `msgpack:"channels,omitempty" json:"channels,omitempty"`
+	    FFmpegCodec AudioFFmpegCodec `msgpack:"ffmpegCodec" json:"ffmpegCodec"`
 	    // Properties are the codec properties.
-	    Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	    Properties AudioCodecProperties `msgpack:"properties" json:"properties"`
 	    // Direction is the stream direction.
-	    Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	    Direction StreamDirection `msgpack:"direction" json:"direction"`
 	}
 
-<a name="BasePlugin"></a>
+<a name="BaseCamera"></a>
 
-## type Camera
+## type BaseCamera
 
-Camera is the raw camera data structure delivered from the server \(database row \+ resolved sources\).
+BaseCamera is the stored camera data structure \(database row\) without resolved video sources. See Camera for the resolved form.
 
-	type Camera struct {
+	type BaseCamera struct {
 	    // ID is the unique camera ID.
 	    ID  string `msgpack:"_id" json:"_id"`
 	    // Name is the camera display name.
@@ -65,8 +126,6 @@ Camera is the raw camera data structure delivered from the server \(database row
 	    IsCloud bool `msgpack:"isCloud,omitempty" json:"isCloud,omitempty"`
 	    // Info is the camera hardware information.
 	    Info CameraInformation `msgpack:"info,omitempty" json:"info"`
-	    // Sources are the video input sources.
-	    Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
 	    // Assignments are sensor-to-plugin assignments.
 	    Assignments PluginAssignments `msgpack:"assignments,omitempty" json:"assignments"`
 	    // SnapshotSettings are the snapshot settings.
@@ -83,10 +142,39 @@ Camera is the raw camera data structure delivered from the server \(database row
 	    FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
 	    // InterfaceSettings is the UI display settings.
 	    InterfaceSettings CameraUiSettings `msgpack:"interfaceSettings,omitempty" json:"interfaceSettings"`
-	    // Interface is a server-side alias for InterfaceSettings (kept for compatibility).
-	    Interface CameraUiSettings `msgpack:"interface,omitempty" json:"interface"`
 	    // Plugins are the installed plugins for this camera.
 	    Plugins []AssignedPlugin `msgpack:"plugins,omitempty" json:"plugins,omitempty"`
+	}
+
+<a name="BaseCameraConfig"></a>
+
+## type BaseCameraConfig
+
+BaseCameraConfig holds the camera configuration fields shared between creation and update operations.
+
+	type BaseCameraConfig struct {
+	    // Name is the camera display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // NativeID is the native device ID from the source plugin.
+	    NativeID string `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	    // IsCloud indicates whether the camera streams from cloud.
+	    IsCloud bool `msgpack:"isCloud,omitempty" json:"isCloud,omitempty"`
+	    // Disabled disables this camera.
+	    Disabled bool `msgpack:"disabled,omitempty" json:"disabled,omitempty"`
+	    // Info is the camera hardware information.
+	    Info *CameraInformation `msgpack:"info,omitempty" json:"info,omitempty"`
+	}
+
+<a name="BasePlugin"></a>
+
+## type Camera
+
+Camera is BaseCamera with its video sources resolved into streaming URLs.
+
+	type Camera struct {
+	    BaseCamera
+	    // Sources are the video input sources.
+	    Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
 	}
 
 <a name="CameraAspectRatio"></a>
@@ -106,6 +194,43 @@ CameraAspectRatio is the camera aspect ratio for UI display.
 	    CameraAspectRatio4x3  CameraAspectRatio = "4:3"
 	    CameraAspectRatioAuto CameraAspectRatio = "1:1"
 	)
+
+<a name="CameraConfig"></a>
+
+## type CameraConfig
+
+CameraConfig is the full camera configuration with sources, supplied when creating or adopting a camera.
+
+	type CameraConfig struct {
+	    BaseCameraConfig
+	    // Sources are the video input sources.
+	    Sources []CameraConfigInputSettings `msgpack:"sources" json:"sources"`
+	}
+
+<a name="CameraConfigInputSettings"></a>
+
+## type CameraConfigInputSettings
+
+CameraConfigInputSettings is a camera input/source definition supplied when creating or adopting a camera \(e.g. from DiscoveryProvider.OnAdoptCamera\). Unlike CameraInput, the URLs are raw source URLs the host resolves into streaming URLs.
+
+	type CameraConfigInputSettings struct {
+	    // Name is the source display name.
+	    Name string `msgpack:"name" json:"name"`
+	    // Role is the resolution role of this source.
+	    Role CameraRole `msgpack:"role" json:"role"`
+	    // UseForSnapshot indicates whether this source is used for snapshots.
+	    UseForSnapshot bool `msgpack:"useForSnapshot" json:"useForSnapshot"`
+	    // HotMode keeps the connection always active.
+	    HotMode bool `msgpack:"hotMode" json:"hotMode"`
+	    // Preload toggles stream preloading on startup.
+	    Preload bool `msgpack:"preload" json:"preload"`
+	    // Prebuffer enables stream prebuffering.
+	    Prebuffer bool `msgpack:"prebuffer" json:"prebuffer"`
+	    // ChildSourceId is the child source ID (for snapshot fallback).
+	    ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
+	    // Urls are the raw source URLs (resolved into streaming URLs by the host).
+	    Urls []string `msgpack:"urls,omitempty" json:"urls,omitempty"`
+	}
 
 <a name="CameraDetectionSettings"></a>
 
@@ -510,9 +635,11 @@ Preload returns whether the stream is preloaded on startup.
 <a name="CameraDeviceSource.ProbeStream"></a>
 ### func \(\*CameraDeviceSource\) ProbeStream
 
-	func (s *CameraDeviceSource) ProbeStream() (*ProbeStream, error)
+	func (s *CameraDeviceSource) ProbeStream(config *ProbeConfig, refresh bool) (*ProbeStream, error)
 
 ProbeStream probes this source for codec and track information.
+
+config selects which tracks to inspect \(nil probes the defaults\). When refresh is true a fresh probe is performed, ignoring any cached result.
 
 <a name="CameraDeviceSource.Role"></a>
 ### func \(\*CameraDeviceSource\) Role
@@ -799,6 +926,19 @@ DetectionZone is a polygon zone used for detection filtering or privacy masking.
 
 <a name="DeviceManager"></a>
 
+## type FMTPInfo
+
+FMTPInfo holds format parameters \(fmtp\) from SDP.
+
+	type FMTPInfo struct {
+	    // Payload is the RTP payload type number.
+	    Payload int `msgpack:"payload" json:"payload"`
+	    // Config is the codec-specific configuration string.
+	    Config string `msgpack:"config" json:"config"`
+	}
+
+<a name="FaceDetection"></a>
+
 ## type FrameFormat
 
 FrameFormat identifies the pixel layout of a video frame.
@@ -959,6 +1099,38 @@ Point is a zone polygon coordinate as \[x, y\] \(0\-100 percentage\).
 
 	type Point [2]float64
 
+<a name="ProbeAudioCodec"></a>
+
+## type ProbeAudioCodec
+
+ProbeAudioCodec is an audio codec supported for stream probing.
+
+	type ProbeAudioCodec string
+
+<a name="ProbeAudioCodecAAC"></a>
+
+	const (
+	    ProbeAudioCodecAAC  ProbeAudioCodec = "aac"
+	    ProbeAudioCodecOpus ProbeAudioCodec = "opus"
+	    ProbeAudioCodecPCMA ProbeAudioCodec = "pcma"
+	)
+
+<a name="ProbeConfig"></a>
+
+## type ProbeConfig
+
+ProbeConfig selects which tracks a stream probe inspects and returns.
+
+	type ProbeConfig struct {
+	    // Video includes video track info.
+	    Video *bool `msgpack:"video,omitempty" json:"video,omitempty"`
+	    // Audio includes audio track info — a bool, the string "all", or a
+	    // []ProbeAudioCodec listing specific codecs.
+	    Audio any `msgpack:"audio,omitempty" json:"audio,omitempty"`
+	    // Microphone includes microphone/backchannel info.
+	    Microphone *bool `msgpack:"microphone,omitempty" json:"microphone,omitempty"`
+	}
+
 <a name="ProbeStream"></a>
 
 ## type ProbeStream
@@ -966,9 +1138,12 @@ Point is a zone polygon coordinate as \[x, y\] \(0\-100 percentage\).
 ProbeStream is the result of a stream probe — SDP plus track information.
 
 	type ProbeStream struct {
-	    Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
+	    // SDP is the raw SDP string.
+	    SDP string `msgpack:"sdp,omitempty" json:"sdp,omitempty"`
+	    // Audio are the available audio tracks.
 	    Audio []AudioStreamInfo `msgpack:"audio,omitempty" json:"audio,omitempty"`
-	    SDP   string            `msgpack:"sdp,omitempty" json:"sdp,omitempty"`
+	    // Video are the available video tracks.
+	    Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
 	}
 
 <a name="PropertyChangeEvent"></a>
@@ -1008,7 +1183,7 @@ PtzAutotrackSettings configures automatic PTZ tracking of detected objects.
 	    HomeWaitMs int `msgpack:"homeWaitMs" json:"homeWaitMs"`
 	}
 
-<a name="RTSPAudioCodec"></a>
+<a name="PythonVersion"></a>
 
 ## type RTSPAudioCodec
 
@@ -1113,21 +1288,6 @@ StreamDirection is the direction of a media stream \(from SDP\).
 	    StreamDirectionInactive StreamDirection = "inactive"
 	)
 
-<a name="StreamProperties"></a>
-
-## type StreamProperties
-
-StreamProperties contains codec properties from a stream probe.
-
-	type StreamProperties struct {
-	    // ClockRate is the codec clock rate.
-	    ClockRate int `msgpack:"clockRate,omitempty" json:"clockRate,omitempty"`
-	    // PayloadType is the RTP payload type number.
-	    PayloadType int `msgpack:"payloadType,omitempty" json:"payloadType,omitempty"`
-	    // FmtpInfo is the codec-specific fmtp configuration string.
-	    FmtpInfo string `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
-	}
-
 <a name="StreamUrls"></a>
 
 ## type StreamUrls
@@ -1172,6 +1332,61 @@ StreamingRole is the resolution role for live streaming \(excludes snapshot\).
 
 <a name="StringFormat"></a>
 
+## type VideoCodec
+
+VideoCodec is a supported video codec \(RTP/SDP format name\).
+
+	type VideoCodec string
+
+<a name="VideoCodecH264"></a>
+
+	const (
+	    VideoCodecH264 VideoCodec = "H264"
+	    VideoCodecH265 VideoCodec = "H265"
+	    VideoCodecVP8  VideoCodec = "VP8"
+	    VideoCodecVP9  VideoCodec = "VP9"
+	    VideoCodecAV1  VideoCodec = "AV1"
+	    VideoCodecJPEG VideoCodec = "JPEG"
+	    VideoCodecRAW  VideoCodec = "RAW"
+	)
+
+<a name="VideoCodecProperties"></a>
+
+## type VideoCodecProperties
+
+VideoCodecProperties holds video codec properties from a stream probe.
+
+	type VideoCodecProperties struct {
+	    // ClockRate is the video clock rate.
+	    ClockRate int `msgpack:"clockRate" json:"clockRate"`
+	    // PayloadType is the RTP payload type number.
+	    PayloadType int `msgpack:"payloadType" json:"payloadType"`
+	    // FmtpInfo holds optional format parameters.
+	    FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+	}
+
+<a name="VideoFFmpegCodec"></a>
+
+## type VideoFFmpegCodec
+
+VideoFFmpegCodec is an FFmpeg video codec name used for transcoding.
+
+	type VideoFFmpegCodec string
+
+<a name="VideoFFmpegCodecH264"></a>
+
+	const (
+	    VideoFFmpegCodecH264     VideoFFmpegCodec = "h264"
+	    VideoFFmpegCodecHEVC     VideoFFmpegCodec = "hevc"
+	    VideoFFmpegCodecVP8      VideoFFmpegCodec = "vp8"
+	    VideoFFmpegCodecVP9      VideoFFmpegCodec = "vp9"
+	    VideoFFmpegCodecAV1      VideoFFmpegCodec = "av1"
+	    VideoFFmpegCodecMJPEG    VideoFFmpegCodec = "mjpeg"
+	    VideoFFmpegCodecRawvideo VideoFFmpegCodec = "rawvideo"
+	)
+
+<a name="VideoFrameData"></a>
+
 ## type VideoFrameData
 
 VideoFrameData is the video frame payload delivered to detector sensors by the backend pipeline. The backend handles capture, decoding, and scaling — detectors only need to process the pixel buffer.
@@ -1195,21 +1410,13 @@ VideoStreamInfo is video stream information from a probe.
 
 	type VideoStreamInfo struct {
 	    // Codec is the video codec.
-	    Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	    Codec VideoCodec `msgpack:"codec" json:"codec"`
 	    // FFmpegCodec is the FFmpeg codec name.
-	    FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
-	    // Width is the video width in pixels.
-	    Width int `msgpack:"width,omitempty" json:"width,omitempty"`
-	    // Height is the video height in pixels.
-	    Height int `msgpack:"height,omitempty" json:"height,omitempty"`
-	    // FPS is the framerate.
-	    FPS int `msgpack:"fps,omitempty" json:"fps,omitempty"`
-	    // Bitrate is the video bitrate.
-	    Bitrate int `msgpack:"bitrate,omitempty" json:"bitrate,omitempty"`
+	    FFmpegCodec VideoFFmpegCodec `msgpack:"ffmpegCodec" json:"ffmpegCodec"`
 	    // Properties are the codec properties.
-	    Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	    Properties VideoCodecProperties `msgpack:"properties" json:"properties"`
 	    // Direction is the stream direction.
-	    Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	    Direction StreamDirection `msgpack:"direction" json:"direction"`
 	}
 
 <a name="VideoStreamingMode"></a>

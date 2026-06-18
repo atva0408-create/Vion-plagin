@@ -104,6 +104,75 @@ const (
 	RTSPAudioCodecPCMA RTSPAudioCodec = "pcma"
 )
 
+// ProbeAudioCodec is an audio codec supported for stream probing.
+type ProbeAudioCodec string
+
+const (
+	ProbeAudioCodecAAC  ProbeAudioCodec = "aac"
+	ProbeAudioCodecOpus ProbeAudioCodec = "opus"
+	ProbeAudioCodecPCMA ProbeAudioCodec = "pcma"
+)
+
+// AudioCodec is a supported audio codec (RTP/SDP format name).
+type AudioCodec string
+
+const (
+	AudioCodecPCMU         AudioCodec = "PCMU"
+	AudioCodecPCMA         AudioCodec = "PCMA"
+	AudioCodecMPEG4Generic AudioCodec = "MPEG4-GENERIC"
+	AudioCodecOpus         AudioCodec = "opus"
+	AudioCodecG722         AudioCodec = "G722"
+	AudioCodecG726         AudioCodec = "G726"
+	AudioCodecMPA          AudioCodec = "MPA"
+	AudioCodecPCM          AudioCodec = "PCM"
+	AudioCodecFLAC         AudioCodec = "FLAC"
+	AudioCodecELD          AudioCodec = "ELD"
+	AudioCodecPCML         AudioCodec = "PCML"
+	AudioCodecL16          AudioCodec = "L16"
+)
+
+// AudioFFmpegCodec is an FFmpeg audio codec name used for transcoding.
+type AudioFFmpegCodec string
+
+const (
+	AudioFFmpegCodecPCMMulaw AudioFFmpegCodec = "pcm_mulaw"
+	AudioFFmpegCodecPCMAlaw  AudioFFmpegCodec = "pcm_alaw"
+	AudioFFmpegCodecAAC      AudioFFmpegCodec = "aac"
+	AudioFFmpegCodecLibopus  AudioFFmpegCodec = "libopus"
+	AudioFFmpegCodecG722     AudioFFmpegCodec = "g722"
+	AudioFFmpegCodecG726     AudioFFmpegCodec = "g726"
+	AudioFFmpegCodecMP3      AudioFFmpegCodec = "mp3"
+	AudioFFmpegCodecPCMS16BE AudioFFmpegCodec = "pcm_s16be"
+	AudioFFmpegCodecPCMS16LE AudioFFmpegCodec = "pcm_s16le"
+	AudioFFmpegCodecFLAC     AudioFFmpegCodec = "flac"
+)
+
+// VideoCodec is a supported video codec (RTP/SDP format name).
+type VideoCodec string
+
+const (
+	VideoCodecH264 VideoCodec = "H264"
+	VideoCodecH265 VideoCodec = "H265"
+	VideoCodecVP8  VideoCodec = "VP8"
+	VideoCodecVP9  VideoCodec = "VP9"
+	VideoCodecAV1  VideoCodec = "AV1"
+	VideoCodecJPEG VideoCodec = "JPEG"
+	VideoCodecRAW  VideoCodec = "RAW"
+)
+
+// VideoFFmpegCodec is an FFmpeg video codec name used for transcoding.
+type VideoFFmpegCodec string
+
+const (
+	VideoFFmpegCodecH264     VideoFFmpegCodec = "h264"
+	VideoFFmpegCodecHEVC     VideoFFmpegCodec = "hevc"
+	VideoFFmpegCodecVP8      VideoFFmpegCodec = "vp8"
+	VideoFFmpegCodecVP9      VideoFFmpegCodec = "vp9"
+	VideoFFmpegCodecAV1      VideoFFmpegCodec = "av1"
+	VideoFFmpegCodecMJPEG    VideoFFmpegCodec = "mjpeg"
+	VideoFFmpegCodecRawvideo VideoFFmpegCodec = "rawvideo"
+)
+
 // Point is a zone polygon coordinate as [x, y] (0-100 percentage).
 type Point [2]float64
 

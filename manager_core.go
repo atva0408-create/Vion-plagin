@@ -138,8 +138,8 @@ func (cm *CoreManager) GetServerAddresses() ([]string, error) {
 	}
 }
 
-// GetPlugin returns info about a plugin by name, or nil if not found.
-func (cm *CoreManager) GetPlugin(pluginName string) (*PluginInfo, error) {
+// getPlugin returns info about a plugin by name, or nil if not found.
+func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 	ctx := context.Background()
 	result, err := cm.proxy.Invoke(ctx, "getPlugin", pluginName)
 	if err != nil {
@@ -203,7 +203,7 @@ func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]P
 // ConnectToPlugin connects to a plugin by name and returns a proxy for RPC calls.
 // Returns nil if the plugin is not found. Connections are cached.
 func (cm *CoreManager) ConnectToPlugin(pluginName string) (*pluginProxy, error) {
-	plugin, err := cm.GetPlugin(pluginName)
+	plugin, err := cm.getPlugin(pluginName)
 	if err != nil {
 		return nil, err
 	}

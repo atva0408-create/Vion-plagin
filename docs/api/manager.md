@@ -36,13 +36,6 @@ ConnectToPlugin connects to a plugin by name and returns a proxy for RPC calls. 
 
 GetFFmpegPath returns the path to the FFmpeg binary.
 
-<a name="CoreManager.GetPlugin"></a>
-### func \(\*CoreManager\) GetPlugin
-
-	func (cm *CoreManager) GetPlugin(pluginName string) (*PluginInfo, error)
-
-GetPlugin returns info about a plugin by name, or nil if not found.
-
 <a name="CoreManager.GetPluginsByInterface"></a>
 ### func \(\*CoreManager\) GetPluginsByInterface
 

@@ -96,6 +96,16 @@ const (
 	CapabilityPublishNotifications PluginCapability = "publishNotifications"
 )
 
+// PythonVersion is the Python interpreter major.minor version a Python plugin
+// requires. The host ensures a matching interpreter exists in its venv pool
+// before launching the plugin; Node and Go plugins ignore this field.
+type PythonVersion = string
+
+const (
+	PythonVersion311 PythonVersion = "3.11"
+	PythonVersion312 PythonVersion = "3.12"
+)
+
 // PluginContract is the manifest contract a plugin declares so the host
 // knows what it does and what it needs at load time. Validated by
 // ValidateContract (plugin_helper.go) before the plugin is started.
@@ -118,6 +128,9 @@ type PluginContract struct {
 	// features (see PluginCapability). The host enforces these — calls
 	// without a matching capability are rejected.
 	Capabilities []PluginCapability `msgpack:"capabilities,omitempty" json:"capabilities,omitempty"`
+	// PythonVersion is the required Python interpreter version for Python
+	// plugins. Ignored by Node / Go plugins.
+	PythonVersion PythonVersion `msgpack:"pythonVersion,omitempty" json:"pythonVersion,omitempty"`
 	// Dependencies are extra package dependencies installed into the
 	// plugin's runtime (Go module paths for Go plugins; PyPI / npm names
 	// for Python and Node plugins).

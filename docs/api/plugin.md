@@ -139,10 +139,6 @@ APIEvent identifies a lifecycle event emitted on the PluginAPI eventEmitter. Plu
 	    // resources synchronously enough to finish before the host kills the
 	    // process — open files, sockets, timers, child processes.
 	    APIEventShutdown APIEvent = "shutdown"
-	    // APIEventCloudAccountChanged is emitted when the user-level cloud
-	    // account is connected or disconnected. Plugins that depend on cloud
-	    // credentials use this to (re)authenticate or pause work.
-	    APIEventCloudAccountChanged APIEvent = "cloudAccountChanged"
 	)
 
 <a name="AssignedPlugin"></a>
@@ -158,7 +154,7 @@ AssignedPlugin is plugin assignment info \(id \+ display name\).
 	    Name string `msgpack:"name" json:"name"`
 	}
 
-<a name="AudioDetectionInterface"></a>
+<a name="AudioCodec"></a>
 
 ## type AudioDetectionInterface
 
@@ -905,6 +901,9 @@ PluginContract is the manifest contract a plugin declares so the host knows what
 	    // features (see PluginCapability). The host enforces these — calls
 	    // without a matching capability are rejected.
 	    Capabilities []PluginCapability `msgpack:"capabilities,omitempty" json:"capabilities,omitempty"`
+	    // PythonVersion is the required Python interpreter version for Python
+	    // plugins. Ignored by Node / Go plugins.
+	    PythonVersion PythonVersion `msgpack:"pythonVersion,omitempty" json:"pythonVersion,omitempty"`
 	    // Dependencies are extra package dependencies installed into the
 	    // plugin's runtime (Go module paths for Go plugins; PyPI / npm names
 	    // for Python and Node plugins).
@@ -1074,6 +1073,21 @@ PluginStorage carries the storage paths the host hands to the plugin during the 
 	}
 
 <a name="Point"></a>
+
+## type PythonVersion
+
+PythonVersion is the Python interpreter major.minor version a Python plugin requires. The host ensures a matching interpreter exists in its venv pool before launching the plugin; Node and Go plugins ignore this field.
+
+	type PythonVersion = string
+
+<a name="PythonVersion311"></a>
+
+	const (
+	    PythonVersion311 PythonVersion = "3.11"
+	    PythonVersion312 PythonVersion = "3.12"
+	)
+
+<a name="RTSPAudioCodec"></a>
 
 ## type Severity
 

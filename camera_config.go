@@ -83,8 +83,9 @@ type PluginAssignments struct {
 	Hub []AssignedPlugin `msgpack:"hub,omitempty" json:"hub,omitempty"`
 }
 
-// Camera is the raw camera data structure delivered from the server (database row + resolved sources).
-type Camera struct {
+// BaseCamera is the stored camera data structure (database row) without
+// resolved video sources. See Camera for the resolved form.
+type BaseCamera struct {
 	// ID is the unique camera ID.
 	ID string `msgpack:"_id" json:"_id"`
 	// Name is the camera display name.
@@ -103,8 +104,6 @@ type Camera struct {
 	IsCloud bool `msgpack:"isCloud,omitempty" json:"isCloud,omitempty"`
 	// Info is the camera hardware information.
 	Info CameraInformation `msgpack:"info,omitempty" json:"info"`
-	// Sources are the video input sources.
-	Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
 	// Assignments are sensor-to-plugin assignments.
 	Assignments PluginAssignments `msgpack:"assignments,omitempty" json:"assignments"`
 	// SnapshotSettings are the snapshot settings.
@@ -121,10 +120,15 @@ type Camera struct {
 	FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
 	// InterfaceSettings is the UI display settings.
 	InterfaceSettings CameraUiSettings `msgpack:"interfaceSettings,omitempty" json:"interfaceSettings"`
-	// Interface is a server-side alias for InterfaceSettings (kept for compatibility).
-	Interface CameraUiSettings `msgpack:"interface,omitempty" json:"interface"`
 	// Plugins are the installed plugins for this camera.
 	Plugins []AssignedPlugin `msgpack:"plugins,omitempty" json:"plugins,omitempty"`
+}
+
+// Camera is BaseCamera with its video sources resolved into streaming URLs.
+type Camera struct {
+	BaseCamera
+	// Sources are the video input sources.
+	Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
 }
 
 // CameraPluginInfo identifies the plugin that provides a camera (id + display name).
@@ -143,4 +147,50 @@ type CameraUiSettings struct {
 	StreamingSource string `msgpack:"streamingSource" json:"streamingSource"`
 	// AspectRatio is the display aspect ratio.
 	AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
+}
+
+// CameraConfigInputSettings is a camera input/source definition supplied when
+// creating or adopting a camera (e.g. from DiscoveryProvider.OnAdoptCamera).
+// Unlike CameraInput, the URLs are raw source URLs the host resolves into
+// streaming URLs.
+type CameraConfigInputSettings struct {
+	// Name is the source display name.
+	Name string `msgpack:"name" json:"name"`
+	// Role is the resolution role of this source.
+	Role CameraRole `msgpack:"role" json:"role"`
+	// UseForSnapshot indicates whether this source is used for snapshots.
+	UseForSnapshot bool `msgpack:"useForSnapshot" json:"useForSnapshot"`
+	// HotMode keeps the connection always active.
+	HotMode bool `msgpack:"hotMode" json:"hotMode"`
+	// Preload toggles stream preloading on startup.
+	Preload bool `msgpack:"preload" json:"preload"`
+	// Prebuffer enables stream prebuffering.
+	Prebuffer bool `msgpack:"prebuffer" json:"prebuffer"`
+	// ChildSourceId is the child source ID (for snapshot fallback).
+	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
+	// Urls are the raw source URLs (resolved into streaming URLs by the host).
+	Urls []string `msgpack:"urls,omitempty" json:"urls,omitempty"`
+}
+
+// BaseCameraConfig holds the camera configuration fields shared between
+// creation and update operations.
+type BaseCameraConfig struct {
+	// Name is the camera display name.
+	Name string `msgpack:"name" json:"name"`
+	// NativeID is the native device ID from the source plugin.
+	NativeID string `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	// IsCloud indicates whether the camera streams from cloud.
+	IsCloud bool `msgpack:"isCloud,omitempty" json:"isCloud,omitempty"`
+	// Disabled disables this camera.
+	Disabled bool `msgpack:"disabled,omitempty" json:"disabled,omitempty"`
+	// Info is the camera hardware information.
+	Info *CameraInformation `msgpack:"info,omitempty" json:"info,omitempty"`
+}
+
+// CameraConfig is the full camera configuration with sources, supplied when
+// creating or adopting a camera.
+type CameraConfig struct {
+	BaseCameraConfig
+	// Sources are the video input sources.
+	Sources []CameraConfigInputSettings `msgpack:"sources" json:"sources"`
 }

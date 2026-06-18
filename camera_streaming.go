@@ -88,55 +88,77 @@ type SnapshotUrlOptions struct {
 	Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
 }
 
-// StreamProperties contains codec properties from a stream probe.
-type StreamProperties struct {
-	// ClockRate is the codec clock rate.
-	ClockRate int `msgpack:"clockRate,omitempty" json:"clockRate,omitempty"`
+// ProbeConfig selects which tracks a stream probe inspects and returns.
+type ProbeConfig struct {
+	// Video includes video track info.
+	Video *bool `msgpack:"video,omitempty" json:"video,omitempty"`
+	// Audio includes audio track info — a bool, the string "all", or a
+	// []ProbeAudioCodec listing specific codecs.
+	Audio any `msgpack:"audio,omitempty" json:"audio,omitempty"`
+	// Microphone includes microphone/backchannel info.
+	Microphone *bool `msgpack:"microphone,omitempty" json:"microphone,omitempty"`
+}
+
+// FMTPInfo holds format parameters (fmtp) from SDP.
+type FMTPInfo struct {
+	// Payload is the RTP payload type number.
+	Payload int `msgpack:"payload" json:"payload"`
+	// Config is the codec-specific configuration string.
+	Config string `msgpack:"config" json:"config"`
+}
+
+// AudioCodecProperties holds audio codec properties from a stream probe.
+type AudioCodecProperties struct {
+	// SampleRate is the audio sample rate in Hz.
+	SampleRate int `msgpack:"sampleRate" json:"sampleRate"`
+	// Channels is the number of audio channels.
+	Channels int `msgpack:"channels" json:"channels"`
 	// PayloadType is the RTP payload type number.
-	PayloadType int `msgpack:"payloadType,omitempty" json:"payloadType,omitempty"`
-	// FmtpInfo is the codec-specific fmtp configuration string.
-	FmtpInfo string `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+	PayloadType int `msgpack:"payloadType" json:"payloadType"`
+	// FmtpInfo holds optional format parameters.
+	FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+}
+
+// VideoCodecProperties holds video codec properties from a stream probe.
+type VideoCodecProperties struct {
+	// ClockRate is the video clock rate.
+	ClockRate int `msgpack:"clockRate" json:"clockRate"`
+	// PayloadType is the RTP payload type number.
+	PayloadType int `msgpack:"payloadType" json:"payloadType"`
+	// FmtpInfo holds optional format parameters.
+	FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
 }
 
 // ProbeStream is the result of a stream probe — SDP plus track information.
 type ProbeStream struct {
-	Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
+	// SDP is the raw SDP string.
+	SDP string `msgpack:"sdp,omitempty" json:"sdp,omitempty"`
+	// Audio are the available audio tracks.
 	Audio []AudioStreamInfo `msgpack:"audio,omitempty" json:"audio,omitempty"`
-	SDP   string            `msgpack:"sdp,omitempty" json:"sdp,omitempty"`
+	// Video are the available video tracks.
+	Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
 }
 
 // VideoStreamInfo is video stream information from a probe.
 type VideoStreamInfo struct {
 	// Codec is the video codec.
-	Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	Codec VideoCodec `msgpack:"codec" json:"codec"`
 	// FFmpegCodec is the FFmpeg codec name.
-	FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
-	// Width is the video width in pixels.
-	Width int `msgpack:"width,omitempty" json:"width,omitempty"`
-	// Height is the video height in pixels.
-	Height int `msgpack:"height,omitempty" json:"height,omitempty"`
-	// FPS is the framerate.
-	FPS int `msgpack:"fps,omitempty" json:"fps,omitempty"`
-	// Bitrate is the video bitrate.
-	Bitrate int `msgpack:"bitrate,omitempty" json:"bitrate,omitempty"`
+	FFmpegCodec VideoFFmpegCodec `msgpack:"ffmpegCodec" json:"ffmpegCodec"`
 	// Properties are the codec properties.
-	Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	Properties VideoCodecProperties `msgpack:"properties" json:"properties"`
 	// Direction is the stream direction.
-	Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	Direction StreamDirection `msgpack:"direction" json:"direction"`
 }
 
 // AudioStreamInfo is audio stream information from a probe.
 type AudioStreamInfo struct {
 	// Codec is the audio codec.
-	Codec string `msgpack:"codec,omitempty" json:"codec,omitempty"`
+	Codec AudioCodec `msgpack:"codec" json:"codec"`
 	// FFmpegCodec is the FFmpeg codec name.
-	FFmpegCodec string `msgpack:"ffmpegCodec,omitempty" json:"ffmpegCodec,omitempty"`
-	// SampleRate is the audio sample rate in Hz.
-	SampleRate int `msgpack:"sampleRate,omitempty" json:"sampleRate,omitempty"`
-	// Channels is the number of audio channels.
-	Channels int `msgpack:"channels,omitempty" json:"channels,omitempty"`
+	FFmpegCodec AudioFFmpegCodec `msgpack:"ffmpegCodec" json:"ffmpegCodec"`
 	// Properties are the codec properties.
-	Properties StreamProperties `msgpack:"properties,omitempty" json:"properties"`
+	Properties AudioCodecProperties `msgpack:"properties" json:"properties"`
 	// Direction is the stream direction.
-	Direction StreamDirection `msgpack:"direction,omitempty" json:"direction,omitempty"`
+	Direction StreamDirection `msgpack:"direction" json:"direction"`
 }

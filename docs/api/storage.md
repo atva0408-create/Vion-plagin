@@ -58,6 +58,15 @@ Example:
 
 AddSchema adds a new schema field.
 
+<a name="DeviceStorage.ChangeSchema"></a>
+### func \(\*DeviceStorage\) ChangeSchema
+
+	func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema)
+
+ChangeSchema replaces the schema for an existing key. The passed key always wins \(newSchema.Key is overwritten with key\). It is a no\-op when no schema with that key is currently registered — use AddSchema to add a new field. Persists when the changed schema is storable.
+
+Unlike the Node/Python SDKs \(which merge a partial schema into the existing one\), the Go SDK takes a full JsonSchema and replaces the entry.
+
 <a name="DeviceStorage.DefineSchemas"></a>
 ### func \(\*DeviceStorage\) DefineSchemas
 
@@ -153,6 +162,10 @@ Used to react to a user\-triggered submit \(e.g. "Test connection", "Pair device
 	type FormSubmitResponse struct {
 	    // Toast is an optional banner to display after the submit completes.
 	    Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
+	    // Schema optionally replaces the rendered form fields — used to advance a
+	    // multi-step form or re-render with different fields. The UI applies the
+	    // replacement; callbacks are stripped during serialization.
+	    Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
 	}
 
 <a name="FrameFormat"></a>

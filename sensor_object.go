@@ -94,6 +94,18 @@ func (s *ObjectSensor) IsDetected() bool {
 	return v
 }
 
+// GetDetections returns the current object detections.
+func (s *ObjectSensor) GetDetections() []TrackedDetection {
+	v, _ := s.GetValue(objectPropertyDetections).([]TrackedDetection)
+	return v
+}
+
+// GetLabels returns the unique labels of the current detections.
+func (s *ObjectSensor) GetLabels() []string {
+	v, _ := s.GetValue(objectPropertyLabels).([]string)
+	return v
+}
+
 // ReportDetections reports detected objects. The `detected` flag and `labels`
 // are auto-derived from the detection list.
 //

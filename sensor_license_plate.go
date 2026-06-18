@@ -65,6 +65,12 @@ func (s *LicensePlateSensor) IsDetected() bool {
 	return v
 }
 
+// GetDetections returns the current license plate detections.
+func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
+	v, _ := s.GetValue(licensePlatePropertyDetections).([]LicensePlateDetection)
+	return v
+}
+
 // ReportDetections reports detected license plates.
 //
 //   - ReportDetections(true, nil) — plate detected without specifics; the SDK

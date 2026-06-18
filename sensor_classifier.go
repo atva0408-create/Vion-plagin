@@ -82,6 +82,18 @@ func (s *ClassifierSensor) IsDetected() bool {
 	return v
 }
 
+// GetDetections returns the current classification results.
+func (s *ClassifierSensor) GetDetections() []ClassifierDetection {
+	v, _ := s.GetValue(classifierPropertyDetections).([]ClassifierDetection)
+	return v
+}
+
+// GetLabels returns the unique labels of the current detections.
+func (s *ClassifierSensor) GetLabels() []string {
+	v, _ := s.GetValue(classifierPropertyLabels).([]string)
+	return v
+}
+
 // ReportDetections reports classification results. The `detected` flag and
 // `labels` are auto-derived from the detection list.
 //

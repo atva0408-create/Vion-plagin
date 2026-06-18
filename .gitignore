@@ -20,3 +20,4 @@
 # Python venv (used for mkdocs)
 .venv*/
 __pycache__/
+/tests

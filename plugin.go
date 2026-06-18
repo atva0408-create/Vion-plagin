@@ -60,10 +60,6 @@ const (
 	// resources synchronously enough to finish before the host kills the
 	// process — open files, sockets, timers, child processes.
 	APIEventShutdown APIEvent = "shutdown"
-	// APIEventCloudAccountChanged is emitted when the user-level cloud
-	// account is connected or disconnected. Plugins that depend on cloud
-	// credentials use this to (re)authenticate or pause work.
-	APIEventCloudAccountChanged APIEvent = "cloudAccountChanged"
 )
 
 // PluginStorage carries the storage paths the host hands to the plugin

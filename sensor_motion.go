@@ -63,6 +63,12 @@ func (s *MotionSensor) IsBlocked() bool {
 	return v
 }
 
+// GetDetections returns the current motion detections.
+func (s *MotionSensor) GetDetections() []Detection {
+	v, _ := s.GetValue(motionPropertyDetections).([]Detection)
+	return v
+}
+
 // ReportDetections reports a motion detection result.
 //
 //   - ReportDetections(true, nil) — motion detected without bounding box.

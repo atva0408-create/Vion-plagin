@@ -90,6 +90,18 @@ func (s *AudioSensor) IsDetected() bool {
 	return v
 }
 
+// GetDetections returns the current audio detections.
+func (s *AudioSensor) GetDetections() []Detection {
+	v, _ := s.GetValue(audioPropertyDetections).([]Detection)
+	return v
+}
+
+// GetDecibels returns the current audio level in decibels.
+func (s *AudioSensor) GetDecibels() float64 {
+	v, _ := s.GetValue(audioPropertyDecibels).(float64)
+	return v
+}
+
 // ReportDetections reports detected audio events.
 //
 //   - ReportDetections(true, nil) — audio detected without specifics. The SDK

@@ -33,7 +33,7 @@ AudioDetectorSensor is an audio sensor that consumes audio frames from the backe
 
 NewAudioDetectorSensor creates a new AudioDetectorSensor with the given name.
 
-<a name="AudioFormat"></a>
+<a name="AudioFFmpegCodec"></a>
 
 ## type AudioFormat
 
@@ -126,6 +126,20 @@ ClearDetections explicitly clears audio detection state \(detected = false, dete
 	func (s *AudioSensor) GetCategory() SensorCategory
 
 GetCategory returns SensorCategorySensor.
+
+<a name="AudioSensor.GetDecibels"></a>
+### func \(\*AudioSensor\) GetDecibels
+
+	func (s *AudioSensor) GetDecibels() float64
+
+GetDecibels returns the current audio level in decibels.
+
+<a name="AudioSensor.GetDetections"></a>
+### func \(\*AudioSensor\) GetDetections
+
+	func (s *AudioSensor) GetDetections() []Detection
+
+GetDetections returns the current audio detections.
 
 <a name="AudioSensor.GetType"></a>
 ### func \(\*AudioSensor\) GetType
@@ -542,6 +556,20 @@ ClearDetections explicitly clears classifier state \(detected = false, detection
 
 GetCategory returns SensorCategorySensor.
 
+<a name="ClassifierSensor.GetDetections"></a>
+### func \(\*ClassifierSensor\) GetDetections
+
+	func (s *ClassifierSensor) GetDetections() []ClassifierDetection
+
+GetDetections returns the current classification results.
+
+<a name="ClassifierSensor.GetLabels"></a>
+### func \(\*ClassifierSensor\) GetLabels
+
+	func (s *ClassifierSensor) GetLabels() []string
+
+GetLabels returns the unique labels of the current detections.
+
 <a name="ClassifierSensor.GetType"></a>
 ### func \(\*ClassifierSensor\) GetType
 
@@ -913,6 +941,13 @@ ClearDetections explicitly clears face detection state \(detected = false, detec
 	func (s *FaceSensor) GetCategory() SensorCategory
 
 GetCategory returns SensorCategorySensor.
+
+<a name="FaceSensor.GetDetections"></a>
+### func \(\*FaceSensor\) GetDetections
+
+	func (s *FaceSensor) GetDetections() []FaceDetection
+
+GetDetections returns the current face detections.
 
 <a name="FaceSensor.GetType"></a>
 ### func \(\*FaceSensor\) GetType
@@ -1286,6 +1321,13 @@ ClearDetections explicitly clears license plate state \(detected = false, detect
 
 GetCategory returns SensorCategorySensor.
 
+<a name="LicensePlateSensor.GetDetections"></a>
+### func \(\*LicensePlateSensor\) GetDetections
+
+	func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection
+
+GetDetections returns the current license plate detections.
+
 <a name="LicensePlateSensor.GetType"></a>
 ### func \(\*LicensePlateSensor\) GetType
 
@@ -1613,6 +1655,13 @@ ClearDetections explicitly clears motion state \(detected = false, detections = 
 
 GetCategory returns SensorCategorySensor.
 
+<a name="MotionSensor.GetDetections"></a>
+### func \(\*MotionSensor\) GetDetections
+
+	func (s *MotionSensor) GetDetections() []Detection
+
+GetDetections returns the current motion detections.
+
 <a name="MotionSensor.GetType"></a>
 ### func \(\*MotionSensor\) GetType
 
@@ -1752,6 +1801,20 @@ ClearDetections explicitly clears detection state \(detected = false, detections
 	func (s *ObjectSensor) GetCategory() SensorCategory
 
 GetCategory returns SensorCategorySensor.
+
+<a name="ObjectSensor.GetDetections"></a>
+### func \(\*ObjectSensor\) GetDetections
+
+	func (s *ObjectSensor) GetDetections() []TrackedDetection
+
+GetDetections returns the current object detections.
+
+<a name="ObjectSensor.GetLabels"></a>
+### func \(\*ObjectSensor\) GetLabels
+
+	func (s *ObjectSensor) GetLabels() []string
+
+GetLabels returns the unique labels of the current detections.
 
 <a name="ObjectSensor.GetType"></a>
 ### func \(\*ObjectSensor\) GetType
@@ -2527,4 +2590,4 @@ TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity
 	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
 	}
 
-<a name="VideoFrameData"></a>
+<a name="VideoCodec"></a>

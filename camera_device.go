@@ -790,31 +790,15 @@ func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[Proper
 
 	mapped := MergeMap(paired, func(pair [2]Camera, _ int) []PropertyChangeEvent {
 		oldCam, newCam := pair[0], pair[1]
-		oldV := reflect.ValueOf(oldCam)
-		newV := reflect.ValueOf(newCam)
-		t := oldV.Type()
 
-		var events []PropertyChangeEvent
-		for i := range t.NumField() {
-			sf := t.Field(i)
-			if sf.Name == "ID" {
-				continue
-			}
-			jsonTag := sf.Tag.Get("json")
-			if jsonTag == "" || jsonTag == "-" {
-				continue
-			}
-			// Strip ",omitempty" suffix
-			if comma := indexOf(jsonTag, ','); comma >= 0 {
-				jsonTag = jsonTag[:comma]
-			}
-			if !reflect.DeepEqual(oldV.Field(i).Interface(), newV.Field(i).Interface()) {
-				events = append(events, PropertyChangeEvent{
-					Property:  jsonTag,
-					OldCamera: oldCam,
-					NewCamera: newCam,
-				})
-			}
+		changed := changedCameraProps(reflect.ValueOf(oldCam), reflect.ValueOf(newCam))
+		events := make([]PropertyChangeEvent, 0, len(changed))
+		for _, prop := range changed {
+			events = append(events, PropertyChangeEvent{
+				Property:  prop,
+				OldCamera: oldCam,
+				NewCamera: newCam,
+			})
 		}
 		return events
 	})
@@ -828,6 +812,35 @@ func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[Proper
 	})
 
 	return Share(filtered, nil)
+}
+
+// changedCameraProps returns the json names of the camera fields that differ
+// between old and new, recursing into anonymous embedded structs (BaseCamera).
+func changedCameraProps(oldV, newV reflect.Value) []string {
+	var props []string
+	t := oldV.Type()
+	for i := range t.NumField() {
+		sf := t.Field(i)
+		if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
+			props = append(props, changedCameraProps(oldV.Field(i), newV.Field(i))...)
+			continue
+		}
+		if sf.Name == "ID" {
+			continue
+		}
+		jsonTag := sf.Tag.Get("json")
+		if jsonTag == "" || jsonTag == "-" {
+			continue
+		}
+		// Strip ",omitempty" suffix
+		if comma := indexOf(jsonTag, ','); comma >= 0 {
+			jsonTag = jsonTag[:comma]
+		}
+		if !reflect.DeepEqual(oldV.Field(i).Interface(), newV.Field(i).Interface()) {
+			props = append(props, jsonTag)
+		}
+	}
+	return props
 }
 
 // indexOf returns the index of the first occurrence of c in s, or -1.
@@ -1230,9 +1243,12 @@ func (s *CameraDeviceSource) Snapshot(forceNew bool) ([]byte, error) {
 }
 
 // ProbeStream probes this source for codec and track information.
-func (s *CameraDeviceSource) ProbeStream() (*ProbeStream, error) {
+//
+// config selects which tracks to inspect (nil probes the defaults). When
+// refresh is true a fresh probe is performed, ignoring any cached result.
+func (s *CameraDeviceSource) ProbeStream(config *ProbeConfig, refresh bool) (*ProbeStream, error) {
 	ctx := context.Background()
-	result, err := s.device.controllerProxy.Invoke(ctx, "probeStream", s.input.ID)
+	result, err := s.device.controllerProxy.Invoke(ctx, "probeStream", s.input.ID, config, refresh)
 	if err != nil {
 		return nil, fmt.Errorf("probeStream: %w", err)
 	}

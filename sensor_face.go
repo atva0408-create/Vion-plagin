@@ -64,6 +64,12 @@ func (s *FaceSensor) IsDetected() bool {
 	return v
 }
 
+// GetDetections returns the current face detections.
+func (s *FaceSensor) GetDetections() []FaceDetection {
+	v, _ := s.GetValue(facePropertyDetections).([]FaceDetection)
+	return v
+}
+
 // ReportDetections reports detected faces.
 //
 //   - ReportDetections(true, nil) — face detected without specifics; the SDK

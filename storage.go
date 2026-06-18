@@ -180,6 +180,13 @@ func (ds *DeviceStorage) SubmitValue(key string, value any) map[string]any {
 			"message": resp.Toast.Message,
 		}
 	}
+	if resp.Schema != nil {
+		schemas := make([]map[string]any, 0, len(resp.Schema))
+		for i := range resp.Schema {
+			schemas = append(schemas, resp.Schema[i].ToMap())
+		}
+		result["schema"] = schemas
+	}
 	return result
 }
 
@@ -292,6 +299,30 @@ func (ds *DeviceStorage) AddSchema(schema *JsonSchema) {
 		ds.Values[schema.Key] = schema.DefaultValue
 	}
 	ds.save()
+}
+
+// ChangeSchema replaces the schema for an existing key. The passed key always
+// wins (newSchema.Key is overwritten with key). It is a no-op when no schema
+// with that key is currently registered — use AddSchema to add a new field.
+// Persists when the changed schema is storable.
+//
+// Unlike the Node/Python SDKs (which merge a partial schema into the existing
+// one), the Go SDK takes a full JsonSchema and replaces the entry.
+func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	newSchema.Key = key
+	for i := range ds.Schemas {
+		if ds.Schemas[i].Key == key {
+			ds.Schemas[i] = *newSchema
+			if newSchema.Store != nil && *newSchema.Store &&
+				newSchema.Type != JsonSchemaTypeButton && newSchema.Type != JsonSchemaTypeSubmit {
+				ds.save()
+			}
+			return
+		}
+	}
 }
 
 // RemoveSchema removes a schema field by key.

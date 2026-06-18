@@ -204,6 +204,10 @@ type ToastMessage struct {
 type FormSubmitResponse struct {
 	// Toast is an optional banner to display after the submit completes.
 	Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
+	// Schema optionally replaces the rendered form fields — used to advance a
+	// multi-step form or re-render with different fields. The UI applies the
+	// replacement; callbacks are stripped during serialization.
+	Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
 }
 
 // ToMap converts a JsonSchema to a map for RPC serialization.
