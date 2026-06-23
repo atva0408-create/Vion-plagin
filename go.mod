@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/cameraui/rpc/go v1.0.2
-	go.etcd.io/bbolt v1.4.3
+	go.etcd.io/bbolt v1.5.0
 )
 
 require (
