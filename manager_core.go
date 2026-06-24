@@ -138,6 +138,26 @@ func (cm *CoreManager) GetServerAddresses() ([]string, error) {
 	}
 }
 
+// GetCloudServerID returns the cloud server identity this server is registered as.
+//
+// Returns the cloud server_id from the active cloud pairing, or an empty
+// string when the server is not connected to the cloud.
+func (cm *CoreManager) GetCloudServerID() (string, error) {
+	ctx := context.Background()
+	result, err := cm.proxy.Invoke(ctx, "getCloudServerId")
+	if err != nil {
+		return "", fmt.Errorf("getCloudServerId: %w", err)
+	}
+	if result == nil {
+		return "", nil
+	}
+	id, ok := result.(string)
+	if !ok {
+		return "", fmt.Errorf("getCloudServerId: unexpected result type %T", result)
+	}
+	return id, nil
+}
+
 // getPlugin returns info about a plugin by name, or nil if not found.
 func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 	ctx := context.Background()
