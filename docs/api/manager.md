@@ -29,6 +29,15 @@ Close unsubscribes from core events and completes the event subject.
 
 ConnectToPlugin connects to a plugin by name and returns a proxy for RPC calls. Returns nil if the plugin is not found. Connections are cached.
 
+<a name="CoreManager.GetCloudServerID"></a>
+### func \(\*CoreManager\) GetCloudServerID
+
+	func (cm *CoreManager) GetCloudServerID() (string, error)
+
+GetCloudServerID returns the cloud server identity this server is registered as.
+
+Returns the cloud server\_id from the active cloud pairing, or an empty string when the server is not connected to the cloud.
+
 <a name="CoreManager.GetFFmpegPath"></a>
 ### func \(\*CoreManager\) GetFFmpegPath
 

@@ -6,10 +6,12 @@ package sdk
 type PluginRole string
 
 const (
-	// PluginRoleHub is a cloud-service integration that manages its own
-	// cameras end-to-end via a vendor account. The hub owns camera creation,
-	// streaming and sensors; it cannot expose sensors for cameras owned by
-	// other plugins.
+	// PluginRoleHub is a system-wide aggregator that attaches to cameras owned
+	// by other plugins to provide a cross-camera service (e.g. bridging cameras
+	// and sensors into a smart-home platform, or recording and notifications).
+	// A hub creates no cameras of its own and provides no sensors (Provides must
+	// be empty); it attaches to cameras via the "hub" assignment and typically
+	// reads camera and sensor state through Consumes.
 	PluginRoleHub PluginRole = "hub"
 	// PluginRoleSensorProvider adds sensors to existing cameras without
 	// owning the camera itself. Typical use: a detection plugin that

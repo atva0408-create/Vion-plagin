@@ -132,8 +132,8 @@ func ValidateContractConsistency(c *PluginContract, pluginName string) error {
 	return nil
 }
 
-// IsHub reports whether the plugin's role is Hub (vendor cloud integration
-// that manages its own cameras end-to-end).
+// IsHub reports whether the plugin's role is Hub (a cross-camera aggregator
+// such as a smart-home bridge or recorder, which owns no cameras of its own).
 //
 // Example:
 //

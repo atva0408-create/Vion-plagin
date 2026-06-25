@@ -85,7 +85,7 @@ Example:
 
 	func IsHub(c *PluginContract) bool
 
-IsHub reports whether the plugin's role is Hub \(vendor cloud integration that manages its own cameras end\-to\-end\).
+IsHub reports whether the plugin's role is Hub \(a cross\-camera aggregator such as a smart\-home bridge or recorder, which owns no cameras of its own\).
 
 Example:
 
@@ -999,10 +999,12 @@ PluginRole identifies the role a plugin plays in the system. The role decides wh
 <a name="PluginRoleHub"></a>
 
 	const (
-	    // PluginRoleHub is a cloud-service integration that manages its own
-	    // cameras end-to-end via a vendor account. The hub owns camera creation,
-	    // streaming and sensors; it cannot expose sensors for cameras owned by
-	    // other plugins.
+	    // PluginRoleHub is a system-wide aggregator that attaches to cameras owned
+	    // by other plugins to provide a cross-camera service (e.g. bridging cameras
+	    // and sensors into a smart-home platform, or recording and notifications).
+	    // A hub creates no cameras of its own and provides no sensors (Provides must
+	    // be empty); it attaches to cameras via the "hub" assignment and typically
+	    // reads camera and sensor state through Consumes.
 	    PluginRoleHub PluginRole = "hub"
 	    // PluginRoleSensorProvider adds sensors to existing cameras without
 	    // owning the camera itself. Typical use: a detection plugin that
