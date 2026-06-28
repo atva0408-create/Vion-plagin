@@ -73,20 +73,6 @@ type Notification struct {
 	AdminOnly bool `msgpack:"adminOnly,omitempty" json:"adminOnly,omitempty"`
 }
 
-// TestNotificationResponse is the result of a
-// NotifierInterface.TestNotification call: whether the test notification was
-// delivered and, when known, to how many devices.
-type TestNotificationResponse struct {
-	// Delivered is true when the notifier accepted and dispatched the test
-	// notification.
-	Delivered bool `msgpack:"delivered" json:"delivered"`
-	// DeviceCount is the number of devices the test notification was
-	// delivered to.
-	DeviceCount int `msgpack:"deviceCount,omitempty" json:"deviceCount,omitempty"`
-	// Message is a human-readable status or error detail.
-	Message string `msgpack:"message,omitempty" json:"message,omitempty"`
-}
-
 // NotifierInterface is implemented by plugins that deliver notifications.
 // The NotificationManager invokes these methods over RPC. Plugins own their
 // device storage — the manager never persists devices itself.
@@ -114,10 +100,6 @@ type NotifierInterface interface {
 	// keys. Returns the updated device or nil if the id isn't ours so the
 	// manager can probe the next plugin.
 	UpdateDevice(deviceID string, patch map[string]any) (*NotifierDevice, error)
-	// TestNotification sends a test notification to the given devices and
-	// returns the delivery result. deviceIDs optionally restricts delivery to
-	// a subset.
-	TestNotification(notification *Notification, deviceIDs []string) (*TestNotificationResponse, error)
 	// NotificationSettings returns the JSON schema used to render the
 	// notifier's settings form in the UI. Return nil for no schema.
 	NotificationSettings() ([]JsonSchema, error)
