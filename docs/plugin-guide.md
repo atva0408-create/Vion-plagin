@@ -450,7 +450,6 @@ func (p *CameraProvider) OnAdoptCamera(camera cameraui.DiscoveredCamera, setting
             "useForSnapshot": true,
             "hotMode":        true,
             "preload":        true,
-            "prebuffer":      false,
         }},
     }, nil
 }

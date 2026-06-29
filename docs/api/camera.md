@@ -17,7 +17,7 @@ BuildSnapshotUrl constructs a go2rtc\-compatible snapshot URL for the given came
 
 	func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error)
 
-BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP URL and a set of stream selection options \(video/audio tracks, GOP, prebuffer, timeout\). Returns the URL with all selected query parameters.
+BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP URL and a set of stream selection options \(video/audio tracks, GOP, timeout\). Returns the URL with all selected query parameters.
 
 <a name="CanCreateCameras"></a>
 
@@ -224,8 +224,6 @@ CameraConfigInputSettings is a camera input/source definition supplied when crea
 	    HotMode bool `msgpack:"hotMode" json:"hotMode"`
 	    // Preload toggles stream preloading on startup.
 	    Preload bool `msgpack:"preload" json:"preload"`
-	    // Prebuffer enables stream prebuffering.
-	    Prebuffer bool `msgpack:"prebuffer" json:"prebuffer"`
 	    // ChildSourceId is the child source ID (for snapshot fallback).
 	    ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 	    // Urls are the raw source URLs (resolved into streaming URLs by the host).
@@ -618,13 +616,6 @@ ID returns the unique source ID.
 
 Name returns the source display name.
 
-<a name="CameraDeviceSource.Prebuffer"></a>
-### func \(\*CameraDeviceSource\) Prebuffer
-
-	func (s *CameraDeviceSource) Prebuffer() bool
-
-Prebuffer returns whether stream prebuffering is enabled.
-
 <a name="CameraDeviceSource.Preload"></a>
 ### func \(\*CameraDeviceSource\) Preload
 
@@ -727,8 +718,6 @@ CameraInput is a camera video input/source with resolved URLs.
 	    HotMode bool `msgpack:"hotMode,omitempty" json:"hotMode,omitempty"`
 	    // Preload toggles stream preloading on startup.
 	    Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
-	    // Prebuffer enables stream prebuffering.
-	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer,omitempty"`
 	    // Urls are the generated streaming URLs.
 	    Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
 	    // ChildSourceId is the child source ID (for snapshot fallback).
@@ -977,8 +966,6 @@ Go2RtcRTSPSource contains RTSP streaming URLs from the stream provider.
 	    PCMA string `msgpack:"pcma,omitempty" json:"pcma,omitempty"`
 	    // ONVIF is the ONVIF URL.
 	    ONVIF string `msgpack:"onvif,omitempty" json:"onvif,omitempty"`
-	    // Prebuffered is the prebuffered stream URL.
-	    Prebuffered string `msgpack:"prebuffered,omitempty" json:"prebuffered,omitempty"`
 	    // NoGop is the stream URL with GOP cache disabled.
 	    NoGop string `msgpack:"noGop,omitempty" json:"noGop,omitempty"`
 	}
@@ -1212,8 +1199,6 @@ RTSPUrlOptions is options for generating RTSP URLs.
 	    Audio []RTSPAudioCodec `msgpack:"audio,omitempty" json:"audio"`
 	    // GOP requests a keyframe at start.
 	    GOP bool `msgpack:"gop,omitempty" json:"gop"`
-	    // Prebuffer requests the prebuffered stream.
-	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
 	    // AudioSingleTrack combines audio tracks into a single track.
 	    AudioSingleTrack bool `msgpack:"audioSingleTrack,omitempty" json:"audioSingleTrack"`
 	    // Backchannel enables backchannel (two-way audio).
@@ -1267,8 +1252,6 @@ SnapshotUrlOptions is options for generating snapshot URLs.
 	    HW  string `msgpack:"hw,omitempty" json:"hw"`
 	    // GOP requests a keyframe at start.
 	    GOP bool `msgpack:"gop,omitempty" json:"gop"`
-	    // Prebuffer requests the prebuffered stream.
-	    Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
 	}
 
 <a name="StorageController"></a>

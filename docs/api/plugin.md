@@ -544,6 +544,9 @@ NotifierInterface is implemented by plugins that deliver notifications. The Noti
 	    // keys. Returns the updated device or nil if the id isn't ours so the
 	    // manager can probe the next plugin.
 	    UpdateDevice(deviceID string, patch map[string]any) (*NotifierDevice, error)
+	    // NotificationSettings returns the JSON schema used to render the
+	    // notifier's settings form in the UI. Return nil for no schema.
+	    NotificationSettings() ([]JsonSchema, error)
 	}
 
 <a name="OAuthAuthCodeFlowCapable"></a>

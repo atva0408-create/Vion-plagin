@@ -26,8 +26,6 @@ type Go2RtcRTSPSource struct {
 	PCMA string `msgpack:"pcma,omitempty" json:"pcma,omitempty"`
 	// ONVIF is the ONVIF URL.
 	ONVIF string `msgpack:"onvif,omitempty" json:"onvif,omitempty"`
-	// Prebuffered is the prebuffered stream URL.
-	Prebuffered string `msgpack:"prebuffered,omitempty" json:"prebuffered,omitempty"`
 	// NoGop is the stream URL with GOP cache disabled.
 	NoGop string `msgpack:"noGop,omitempty" json:"noGop,omitempty"`
 }
@@ -60,8 +58,6 @@ type RTSPUrlOptions struct {
 	Audio []RTSPAudioCodec `msgpack:"audio,omitempty" json:"audio"`
 	// GOP requests a keyframe at start.
 	GOP bool `msgpack:"gop,omitempty" json:"gop"`
-	// Prebuffer requests the prebuffered stream.
-	Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
 	// AudioSingleTrack combines audio tracks into a single track.
 	AudioSingleTrack bool `msgpack:"audioSingleTrack,omitempty" json:"audioSingleTrack"`
 	// Backchannel enables backchannel (two-way audio).
@@ -84,8 +80,6 @@ type SnapshotUrlOptions struct {
 	HW string `msgpack:"hw,omitempty" json:"hw"`
 	// GOP requests a keyframe at start.
 	GOP bool `msgpack:"gop,omitempty" json:"gop"`
-	// Prebuffer requests the prebuffered stream.
-	Prebuffer bool `msgpack:"prebuffer,omitempty" json:"prebuffer"`
 }
 
 // ProbeConfig selects which tracks a stream probe inspects and returns.

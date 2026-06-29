@@ -58,7 +58,7 @@ func decodeMsgpack(logger *Logger, data []byte, target any, context string) bool
 
 // BuildTargetUrl constructs a go2rtc-compatible RTSP target URL from a base
 // RTSP URL and a set of stream selection options (video/audio tracks, GOP,
-// prebuffer, timeout). Returns the URL with all selected query parameters.
+// timeout). Returns the URL with all selected query parameters.
 func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error) {
 	u, err := url.Parse(rtspUrl)
 	if err != nil {
@@ -110,10 +110,6 @@ func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error) {
 		params = append(params, "gop=0")
 	}
 
-	if opts.Prebuffer {
-		params = append(params, "prebuffer=5")
-	}
-
 	params = append(params, fmt.Sprintf("timeout=%d", timeout))
 
 	return baseUrl + "?" + strings.Join(params, "&"), nil
@@ -163,10 +159,6 @@ func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *Snapshot
 		params = append(params, "gop=1")
 	} else {
 		params = append(params, "gop=0")
-	}
-
-	if opts.Prebuffer {
-		params = append(params, "prebuffer=5")
 	}
 
 	return baseUrl + "?" + strings.Join(params, "&"), nil

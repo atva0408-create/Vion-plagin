@@ -1231,11 +1231,6 @@ func (s *CameraDeviceSource) Preload() bool {
 	return s.input.Preload
 }
 
-// Prebuffer returns whether stream prebuffering is enabled.
-func (s *CameraDeviceSource) Prebuffer() bool {
-	return s.input.Prebuffer
-}
-
 // Snapshot returns a JPEG snapshot for this source.
 // If forceNew is true, the snapshot cache is bypassed.
 func (s *CameraDeviceSource) Snapshot(forceNew bool) ([]byte, error) {
