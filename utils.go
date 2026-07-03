@@ -51,9 +51,16 @@ func Float64(v float64) *float64 {
 // Uses DecodeMessageInto: subscription payloads arrive as raw wire bytes and
 // may be CUIB frames (publisher extracted ≥16KB binaries out-of-band, e.g.
 // detection events with thumbnails); plain msgpack passes through unchanged.
+// The error includes payload length + leading bytes — a decode failure here
+// means a wire/versioning problem (raw chunk leaked past reassembly, stale
+// peer, corrupted frame) and the head bytes identify which one.
 func decodeMsgpack(logger *Logger, data []byte, target any, context string) bool {
 	if err := rpc.DecodeMessageInto(data, target); err != nil {
-		logger.Error(fmt.Sprintf("msgpack decode error [%s]: %v", context, err))
+		head := data
+		if len(head) > 16 {
+			head = head[:16]
+		}
+		logger.Error(fmt.Sprintf("msgpack decode error [%s] len=%d head=% x: %v", context, len(data), head, err))
 		return false
 	}
 	return true
