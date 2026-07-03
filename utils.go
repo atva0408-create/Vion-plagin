@@ -48,8 +48,11 @@ func Float64(v float64) *float64 {
 // decodeMsgpack decodes msgpack data into target and logs any decode errors.
 // Returns true on success, false on error. Use this instead of rpc.Decode
 // in subscribe callbacks to ensure decode errors are never silently swallowed.
+// Uses DecodeMessageInto: subscription payloads arrive as raw wire bytes and
+// may be CUIB frames (publisher extracted ≥16KB binaries out-of-band, e.g.
+// detection events with thumbnails); plain msgpack passes through unchanged.
 func decodeMsgpack(logger *Logger, data []byte, target any, context string) bool {
-	if err := rpc.Decode(data, target); err != nil {
+	if err := rpc.DecodeMessageInto(data, target); err != nil {
 		logger.Error(fmt.Sprintf("msgpack decode error [%s]: %v", context, err))
 		return false
 	}

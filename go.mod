@@ -3,7 +3,7 @@ module github.com/cameraui/sdk/go
 go 1.25.0
 
 require (
-	github.com/cameraui/rpc/go v1.0.3
+	github.com/cameraui/rpc/go v1.0.4
 	go.etcd.io/bbolt v1.5.0
 )
 

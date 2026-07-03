@@ -83,7 +83,9 @@ func (dm *DeviceManager) init() error {
 
 	_, err := dm.client.OnRequest(ns.PluginDeviceManagerSubject, func(data []byte) (any, error) {
 		var msg deviceManagerEventMessage
-		if err := rpc.Decode(data, &msg); err != nil {
+		// Raw wire bytes — may be a CUIB frame when the host request carried
+		// large binaries; DecodeMessageInto handles plain msgpack unchanged.
+		if err := rpc.DecodeMessageInto(data, &msg); err != nil {
 			return nil, err
 		}
 
