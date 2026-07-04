@@ -91,14 +91,16 @@ func (rp *remotePersistence) load(prefix string) map[string]any {
 	defer rp.mu.Unlock()
 
 	if values, ok := rp.cache[prefix].(map[string]any); ok {
-		return values
+		if copied, ok := deepCopyValue(values).(map[string]any); ok {
+			return copied
+		}
 	}
 	return nil
 }
 
 func (rp *remotePersistence) save(prefix string, values map[string]any) {
 	rp.mu.Lock()
-	rp.cache[prefix] = values
+	rp.cache[prefix] = deepCopyValue(values)
 	snapshot := make(map[string]any, len(rp.cache))
 	maps.Copy(snapshot, rp.cache)
 	rp.mu.Unlock()
@@ -111,4 +113,27 @@ func (rp *remotePersistence) save(prefix string, values map[string]any) {
 			rp.logger.Error("Failed to persist config to master:", err)
 		}
 	}()
+}
+
+func deepCopyValue(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, item := range val {
+			out[k] = deepCopyValue(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = deepCopyValue(item)
+		}
+		return out
+	case []byte:
+		out := make([]byte, len(val))
+		copy(out, val)
+		return out
+	default:
+		return val
+	}
 }
