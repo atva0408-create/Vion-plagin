@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"sync"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 var configBucket = []byte("config")
@@ -32,61 +30,34 @@ var configBucket = []byte("config")
 //	threshold := storage.GetValue("motionThreshold", 50)
 //	storage.SetValue("motionThreshold", 75)
 type DeviceStorage struct {
-	mu      sync.RWMutex
-	db      *bolt.DB
-	prefix  string // "plugin", "camera.{id}", "sensor.{id}"
-	Schemas []JsonSchema
-	Values  map[string]any
-	logger  *Logger
+	mu          sync.RWMutex
+	persistence configPersistence
+	prefix      string // "plugin", "camera.{id}", "sensor.{id}"
+	Schemas     []JsonSchema
+	Values      map[string]any
+	logger      *Logger
 }
 
 // newDeviceStorage creates a new DeviceStorage instance.
-func newDeviceStorage(db *bolt.DB, prefix string, logger *Logger) *DeviceStorage {
+func newDeviceStorage(persistence configPersistence, prefix string, logger *Logger) *DeviceStorage {
 	ds := &DeviceStorage{
-		db:     db,
-		prefix: prefix,
-		logger: logger,
-		Values: make(map[string]any),
+		persistence: persistence,
+		prefix:      prefix,
+		logger:      logger,
+		Values:      make(map[string]any),
 	}
 	ds.load()
 	return ds
 }
 
-func (ds *DeviceStorage) bucketKey() []byte {
-	return []byte(ds.prefix)
-}
-
 func (ds *DeviceStorage) load() {
-	_ = ds.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(configBucket)
-		if b == nil {
-			return nil
-		}
-		data := b.Get(ds.bucketKey())
-		if data == nil {
-			return nil
-		}
-		var values map[string]any
-		if err := json.Unmarshal(data, &values); err != nil {
-			return err
-		}
+	if values := ds.persistence.load(ds.prefix); values != nil {
 		ds.Values = values
-		return nil
-	})
+	}
 }
 
 func (ds *DeviceStorage) save() {
-	_ = ds.db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(configBucket)
-		if err != nil {
-			return err
-		}
-		data, err := json.Marshal(ds.Values)
-		if err != nil {
-			return err
-		}
-		return b.Put(ds.bucketKey(), data)
-	})
+	ds.persistence.save(ds.prefix, ds.Values)
 }
 
 // GetValue retrieves a configuration value.

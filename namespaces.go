@@ -49,6 +49,8 @@ type pluginNamespaces struct {
 	PluginChildRPC             string
 	PluginChild                string
 	PluginStorageRPC           string
+	PluginConfigStoreRPC       string
+	PluginFileServeRPC         string
 }
 
 // cameraNamespaces holds RPC namespaces scoped to a single camera (event
@@ -174,6 +176,8 @@ func getPluginNamespaces(pluginID string) pluginNamespaces {
 		PluginChildRPC:             fmt.Sprintf("plugin.%s.child.rpc", pluginID),
 		PluginChild:                fmt.Sprintf("plugin.%s.child", pluginID),
 		PluginStorageRPC:           fmt.Sprintf("plugin.%s.storage.rpc", pluginID),
+		PluginConfigStoreRPC:       fmt.Sprintf("plugin.%s.configstore.rpc", pluginID),
+		PluginFileServeRPC:         fmt.Sprintf("plugin.%s.fileserve.rpc", pluginID),
 	}
 }
 

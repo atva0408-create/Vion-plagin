@@ -4,26 +4,25 @@ import (
 	"fmt"
 
 	rpc "github.com/cameraui/rpc/go"
-	bolt "go.etcd.io/bbolt"
 )
 
 // StorageController manages storage instances for plugins, cameras, and sensors.
 type StorageController struct {
-	client     *rpc.Client
-	db         *bolt.DB
-	pluginInfo PluginInfo
-	logger     *Logger
-	storages   map[string]*DeviceStorage
+	client      *rpc.Client
+	persistence configPersistence
+	pluginInfo  PluginInfo
+	logger      *Logger
+	storages    map[string]*DeviceStorage
 }
 
 // newStorageController creates a new StorageController.
-func newStorageController(client *rpc.Client, db *bolt.DB, pluginInfo *PluginInfo, logger *Logger) *StorageController {
+func newStorageController(client *rpc.Client, persistence configPersistence, pluginInfo *PluginInfo, logger *Logger) *StorageController {
 	return &StorageController{
-		client:     client,
-		db:         db,
-		pluginInfo: *pluginInfo,
-		logger:     logger,
-		storages:   make(map[string]*DeviceStorage),
+		client:      client,
+		persistence: persistence,
+		pluginInfo:  *pluginInfo,
+		logger:      logger,
+		storages:    make(map[string]*DeviceStorage),
 	}
 }
 
@@ -32,7 +31,7 @@ func newStorageController(client *rpc.Client, db *bolt.DB, pluginInfo *PluginInf
 func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error) {
 	prefix := fmt.Sprintf("%s.%s", sc.pluginInfo.ID, scope)
 
-	storage := newDeviceStorage(sc.db, prefix, sc.logger)
+	storage := newDeviceStorage(sc.persistence, prefix, sc.logger)
 	sc.storages[scope] = storage
 
 	// Register RPC handler for server to query this storage
@@ -59,7 +58,7 @@ func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error)
 // createCameraStorage creates storage for a specific camera.
 func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorage, error) {
 	prefix := fmt.Sprintf("%s.camera.%s", sc.pluginInfo.ID, cameraID)
-	storage := newDeviceStorage(sc.db, prefix, sc.logger)
+	storage := newDeviceStorage(sc.persistence, prefix, sc.logger)
 	sc.storages["camera."+cameraID] = storage
 
 	ns := getPluginCameraNamespaces(sc.pluginInfo.ID, cameraID)
@@ -74,7 +73,7 @@ func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorag
 // createSensorStorage creates storage for a specific sensor.
 func (sc *StorageController) createSensorStorage(cameraID, sensorID string) (*DeviceStorage, error) {
 	prefix := fmt.Sprintf("%s.sensor.%s.%s", sc.pluginInfo.ID, cameraID, sensorID)
-	storage := newDeviceStorage(sc.db, prefix, sc.logger)
+	storage := newDeviceStorage(sc.persistence, prefix, sc.logger)
 	sc.storages["sensor."+sensorID] = storage
 
 	ns := getPluginSensorNamespaces(sc.pluginInfo.ID, cameraID, sensorID)

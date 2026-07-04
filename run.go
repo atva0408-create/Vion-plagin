@@ -88,6 +88,7 @@ func Run(constructor pluginConstructor) {
 		plugin     Plugin
 		pluginDB   *bolt.DB
 		cleanupRPC rpc.CleanupFunc
+		fileSrv    *fileServer
 	)
 
 	var coreManager *CoreManager
@@ -117,6 +118,10 @@ func Run(constructor pluginConstructor) {
 
 		if cleanupRPC != nil {
 			_ = cleanupRPC()
+		}
+
+		if fileSrv != nil {
+			fileSrv.close()
 		}
 
 		_ = channel.Close()
@@ -191,39 +196,73 @@ func Run(constructor pluginConstructor) {
 		return
 	}
 
-	// 8. Open bbolt DB
+	// 8. Configure persistence. Host-local writable dir first — on a remote
+	// worker the master's path from the START message would point at the
+	// wrong machine.
 	storagePath := loadMsg.Storage.StoragePath
-	volumePath := filepath.Join(storagePath, "volume")
-	if err := os.MkdirAll(volumePath, 0755); err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to create volume dir: %v", err)})
-		stopPlugin()
-		return
+	if envPath := os.Getenv("PLUGIN_STORAGE_PATH"); envPath != "" {
+		storagePath = envPath
 	}
 
-	dbPath := filepath.Join(volumePath, "plugin.db")
-	pluginDB, err = bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 5 * time.Second})
-	if err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to open DB: %v", err)})
-		stopPlugin()
-		return
-	}
+	pluginInfo := loadMsg.Plugin
 
-	// Initialize the config bucket
-	if err := pluginDB.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(storageBucket)
-		return err
-	}); err != nil {
-		logger.Error("Failed to initialize config bucket:", err)
+	var persistence configPersistence
+
+	if os.Getenv("PLUGIN_CONFIG_STORE_RPC") != "" {
+		// Remote-hosted: config lives on the master (re-homing safe) —
+		// persist through its config store instead of a worker-local file.
+		remote, err := newRemotePersistence(client, pluginInfo.ID, logger)
+		if err != nil {
+			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to connect config store: %v", err)})
+			stopPlugin()
+			return
+		}
+		persistence = remote
+	} else {
+		volumePath := filepath.Join(storagePath, "volume")
+		if err := os.MkdirAll(volumePath, 0755); err != nil {
+			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to create volume dir: %v", err)})
+			stopPlugin()
+			return
+		}
+
+		dbPath := filepath.Join(volumePath, "plugin.db")
+		pluginDB, err = bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 5 * time.Second})
+		if err != nil {
+			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to open DB: %v", err)})
+			stopPlugin()
+			return
+		}
+
+		// Initialize the config bucket
+		if err := pluginDB.Update(func(tx *bolt.Tx) error {
+			_, err := tx.CreateBucketIfNotExists(storageBucket)
+			return err
+		}); err != nil {
+			logger.Error("Failed to initialize config bucket:", err)
+		}
+
+		persistence = &boltPersistence{db: pluginDB}
 	}
 
 	// 9. Create PluginAPI
-	pluginInfo := loadMsg.Plugin
 
 	coreManager = newCoreManager(client, logger)
 	deviceManager := newDeviceManager(client, &pluginInfo, logger)
 	downloadManager := newDownloadManager(client)
+
+	// Remote-hosted: serve this worker's files so the master can stream
+	// downloads/exports of them.
+	if os.Getenv("PLUGIN_REMOTE_MODE") != "" {
+		fileSrv, err = newFileServer(client, pluginInfo.ID)
+		if err != nil {
+			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to register file server: %v", err)})
+			stopPlugin()
+			return
+		}
+	}
 	notificationManager := newNotificationManager(client, &pluginInfo, logger)
-	storageController := newStorageController(client, pluginDB, &pluginInfo, logger)
+	storageController := newStorageController(client, persistence, &pluginInfo, logger)
 
 	api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
 	deviceManager.setAPI(api, storageController)

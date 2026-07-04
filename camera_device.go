@@ -86,8 +86,10 @@ func newCameraDeviceProxy(
 	// Create sources
 	dev.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
 	for i := range cam.Sources {
+		src := cam.Sources[i]
+		rewriteStreamUrlsForRemote(&src.Urls)
 		dev.sources = append(dev.sources, &CameraDeviceSource{
-			input:  cam.Sources[i],
+			input:  src,
 			device: dev,
 		})
 	}
@@ -716,8 +718,10 @@ func (d *CameraDevice) handleCameraEvent(msg cameraEventMessage) {
 		// Rebuild sources
 		d.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
 		for i := range cam.Sources {
+			src := cam.Sources[i]
+			rewriteStreamUrlsForRemote(&src.Urls)
 			d.sources = append(d.sources, &CameraDeviceSource{
-				input:  cam.Sources[i],
+				input:  src,
 				device: d,
 			})
 		}

@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"os"
 
 	rpc "github.com/cameraui/rpc/go"
 )
@@ -102,6 +103,12 @@ func (cm *CoreManager) OnEvent() *Observable[CoreManagerEvent] {
 
 // GetFFmpegPath returns the path to the FFmpeg binary.
 func (cm *CoreManager) GetFFmpegPath() (string, error) {
+	// Remote-hosted: the master's path points at the wrong machine — the
+	// worker injects its own bundled ffmpeg at spawn time.
+	if path := os.Getenv("CAMERAUI_FFMPEG_PATH"); path != "" {
+		return path, nil
+	}
+
 	ctx := context.Background()
 	result, err := cm.proxy.Invoke(ctx, "getFFmpegPath")
 	if err != nil {

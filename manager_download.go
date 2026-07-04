@@ -3,9 +3,31 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"os"
 
 	rpc "github.com/cameraui/rpc/go"
 )
+
+// Internal wire wrappers: RemotePluginID is stamped by the SDK when the plugin
+// runs remote-hosted, so the master streams the file via the file-serve RPC.
+// It is NOT part of the public options structs (plugin authors never set it).
+type createDownloadWire struct {
+	CreateDownloadOptions
+	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
+}
+
+type createStreamDownloadWire struct {
+	CreateStreamDownloadOptions
+	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
+}
+
+// remotePluginID returns this plugin's id when hosted on a remote worker, else "".
+func remotePluginID() string {
+	if os.Getenv("PLUGIN_REMOTE_MODE") == "" {
+		return ""
+	}
+	return os.Getenv("PLUGIN_ID")
+}
 
 // DownloadManager provides token-based file download registration via RPC.
 //
@@ -30,8 +52,10 @@ func newDownloadManager(client *rpc.Client) *DownloadManager {
 // token-based URL. The download is valid until the TTL expires; control
 // when the underlying file is removed from disk via options.Cleanup.
 func (dm *DownloadManager) CreateDownload(options CreateDownloadOptions) (DownloadToken, error) {
+	payload := createDownloadWire{CreateDownloadOptions: options, RemotePluginID: remotePluginID()}
+
 	ctx := context.Background()
-	result, err := dm.proxy.Invoke(ctx, "createDownload", options)
+	result, err := dm.proxy.Invoke(ctx, "createDownload", payload)
 	if err != nil {
 		return DownloadToken{}, fmt.Errorf("createDownload: %w", err)
 	}
@@ -50,8 +74,10 @@ func (dm *DownloadManager) CreateDownload(options CreateDownloadOptions) (Downlo
 // response can be closed. Useful for serving recordings while they are
 // still being exported.
 func (dm *DownloadManager) CreateStreamDownload(options *CreateStreamDownloadOptions) (DownloadToken, error) {
+	payload := createStreamDownloadWire{CreateStreamDownloadOptions: *options, RemotePluginID: remotePluginID()}
+
 	ctx := context.Background()
-	result, err := dm.proxy.Invoke(ctx, "createStreamDownload", options)
+	result, err := dm.proxy.Invoke(ctx, "createStreamDownload", &payload)
 	if err != nil {
 		return DownloadToken{}, fmt.Errorf("createStreamDownload: %w", err)
 	}
