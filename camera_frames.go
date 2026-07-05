@@ -14,4 +14,6 @@ type SnapshotSettings struct {
 type CameraFrameWorkerSettings struct {
 	// FPS is the target frames per second for detection.
 	FPS int `msgpack:"fps" json:"fps"`
+	// Capture event thumbnails from the highest-resolution source.
+	HQSnapshots bool `msgpack:"hqSnapshots,omitempty" json:"hqSnapshots,omitempty"`
 }
