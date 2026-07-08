@@ -1,6 +1,5 @@
 package sdk
 
-// ContactProperty defines property names for contact sensors.
 const (
 	contactPropertyDetected = "detected"
 )
@@ -8,7 +7,6 @@ const (
 // ContactSensor reports door/window open-close state.
 type ContactSensor struct{ BaseSensor }
 
-// NewContactSensor creates a new ContactSensor.
 func NewContactSensor(name string) *ContactSensor {
 	s := &ContactSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *ContactSensor) GetType() SensorType         { return SensorTypeContact 
 func (s *ContactSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 func (s *ContactSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsDetected returns whether the contact is open.
 func (s *ContactSensor) IsDetected() bool {
 	v, _ := s.GetValue(contactPropertyDetected).(bool)
 	return v

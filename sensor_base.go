@@ -81,7 +81,6 @@ type Sensor interface {
 	ToJSON() sensorJSON
 }
 
-// sensorJSON is the typed representation of a sensor for RPC serialization.
 type sensorJSON struct {
 	ID             string         `msgpack:"id" json:"id"`
 	Type           SensorType     `msgpack:"type" json:"type"`
@@ -96,9 +95,6 @@ type sensorJSON struct {
 	ModelSpec      any            `msgpack:"modelSpec,omitempty" json:"modelSpec,omitempty"`
 }
 
-// propertyUpdateFn is called by the SDK when a sensor's state transitions.
-// Receives a partial-state delta (only properties that actually changed) — one
-// callback invocation per `writeState` call, atomic from the receiver's perspective.
 type propertyUpdateFn func(properties map[string]any)
 
 // BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
@@ -121,7 +117,6 @@ type BaseSensor struct {
 	requiresFrames       bool
 }
 
-// NewBaseSensor creates a new BaseSensor with the given name.
 func NewBaseSensor(name string) BaseSensor {
 	return BaseSensor{
 		id:                  generateSensorID(),
@@ -215,7 +210,6 @@ func (s *BaseSensor) OnCapabilitiesChanged(callback func([]string)) *Disposable 
 	return s.capabilitiesChanged.Subscribe(callback)
 }
 
-// HasCapability returns true if the sensor has the given capability.
 func (s *BaseSensor) HasCapability(cap string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -321,9 +315,6 @@ func normalizeReportedDetections(detected bool, detections []Detection, fallback
 	return []Detection{d}
 }
 
-// isDetectionSensorType reports whether a sensor type is a detection sensor whose
-// state writes should route directly to the FrameWorker DetectionCoordinator
-// instead of through the SensorController.
 func isDetectionSensorType(t SensorType) bool {
 	switch t {
 	case SensorTypeMotion, SensorTypeAudio, SensorTypeObject,
@@ -333,8 +324,7 @@ func isDetectionSensorType(t SensorType) bool {
 	return false
 }
 
-// Storage returns the sensor's storage instance.
-// Returns nil if storage has not been set yet (i.e. sensor not yet added to a camera).
+// Storage returns the sensor's persistent storage. Nil until the sensor is added to a camera.
 func (s *BaseSensor) Storage() *DeviceStorage {
 	return s.storage
 }
@@ -356,8 +346,7 @@ func (s *BaseSensor) OnPropertyChanged(callback func(SensorPropertyChange)) *Dis
 	return s.propertyChanged.Subscribe(callback)
 }
 
-// OnAssignmentChanged subscribes to assignment state changes.
-// The callback receives true when the sensor is assigned to a camera, false when unassigned.
+// OnAssignmentChanged subscribes to assignment state changes (sensor added/removed from camera).
 func (s *BaseSensor) OnAssignmentChanged(callback func(bool)) *Disposable {
 	return s.assignmentChanged.Subscribe(callback)
 }
@@ -393,10 +382,8 @@ type assignmentLifecycle interface {
 	OnDeassigned()
 }
 
-// setAssigned updates the assignment state and notifies subscribers.
-// Does NOT invoke lifecycle hooks — the caller must use setAssignedWithLifecycle
-// (or invoke the hooks separately) to trigger assignmentLifecycle.OnAssigned /
-// OnDeassigned, because BaseSensor cannot reach the outer concrete type.
+// setAssigned notifies subscribers but does NOT invoke lifecycle hooks — BaseSensor
+// cannot reach the outer concrete type; use setAssignedWithLifecycle for those.
 func (s *BaseSensor) setAssigned(assigned bool) {
 	s.mu.Lock()
 	if s.isAssigned == assigned {
@@ -408,11 +395,10 @@ func (s *BaseSensor) setAssigned(assigned bool) {
 	s.assignmentChanged.Next(assigned)
 }
 
-// setAssignedWithLifecycle updates the assignment state and, if the outer
-// concrete sensor implements assignmentLifecycle, dispatches OnAssigned /
-// OnDeassigned in a separate goroutine. `outer` should be the concrete sensor
-// value — the BaseSensor embeddor — so the type assertion can see its method
-// set. No-op if assigned state is unchanged.
+// setAssignedWithLifecycle updates assignment state and, if the outer concrete
+// sensor implements assignmentLifecycle, dispatches OnAssigned / OnDeassigned in a
+// separate goroutine. outer must be the concrete sensor value (the BaseSensor
+// embeddor) so the type assertion can see its method set.
 func setAssignedWithLifecycle(outer any, assigned bool) {
 	type assignableSensor interface{ setAssigned(bool) }
 	as, ok := outer.(assignableSensor)
@@ -499,8 +485,6 @@ func (s *BaseSensor) onBackendPropertyChanged(property string, value any) {
 	})
 }
 
-// setPropertyWithTimestamp updates a property using a server-provided timestamp.
-// Used by sensorProxy when receiving property:changed events from the server.
 func (s *BaseSensor) setPropertyWithTimestamp(property string, value any, timestamp int64) {
 	s.mu.Lock()
 	oldValue := s.properties[property]
@@ -518,7 +502,6 @@ func (s *BaseSensor) setPropertyWithTimestamp(property string, value any, timest
 	})
 }
 
-// cleanup clears updateFn, subjects, and storage references.
 func (s *BaseSensor) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

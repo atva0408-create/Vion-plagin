@@ -31,7 +31,6 @@ type MotionSensor struct {
 	BaseSensor
 }
 
-// NewMotionSensor creates a new MotionSensor with the given name.
 func NewMotionSensor(name string) *MotionSensor {
 	s := &MotionSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -42,13 +41,10 @@ func NewMotionSensor(name string) *MotionSensor {
 	return s
 }
 
-// GetType returns SensorTypeMotion.
 func (s *MotionSensor) GetType() SensorType { return SensorTypeMotion }
 
-// GetCategory returns SensorCategorySensor.
 func (s *MotionSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *MotionSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 // IsDetected reports whether motion is currently detected.
@@ -113,7 +109,6 @@ type MotionDetectorSensor struct {
 	MotionSensor
 }
 
-// NewMotionDetectorSensor creates a new MotionDetectorSensor with the given name.
 func NewMotionDetectorSensor(name string) *MotionDetectorSensor {
 	s := &MotionDetectorSensor{MotionSensor: *NewMotionSensor(name)}
 	s.requiresFrames = true

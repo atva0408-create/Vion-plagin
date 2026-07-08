@@ -6,7 +6,6 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// StorageController manages storage instances for plugins, cameras, and sensors.
 type StorageController struct {
 	client      *rpc.Client
 	persistence configPersistence
@@ -15,7 +14,6 @@ type StorageController struct {
 	storages    map[string]*DeviceStorage
 }
 
-// newStorageController creates a new StorageController.
 func newStorageController(client *rpc.Client, persistence configPersistence, pluginInfo *PluginInfo, logger *Logger) *StorageController {
 	return &StorageController{
 		client:      client,
@@ -26,8 +24,6 @@ func newStorageController(client *rpc.Client, persistence configPersistence, plu
 	}
 }
 
-// createStorage creates the plugin-level DeviceStorage ("plugin" is the only
-// supported scope).
 func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error) {
 	if scope != "plugin" {
 		return nil, fmt.Errorf("unsupported storage scope: %s", scope)
@@ -71,9 +67,8 @@ func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorag
 	return storage, nil
 }
 
-// createSensorStorage creates storage for a specific sensor. The store keys
-// sensor data by type and name (stable across restarts); sensorID only scopes
-// the RPC namespace.
+// The store keys sensor data by type and name (stable across restarts);
+// sensorID only scopes the RPC namespace.
 func (sc *StorageController) createSensorStorage(cameraID, sensorID, sensorType, sensorName string) (*DeviceStorage, error) {
 	key := "sensor." + sensorID
 	if existing := sc.storages[key]; existing != nil {
@@ -94,8 +89,6 @@ func (sc *StorageController) createSensorStorage(cameraID, sensorID, sensorType,
 	return storage, nil
 }
 
-// removeCameraStorage destroys a camera's persisted storage, unregisters its
-// RPC handler and drops it from the controller.
 func (sc *StorageController) removeCameraStorage(cameraID string) {
 	key := "camera." + cameraID
 	storage := sc.storages[key]

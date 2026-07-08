@@ -1,10 +1,5 @@
 package sdk
 
-// This file collects miscellaneous SDK-wide types that don't belong to a
-// specific feature module: signed-request envelopes, download registration
-// options, and the process-supervision message types used on the parent
-// stdin/stdout channel.
-
 // DownloadCleanup controls when the file on disk is deleted. Registry
 // entry always expires at TTL; this only controls the file itself.
 //
@@ -24,8 +19,7 @@ const (
 )
 
 // CreateDownloadOptions specifies how to register an existing file as a
-// downloadable artifact. The file must already be fully written when this
-// is called.
+// downloadable artifact.
 type CreateDownloadOptions struct {
 	// FilePath is the absolute path to the file on disk.
 	FilePath string `msgpack:"filePath" json:"filePath"`
@@ -41,10 +35,8 @@ type CreateDownloadOptions struct {
 	Cleanup DownloadCleanup `msgpack:"cleanup,omitempty" json:"cleanup,omitempty"`
 }
 
-// CreateStreamDownloadOptions specifies how to register a file that is
-// still being written. The file is served progressively while writing
-// continues, and the marker file at MarkerPath signals completion to
-// the download server.
+// CreateStreamDownloadOptions specifies how to register a file that is still
+// being written and served progressively.
 type CreateStreamDownloadOptions struct {
 	// FilePath is the absolute path to the file being written.
 	FilePath string `msgpack:"filePath" json:"filePath"`
@@ -63,9 +55,6 @@ type CreateStreamDownloadOptions struct {
 }
 
 // DownloadToken is returned after registering a download.
-//
-// Pass either URL (in-app) or PublicURL (cloud) to whoever should fetch
-// the file. The token expires at ExpiresAt regardless of cleanup mode.
 type DownloadToken struct {
 	// Token is the unique download token (also embedded in URL/PublicURL).
 	Token string `msgpack:"token" json:"token"`
@@ -84,16 +73,12 @@ type DownloadToken struct {
 	ExpiresAt int64 `msgpack:"expiresAt" json:"expiresAt"`
 }
 
-// processLoadMessage is the payload of a "load" message sent from the host
-// to start the plugin: initial cameras, plugin metadata, and storage handle.
 type processLoadMessage struct {
 	Cameras []Camera      `msgpack:"cameras" json:"cameras"`
 	Plugin  PluginInfo    `msgpack:"plugin" json:"plugin"`
 	Storage PluginStorage `msgpack:"storage" json:"storage"`
 }
 
-// processResponse is the acknowledgement returned to the host for a
-// process message. Error is non-empty when handling the message failed.
 type processResponse struct {
 	Type  string `msgpack:"type" json:"type"`
 	Error string `msgpack:"error,omitempty" json:"error,omitempty"`

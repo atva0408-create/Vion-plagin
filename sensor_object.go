@@ -43,7 +43,6 @@ type ObjectDetector interface {
 	DetectObjects(frame VideoFrameData) (*ObjectResult, error)
 }
 
-// dedupLabels returns the unique, non-empty labels of the given detections.
 func dedupLabels(detections []TrackedDetection) []string {
 	seen := make(map[string]struct{})
 	result := make([]string, 0, len(detections))
@@ -68,7 +67,6 @@ type ObjectSensor struct {
 	BaseSensor
 }
 
-// NewObjectSensor creates a new ObjectSensor with the given name.
 func NewObjectSensor(name string) *ObjectSensor {
 	s := &ObjectSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -79,13 +77,10 @@ func NewObjectSensor(name string) *ObjectSensor {
 	return s
 }
 
-// GetType returns SensorTypeObject.
 func (s *ObjectSensor) GetType() SensorType { return SensorTypeObject }
 
-// GetCategory returns SensorCategorySensor.
 func (s *ObjectSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *ObjectSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 // IsDetected reports whether any object is currently detected.
@@ -160,7 +155,6 @@ type ObjectDetectorSensor struct {
 	ObjectSensor
 }
 
-// NewObjectDetectorSensor creates a new ObjectDetectorSensor with the given name.
 func NewObjectDetectorSensor(name string) *ObjectDetectorSensor {
 	s := &ObjectDetectorSensor{ObjectSensor: *NewObjectSensor(name)}
 	s.requiresFrames = true

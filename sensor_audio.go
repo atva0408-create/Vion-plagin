@@ -11,11 +11,10 @@ var BaseAudioLabels = []string{
 	"scream", "cat", "car_alarm", "smoke_alarm",
 }
 
-// Property names of an audio detection sensor.
 const (
-	audioPropertyDetected   = "detected"   // Whether an audio event is currently detected
-	audioPropertyDetections = "detections" // List of detected audio events
-	audioPropertyDecibels   = "decibels"   // Current audio level in decibels
+	audioPropertyDetected   = "detected"
+	audioPropertyDetections = "detections"
+	audioPropertyDecibels   = "decibels"
 )
 
 // AudioFormat identifies the sample format of an audio buffer.
@@ -64,7 +63,6 @@ type AudioSensor struct {
 	BaseSensor
 }
 
-// NewAudioSensor creates a new AudioSensor with the given name.
 func NewAudioSensor(name string) *AudioSensor {
 	s := &AudioSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -75,28 +73,22 @@ func NewAudioSensor(name string) *AudioSensor {
 	return s
 }
 
-// GetType returns SensorTypeAudio.
 func (s *AudioSensor) GetType() SensorType { return SensorTypeAudio }
 
-// GetCategory returns SensorCategorySensor.
 func (s *AudioSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *AudioSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsDetected reports whether an audio event is currently detected.
 func (s *AudioSensor) IsDetected() bool {
 	v, _ := s.GetValue(audioPropertyDetected).(bool)
 	return v
 }
 
-// GetDetections returns the current audio detections.
 func (s *AudioSensor) GetDetections() []Detection {
 	v, _ := s.GetValue(audioPropertyDetections).([]Detection)
 	return v
 }
 
-// GetDecibels returns the current audio level in decibels.
 func (s *AudioSensor) GetDecibels() float64 {
 	v, _ := s.GetValue(audioPropertyDecibels).(float64)
 	return v
@@ -137,7 +129,7 @@ func (s *AudioSensor) SetDecibels(value float64) {
 	s.writeState(map[string]any{audioPropertyDecibels: value})
 }
 
-// UpdateValue is a no-op for read-only audio sensors. State is reported via ReportDetections / SetDecibels.
+// UpdateValue is a no-op for read-only audio sensors.
 func (s *AudioSensor) UpdateValue(property string, value any) error {
 	return nil
 }
@@ -148,7 +140,6 @@ type AudioDetectorSensor struct {
 	AudioSensor
 }
 
-// NewAudioDetectorSensor creates a new AudioDetectorSensor with the given name.
 func NewAudioDetectorSensor(name string) *AudioDetectorSensor {
 	s := &AudioDetectorSensor{AudioSensor: *NewAudioSensor(name)}
 	s.requiresFrames = true

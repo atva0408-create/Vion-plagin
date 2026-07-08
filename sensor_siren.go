@@ -1,6 +1,5 @@
 package sdk
 
-// SirenProperty defines property names for siren controls.
 const (
 	sirenPropertyActive = "active"
 	sirenPropertyVolume = "volume"
@@ -14,7 +13,6 @@ const (
 // any plugin override and only syncs state.
 type SirenControl struct{ BaseSensor }
 
-// NewSirenControl creates a new SirenControl.
 func NewSirenControl(name string) *SirenControl {
 	s := &SirenControl{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -28,13 +26,11 @@ func (s *SirenControl) GetType() SensorType         { return SensorTypeSiren }
 func (s *SirenControl) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *SirenControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsActive returns whether the siren is active.
 func (s *SirenControl) IsActive() bool {
 	v, _ := s.GetValue(sirenPropertyActive).(bool)
 	return v
 }
 
-// GetVolume returns the siren volume (0–100).
 func (s *SirenControl) GetVolume() int {
 	if v, ok := s.GetValue(sirenPropertyVolume).(int); ok {
 		return v
@@ -76,8 +72,6 @@ func (s *SirenControl) SetVolume(value int) {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Numeric values arriving via msgpack may be any int/uint/float width —
-// `toInt64` normalizes them. Boolean values are checked directly.
 func (s *SirenControl) UpdateValue(property string, value any) error {
 	switch property {
 	case sirenPropertyActive:

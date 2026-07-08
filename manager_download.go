@@ -21,7 +21,6 @@ type createStreamDownloadWire struct {
 	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
 }
 
-// remotePluginID returns this plugin's id when hosted on a remote worker, else "".
 func remotePluginID() string {
 	if os.Getenv("PLUGIN_REMOTE_MODE") == "" {
 		return ""
@@ -33,14 +32,11 @@ func remotePluginID() string {
 //
 // Allows plugins to register files for HTTP download via a token URL.
 // No JWT authentication is needed — the token itself is the auth.
-// Useful for exporting recordings, sharing snapshots, or attaching
-// images to outbound notifications. Accessed via api.DownloadManager
-// from within a plugin.
+// Accessed via api.DownloadManager from within a plugin.
 type DownloadManager struct {
 	proxy *rpc.Proxy
 }
 
-// newDownloadManager creates a new DownloadManager.
 func newDownloadManager(client *rpc.Client) *DownloadManager {
 	ns := getDownloadManagerNamespaces()
 	return &DownloadManager{
@@ -49,8 +45,7 @@ func newDownloadManager(client *rpc.Client) *DownloadManager {
 }
 
 // CreateDownload registers a file for HTTP download and returns a
-// token-based URL. The download is valid until the TTL expires; control
-// when the underlying file is removed from disk via options.Cleanup.
+// token-based URL.
 func (dm *DownloadManager) CreateDownload(options CreateDownloadOptions) (DownloadToken, error) {
 	payload := createDownloadWire{CreateDownloadOptions: options, RemotePluginID: remotePluginID()}
 
@@ -69,10 +64,8 @@ func (dm *DownloadManager) CreateDownload(options CreateDownloadOptions) (Downlo
 }
 
 // CreateStreamDownload registers a streaming file for progressive HTTP
-// download. The file is tailed during writing; the marker file
-// (options.MarkerPath) signals when writing is complete and the
-// response can be closed. Useful for serving recordings while they are
-// still being exported.
+// download. The file is tailed during writing; the marker file signals
+// completion.
 func (dm *DownloadManager) CreateStreamDownload(options *CreateStreamDownloadOptions) (DownloadToken, error) {
 	payload := createStreamDownloadWire{CreateStreamDownloadOptions: *options, RemotePluginID: remotePluginID()}
 
@@ -90,9 +83,9 @@ func (dm *DownloadManager) CreateStreamDownload(options *CreateStreamDownloadOpt
 	return decodeDownloadToken(m), nil
 }
 
-// decodeDownloadToken pulls the typed fields out of the msgpack-decoded
-// response map. Numeric `expiresAt` may arrive as int64, float64, or uint64
-// depending on the encoder path, so we coerce.
+// decodeDownloadToken pulls the typed fields out of the response map.
+// expiresAt may arrive as int64, float64, or uint64 depending on the encoder
+// path, so it is coerced.
 func decodeDownloadToken(m map[string]any) DownloadToken {
 	token, _ := m["token"].(string)
 	url, _ := m["url"].(string)
@@ -114,10 +107,8 @@ func decodeDownloadToken(m map[string]any) DownloadToken {
 	}
 }
 
-// DeleteDownload removes a download token from the registry and
-// optionally deletes the underlying file (depending on the cleanup mode
-// used at creation time). Subsequent requests using the token return
-// 404.
+// DeleteDownload removes a download token and optionally deletes the
+// underlying file.
 func (dm *DownloadManager) DeleteDownload(token string) error {
 	ctx := context.Background()
 	_, err := dm.proxy.Invoke(ctx, "deleteDownload", token)

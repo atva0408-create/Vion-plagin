@@ -1,66 +1,43 @@
 package sdk
 
-// JsonSchemaType is the discriminator for a schema field.
-// Determines which UI control renders the value and which subset of
-// JsonSchema fields is meaningful.
+// JsonSchemaType is the field type discriminating which UI control renders
+// the value.
 type JsonSchemaType string
 
 const (
-	// JsonSchemaTypeString — text input. Pair with Format for specialized controls.
-	JsonSchemaTypeString JsonSchemaType = "string"
-	// JsonSchemaTypeNumber — numeric input with optional min/max/step.
-	JsonSchemaTypeNumber JsonSchemaType = "number"
-	// JsonSchemaTypeBoolean — toggle/checkbox.
+	JsonSchemaTypeString  JsonSchemaType = "string"
+	JsonSchemaTypeNumber  JsonSchemaType = "number"
 	JsonSchemaTypeBoolean JsonSchemaType = "boolean"
-	// JsonSchemaTypeArray — list of nested items defined by Items.
-	JsonSchemaTypeArray JsonSchemaType = "array"
-	// JsonSchemaTypeButton — fires OnSet on click; stores no value.
-	JsonSchemaTypeButton JsonSchemaType = "button"
-	// JsonSchemaTypeSubmit — submits the form via OnClick; can return a toast or new schema.
-	JsonSchemaTypeSubmit JsonSchemaType = "submit"
+	JsonSchemaTypeArray   JsonSchemaType = "array"
+	JsonSchemaTypeButton  JsonSchemaType = "button"
+	JsonSchemaTypeSubmit  JsonSchemaType = "submit"
 )
 
 // StringFormat selects a specialized UI control for a string field.
 type StringFormat string
 
 const (
-	// StringFormatDateTime — ISO 8601 date+time picker.
 	StringFormatDateTime StringFormat = "date-time"
-	// StringFormatDate — date-only picker.
-	StringFormatDate StringFormat = "date"
-	// StringFormatTime — time-only picker.
-	StringFormatTime StringFormat = "time"
-	// StringFormatEmail — email input with format validation.
-	StringFormatEmail StringFormat = "email"
-	// StringFormatUUID — UUID input with format validation.
-	StringFormatUUID StringFormat = "uuid"
-	// StringFormatIPv4 — IPv4 address input.
-	StringFormatIPv4 StringFormat = "ipv4"
-	// StringFormatIPv6 — IPv6 address input.
-	StringFormatIPv6 StringFormat = "ipv6"
-	// StringFormatPassword — masked input that hides characters.
+	StringFormatDate     StringFormat = "date"
+	StringFormatTime     StringFormat = "time"
+	StringFormatEmail    StringFormat = "email"
+	StringFormatUUID     StringFormat = "uuid"
+	StringFormatIPv4     StringFormat = "ipv4"
+	StringFormatIPv6     StringFormat = "ipv6"
 	StringFormatPassword StringFormat = "password"
-	// StringFormatQRCode — value is rendered as a QR code (read-only display).
-	StringFormatQRCode StringFormat = "qrCode"
-	// StringFormatImage — value is a data URL or path; rendered as a thumbnail.
-	StringFormatImage StringFormat = "image"
+	StringFormatQRCode   StringFormat = "qrCode"
+	StringFormatImage    StringFormat = "image"
 )
 
 // SchemaConditionOperator defines comparison operators for SchemaCondition.
 type SchemaConditionOperator string
 
 const (
-	// SchemaConditionEq — value equals the expected value.
-	SchemaConditionEq SchemaConditionOperator = "eq"
-	// SchemaConditionNeq — value does not equal the expected value.
+	SchemaConditionEq  SchemaConditionOperator = "eq"
 	SchemaConditionNeq SchemaConditionOperator = "neq"
-	// SchemaConditionGt — value is greater than the expected value.
-	SchemaConditionGt SchemaConditionOperator = "gt"
-	// SchemaConditionLt — value is less than the expected value.
-	SchemaConditionLt SchemaConditionOperator = "lt"
-	// SchemaConditionIn — value is contained in the expected array.
-	SchemaConditionIn SchemaConditionOperator = "in"
-	// SchemaConditionNin — value is not contained in the expected array.
+	SchemaConditionGt  SchemaConditionOperator = "gt"
+	SchemaConditionLt  SchemaConditionOperator = "lt"
+	SchemaConditionIn  SchemaConditionOperator = "in"
 	SchemaConditionNin SchemaConditionOperator = "nin"
 )
 
@@ -92,14 +69,10 @@ type SchemaCondition struct {
 type ButtonColor string
 
 const (
-	// ButtonColorSuccess — green/positive action.
 	ButtonColorSuccess ButtonColor = "success"
-	// ButtonColorInfo — neutral informational action.
-	ButtonColorInfo ButtonColor = "info"
-	// ButtonColorWarn — yellow/cautionary action.
-	ButtonColorWarn ButtonColor = "warn"
-	// ButtonColorDanger — red/destructive action.
-	ButtonColorDanger ButtonColor = "danger"
+	ButtonColorInfo    ButtonColor = "info"
+	ButtonColorWarn    ButtonColor = "warn"
+	ButtonColorDanger  ButtonColor = "danger"
 )
 
 // JsonSchema represents a single configuration field rendered in the UI.
@@ -161,13 +134,11 @@ type JsonSchema struct {
 	// Color is the button color variant (Type=button or Type=submit only).
 	Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
 
-	// OnSet is invoked after a value changes (Type=string/number/boolean/array/button).
-	// Receives (newValue, oldValue). Not serialized.
+	// OnSet is invoked after a value changes. Receives (newValue, oldValue).
 	OnSet func(newValue, oldValue any) any `json:"-" msgpack:"-"`
-	// OnGet is invoked to compute the current value at read time. Not serialized.
+	// OnGet is invoked to compute the current value at read time.
 	OnGet func() any `json:"-" msgpack:"-"`
 	// OnClick is invoked when a submit-type field is submitted (Type=submit only).
-	// May return a toast or updated schema. Not serialized.
 	OnClick func(value any) *FormSubmitResponse `json:"-" msgpack:"-"`
 }
 
@@ -175,14 +146,10 @@ type JsonSchema struct {
 type ToastType string
 
 const (
-	// ToastInfo — neutral notification.
-	ToastInfo ToastType = "info"
-	// ToastSuccess — positive notification (e.g. operation succeeded).
+	ToastInfo    ToastType = "info"
 	ToastSuccess ToastType = "success"
-	// ToastWarning — cautionary notification.
 	ToastWarning ToastType = "warning"
-	// ToastError — failure notification.
-	ToastError ToastType = "error"
+	ToastError   ToastType = "error"
 )
 
 // ToastMessage represents a transient banner to show in the UI.
@@ -204,9 +171,7 @@ type ToastMessage struct {
 type FormSubmitResponse struct {
 	// Toast is an optional banner to display after the submit completes.
 	Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
-	// Schema optionally replaces the rendered form fields — used to advance a
-	// multi-step form or re-render with different fields. The UI applies the
-	// replacement; callbacks are stripped during serialization.
+	// Schema optionally replaces the rendered form fields (full replacement).
 	Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
 }
 

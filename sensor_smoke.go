@@ -1,6 +1,5 @@
 package sdk
 
-// SmokeProperty defines property names for smoke sensors.
 const (
 	smokePropertyDetected = "detected"
 )
@@ -8,7 +7,6 @@ const (
 // SmokeSensor reports smoke detection state.
 type SmokeSensor struct{ BaseSensor }
 
-// NewSmokeSensor creates a new SmokeSensor.
 func NewSmokeSensor(name string) *SmokeSensor {
 	s := &SmokeSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *SmokeSensor) GetType() SensorType         { return SensorTypeSmoke }
 func (s *SmokeSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 func (s *SmokeSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsDetected returns whether smoke is detected.
 func (s *SmokeSensor) IsDetected() bool {
 	v, _ := s.GetValue(smokePropertyDetected).(bool)
 	return v

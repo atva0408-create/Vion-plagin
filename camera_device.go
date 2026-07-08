@@ -41,7 +41,6 @@ type CameraDevice struct {
 	proxySensors    map[string]*sensorProxy
 	initialized     bool
 
-	// Observable subjects
 	cameraSubject    *BehaviorSubject[Camera]
 	cameraState      *BehaviorSubject[bool]
 	frameWorkerState *BehaviorSubject[bool]
@@ -53,7 +52,6 @@ type CameraDevice struct {
 	cleanupFns []func()
 }
 
-// newCameraDeviceProxy creates a new CameraDevice proxy.
 func newCameraDeviceProxy(
 	client *rpc.Client,
 	api *PluginAPI,
@@ -83,7 +81,6 @@ func newCameraDeviceProxy(
 		detectionEvent:   NewSubject[DetectionEventData](),
 	}
 
-	// Create sources
 	dev.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
 	for i := range cam.Sources {
 		src := cam.Sources[i]
@@ -97,9 +94,6 @@ func newCameraDeviceProxy(
 	return dev
 }
 
-// init initializes subscriptions and RPC handlers for this camera device.
-// Matches the async init() pattern from Node.js/Python runtimes where
-// subscription and registration failures propagate to the caller.
 func (d *CameraDevice) init() error {
 	d.mu.Lock()
 	if d.initialized {
@@ -112,14 +106,12 @@ func (d *CameraDevice) init() error {
 	pluginCamNS := getPluginCameraNamespaces(d.info.ID, d.camera.ID)
 	sensorCtrlNS := getSensorControllerNamespaces(d.camera.ID)
 
-	// Create camera storage
 	st, err := d.storageCtrl.createCameraStorage(d.camera.ID)
 	if err != nil {
 		return fmt.Errorf("create camera storage: %w", err)
 	}
 	d.storageDevice = st
 
-	// Register camera interfaces RPC handler (for streaming/snapshot)
 	cleanup, err := d.client.RegisterHandler(pluginCamNS.CameraInterfacesRPC, map[string]any{
 		"streamUrl": func(sourceID string) (string, error) {
 			return d.getStreamURL(sourceID)
@@ -133,7 +125,6 @@ func (d *CameraDevice) init() error {
 	}
 	d.cleanupFns = append(d.cleanupFns, func() { _ = cleanup() })
 
-	// Subscribe to camera events
 	camEventNS := getCameraNamespaces(d.camera.ID)
 	unsub, err := d.client.Subscribe(camEventNS.CameraSubject, func(data []byte) {
 		var msg cameraEventMessage
@@ -147,7 +138,6 @@ func (d *CameraDevice) init() error {
 	}
 	d.cleanupFns = append(d.cleanupFns, unsub)
 
-	// Subscribe to sensor controller events (sensor:added / sensor:removed)
 	unsubSensors, err := d.client.Subscribe(sensorCtrlNS.SensorSubject, func(data []byte) {
 		var msg sensorControllerEventMessage
 		if !decodeMsgpack(d.logger, data, &msg, "sensorControllerEventMessage") {
@@ -160,7 +150,6 @@ func (d *CameraDevice) init() error {
 	}
 	d.cleanupFns = append(d.cleanupFns, unsubSensors)
 
-	// Subscribe to detection events
 	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
 	unsubDetectionEvents, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
 		var msg detectionEventMessage
@@ -186,7 +175,6 @@ func (d *CameraDevice) init() error {
 	return nil
 }
 
-// refreshStates fetches current camera/frameWorker state from the server.
 func (d *CameraDevice) refreshStates() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -454,7 +442,6 @@ func (d *CameraDevice) Disconnect() error {
 	return err
 }
 
-// sensorInternalInit provides access to unexported sensor initialization methods.
 type sensorInternalInit interface {
 	setCameraID(id string)
 	setPluginID(id string)
@@ -464,8 +451,6 @@ type sensorInternalInit interface {
 	setAssigned(assigned bool)
 }
 
-// onBackendPropertyChanged is optionally implemented by sensors that can receive
-// backend-initiated property changes (e.g., motion dwell timer).
 type backendPropertyReceiver interface {
 	onBackendPropertyChanged(property string, value any)
 }
@@ -491,7 +476,6 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	}
 	d.cleanupFns = append(d.cleanupFns, func() { _ = sensorCleanup() })
 
-	// Create sensor storage
 	sensorStorage, err := d.storageCtrl.createSensorStorage(d.camera.ID, s.GetID(), string(s.GetType()), s.GetName())
 	if err != nil {
 		return fmt.Errorf("failed to create sensor storage: %w", err)
@@ -532,7 +516,6 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 		})
 	}
 
-	// Register sensor with CameraController (registerSensor on controller.rpc)
 	ctx := context.Background()
 	sensorJSON := s.ToJSON()
 
@@ -605,7 +588,6 @@ func (d *CameraDevice) RemoveSensor(sensorID string) error {
 			// the assignmentLifecycle.OnDeassigned hook if implemented.
 			setAssignedWithLifecycle(s, false)
 
-			// Unregister from CameraController
 			ctx := context.Background()
 			_, _ = d.controllerProxy.Invoke(ctx, "unregisterSensor", sensorID)
 
@@ -699,7 +681,6 @@ func (d *CameraDevice) handleCameraEvent(msg cameraEventMessage) {
 
 	switch msg.Type {
 	case "updated":
-		// Camera config was updated — re-decode data as Camera
 		if msg.Data == nil {
 			return
 		}
@@ -714,7 +695,6 @@ func (d *CameraDevice) handleCameraEvent(msg cameraEventMessage) {
 
 		d.mu.Lock()
 		d.camera = cam
-		// Rebuild sources
 		d.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
 		for i := range cam.Sources {
 			src := cam.Sources[i]
@@ -834,7 +814,6 @@ func changedCameraProps(oldV, newV reflect.Value) []string {
 		if jsonTag == "" || jsonTag == "-" {
 			continue
 		}
-		// Strip ",omitempty" suffix
 		if comma := indexOf(jsonTag, ','); comma >= 0 {
 			jsonTag = jsonTag[:comma]
 		}
@@ -845,7 +824,6 @@ func changedCameraProps(oldV, newV reflect.Value) []string {
 	return props
 }
 
-// indexOf returns the index of the first occurrence of c in s, or -1.
 func indexOf(s string, c byte) int {
 	for i := range len(s) {
 		if s[i] == c {
@@ -876,8 +854,6 @@ func (d *CameraDevice) handleDetectionEvent(msg *detectionEventMessage) {
 	})
 }
 
-// initSensors fetches existing sensors from the server and creates proxy instances.
-// Called automatically during construction.
 func (d *CameraDevice) initSensors() {
 	ctx := context.Background()
 	result, err := d.sensorCtrlProxy.Invoke(ctx, "getSensors", d.info.ID)
@@ -908,14 +884,12 @@ func (d *CameraDevice) initSensors() {
 		}
 	}
 
-	// Fetch initial sensor states (capabilities, displayName, properties)
 	if len(newProxies) > 0 {
 		d.getSensorStates(newProxies)
 	}
 
 }
 
-// getSensorStates fetches current state for all sensors and applies to proxies.
 func (d *CameraDevice) getSensorStates(proxies []*sensorProxy) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -948,12 +922,10 @@ func (d *CameraDevice) getSensorStates(proxies []*sensorProxy) {
 			continue
 		}
 
-		// Apply capabilities
 		if state.Capabilities != nil {
 			proxy.SetCapabilities(state.Capabilities)
 		}
 
-		// Apply displayName
 		if state.DisplayName != "" {
 			proxy.SetDisplayName(state.DisplayName)
 		}
@@ -991,7 +963,6 @@ func (d *CameraDevice) handleSensorControllerEvent(msg sensorControllerEventMess
 		}
 
 		sensor := addedData.Sensor
-		// Merge initial properties from state
 		if sensor.Properties == nil {
 			sensor.Properties = make(map[string]any)
 		}
@@ -1106,8 +1077,6 @@ func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, 
 	})
 }
 
-// canAccessSensor checks if this plugin can access a foreign sensor based on contract.consumes.
-// Own sensors are always accessible.
 func (d *CameraDevice) canAccessSensor(data *storedSensorData) bool {
 	if data.PluginID == d.info.ID {
 		return true
@@ -1157,7 +1126,6 @@ func (d *CameraDevice) addProxySensor(data *storedSensorData) *sensorProxy {
 	return proxy
 }
 
-// cleanup releases all resources held by this camera device.
 func (d *CameraDevice) cleanup() {
 	d.mu.Lock()
 	d.initialized = false
@@ -1168,7 +1136,6 @@ func (d *CameraDevice) cleanup() {
 	}
 	d.cleanupFns = nil
 
-	// Complete all subjects
 	d.cameraSubject.Complete()
 	d.cameraState.Complete()
 	d.frameWorkerState.Complete()
@@ -1176,7 +1143,6 @@ func (d *CameraDevice) cleanup() {
 	d.sensorRemoved.Complete()
 	d.detectionEvent.Complete()
 
-	// Cleanup proxy sensors
 	d.mu.Lock()
 	for _, proxy := range d.proxySensors {
 		proxy.cleanupProxy()

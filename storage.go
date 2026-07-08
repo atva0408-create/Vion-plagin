@@ -12,17 +12,9 @@ import (
 )
 
 // DeviceStorage is the schema-driven configuration store for a plugin,
-// camera, or sensor. Each plugin and each device gets its own scoped
-// instance.
-//
-// Define the fields the UI should render via DefineSchemas (typically
-// once at startup), then read/write values via GetValue / SetValue.
-// Values whose schema has Store=true are persisted; the rest live only
-// in memory for the lifetime of the process. Persisting methods return
-// once the write is durable. Submit-button schemas drive transactional
-// flows via SubmitValue.
-//
-// It implements the storage protocol expected by the server via RPC.
+// camera, or sensor. Define the fields the UI renders via DefineSchemas,
+// then read/write values via GetValue / SetValue. Each plugin and camera
+// can have its own storage instance.
 //
 // Example:
 //
@@ -57,12 +49,9 @@ type DeviceStorage struct {
 	// may clear it.
 	persistSeq uint64
 
-	// closeHandler unregisters this storage's RPC handler; set by the
-	// StorageController at registration, released on close.
 	closeHandler rpc.CleanupFunc
 }
 
-// newDeviceStorage creates a new DeviceStorage instance.
 func newDeviceStorage(persistence configPersistence, location storeLocation, logger *Logger) *DeviceStorage {
 	ds := &DeviceStorage{
 		persistence: persistence,
@@ -76,9 +65,7 @@ func newDeviceStorage(persistence configPersistence, location storeLocation, log
 	return ds
 }
 
-// persistedValues filters Values down to what belongs in the store: keys
-// whose schema opts in via Store (buttons/submits never store), plus every
-// schema-less key (internal values). Caller must hold ds.mu.
+// persistedValues collects the keys that belong in the store. Caller must hold ds.mu.
 func (ds *DeviceStorage) persistedValues() map[string]any {
 	out := make(map[string]any, len(ds.Values))
 	for key, val := range ds.Values {
@@ -90,16 +77,11 @@ func (ds *DeviceStorage) persistedValues() map[string]any {
 	return out
 }
 
-// schemaStorable reports whether values under this schema belong in the
-// persisted store (buttons and submits never store).
 func schemaStorable(schema *JsonSchema) bool {
 	return schema.Store != nil && *schema.Store &&
 		schema.Type != JsonSchemaTypeButton && schema.Type != JsonSchemaTypeSubmit
 }
 
-// generateConfigFromSchemas builds the type-based default value map: every
-// non-button/submit schema key gets its explicit DefaultValue, else the typed
-// zero for its type.
 func generateConfigFromSchemas(schemas []JsonSchema) map[string]any {
 	config := make(map[string]any, len(schemas))
 	for i := range schemas {
@@ -112,8 +94,6 @@ func generateConfigFromSchemas(schemas []JsonSchema) map[string]any {
 	return config
 }
 
-// generateDefaultValue returns a schema's explicit DefaultValue, or the typed
-// zero for its type when none is set.
 func generateDefaultValue(s *JsonSchema) any {
 	if s.DefaultValue != nil {
 		return s.DefaultValue
@@ -140,9 +120,6 @@ func generateDefaultValue(s *JsonSchema) any {
 	}
 }
 
-// mergeValues deep-merges src into dst and returns the result: nested
-// string-keyed maps merge recursively, arrays and scalars from src replace
-// dst wholesale, and keys present only in dst are kept.
 func mergeValues(dst, src map[string]any) map[string]any {
 	out := make(map[string]any, len(dst)+len(src))
 	maps.Copy(out, dst)
@@ -160,8 +137,6 @@ func mergeValues(dst, src map[string]any) map[string]any {
 	return out
 }
 
-// mergeValue merges a single incoming value onto the existing one: two
-// string-keyed maps deep-merge (incoming wins), anything else replaces.
 func mergeValue(old, incoming any) any {
 	oldMap, oOk := old.(map[string]any)
 	newMap, nOk := incoming.(map[string]any)
@@ -198,7 +173,7 @@ func (ds *DeviceStorage) persist() error {
 
 // RPCMethods restricts the storage's RPC surface to the config API. Exported
 // lifecycle methods (Save, DefineSchemas) stay callable in-process for plugin
-// authors but are not reachable over the wire, matching the node/python runtimes.
+// authors but are not reachable over the wire.
 func (ds *DeviceStorage) RPCMethods() []string {
 	return []string{
 		"getValue", "setValue", "submitValue", "setInternalValue", "hasValue",
@@ -207,14 +182,13 @@ func (ds *DeviceStorage) RPCMethods() []string {
 	}
 }
 
-// GetValue retrieves a configuration value.
-// If the schema for this key has an OnGet callback, it is called and its return value is used.
-// Falls back to stored value, then schema default, then provided default.
+// GetValue retrieves a configuration value. Resolves in order: the schema's
+// OnGet callback (if any), the stored value, the schema default, then the
+// provided default.
 func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 	ds.mu.RLock()
 	schema := ds.findSchemaByKey(key)
 
-	// OnGet takes priority (computed values)
 	if schema != nil && schema.OnGet != nil {
 		onGet := schema.OnGet
 		ds.mu.RUnlock()
@@ -228,7 +202,6 @@ func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 		return val
 	}
 
-	// Schema default
 	if schema != nil && schema.DefaultValue != nil {
 		return schema.DefaultValue
 	}
@@ -288,8 +261,8 @@ func (ds *DeviceStorage) SetValue(key string, value any) error {
 	return err
 }
 
-// SubmitValue handles submit button clicks. Finds the schema by key,
-// calls OnClick if present, and returns the response (with optional toast).
+// SubmitValue handles a submit-type field click, invoking OnClick and
+// returning its optional toast/schema response.
 func (ds *DeviceStorage) SubmitValue(key string, value any) map[string]any {
 	ds.mu.RLock()
 	schema := ds.findSchemaByKey(key)
@@ -330,9 +303,8 @@ func (ds *DeviceStorage) HasValue(key string) bool {
 	return ok
 }
 
-// GetConfig returns the full schema configuration. Each schema's OnGet is
-// resolved first and its result baked into the values, so computed fields
-// appear in the returned snapshot.
+// GetConfig returns the full schema configuration (schema definitions and
+// current values).
 func (ds *DeviceStorage) GetConfig() map[string]any {
 	ds.mu.RLock()
 	schemas := ds.Schemas
@@ -366,7 +338,6 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 		}
 	}
 
-	// Collect OnSet callbacks for changed keys
 	type pendingCallback struct {
 		onSet    func(newValue, oldValue any) any
 		oldValue any
@@ -376,8 +347,6 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 
 	ds.mu.Lock()
 
-	// Merge each incoming key into the existing value: nested maps deep-merge,
-	// arrays and scalars replace. Only keys present in newConfig are touched.
 	for key, newVal := range newConfig {
 		oldVal := ds.Values[key]
 		merged := mergeValue(oldVal, newVal)
@@ -410,11 +379,8 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 	return err
 }
 
-// DefineSchemas sets the schemas for this storage and rebuilds the values from
-// the schema defaults overlaid with the currently stored values: type-based
-// defaults ("" / 0 / false / []) fill any key the store does not carry, while
-// existing stored values win. Held in memory until the next write, matching
-// node/python.
+// DefineSchemas sets all schemas for this storage. Schema defaults fill any
+// key the store does not carry; existing stored values win.
 func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
 	ds.mu.Lock()
 	ds.Schemas = schemas
@@ -422,11 +388,8 @@ func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
 	ds.mu.Unlock()
 }
 
-// AddSchema adds a new schema field and returns the persist error if the
-// durable write fails. The in-memory schema and default are applied regardless.
-// An OnGet callback is resolved and its result baked into the value. Adding a
-// key that already has a schema returns an error — use ChangeSchema to modify
-// an existing field.
+// AddSchema adds a new schema field. Returns an error if a schema with that
+// key already exists — use ChangeSchema to modify an existing field.
 func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error {
 	ds.mu.Lock()
 
@@ -457,15 +420,9 @@ func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error {
 	return ds.persist()
 }
 
-// ChangeSchema replaces the schema for an existing key with a full JsonSchema;
-// partial fields are not merged. The passed key always wins (newSchema.Key is
-// overwritten with key). It is a no-op when no schema with that key is currently
-// registered — use AddSchema to add a new field. An OnGet callback is resolved
-// and its result baked into the value, persisting (and returning any persist
-// error) when that changes a storable value. When the change flips the key's
-// storable-ness the next write is forced to persist so the flip becomes durable
-// even if the value itself compares unchanged. Returns nil when no schema with
-// that key is registered.
+// ChangeSchema replaces an existing key's schema with a full JsonSchema;
+// individual fields are not merged. The passed key always wins. It is a no-op
+// when no schema with that key is registered — use AddSchema to add a new field.
 func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error {
 	ds.mu.Lock()
 	newSchema.Key = key
@@ -503,9 +460,8 @@ func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error {
 	return ds.persist()
 }
 
-// RemoveSchema removes a schema field by key, together with its value — the
-// key would otherwise turn schema-less and persist as an internal value.
-// Returns the persist error if the durable write fails.
+// RemoveSchema removes a schema field by key, deleting its stored value along
+// with it.
 func (ds *DeviceStorage) RemoveSchema(key string) error {
 	removedStorable := false
 	hadValue := false
@@ -602,8 +558,7 @@ func (ds *DeviceStorage) Save() error {
 	return ds.persist()
 }
 
-// close is the runtime-owned teardown, called by StorageController.close() —
-// flushes a final snapshot and unregisters the storage's RPC handler.
+// close flushes a final snapshot and unregisters the storage's RPC handler.
 func (ds *DeviceStorage) close() {
 	if err := ds.Save(); err != nil {
 		ds.logger.Error("store: close save failed:", err)
@@ -612,9 +567,7 @@ func (ds *DeviceStorage) close() {
 }
 
 // Destroy clears this storage's values and deletes its location from the store,
-// blocking until the deletion is durable and returning any persist error. The
-// host calls this when the owning device is removed so the persisted section
-// does not linger.
+// blocking until the deletion is durable.
 func (ds *DeviceStorage) Destroy() error {
 	ds.mu.Lock()
 	ds.Values = make(map[string]any)
@@ -622,8 +575,7 @@ func (ds *DeviceStorage) Destroy() error {
 	return ds.persist()
 }
 
-// unregister removes this storage's RPC handler. Unlike close it does not flush
-// first — the caller has already destroyed the values.
+// unregister removes this storage's RPC handler without flushing.
 func (ds *DeviceStorage) unregister() {
 	if ds.closeHandler != nil {
 		_ = ds.closeHandler()
@@ -631,9 +583,8 @@ func (ds *DeviceStorage) unregister() {
 	}
 }
 
-// resolveOnGet runs each schema's OnGet and bakes the returned value into
-// Values, so a later config snapshot reflects computed fields. onGet callbacks
-// may read back into this storage, so they run without ds.mu held.
+// resolveOnGet runs each schema's OnGet and bakes the result into Values.
+// onGet may read back into this storage, so it runs without ds.mu held.
 func (ds *DeviceStorage) resolveOnGet(schemas []JsonSchema) {
 	for i := range schemas {
 		s := &schemas[i]
@@ -652,11 +603,8 @@ func (ds *DeviceStorage) resolveOnGet(schemas []JsonSchema) {
 
 const maxSafeStoreInt = 1<<53 - 1
 
-// validateStoreValue rejects values outside the cross-runtime store domain
-// (strings, bools, float64-safe numbers, arrays, string-keyed maps) before
-// they replace the previous value.
-// maxStoreValueDepth rejects circular references (and absurd nesting) with a
-// clear error instead of unbounded recursion.
+// maxStoreValueDepth bounds recursion so a circular reference fails with a
+// clear error instead of a stack overflow.
 const maxStoreValueDepth = 64
 
 func validateStoreValue(key string, value any) error {
@@ -755,13 +703,11 @@ func checkStoreUint(n uint64, path string) error {
 	return nil
 }
 
-// deepEqualLoose compares two values with recursive numeric type normalization.
-// Values from different serialization paths (JSON → float64, msgpack → int64/uint64,
-// Go defaults → int) may have different types for the same logical value.
-// This function normalizes all numeric types to float64 before comparing,
-// and recurses into maps and slices for nested structures.
+// deepEqualLoose compares two values, normalizing numeric types before
+// comparing (values from different serialization paths — JSON float64,
+// msgpack int64/uint64, Go int — may type the same logical value differently)
+// and recursing into maps and slices.
 func deepEqualLoose(a, b any) bool {
-	// Both nil
 	if a == nil && b == nil {
 		return true
 	}
@@ -769,17 +715,15 @@ func deepEqualLoose(a, b any) bool {
 		return false
 	}
 
-	// Numeric comparison
 	na, aIsNum := toFloat64(a)
 	nb, bIsNum := toFloat64(b)
 	if aIsNum && bIsNum {
 		return na == nb
 	}
 	if aIsNum != bIsNum {
-		return false // one is numeric, the other isn't
+		return false
 	}
 
-	// Map comparison (recurse into values)
 	aMap, aIsMap := toMapAny(a)
 	bMap, bIsMap := toMapAny(b)
 	if aIsMap && bIsMap {
@@ -795,7 +739,6 @@ func deepEqualLoose(a, b any) bool {
 		return true
 	}
 
-	// Slice comparison (recurse into elements)
 	aSlice, aIsSlice := toSliceAny(a)
 	bSlice, bIsSlice := toSliceAny(b)
 	if aIsSlice && bIsSlice {
@@ -810,11 +753,9 @@ func deepEqualLoose(a, b any) bool {
 		return true
 	}
 
-	// Fallback for strings, bools, and other types
 	return reflect.DeepEqual(a, b)
 }
 
-// toMapAny converts a value to map[string]any if possible.
 func toMapAny(v any) (map[string]any, bool) {
 	if m, ok := v.(map[string]any); ok {
 		return m, true
@@ -822,7 +763,6 @@ func toMapAny(v any) (map[string]any, bool) {
 	return nil, false
 }
 
-// toSliceAny converts a value to []any if possible.
 func toSliceAny(v any) ([]any, bool) {
 	if s, ok := v.([]any); ok {
 		return s, true
@@ -830,7 +770,6 @@ func toSliceAny(v any) ([]any, bool) {
 	return nil, false
 }
 
-// toFloat64 attempts to convert a value to float64.
 func toFloat64(v any) (float64, bool) {
 	switch n := v.(type) {
 	case int:

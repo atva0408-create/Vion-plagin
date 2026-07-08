@@ -31,8 +31,6 @@ type NotificationManager struct {
 	logger     *Logger
 }
 
-// newNotificationManager builds a NotificationManager bound to the running
-// plugin's identity. Called once by the SDK runtime in run.go.
 func newNotificationManager(client *rpc.Client, pluginInfo *PluginInfo, logger *Logger) *NotificationManager {
 	return &NotificationManager{
 		client:     client,
@@ -42,13 +40,12 @@ func newNotificationManager(client *rpc.Client, pluginInfo *PluginInfo, logger *
 }
 
 // Publish sends a notification to the host for fan-out to every installed
-// Notifier-plugin and the in-app UI. Fire-and-forget: errors marshalling
-// the payload or transmitting on NATS are returned, but the host's downstream
-// processing (recipient resolve, notifier delivery) is async and failures
-// there never propagate back here.
+// Notifier-plugin and the in-app UI. Fire-and-forget: marshalling/transport
+// errors are returned, but downstream delivery is async and failures there
+// never propagate back here.
 //
-// The plugin's contract MUST declare CapabilityPublishNotifications;
-// otherwise the host drops the notification and logs an error.
+// The plugin's contract MUST declare CapabilityPublishNotifications; otherwise
+// the host drops the notification.
 //
 // Example:
 //

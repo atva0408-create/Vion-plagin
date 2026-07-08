@@ -1,21 +1,15 @@
 package sdk
 
 // OAuthStatus is the lifecycle phase of an OAuth provider connection, carried
-// in OAuthState.Status. It drives the host UI's button/dialog state machine.
+// in OAuthState.Status.
 type OAuthStatus = string
 
 const (
-	// OAuthStatusDisconnected — no grant; the user can start a flow.
 	OAuthStatusDisconnected OAuthStatus = "disconnected"
-	// OAuthStatusAwaitingUser — a flow is in progress and waiting on the user
-	// (device code shown / browser redirect pending).
 	OAuthStatusAwaitingUser OAuthStatus = "awaiting_user"
-	// OAuthStatusPolling — the plugin is polling the IdP for the token.
-	OAuthStatusPolling OAuthStatus = "polling"
-	// OAuthStatusConnected — a valid grant is stored.
-	OAuthStatusConnected OAuthStatus = "connected"
-	// OAuthStatusError — the last attempt failed; see ErrorCode/ErrorMessage.
-	OAuthStatusError OAuthStatus = "error"
+	OAuthStatusPolling      OAuthStatus = "polling"
+	OAuthStatusConnected    OAuthStatus = "connected"
+	OAuthStatusError        OAuthStatus = "error"
 )
 
 // OAuthState is a snapshot of a provider connection's lifecycle. It lives in
@@ -50,8 +44,6 @@ type OAuthState struct {
 }
 
 // OAuthMetadata is informational data the host renders in the connect dialog.
-// The plugin author hardcodes it; the host shows IdpDisplayName plus the scope
-// descriptions for the scopes it is about to request.
 type OAuthMetadata struct {
 	// IdpDisplayName is the human name of the identity provider, e.g.
 	// "cameraui.com", "Spotify", "GitHub".
@@ -64,8 +56,7 @@ type OAuthMetadata struct {
 }
 
 // OAuthProviderConfig points the plugin's OAuth manager at an identity
-// provider. Preset selects a built-in endpoint set (e.g. "cameraui.com");
-// otherwise the explicit endpoints are used.
+// provider.
 type OAuthProviderConfig struct {
 	// Preset names a built-in IdP endpoint set. When empty the explicit
 	// endpoint fields are used.
@@ -78,9 +69,8 @@ type OAuthProviderConfig struct {
 	RevokeURL     string `msgpack:"revokeUrl,omitempty" json:"revokeUrl,omitempty"`
 }
 
-// OAuthProviderDeclaration is one provider a plugin integrates with, returned
-// from the plugin so the host can render the connection affordance. A
-// single-provider plugin (e.g. camera-ui-nvr) declares exactly one.
+// OAuthProviderDeclaration is one provider a plugin integrates with. A
+// single-provider plugin declares exactly one.
 type OAuthProviderDeclaration struct {
 	// ID is the plugin-local provider identifier (storage key dimension for
 	// multi-provider plugins).
@@ -105,9 +95,8 @@ type OAuthCapable interface {
 	// GetOAuthMetadata returns the IdP display info, scope descriptions and
 	// which flow sub-interfaces the plugin implements. Called on UI mount.
 	GetOAuthMetadata() (*OAuthMetadata, error)
-	// GetOAuthState returns a snapshot of the current lifecycle state. The
-	// host polls this (~1.5s during a flow, ~30s otherwise) to reflect
-	// progress; there is no streaming.
+	// GetOAuthState returns a snapshot of the current lifecycle state; the
+	// host polls this to mirror progress.
 	GetOAuthState() (*OAuthState, error)
 	// Disconnect revokes the current grant at the IdP and clears the stored
 	// tokens.

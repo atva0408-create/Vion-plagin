@@ -26,14 +26,10 @@ type PluginAPI struct {
 	// StoragePath is the absolute path to the plugin's writable storage
 	// directory (created and cleaned up by the host).
 	StoragePath string
-	// storageController is the internal handle used by the SDK to create
-	// per-component DeviceStorage instances.
+
 	storageController *StorageController
 }
 
-// newPluginAPI creates a new PluginAPI instance. Only called by the SDK
-// runtime in run.go after the host has handed over the plugin's storage
-// paths and bootstrapped the RPC managers.
 func newPluginAPI(
 	coreManager *CoreManager,
 	deviceManager *DeviceManager,

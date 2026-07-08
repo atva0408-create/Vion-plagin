@@ -29,20 +29,16 @@ type ClipDetector interface {
 // from video frames. Pair with a ClipDetector implementation.
 type ClipDetectorSensor struct{ BaseSensor }
 
-// NewClipDetectorSensor creates a new ClipDetectorSensor with the given name.
 func NewClipDetectorSensor(name string) *ClipDetectorSensor {
 	s := &ClipDetectorSensor{BaseSensor: NewBaseSensor(name)}
 	s.requiresFrames = true
 	return s
 }
 
-// GetType returns SensorTypeClip.
 func (s *ClipDetectorSensor) GetType() SensorType { return SensorTypeClip }
 
-// GetCategory returns SensorCategorySensor.
 func (s *ClipDetectorSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *ClipDetectorSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 // UpdateValue is a no-op — the clip detector sensor has no externally writable properties.

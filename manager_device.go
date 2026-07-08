@@ -22,12 +22,8 @@ type DiscoveredCamera struct {
 
 // DeviceManager provides camera lookup and discovery operations via RPC.
 //
-// Handles camera lifecycle events from the backend (cameraAdded /
-// cameraReleased) and forwards them to the plugin's OnCameraAdded /
-// OnCameraReleased callbacks. Use GetCamera to retrieve a camera proxy
-// by ID or name, and PushDiscoveredCameras to surface cameras found
-// during async discovery (e.g. after a cloud login) without waiting
-// for the next discovery poll.
+// Use GetCamera to retrieve a camera by ID or name, and PushDiscoveredCameras
+// to surface cameras found during async discovery (e.g. after a cloud login).
 //
 // Accessed via api.DeviceManager from within a plugin.
 type DeviceManager struct {
@@ -44,7 +40,6 @@ type DeviceManager struct {
 	closeRequest func()
 }
 
-// newDeviceManager creates a new DeviceManager.
 func newDeviceManager(client *rpc.Client, pluginInfo *PluginInfo, logger *Logger) *DeviceManager {
 	ns := getDeviceManagerNamespaces()
 	return &DeviceManager{
@@ -56,19 +51,15 @@ func newDeviceManager(client *rpc.Client, pluginInfo *PluginInfo, logger *Logger
 	}
 }
 
-// setAPI sets the PluginAPI and StorageController references.
-// Must be called before init.
 func (dm *DeviceManager) setAPI(api *PluginAPI, storageCtrl *StorageController) {
 	dm.api = api
 	dm.storageController = storageCtrl
 }
 
-// setPlugin sets the plugin instance for lifecycle callbacks.
 func (dm *DeviceManager) setPlugin(plugin Plugin) {
 	dm.plugin = plugin
 }
 
-// configureCameras stores the initial camera device list.
 func (dm *DeviceManager) configureCameras(cameras []*CameraDevice) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
@@ -77,8 +68,6 @@ func (dm *DeviceManager) configureCameras(cameras []*CameraDevice) {
 	}
 }
 
-// init registers a request handler for device manager events.
-// The server uses request-reply (not fire-and-forget) for camera lifecycle events.
 func (dm *DeviceManager) init() error {
 	ns := getPluginNamespaces(dm.pluginInfo.ID)
 
@@ -106,9 +95,7 @@ func (dm *DeviceManager) init() error {
 	return nil
 }
 
-// close is the runtime-owned teardown, invoked by the runtime after the plugin's
-// SHUTDOWN listeners run. Cascades to each camera device's cleanup so their
-// sensors tear down in a deterministic order.
+// close cascades cleanup to each camera device.
 func (dm *DeviceManager) close() {
 	if dm.closeRequest != nil {
 		dm.closeRequest()
@@ -139,7 +126,6 @@ func (dm *DeviceManager) handleCameraAdded(msg deviceManagerEventMessage) {
 		return
 	}
 
-	// Re-encode and decode the data field into cameraAddedEventData
 	encoded, err := rpc.Encode(msg.Data)
 	if err != nil {
 		return
@@ -152,7 +138,6 @@ func (dm *DeviceManager) handleCameraAdded(msg deviceManagerEventMessage) {
 
 	cam := addedData.Camera
 
-	// Check if we already have this camera
 	dm.mu.RLock()
 	_, exists := dm.devices[cam.ID]
 	dm.mu.RUnlock()
@@ -161,7 +146,6 @@ func (dm *DeviceManager) handleCameraAdded(msg deviceManagerEventMessage) {
 		return
 	}
 
-	// Create CameraDeviceProxy
 	camLogger := dm.logger.CreateLogger(&loggerOptions{
 		Suffix:     cam.Name,
 		TargetID:   cam.ID,
@@ -176,7 +160,6 @@ func (dm *DeviceManager) handleCameraAdded(msg deviceManagerEventMessage) {
 	dm.devices[cam.ID] = cameraDevice
 	dm.mu.Unlock()
 
-	// Call plugin lifecycle callback
 	if err := dm.plugin.OnCameraAdded(cameraDevice); err != nil {
 		dm.logger.Error("OnCameraAdded failed:", err)
 	}
@@ -191,7 +174,6 @@ func (dm *DeviceManager) handleCameraReleased(msg deviceManagerEventMessage) {
 		return
 	}
 
-	// Re-encode and decode the data field into cameraReleasedEventData
 	encoded, err := rpc.Encode(msg.Data)
 	if err != nil {
 		return
@@ -207,12 +189,10 @@ func (dm *DeviceManager) handleCameraReleased(msg deviceManagerEventMessage) {
 		return
 	}
 
-	// Call plugin lifecycle callback
 	if err := dm.plugin.OnCameraReleased(cameraID); err != nil {
 		dm.logger.Error("OnCameraReleased failed:", err)
 	}
 
-	// Cleanup
 	dm.mu.Lock()
 	device, exists := dm.devices[cameraID]
 	if exists {
@@ -224,17 +204,14 @@ func (dm *DeviceManager) handleCameraReleased(msg deviceManagerEventMessage) {
 		device.cleanup()
 	}
 
-	// Remove camera storage
 	if dm.storageController != nil {
 		dm.storageController.removeCameraStorage(cameraID)
 	}
 }
 
-// GetCamera retrieves a camera by ID or name.
-// Cached locally on first lookup; subsequent calls return the same proxy.
-// Returns nil if no matching camera exists.
+// GetCamera retrieves a camera by ID or name. Returns nil if no matching
+// camera exists.
 func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error) {
-	// Check local devices first
 	dm.mu.RLock()
 	for _, dev := range dm.devices {
 		if dev.ID() == cameraIDOrName || dev.Name() == cameraIDOrName {
@@ -244,7 +221,6 @@ func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error)
 	}
 	dm.mu.RUnlock()
 
-	// Fetch from server
 	ctx := context.Background()
 	result, err := dm.proxy.Invoke(ctx, "getCamera", cameraIDOrName, dm.pluginInfo.ID)
 	if err != nil {
@@ -255,7 +231,6 @@ func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error)
 		return nil, nil
 	}
 
-	// Re-encode and decode to Camera struct
 	encoded, err := rpc.Encode(result)
 	if err != nil {
 		return nil, fmt.Errorf("getCamera encode: %w", err)
@@ -266,7 +241,6 @@ func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error)
 		return nil, fmt.Errorf("getCamera decode: %w", err)
 	}
 
-	// Create CameraDeviceProxy
 	camLogger := dm.logger.CreateLogger(&loggerOptions{
 		Suffix:     cam.Name,
 		TargetID:   cam.ID,

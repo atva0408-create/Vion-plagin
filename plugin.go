@@ -1,46 +1,25 @@
 package sdk
 
 // PluginStatus reports the lifecycle state of the plugin process as seen by
-// the host. Sent over the private bootstrap channel during startup and
-// shutdown (see run.go).
+// the host.
 type PluginStatus string
 
 const (
-	// PluginStatusReady is sent after the plugin process has connected and
-	// registered its message handler — it is now waiting for the start
-	// command from the host.
-	PluginStatusReady PluginStatus = "ready"
-	// PluginStatusStarting indicates the plugin is currently bootstrapping
-	// (constructing managers, opening storage, configuring cameras).
+	PluginStatusReady    PluginStatus = "ready"
 	PluginStatusStarting PluginStatus = "starting"
-	// PluginStatusStarted is sent once ConfigureCameras has returned and the
-	// plugin is fully operational.
-	PluginStatusStarted PluginStatus = "started"
-	// PluginStatusStopping indicates the plugin is in graceful shutdown.
+	PluginStatusStarted  PluginStatus = "started"
 	PluginStatusStopping PluginStatus = "stopping"
-	// PluginStatusStopped indicates the plugin has finished shutdown and the
-	// process is about to exit.
-	PluginStatusStopped PluginStatus = "stopped"
-	// PluginStatusError is sent when the plugin failed to start; an `Error`
-	// message accompanies it.
-	PluginStatusError PluginStatus = "error"
-	// PluginStatusUnknown is the zero-value placeholder.
-	PluginStatusUnknown PluginStatus = "unknown"
-	// PluginStatusDisabled indicates the plugin is installed but disabled
-	// in the host configuration.
+	PluginStatusStopped  PluginStatus = "stopped"
+	PluginStatusError    PluginStatus = "error"
+	PluginStatusUnknown  PluginStatus = "unknown"
 	PluginStatusDisabled PluginStatus = "disabled"
 )
 
-// pluginCommand is a host-issued control command delivered over the private
-// bootstrap channel.
 type pluginCommand string
 
 const (
-	// pluginCommandStart asks the plugin to start its main work — payload is
-	// a processLoadMessage with the assigned cameras and storage paths.
 	pluginCommandStart pluginCommand = "start"
-	// pluginCommandStop asks the plugin to shut down gracefully.
-	pluginCommandStop pluginCommand = "stop"
+	pluginCommandStop  pluginCommand = "stop"
 )
 
 // APIEvent identifies a lifecycle event emitted on the PluginAPI eventEmitter.
@@ -63,15 +42,10 @@ const (
 )
 
 // PluginStorage carries the storage paths the host hands to the plugin
-// during the start handshake. Only used inside the bootstrap message; plugin
-// code should read PluginAPI.StoragePath instead.
+// during the start handshake. Plugin code should read PluginAPI.StoragePath
+// instead.
 type PluginStorage struct {
-	// InstallPath is the read-only directory where the plugin binary /
-	// package was installed by the host.
 	InstallPath string `msgpack:"installPath" json:"installPath"`
-	// StoragePath is the writable directory the plugin owns for caches,
-	// models, sqlite/bolt files. The same string is exposed as
-	// PluginAPI.StoragePath.
 	StoragePath string `msgpack:"storagePath" json:"storagePath"`
 }
 
@@ -96,18 +70,12 @@ type Plugin interface {
 	OnCameraReleased(cameraID string) error
 }
 
-// pluginConstructor is the function the host calls to instantiate the
-// plugin. It receives the per-plugin Logger, the PluginAPI handle, and a
-// DeviceStorage scoped to the plugin itself (per-camera storage is created
-// later via the DeviceManager).
 type pluginConstructor func(logger *Logger, api *PluginAPI, storage *DeviceStorage) Plugin
 
 // StorageSchemaProvider is an optional interface plugins can implement to
 // register a JSON schema for their plugin-level storage. The host renders it
 // as a settings form in the UI.
 type StorageSchemaProvider interface {
-	// StorageSchema returns the schemas describing the plugin-level config.
-	// Called once after plugin construction; see run.go.
 	StorageSchema() []JsonSchema
 }
 
@@ -129,14 +97,8 @@ type StorageSchemaProvider interface {
 //	    }
 //	}
 type BasePlugin struct {
-	// Logger is the per-plugin logger; messages are tagged with the plugin
-	// name and forwarded to the host.
-	Logger *Logger
-	// API is the PluginAPI handle injected by the host (managers + lifecycle
-	// eventEmitter).
-	API *PluginAPI
-	// Storage is the plugin-level storage instance (per-camera storage is
-	// obtained via API.DeviceManager).
+	Logger  *Logger
+	API     *PluginAPI
 	Storage *DeviceStorage
 }
 

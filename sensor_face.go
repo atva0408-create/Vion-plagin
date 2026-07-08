@@ -39,7 +39,6 @@ type FaceDetector interface {
 // `detected` flag is auto-derived from the detection list.
 type FaceSensor struct{ BaseSensor }
 
-// NewFaceSensor creates a new FaceSensor with the given name.
 func NewFaceSensor(name string) *FaceSensor {
 	s := &FaceSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -49,13 +48,10 @@ func NewFaceSensor(name string) *FaceSensor {
 	return s
 }
 
-// GetType returns SensorTypeFace.
 func (s *FaceSensor) GetType() SensorType { return SensorTypeFace }
 
-// GetCategory returns SensorCategorySensor.
 func (s *FaceSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *FaceSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 // IsDetected reports whether any face is currently detected.
@@ -123,7 +119,6 @@ type FaceDetectorSensor struct {
 	FaceSensor
 }
 
-// NewFaceDetectorSensor creates a new FaceDetectorSensor with the given name.
 func NewFaceDetectorSensor(name string) *FaceDetectorSensor {
 	s := &FaceDetectorSensor{FaceSensor: *NewFaceSensor(name)}
 	s.requiresFrames = true

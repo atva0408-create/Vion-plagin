@@ -2,12 +2,10 @@ package sdk
 
 import "time"
 
-// DoorbellProperty defines property names for doorbell triggers.
 const (
 	doorbellPropertyRing = "ring"
 )
 
-// ringAutoResetMs is the auto-reset delay after Trigger() is called.
 const ringAutoResetMs = 2000
 
 // DoorbellTrigger triggers doorbell ring events.
@@ -16,7 +14,6 @@ type DoorbellTrigger struct {
 	ringResetTimer *time.Timer
 }
 
-// NewDoorbellTrigger creates a new DoorbellTrigger.
 func NewDoorbellTrigger(name string) *DoorbellTrigger {
 	s := &DoorbellTrigger{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{doorbellPropertyRing: false})
@@ -27,7 +24,6 @@ func (s *DoorbellTrigger) GetType() SensorType         { return SensorTypeDoorbe
 func (s *DoorbellTrigger) GetCategory() SensorCategory { return SensorCategoryTrigger }
 func (s *DoorbellTrigger) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsRinging returns whether the doorbell is currently ringing.
 func (s *DoorbellTrigger) IsRinging() bool {
 	v, _ := s.GetValue(doorbellPropertyRing).(bool)
 	return v

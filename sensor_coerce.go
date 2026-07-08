@@ -6,10 +6,8 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// coerceFunc converts a raw deserialized value to its expected typed form.
 type coerceFunc func(raw any) any
 
-// propertyTypeRegistry maps (sensorType, property) → coercion function.
 var propertyTypeRegistry = map[SensorType]map[string]coerceFunc{
 	SensorTypeMotion: {
 		"detected":      coerceBool,
@@ -76,10 +74,6 @@ var propertyTypeRegistry = map[SensorType]map[string]coerceFunc{
 	},
 }
 
-// coercePropertyValue converts a raw deserialized property value to the correct
-// Go type based on the sensor type and property name. If the value is already
-// the correct type, it is returned as-is (fast path). On coercion failure,
-// the raw value is returned unchanged (graceful degradation).
 func coercePropertyValue(sensorType SensorType, property string, raw any) any {
 	if raw == nil {
 		return nil
@@ -186,13 +180,10 @@ func coerceStringSlice(raw any) any {
 	return result
 }
 
-// coerceViaRoundTrip converts a map[string]any to a typed struct via msgpack round-trip.
 func coerceViaRoundTrip[T any](raw any) any {
-	// Fast path: already the correct type
 	if _, ok := raw.(T); ok {
 		return raw
 	}
-	// Only attempt round-trip for map types (msgpack deserialized structs)
 	if _, ok := raw.(map[string]any); !ok {
 		return raw
 	}
@@ -207,13 +198,10 @@ func coerceViaRoundTrip[T any](raw any) any {
 	return typed
 }
 
-// coerceSlice converts a []any of maps to a typed slice via msgpack round-trip.
 func coerceSlice[T any](raw any) any {
-	// Fast path: already the correct type
 	if _, ok := raw.([]T); ok {
 		return raw
 	}
-	// Must be a slice to attempt conversion
 	if _, ok := raw.([]any); !ok {
 		return raw
 	}

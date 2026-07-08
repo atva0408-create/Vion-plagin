@@ -33,7 +33,6 @@ type ClassifierDetector interface {
 	DetectClassifications(frames []VideoFrameData) ([]ClassifierResult, error)
 }
 
-// dedupClassifierLabels returns unique, non-empty labels.
 func dedupClassifierLabels(detections []ClassifierDetection) []string {
 	seen := make(map[string]struct{})
 	result := make([]string, 0, len(detections))
@@ -56,7 +55,6 @@ func dedupClassifierLabels(detections []ClassifierDetection) []string {
 // `detected` flag and `labels` are auto-derived from the detection list.
 type ClassifierSensor struct{ BaseSensor }
 
-// NewClassifierSensor creates a new ClassifierSensor with the given name.
 func NewClassifierSensor(name string) *ClassifierSensor {
 	s := &ClassifierSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -67,13 +65,10 @@ func NewClassifierSensor(name string) *ClassifierSensor {
 	return s
 }
 
-// GetType returns SensorTypeClassifier.
 func (s *ClassifierSensor) GetType() SensorType { return SensorTypeClassifier }
 
-// GetCategory returns SensorCategorySensor.
 func (s *ClassifierSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *ClassifierSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 // IsDetected reports whether any classification result is currently active.
@@ -149,7 +144,6 @@ type ClassifierDetectorSensor struct {
 	ClassifierSensor
 }
 
-// NewClassifierDetectorSensor creates a new ClassifierDetectorSensor with the given name.
 func NewClassifierDetectorSensor(name string) *ClassifierDetectorSensor {
 	s := &ClassifierDetectorSensor{ClassifierSensor: *NewClassifierSensor(name)}
 	s.requiresFrames = true

@@ -1,6 +1,5 @@
 package sdk
 
-// LightProperty defines property names for light controls.
 const (
 	lightPropertyOn         = "on"
 	lightPropertyBrightness = "brightness"
@@ -24,7 +23,6 @@ const (
 // handler — that bypasses any plugin override and only syncs state.
 type LightControl struct{ BaseSensor }
 
-// NewLightControl creates a new LightControl.
 func NewLightControl(name string) *LightControl {
 	s := &LightControl{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -38,13 +36,11 @@ func (s *LightControl) GetType() SensorType         { return SensorTypeLight }
 func (s *LightControl) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *LightControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsOn returns whether the light is on.
 func (s *LightControl) IsOn() bool {
 	v, _ := s.GetValue(lightPropertyOn).(bool)
 	return v
 }
 
-// GetBrightness returns the brightness level (0–100).
 func (s *LightControl) GetBrightness() int {
 	if v, ok := s.GetValue(lightPropertyBrightness).(int); ok {
 		return v
@@ -90,8 +86,6 @@ func (s *LightControl) SetBrightness(value int) {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Numeric values arriving via msgpack may be any int/uint/float width —
-// `toInt64` normalizes them. Boolean values are checked directly.
 func (s *LightControl) UpdateValue(property string, value any) error {
 	switch property {
 	case lightPropertyOn:

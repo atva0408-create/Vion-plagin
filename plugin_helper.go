@@ -6,8 +6,6 @@ import (
 	"slices"
 )
 
-// validSensorTypes is the closed set of SensorType values the host accepts
-// in PluginContract.Provides / Consumes.
 var validSensorTypes = []SensorType{
 	SensorTypeMotion, SensorTypeObject, SensorTypeAudio,
 	SensorTypeFace, SensorTypeLicensePlate, SensorTypeClassifier,
@@ -17,15 +15,11 @@ var validSensorTypes = []SensorType{
 	SensorTypePTZ, SensorTypeSecuritySystem, SensorTypeDoorbell, SensorTypeBattery,
 }
 
-// validRoles is the closed set of PluginRole values the host accepts in
-// PluginContract.Role.
 var validRoles = []PluginRole{
 	PluginRoleHub, PluginRoleSensorProvider,
 	PluginRoleCameraController, PluginRoleCameraAndSensorProvider,
 }
 
-// validInterfaces is the closed set of PluginInterface values the host
-// accepts in PluginContract.Interfaces.
 var validInterfaces = []PluginInterface{
 	PluginInterfaceMotionDetection, PluginInterfaceObjectDetection,
 	PluginInterfaceAudioDetection, PluginInterfaceFaceDetection,
@@ -38,8 +32,6 @@ var validInterfaces = []PluginInterface{
 	PluginInterfaceOAuthAuthCodeFlow, PluginInterfaceOAuthClientCredentials,
 }
 
-// validCapabilities is the closed set of PluginCapability values the host
-// accepts in PluginContract.Capabilities.
 var validCapabilities = []PluginCapability{
 	CapabilityPublishNotifications,
 }
@@ -183,26 +175,18 @@ func HasInterface(c *PluginContract, iface PluginInterface) bool {
 	return slices.Contains(c.Interfaces, iface)
 }
 
-// containsSensorType reports membership of val in slice (typed wrapper
-// around slices.Contains).
 func containsSensorType(slice []SensorType, val SensorType) bool {
 	return slices.Contains(slice, val)
 }
 
-// containsRole reports membership of val in slice (typed wrapper around
-// slices.Contains).
 func containsRole(slice []PluginRole, val PluginRole) bool {
 	return slices.Contains(slice, val)
 }
 
-// containsInterface reports membership of val in slice (typed wrapper
-// around slices.Contains).
 func containsInterface(slice []PluginInterface, val PluginInterface) bool {
 	return slices.Contains(slice, val)
 }
 
-// containsCapability reports membership of val in slice (typed wrapper
-// around slices.Contains).
 func containsCapability(slice []PluginCapability, val PluginCapability) bool {
 	return slices.Contains(slice, val)
 }

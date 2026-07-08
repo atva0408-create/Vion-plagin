@@ -19,7 +19,6 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// storeFileName is the single file holding a plugin's persisted configuration.
 const storeFileName = "store.cui"
 
 // storeMagic prefixes every store file. The envelope is magic + standard

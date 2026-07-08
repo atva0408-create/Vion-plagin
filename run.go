@@ -19,23 +19,13 @@ import (
 // tears down immediately instead of reporting a startup error and waiting.
 var errStopRequested = errors.New("stop requested during startup")
 
-// rpcTeardownTimeout bounds the final RPC teardown so a dead transport can't
-// hang the process past the host's force-kill grace.
 const rpcTeardownTimeout = 500 * time.Millisecond
 
-// gracefulShutdownTimeout bounds the whole teardown sequence so an unresponsive
-// manager close can't hang the exit — mirrors the node/python 2s shutdown guard.
 const gracefulShutdownTimeout = 2 * time.Second
 
 // Run is the entry point a Go plugin's main package calls to hand control to
-// the SDK runtime. It performs the full handshake with the host (RPC connect,
-// ready/start/stop messages), opens the per-plugin storage, instantiates the
-// plugin via constructor, calls ConfigureCameras with the assigned cameras,
-// emits APIEventFinishLaunching, then blocks until SIGTERM/SIGINT or a stop
-// command from the host. On exit it emits APIEventShutdown, waits (bounded)
-// for the shutdown listeners to finish, and tears down the RPC connection.
+// the SDK runtime.
 func Run(constructor pluginConstructor) {
-	// 1. Process title from os.Args
 	processName := "Plugin"
 	if len(os.Args) > 2 {
 		processName = os.Args[2]
@@ -45,7 +35,6 @@ func Run(constructor pluginConstructor) {
 
 	pluginID := os.Getenv("PLUGIN_ID")
 
-	// 2. Create RPC client
 	namespaces := getPluginNamespaces(pluginID)
 	client := rpc.NewClient(rpc.ClientOptions{
 		Name:    namespaces.PluginChild,
@@ -56,12 +45,10 @@ func Run(constructor pluginConstructor) {
 		},
 	})
 
-	// 3. Delete sensitive env vars
 	for _, key := range []string{"PROXY_USER", "PROXY_PASSWORD", "PROXY_ENDPOINTS", "PROXY_CERT", "PROXY_KEY", "PROXY_CA"} {
 		_ = os.Unsetenv(key)
 	}
 
-	// 4. Create logger
 	loggerLevel := os.Getenv("LOGGER_LEVEL")
 	logger := newLogger(&loggerOptions{
 		Prefix:       processName,
@@ -72,20 +59,17 @@ func Run(constructor pluginConstructor) {
 		TraceEnabled: loggerLevel == "trace",
 	})
 
-	// Connect to NATS
 	ctx := context.Background()
 	if err := client.Connect(ctx); err != nil {
 		logger.Error("Failed to connect to proxy server:", err)
 		os.Exit(1)
 	}
 
-	// 5. Open private channel
 	channel, err := client.PrivateChannelConnect("plugin-communication", "camera.ui")
 	if err != nil {
 		os.Exit(1)
 	}
 
-	// Setup shutdown handling
 	var (
 		stopped    bool
 		stoppedMu  sync.Mutex
@@ -137,9 +121,6 @@ func Run(constructor pluginConstructor) {
 			api.RemoveAllListeners("")
 		}
 
-		// The RPC teardown can park forever when the master/NATS is already gone.
-		// Bound it so the process exits well within the host's force-kill grace
-		// instead of hanging on a dead transport.
 		done := make(chan struct{})
 		go func() {
 			if cleanupRPC != nil {
@@ -159,9 +140,6 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
-	// stopPluginBounded runs the graceful teardown under a hard outer deadline so
-	// an unresponsive manager close can't hang the exit; the internal shutdown/RPC
-	// steps bound themselves, this bounds the whole sequence.
 	stopPluginBounded := func() {
 		done := make(chan struct{})
 		go func() {
@@ -175,11 +153,8 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
-	// Watch for termination signals for the whole startup window, not just the
-	// final block: the host stops a plugin with SIGTERM, and one arriving mid-
-	// startup must still trigger graceful teardown. The watcher only funnels
-	// into stopCh so stopPlugin stays owned by this goroutine (no data race on
-	// the shared handles it tears down).
+	// The watcher only funnels into stopCh so stopPlugin stays owned by the main
+	// goroutine — no data race on the shared handles it tears down.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -201,7 +176,8 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
-	// 6. Register message handler BEFORE sending ready (avoid race condition)
+	// Register the message handler before sending ready so a START/STOP that
+	// races in right after ready is never missed.
 	startCh := make(chan *processLoadMessage, 1)
 
 	channel.OnMessage(func(data any) {
@@ -212,7 +188,6 @@ func Run(constructor pluginConstructor) {
 			return
 		}
 
-		// data is typically map[string]any from msgpack
 		msgMap, ok := data.(map[string]any)
 		if !ok {
 			return
@@ -228,7 +203,6 @@ func Run(constructor pluginConstructor) {
 				return
 			}
 
-			// Re-encode and decode to get proper typed struct
 			encoded, err := rpc.Encode(rawData)
 			if err != nil {
 				_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to encode data: %v", err)})
@@ -254,18 +228,11 @@ func Run(constructor pluginConstructor) {
 		}
 	})
 
-	// 7. Send ready (after OnMessage is registered to avoid race condition)
 	if err := channel.Send(processResponse{Type: string(PluginStatusReady)}); err != nil {
 		stopPlugin()
 		os.Exit(1)
 	}
 
-	// From here on a panic in the startup sequence must still emit SHUTDOWN and
-	// tear the RPC connection down instead of crashing silently — mirrors the
-	// node/python uncaughtException guard. Registered after the early os.Exit
-	// bail-outs so it only guards the steps that construct and run the plugin.
-	// Panics in the plugin's own goroutines cannot be caught here (Go has no
-	// process-wide handler).
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("Plugin panicked:", r)
@@ -274,7 +241,6 @@ func Run(constructor pluginConstructor) {
 		}
 	}()
 
-	// Wait for start message
 	var loadMsg *processLoadMessage
 	select {
 	case loadMsg = <-startCh:
@@ -283,12 +249,7 @@ func Run(constructor pluginConstructor) {
 		return
 	}
 
-	// 8-16. Bring the plugin up. A step failure returns an error; a host STOP
-	// caught between steps returns errStopRequested.
 	startPlugin := func() error {
-		// 8. Configure persistence. Host-local writable dir first — on a remote
-		// worker the master's path from the START message would point at the
-		// wrong machine.
 		storagePath := loadMsg.Storage.StoragePath
 		if envPath := os.Getenv("PLUGIN_STORAGE_PATH"); envPath != "" {
 			storagePath = envPath
@@ -298,8 +259,6 @@ func Run(constructor pluginConstructor) {
 
 		var persistence configPersistence
 		if os.Getenv("PLUGIN_CONFIG_STORE_RPC") != "" {
-			// Remote-hosted: config lives on the master (re-homing safe) —
-			// persist through its config store instead of a worker-local file.
 			remote, err := newRemotePersistence(client, pluginInfo.ID, logger)
 			if err != nil {
 				return fmt.Errorf("failed to connect config store: %w", err)
@@ -318,13 +277,10 @@ func Run(constructor pluginConstructor) {
 			return errStopRequested
 		}
 
-		// 9. Create PluginAPI
 		coreManager = newCoreManager(client, logger)
 		deviceManager = newDeviceManager(client, &pluginInfo, logger)
 		downloadManager := newDownloadManager(client)
 
-		// Remote-hosted: serve this worker's files so the master can stream
-		// downloads/exports of them.
 		if os.Getenv("PLUGIN_REMOTE_MODE") != "" {
 			fs, err := newFileServer(client, pluginInfo.ID)
 			if err != nil {
@@ -338,7 +294,6 @@ func Run(constructor pluginConstructor) {
 		api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
 		deviceManager.setAPI(api, storageController)
 
-		// 10. Construct plugin
 		pluginStorage, err := storageController.createStorage("plugin")
 		if err != nil {
 			return fmt.Errorf("failed to create storage: %w", err)
@@ -346,7 +301,6 @@ func Run(constructor pluginConstructor) {
 
 		plugin = constructor(logger, api, pluginStorage)
 
-		// 11. If StorageSchemaProvider -> define schemas
 		if schemaProvider, ok := plugin.(StorageSchemaProvider); ok {
 			schemas := schemaProvider.StorageSchema()
 			if len(schemas) > 0 {
@@ -354,7 +308,6 @@ func Run(constructor pluginConstructor) {
 			}
 		}
 
-		// 12. Register RPC handler
 		cleanupRPC, err = client.RegisterHandler(namespaces.PluginChildRPC, plugin)
 		if err != nil {
 			return fmt.Errorf("failed to register handler: %w", err)
@@ -364,7 +317,6 @@ func Run(constructor pluginConstructor) {
 			return errStopRequested
 		}
 
-		// 13. Init managers
 		deviceManager.setPlugin(plugin)
 		if err := deviceManager.init(); err != nil {
 			return fmt.Errorf("failed to init device manager: %w", err)
@@ -377,7 +329,6 @@ func Run(constructor pluginConstructor) {
 			return errStopRequested
 		}
 
-		// 14. Configure cameras
 		cameras := loadMsg.Cameras
 		cameraDevices := make([]*CameraDevice, 0, len(cameras))
 		for i := range cameras {
@@ -409,15 +360,10 @@ func Run(constructor pluginConstructor) {
 
 	switch startErr := startPlugin(); {
 	case startErr == nil:
-		// 15. Send started
 		_ = channel.Send(processResponse{Type: string(PluginStatusStarted)})
-
 		time.Sleep(100 * time.Millisecond)
-
-		// 16. Emit finishLaunching
 		api.Emit(string(APIEventFinishLaunching))
 	case errors.Is(startErr, errStopRequested):
-		// A stop arrived mid-startup — honour it and tear down now.
 		stopPlugin()
 		return
 	default:
@@ -426,10 +372,7 @@ func Run(constructor pluginConstructor) {
 		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: startErr.Error()})
 	}
 
-	// 17. Block until a stop command or termination signal arrives (signals are
-	// funneled into stopCh by the watcher installed above).
 	<-stopCh
 
-	// 18. Shutdown
 	stopPluginBounded()
 }

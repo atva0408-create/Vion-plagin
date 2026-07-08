@@ -11,7 +11,6 @@ const (
 	SecuritySystemStateAlarmTriggered SecuritySystemState = 4 // Alarm is triggered
 )
 
-// SecuritySystemProperty defines property names for security system controls.
 const (
 	securitySystemPropertyCurrentState = "currentState"
 	securitySystemPropertyTargetState  = "targetState"
@@ -20,7 +19,6 @@ const (
 // SecuritySystem is a security system arm/disarm control sensor.
 type SecuritySystem struct{ BaseSensor }
 
-// NewSecuritySystem creates a new SecuritySystem.
 func NewSecuritySystem(name string) *SecuritySystem {
 	s := &SecuritySystem{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -34,7 +32,6 @@ func (s *SecuritySystem) GetType() SensorType         { return SensorTypeSecurit
 func (s *SecuritySystem) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *SecuritySystem) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetCurrentState returns the current security system state.
 func (s *SecuritySystem) GetCurrentState() SecuritySystemState {
 	if v, ok := s.GetValue(securitySystemPropertyCurrentState).(int); ok {
 		return SecuritySystemState(v)
@@ -42,7 +39,6 @@ func (s *SecuritySystem) GetCurrentState() SecuritySystemState {
 	return SecuritySystemStateDisarmed
 }
 
-// GetTargetState returns the target security system state.
 func (s *SecuritySystem) GetTargetState() SecuritySystemState {
 	if v, ok := s.GetValue(securitySystemPropertyTargetState).(int); ok {
 		return SecuritySystemState(v)
@@ -76,8 +72,6 @@ func (s *SecuritySystem) SetCurrentState(value SecuritySystemState) {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Numeric values arriving via msgpack may be any int/uint/float width —
-// `toInt64` normalizes them.
 func (s *SecuritySystem) UpdateValue(property string, value any) error {
 	if property == securitySystemPropertyTargetState {
 		if v, ok := toInt64(value); ok {

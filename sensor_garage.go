@@ -4,14 +4,13 @@ package sdk
 type GarageState int
 
 const (
-	GarageStateOpen    GarageState = 0 // Garage door is open
-	GarageStateClosed  GarageState = 1 // Garage door is closed
-	GarageStateOpening GarageState = 2 // Garage door is opening
-	GarageStateClosing GarageState = 3 // Garage door is closing
-	GarageStateStopped GarageState = 4 // Garage door is stopped
+	GarageStateOpen    GarageState = 0
+	GarageStateClosed  GarageState = 1
+	GarageStateOpening GarageState = 2
+	GarageStateClosing GarageState = 3
+	GarageStateStopped GarageState = 4
 )
 
-// GarageProperty defines property names for garage controls.
 const (
 	garagePropertyCurrentState        = "currentState"
 	garagePropertyTargetState         = "targetState"
@@ -28,7 +27,6 @@ const (
 // SetTargetState and write currentState separately as the door moves.
 type GarageControl struct{ BaseSensor }
 
-// NewGarageControl creates a new GarageControl.
 func NewGarageControl(name string) *GarageControl {
 	s := &GarageControl{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -43,7 +41,6 @@ func (s *GarageControl) GetType() SensorType         { return SensorTypeGarage }
 func (s *GarageControl) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *GarageControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetCurrentState returns the actual current garage door state.
 func (s *GarageControl) GetCurrentState() GarageState {
 	if v, ok := s.GetValue(garagePropertyCurrentState).(int); ok {
 		return GarageState(v)
@@ -51,7 +48,6 @@ func (s *GarageControl) GetCurrentState() GarageState {
 	return GarageStateClosed
 }
 
-// GetTargetState returns the desired target garage door state.
 func (s *GarageControl) GetTargetState() GarageState {
 	if v, ok := s.GetValue(garagePropertyTargetState).(int); ok {
 		return GarageState(v)
@@ -59,7 +55,6 @@ func (s *GarageControl) GetTargetState() GarageState {
 	return GarageStateClosed
 }
 
-// IsObstructionDetected returns whether an obstruction is detected.
 func (s *GarageControl) IsObstructionDetected() bool {
 	v, _ := s.GetValue(garagePropertyObstructionDetected).(bool)
 	return v
@@ -99,8 +94,6 @@ func (s *GarageControl) SetObstructionDetected(detected bool) {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Only `targetState` is externally writable. Numeric values arriving via
-// msgpack may be any int/uint/float width — `toInt64` normalizes them.
 func (s *GarageControl) UpdateValue(property string, value any) error {
 	if property == garagePropertyTargetState {
 		if v, ok := toInt64(value); ok {

@@ -10,7 +10,6 @@ const (
 	ChargingStateFull          ChargingState = "FULL"           // Battery is fully charged
 )
 
-// BatteryProperty defines property names for battery info sensors.
 const (
 	batteryPropertyLevel    = "level"
 	batteryPropertyCharging = "charging"
@@ -26,7 +25,6 @@ const (
 // BatteryInfo reports battery level, charging state, and low-battery alerts.
 type BatteryInfo struct{ BaseSensor }
 
-// NewBatteryInfo creates a new BatteryInfo.
 func NewBatteryInfo(name string) *BatteryInfo {
 	s := &BatteryInfo{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -41,7 +39,6 @@ func (s *BatteryInfo) GetType() SensorType         { return SensorTypeBattery }
 func (s *BatteryInfo) GetCategory() SensorCategory { return SensorCategoryInfo }
 func (s *BatteryInfo) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetLevel returns the battery level (0–100).
 func (s *BatteryInfo) GetLevel() int {
 	if v, ok := s.GetValue(batteryPropertyLevel).(int); ok {
 		return v
@@ -49,7 +46,6 @@ func (s *BatteryInfo) GetLevel() int {
 	return 0
 }
 
-// GetCharging returns the charging state.
 func (s *BatteryInfo) GetCharging() ChargingState {
 	if v, ok := s.GetValue(batteryPropertyCharging).(string); ok {
 		return ChargingState(v)
@@ -57,7 +53,6 @@ func (s *BatteryInfo) GetCharging() ChargingState {
 	return ChargingStateNotCharging
 }
 
-// IsLow returns whether the battery is critically low.
 func (s *BatteryInfo) IsLow() bool {
 	v, _ := s.GetValue(batteryPropertyLow).(bool)
 	return v

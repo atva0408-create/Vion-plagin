@@ -153,8 +153,7 @@ type ObjectDetectionResponse struct {
 	Detections []Detection `msgpack:"detections" json:"detections"`
 }
 
-// AudioDetectionResponse is the result of an audio detection run. Decibels
-// is optional and reports the measured loudness when the plugin computes it.
+// AudioDetectionResponse is the result of an audio detection run.
 type AudioDetectionResponse struct {
 	Detected   bool        `msgpack:"detected" json:"detected"`
 	Detections []Detection `msgpack:"detections" json:"detections"`
@@ -162,8 +161,6 @@ type AudioDetectionResponse struct {
 }
 
 // FaceDetectionResponse is the result of a face detection run.
-// EmbeddingModel names the model that produced the embeddings so the NVR can
-// refuse to mix different models when matching.
 type FaceDetectionResponse struct {
 	Detected       bool            `msgpack:"detected" json:"detected"`
 	Detections     []FaceDetection `msgpack:"detections" json:"detections"`

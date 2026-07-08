@@ -1,6 +1,5 @@
 package sdk
 
-// HumidityProperty defines property names for humidity sensors.
 const (
 	humidityPropertyCurrent = "current"
 )
@@ -8,7 +7,6 @@ const (
 // HumidityInfo reports current relative humidity (0–100%).
 type HumidityInfo struct{ BaseSensor }
 
-// NewHumidityInfo creates a new HumidityInfo.
 func NewHumidityInfo(name string) *HumidityInfo {
 	s := &HumidityInfo{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *HumidityInfo) GetType() SensorType         { return SensorTypeHumidity 
 func (s *HumidityInfo) GetCategory() SensorCategory { return SensorCategoryInfo }
 func (s *HumidityInfo) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetCurrent returns the current relative humidity.
 func (s *HumidityInfo) GetCurrent() float64 {
 	v, _ := s.GetValue(humidityPropertyCurrent).(float64)
 	return v

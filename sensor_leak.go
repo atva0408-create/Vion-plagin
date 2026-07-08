@@ -1,6 +1,5 @@
 package sdk
 
-// LeakProperty defines property names for leak sensors.
 const (
 	leakPropertyDetected = "detected"
 )
@@ -8,7 +7,6 @@ const (
 // LeakSensor reports water leak detection state.
 type LeakSensor struct{ BaseSensor }
 
-// NewLeakSensor creates a new LeakSensor.
 func NewLeakSensor(name string) *LeakSensor {
 	s := &LeakSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *LeakSensor) GetType() SensorType         { return SensorTypeLeak }
 func (s *LeakSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 func (s *LeakSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsDetected returns whether a leak is detected.
 func (s *LeakSensor) IsDetected() bool {
 	v, _ := s.GetValue(leakPropertyDetected).(bool)
 	return v

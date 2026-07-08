@@ -20,10 +20,7 @@ type CoreManagerEvent struct {
 	Data any
 }
 
-// pluginProxy provides RPC access to a remote plugin's methods.
-//
-// Returned by CoreManager.ConnectToPlugin. Use Invoke to call any
-// public method exposed by the target plugin.
+// pluginProxy is an RPC handle to a remote plugin, returned by ConnectToPlugin.
 type pluginProxy struct {
 	proxy *rpc.Proxy
 }
@@ -43,12 +40,11 @@ type CoreManager struct {
 	client      *rpc.Client
 	proxy       *rpc.Proxy
 	logger      *Logger
-	closeSub    func() // unsubscribes from core events
+	closeSub    func()
 	event       *Subject[CoreManagerEvent]
-	connections map[string]*pluginProxy // cached plugin connections
+	connections map[string]*pluginProxy
 }
 
-// newCoreManager creates a new CoreManager.
 func newCoreManager(client *rpc.Client, logger *Logger) *CoreManager {
 	ns := getCoreManagerNamespaces()
 	return &CoreManager{
@@ -60,7 +56,6 @@ func newCoreManager(client *rpc.Client, logger *Logger) *CoreManager {
 	}
 }
 
-// init initializes the core manager and subscribes to core events.
 func (cm *CoreManager) init() error {
 	ns := getCoreManagerNamespaces()
 	unsub, err := cm.client.Subscribe(ns.CoreManagerSubject, func(data []byte) {
@@ -77,9 +72,7 @@ func (cm *CoreManager) init() error {
 	return nil
 }
 
-// close is the runtime-owned teardown, invoked by the runtime after the plugin's
-// SHUTDOWN listeners run. Unsubscribes from core events and completes the event
-// subject.
+// close unsubscribes from core events and completes the event subject.
 func (cm *CoreManager) close() {
 	if cm.closeSub != nil {
 		cm.closeSub()
@@ -167,7 +160,6 @@ func (cm *CoreManager) GetCloudServerID() (string, error) {
 	return id, nil
 }
 
-// getPlugin returns info about a plugin by name, or nil if not found.
 func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 	ctx := context.Background()
 	result, err := cm.proxy.Invoke(ctx, "getPlugin", pluginName)
@@ -186,9 +178,6 @@ func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 	return info, nil
 }
 
-// decodePluginInfo decodes an RPC plugin object into a PluginInfo, preserving
-// the full contract (not just id/name) so callers see the same shape the
-// node/python runtimes return.
 func decodePluginInfo(v any, out *PluginInfo) error {
 	encoded, err := rpc.Encode(v)
 	if err != nil {

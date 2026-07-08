@@ -1,6 +1,5 @@
 package sdk
 
-// OccupancyProperty defines property names for occupancy sensors.
 const (
 	occupancyPropertyDetected = "detected"
 )
@@ -8,7 +7,6 @@ const (
 // OccupancySensor reports occupancy/presence state.
 type OccupancySensor struct{ BaseSensor }
 
-// NewOccupancySensor creates a new OccupancySensor.
 func NewOccupancySensor(name string) *OccupancySensor {
 	s := &OccupancySensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *OccupancySensor) GetType() SensorType         { return SensorTypeOccupa
 func (s *OccupancySensor) GetCategory() SensorCategory { return SensorCategorySensor }
 func (s *OccupancySensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// IsDetected returns whether occupancy is detected.
 func (s *OccupancySensor) IsDetected() bool {
 	v, _ := s.GetValue(occupancyPropertyDetected).(bool)
 	return v

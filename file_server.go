@@ -6,7 +6,6 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// fileServeStat is the wire shape for a served file's stat over the file-serve RPC.
 type fileServeStat struct {
 	Exists bool  `msgpack:"exists" json:"exists"`
 	Size   int64 `msgpack:"size" json:"size"`
@@ -38,7 +37,6 @@ func (fs *fileServer) close() {
 	}
 }
 
-// StatFile reports whether the path is a regular file and its size.
 func (fs *fileServer) StatFile(filePath string) (fileServeStat, error) {
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
@@ -47,7 +45,6 @@ func (fs *fileServer) StatFile(filePath string) (fileServeStat, error) {
 	return fileServeStat{Exists: true, Size: info.Size()}, nil
 }
 
-// ReadFileChunk returns up to length bytes starting at offset.
 func (fs *fileServer) ReadFileChunk(filePath string, offset int64, length int64) ([]byte, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -64,7 +61,6 @@ func (fs *fileServer) ReadFileChunk(filePath string, offset int64, length int64)
 	return buf[:n], nil
 }
 
-// DeleteFile removes a served file (master-triggered cleanup).
 func (fs *fileServer) DeleteFile(filePath string) error {
 	_ = os.Remove(filePath)
 	return nil

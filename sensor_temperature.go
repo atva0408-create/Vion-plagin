@@ -1,6 +1,5 @@
 package sdk
 
-// TemperatureProperty defines property names for temperature sensors.
 const (
 	temperaturePropertyCurrent = "current"
 )
@@ -8,7 +7,6 @@ const (
 // TemperatureInfo reports current temperature in °C.
 type TemperatureInfo struct{ BaseSensor }
 
-// NewTemperatureInfo creates a new TemperatureInfo.
 func NewTemperatureInfo(name string) *TemperatureInfo {
 	s := &TemperatureInfo{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -21,7 +19,6 @@ func (s *TemperatureInfo) GetType() SensorType         { return SensorTypeTemper
 func (s *TemperatureInfo) GetCategory() SensorCategory { return SensorCategoryInfo }
 func (s *TemperatureInfo) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetCurrent returns the current temperature in °C.
 func (s *TemperatureInfo) GetCurrent() float64 {
 	v, _ := s.GetValue(temperaturePropertyCurrent).(float64)
 	return v

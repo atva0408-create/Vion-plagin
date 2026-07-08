@@ -31,7 +31,6 @@ type PTZPosition struct {
 	Zoom float64 `msgpack:"zoom" json:"zoom"`
 }
 
-// PTZProperty defines property names for PTZ controls.
 const (
 	ptzPropertyPosition     = "position"
 	ptzPropertyMoving       = "moving"
@@ -52,7 +51,6 @@ const (
 // publish the discovered preset list and SetMoving to publish movement state.
 type PTZControl struct{ BaseSensor }
 
-// NewPTZControl creates a new PTZControl.
 func NewPTZControl(name string) *PTZControl {
 	s := &PTZControl{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -67,7 +65,6 @@ func (s *PTZControl) GetType() SensorType         { return SensorTypePTZ }
 func (s *PTZControl) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *PTZControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetPosition returns the current PTZ position.
 func (s *PTZControl) GetPosition() PTZPosition {
 	if v, ok := s.GetValue(ptzPropertyPosition).(PTZPosition); ok {
 		return v
@@ -75,13 +72,11 @@ func (s *PTZControl) GetPosition() PTZPosition {
 	return PTZPosition{}
 }
 
-// IsMoving returns whether the PTZ is currently moving.
 func (s *PTZControl) IsMoving() bool {
 	v, _ := s.GetValue(ptzPropertyMoving).(bool)
 	return v
 }
 
-// GetPresets returns the list of available preset names.
 func (s *PTZControl) GetPresets() []string {
 	if v, ok := s.GetValue(ptzPropertyPresets).([]string); ok {
 		return v
@@ -144,7 +139,6 @@ func (s *PTZControl) GoHome() {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Only Position, Velocity, and TargetPreset are externally writable.
 func (s *PTZControl) UpdateValue(property string, value any) error {
 	switch property {
 	case ptzPropertyPosition:
@@ -163,7 +157,6 @@ func (s *PTZControl) UpdateValue(property string, value any) error {
 	return nil
 }
 
-// coercePTZPosition attempts to convert a value into a PTZPosition.
 func coercePTZPosition(value any) (PTZPosition, bool) {
 	switch v := value.(type) {
 	case PTZPosition:
@@ -177,7 +170,6 @@ func coercePTZPosition(value any) (PTZPosition, bool) {
 	return PTZPosition{}, false
 }
 
-// coercePTZDirection attempts to convert a value into a PTZDirection.
 func coercePTZDirection(value any) (PTZDirection, bool) {
 	switch v := value.(type) {
 	case PTZDirection:

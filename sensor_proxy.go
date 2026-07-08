@@ -8,7 +8,6 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// sensorProxy is a read-only proxy for consuming sensors from other plugins.
 type sensorProxy struct {
 	BaseSensor
 	client     *rpc.Client
@@ -19,7 +18,6 @@ type sensorProxy struct {
 	unsubEvent func()
 }
 
-// newSensorProxy creates a new sensor proxy for consuming sensors from other plugins.
 func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sensorName string, sensorType SensorType, category SensorCategory, initialProps map[string]any) *sensorProxy {
 	s := &sensorProxy{
 		BaseSensor: NewBaseSensor(sensorName),
@@ -31,12 +29,10 @@ func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sens
 	s.id = sensorID
 	s.cameraID = cameraID
 
-	// Set initial properties (coerce msgpack-deserialized values to correct Go types)
 	for k, v := range initialProps {
 		s.properties[k] = coercePropertyValue(sensorType, k, v)
 	}
 
-	// Subscribe to per-sensor events (property:changed, capabilities:changed, displayName:changed)
 	eventNS := getSensorEventNamespaces(cameraID, sensorID)
 	unsub, _ := client.Subscribe(eventNS.SensorSubject, func(data []byte) {
 		var msg sensorEventMessage
@@ -51,7 +47,6 @@ func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sens
 	return s
 }
 
-// handleSensorEvent processes per-sensor events from the server.
 func (s *sensorProxy) handleSensorEvent(msg sensorEventMessage) {
 	switch msg.Type {
 	case "property:changed":
@@ -123,7 +118,6 @@ func toInt64(v any) (int64, bool) {
 	}
 }
 
-// toStringSlice converts a []any to []string.
 func toStringSlice(v any) []string {
 	arr, ok := v.([]any)
 	if !ok {
@@ -142,7 +136,6 @@ func (s *sensorProxy) GetType() SensorType         { return s.sensorType }
 func (s *sensorProxy) GetCategory() SensorCategory { return s.category }
 func (s *sensorProxy) ToJSON() sensorJSON          { return s.toBaseJSON(s.sensorType, s.category) }
 
-// Refresh fetches the current property values from the remote sensor.
 func (s *sensorProxy) Refresh() error {
 	if s.proxy == nil {
 		return nil
@@ -163,12 +156,6 @@ func (s *sensorProxy) Refresh() error {
 	return nil
 }
 
-// UpdateValue forwards a generic property write to the owning plugin's sensor
-// provider via RPC. The owning sensor's `UpdateValue` dispatches to the
-// appropriate semantic method (`SetOn`, `SetTargetState`, ...) so plugin-side
-// hardware-action overrides are honored end-to-end.
-//
-// For non-control sensors this is a no-op (writes have no effect on the source).
 func (s *sensorProxy) UpdateValue(property string, value any) error {
 	if s.proxy == nil || !isControlCategory(s.category) {
 		return nil
@@ -182,7 +169,6 @@ func isControlCategory(cat SensorCategory) bool {
 	return cat == SensorCategoryControl || cat == SensorCategoryTrigger
 }
 
-// ToStoredData converts the proxy back to a storedSensorData representation.
 func (s *sensorProxy) ToStoredData() storedSensorData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -201,7 +187,6 @@ func (s *sensorProxy) ToStoredData() storedSensorData {
 	}
 }
 
-// cleanupProxy unsubscribes from sensor events.
 func (s *sensorProxy) cleanupProxy() {
 	if s.unsubEvent != nil {
 		s.unsubEvent()
@@ -210,7 +195,6 @@ func (s *sensorProxy) cleanupProxy() {
 	s.cleanup()
 }
 
-// categoryForSensorType derives the SensorCategory from a SensorType.
 func categoryForSensorType(st SensorType) SensorCategory {
 	switch st {
 	case SensorTypeLight, SensorTypeSiren, SensorTypeSwitch, SensorTypePTZ, SensorTypeSecuritySystem:

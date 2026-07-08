@@ -38,7 +38,6 @@ type LicensePlateDetector interface {
 // `detected` flag is auto-derived from the detection list.
 type LicensePlateSensor struct{ BaseSensor }
 
-// NewLicensePlateSensor creates a new LicensePlateSensor with the given name.
 func NewLicensePlateSensor(name string) *LicensePlateSensor {
 	s := &LicensePlateSensor{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -48,13 +47,10 @@ func NewLicensePlateSensor(name string) *LicensePlateSensor {
 	return s
 }
 
-// GetType returns SensorTypeLicensePlate.
 func (s *LicensePlateSensor) GetType() SensorType { return SensorTypeLicensePlate }
 
-// GetCategory returns SensorCategorySensor.
 func (s *LicensePlateSensor) GetCategory() SensorCategory { return SensorCategorySensor }
 
-// ToJSON serializes this sensor to a JSON-safe representation for RPC transport.
 func (s *LicensePlateSensor) ToJSON() sensorJSON {
 	return s.toBaseJSON(s.GetType(), s.GetCategory())
 }
@@ -124,7 +120,6 @@ type LicensePlateDetectorSensor struct {
 	LicensePlateSensor
 }
 
-// NewLicensePlateDetectorSensor creates a new LicensePlateDetectorSensor with the given name.
 func NewLicensePlateDetectorSensor(name string) *LicensePlateDetectorSensor {
 	s := &LicensePlateDetectorSensor{LicensePlateSensor: *NewLicensePlateSensor(name)}
 	s.requiresFrames = true

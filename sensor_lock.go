@@ -4,12 +4,11 @@ package sdk
 type LockState int
 
 const (
-	LockStateSecured   LockState = 0 // Lock is secured (locked)
-	LockStateUnsecured LockState = 1 // Lock is unsecured (unlocked)
-	LockStateUnknown   LockState = 2 // Lock state is unknown
+	LockStateSecured   LockState = 0
+	LockStateUnsecured LockState = 1
+	LockStateUnknown   LockState = 2
 )
 
-// LockProperty defines property names for lock controls.
 const (
 	lockPropertyCurrentState = "currentState"
 	lockPropertyTargetState  = "targetState"
@@ -25,7 +24,6 @@ const (
 // SetTargetState and write currentState separately when transitions complete.
 type LockControl struct{ BaseSensor }
 
-// NewLockControl creates a new LockControl.
 func NewLockControl(name string) *LockControl {
 	s := &LockControl{BaseSensor: NewBaseSensor(name)}
 	s.writeState(map[string]any{
@@ -39,7 +37,6 @@ func (s *LockControl) GetType() SensorType         { return SensorTypeLock }
 func (s *LockControl) GetCategory() SensorCategory { return SensorCategoryControl }
 func (s *LockControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-// GetCurrentState returns the current lock state.
 func (s *LockControl) GetCurrentState() LockState {
 	if v, ok := s.GetValue(lockPropertyCurrentState).(int); ok {
 		return LockState(v)
@@ -47,7 +44,6 @@ func (s *LockControl) GetCurrentState() LockState {
 	return LockStateSecured
 }
 
-// GetTargetState returns the target lock state.
 func (s *LockControl) GetTargetState() LockState {
 	if v, ok := s.GetValue(lockPropertyTargetState).(int); ok {
 		return LockState(v)
@@ -81,8 +77,6 @@ func (s *LockControl) SetCurrentState(value LockState) {
 }
 
 // UpdateValue dispatches generic property writes to semantic methods.
-// Numeric values arriving via msgpack may be any int/uint/float width — the
-// `toInt64` helper normalizes them so the LockState cast is consistent.
 func (s *LockControl) UpdateValue(property string, value any) error {
 	if property == lockPropertyTargetState {
 		if v, ok := toInt64(value); ok {

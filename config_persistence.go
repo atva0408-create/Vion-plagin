@@ -12,13 +12,8 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// configPersistence abstracts where DeviceStorage values live: the plugin's
-// local store file, or — for remote-hosted plugins — the master's config
-// store via RPC so config survives re-homing between master and workers.
-// save installs the snapshot into the canonical document synchronously —
-// install order is call order — and returns a wait that blocks until the
-// write is durable (file synced + renamed, or the master acknowledged the
-// put); nothing is fire-and-forget.
+// configPersistence is the plugin's local store file, or — for remote-hosted
+// plugins — the master's config store via RPC so config survives re-homing.
 type configPersistence interface {
 	load(loc storeLocation) map[string]any
 	save(loc storeLocation, values map[string]any) func() error
@@ -45,8 +40,6 @@ type pendingFlush struct {
 	done     chan struct{}
 }
 
-// wait blocks until the flush containing this snapshot completes and returns
-// its error.
 func (p *pendingFlush) wait() error {
 	// err is written before close(done); the channel close orders the read.
 	<-p.done
