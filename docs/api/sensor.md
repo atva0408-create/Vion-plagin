@@ -31,7 +31,7 @@ AudioDetectorSensor is an audio sensor that consumes audio frames from the backe
 
 	func NewAudioDetectorSensor(name string) *AudioDetectorSensor
 
-NewAudioDetectorSensor creates a new AudioDetectorSensor with the given name.
+
 
 <a name="AudioFFmpegCodec"></a>
 
@@ -111,7 +111,7 @@ Plugin authors call ReportDetections to push detected audio events \(the \`detec
 
 	func NewAudioSensor(name string) *AudioSensor
 
-NewAudioSensor creates a new AudioSensor with the given name.
+
 
 <a name="AudioSensor.ClearDetections"></a>
 ### func \(\*AudioSensor\) ClearDetections
@@ -125,35 +125,35 @@ ClearDetections explicitly clears audio detection state \(detected = false, dete
 
 	func (s *AudioSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="AudioSensor.GetDecibels"></a>
 ### func \(\*AudioSensor\) GetDecibels
 
 	func (s *AudioSensor) GetDecibels() float64
 
-GetDecibels returns the current audio level in decibels.
+
 
 <a name="AudioSensor.GetDetections"></a>
 ### func \(\*AudioSensor\) GetDetections
 
 	func (s *AudioSensor) GetDetections() []Detection
 
-GetDetections returns the current audio detections.
+
 
 <a name="AudioSensor.GetType"></a>
 ### func \(\*AudioSensor\) GetType
 
 	func (s *AudioSensor) GetType() SensorType
 
-GetType returns SensorTypeAudio.
+
 
 <a name="AudioSensor.IsDetected"></a>
 ### func \(\*AudioSensor\) IsDetected
 
 	func (s *AudioSensor) IsDetected() bool
 
-IsDetected reports whether an audio event is currently detected.
+
 
 <a name="AudioSensor.ReportDetections"></a>
 ### func \(\*AudioSensor\) ReportDetections
@@ -191,14 +191,14 @@ Example:
 
 	func (s *AudioSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="AudioSensor.UpdateValue"></a>
 ### func \(\*AudioSensor\) UpdateValue
 
 	func (s *AudioSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only audio sensors. State is reported via ReportDetections / SetDecibels.
+UpdateValue is a no\-op for read\-only audio sensors.
 
 <a name="AudioStreamInfo"></a>
 
@@ -215,7 +215,7 @@ BaseSensor is the base struct for all sensors. Embed this in concrete sensor typ
 
 	func NewBaseSensor(name string) BaseSensor
 
-NewBaseSensor creates a new BaseSensor with the given name.
+
 
 <a name="BaseSensor.GetCameraID"></a>
 ### func \(\*BaseSensor\) GetCameraID
@@ -284,7 +284,7 @@ Example:
 
 	func (s *BaseSensor) HasCapability(cap string) bool
 
-HasCapability returns true if the sensor has the given capability.
+
 
 <a name="BaseSensor.IsAssigned"></a>
 ### func \(\*BaseSensor\) IsAssigned
@@ -298,7 +298,7 @@ IsAssigned returns whether this sensor is currently assigned to a camera.
 
 	func (s *BaseSensor) OnAssignmentChanged(callback func(bool)) *Disposable
 
-OnAssignmentChanged subscribes to assignment state changes. The callback receives true when the sensor is assigned to a camera, false when unassigned.
+OnAssignmentChanged subscribes to assignment state changes \(sensor added/removed from camera\).
 
 <a name="BaseSensor.OnCapabilitiesChanged"></a>
 ### func \(\*BaseSensor\) OnCapabilitiesChanged
@@ -338,7 +338,7 @@ Example:
 
 	func (s *BaseSensor) Storage() *DeviceStorage
 
-Storage returns the sensor's storage instance. Returns nil if storage has not been set yet \(i.e. sensor not yet added to a camera\).
+Storage returns the sensor's persistent storage. Nil until the sensor is added to a camera.
 
 <a name="BatteryInfo"></a>
 
@@ -353,7 +353,7 @@ BatteryInfo reports battery level, charging state, and low\-battery alerts.
 
 	func NewBatteryInfo(name string) *BatteryInfo
 
-NewBatteryInfo creates a new BatteryInfo.
+
 
 <a name="BatteryInfo.GetCategory"></a>
 ### func \(\*BatteryInfo\) GetCategory
@@ -367,14 +367,14 @@ NewBatteryInfo creates a new BatteryInfo.
 
 	func (s *BatteryInfo) GetCharging() ChargingState
 
-GetCharging returns the charging state.
+
 
 <a name="BatteryInfo.GetLevel"></a>
 ### func \(\*BatteryInfo\) GetLevel
 
 	func (s *BatteryInfo) GetLevel() int
 
-GetLevel returns the battery level \(0–100\).
+
 
 <a name="BatteryInfo.GetType"></a>
 ### func \(\*BatteryInfo\) GetType
@@ -388,7 +388,7 @@ GetLevel returns the battery level \(0–100\).
 
 	func (s *BatteryInfo) IsLow() bool
 
-IsLow returns whether the battery is critically low.
+
 
 <a name="BatteryInfo.SetCharging"></a>
 ### func \(\*BatteryInfo\) SetCharging
@@ -512,7 +512,7 @@ ClassifierDetectorSensor is a classifier sensor that consumes video frames from 
 
 	func NewClassifierDetectorSensor(name string) *ClassifierDetectorSensor
 
-NewClassifierDetectorSensor creates a new ClassifierDetectorSensor with the given name.
+
 
 <a name="ClassifierResult"></a>
 
@@ -540,7 +540,7 @@ Plugin authors call ReportDetections to push classification results. The \`detec
 
 	func NewClassifierSensor(name string) *ClassifierSensor
 
-NewClassifierSensor creates a new ClassifierSensor with the given name.
+
 
 <a name="ClassifierSensor.ClearDetections"></a>
 ### func \(\*ClassifierSensor\) ClearDetections
@@ -554,7 +554,7 @@ ClearDetections explicitly clears classifier state \(detected = false, detection
 
 	func (s *ClassifierSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="ClassifierSensor.GetDetections"></a>
 ### func \(\*ClassifierSensor\) GetDetections
@@ -575,7 +575,7 @@ GetLabels returns the unique labels of the current detections.
 
 	func (s *ClassifierSensor) GetType() SensorType
 
-GetType returns SensorTypeClassifier.
+
 
 <a name="ClassifierSensor.IsDetected"></a>
 ### func \(\*ClassifierSensor\) IsDetected
@@ -608,7 +608,7 @@ Example:
 
 	func (s *ClassifierSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="ClassifierSensor.UpdateValue"></a>
 ### func \(\*ClassifierSensor\) UpdateValue
@@ -646,28 +646,28 @@ ClipDetectorSensor is a frame\-only sensor that generates CLIP embeddings from v
 
 	func NewClipDetectorSensor(name string) *ClipDetectorSensor
 
-NewClipDetectorSensor creates a new ClipDetectorSensor with the given name.
+
 
 <a name="ClipDetectorSensor.GetCategory"></a>
 ### func \(\*ClipDetectorSensor\) GetCategory
 
 	func (s *ClipDetectorSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="ClipDetectorSensor.GetType"></a>
 ### func \(\*ClipDetectorSensor\) GetType
 
 	func (s *ClipDetectorSensor) GetType() SensorType
 
-GetType returns SensorTypeClip.
+
 
 <a name="ClipDetectorSensor.ToJSON"></a>
 ### func \(\*ClipDetectorSensor\) ToJSON
 
 	func (s *ClipDetectorSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="ClipDetectorSensor.UpdateValue"></a>
 ### func \(\*ClipDetectorSensor\) UpdateValue
@@ -712,7 +712,7 @@ ContactSensor reports door/window open\-close state.
 
 	func NewContactSensor(name string) *ContactSensor
 
-NewContactSensor creates a new ContactSensor.
+
 
 <a name="ContactSensor.GetCategory"></a>
 ### func \(\*ContactSensor\) GetCategory
@@ -733,7 +733,7 @@ NewContactSensor creates a new ContactSensor.
 
 	func (s *ContactSensor) IsDetected() bool
 
-IsDetected returns whether the contact is open.
+
 
 <a name="ContactSensor.SetDetected"></a>
 ### func \(\*ContactSensor\) SetDetected
@@ -806,7 +806,7 @@ DoorbellTrigger triggers doorbell ring events.
 
 	func NewDoorbellTrigger(name string) *DoorbellTrigger
 
-NewDoorbellTrigger creates a new DoorbellTrigger.
+
 
 <a name="DoorbellTrigger.GetCategory"></a>
 ### func \(\*DoorbellTrigger\) GetCategory
@@ -827,7 +827,7 @@ NewDoorbellTrigger creates a new DoorbellTrigger.
 
 	func (s *DoorbellTrigger) IsRinging() bool
 
-IsRinging returns whether the doorbell is currently ringing.
+
 
 <a name="DoorbellTrigger.ToJSON"></a>
 ### func \(\*DoorbellTrigger\) ToJSON
@@ -898,7 +898,7 @@ FaceDetectorSensor is a face sensor that consumes video frames from the backend 
 
 	func NewFaceDetectorSensor(name string) *FaceDetectorSensor
 
-NewFaceDetectorSensor creates a new FaceDetectorSensor with the given name.
+
 
 <a name="FaceResult"></a>
 
@@ -926,7 +926,7 @@ Plugin authors call ReportDetections to push detected faces. The \`detected\` fl
 
 	func NewFaceSensor(name string) *FaceSensor
 
-NewFaceSensor creates a new FaceSensor with the given name.
+
 
 <a name="FaceSensor.ClearDetections"></a>
 ### func \(\*FaceSensor\) ClearDetections
@@ -940,7 +940,7 @@ ClearDetections explicitly clears face detection state \(detected = false, detec
 
 	func (s *FaceSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="FaceSensor.GetDetections"></a>
 ### func \(\*FaceSensor\) GetDetections
@@ -954,7 +954,7 @@ GetDetections returns the current face detections.
 
 	func (s *FaceSensor) GetType() SensorType
 
-GetType returns SensorTypeFace.
+
 
 <a name="FaceSensor.IsDetected"></a>
 ### func \(\*FaceSensor\) IsDetected
@@ -987,7 +987,7 @@ Example:
 
 	func (s *FaceSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="FaceSensor.UpdateValue"></a>
 ### func \(\*FaceSensor\) UpdateValue
@@ -1011,7 +1011,7 @@ For long\-running transitions \(Opening/Closing intermediate states\) override S
 
 	func NewGarageControl(name string) *GarageControl
 
-NewGarageControl creates a new GarageControl.
+
 
 <a name="GarageControl.GetCategory"></a>
 ### func \(\*GarageControl\) GetCategory
@@ -1025,14 +1025,14 @@ NewGarageControl creates a new GarageControl.
 
 	func (s *GarageControl) GetCurrentState() GarageState
 
-GetCurrentState returns the actual current garage door state.
+
 
 <a name="GarageControl.GetTargetState"></a>
 ### func \(\*GarageControl\) GetTargetState
 
 	func (s *GarageControl) GetTargetState() GarageState
 
-GetTargetState returns the desired target garage door state.
+
 
 <a name="GarageControl.GetType"></a>
 ### func \(\*GarageControl\) GetType
@@ -1046,7 +1046,7 @@ GetTargetState returns the desired target garage door state.
 
 	func (s *GarageControl) IsObstructionDetected() bool
 
-IsObstructionDetected returns whether an obstruction is detected.
+
 
 <a name="GarageControl.SetCurrentState"></a>
 ### func \(\*GarageControl\) SetCurrentState
@@ -1096,7 +1096,7 @@ Example:
 
 	func (s *GarageControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Only \`targetState\` is externally writable. Numeric values arriving via msgpack may be any int/uint/float width — \`toInt64\` normalizes them.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="GarageState"></a>
 
@@ -1109,11 +1109,11 @@ GarageState defines garage door states \(HomeKit\-compatible values\).
 <a name="GarageStateOpen"></a>
 
 	const (
-	    GarageStateOpen    GarageState = 0 // Garage door is open
-	    GarageStateClosed  GarageState = 1 // Garage door is closed
-	    GarageStateOpening GarageState = 2 // Garage door is opening
-	    GarageStateClosing GarageState = 3 // Garage door is closing
-	    GarageStateStopped GarageState = 4 // Garage door is stopped
+	    GarageStateOpen    GarageState = 0
+	    GarageStateClosed  GarageState = 1
+	    GarageStateOpening GarageState = 2
+	    GarageStateClosing GarageState = 3
+	    GarageStateStopped GarageState = 4
 	)
 
 <a name="Go2RtcRTSPSource"></a>
@@ -1129,7 +1129,7 @@ HumidityInfo reports current relative humidity \(0–100%\).
 
 	func NewHumidityInfo(name string) *HumidityInfo
 
-NewHumidityInfo creates a new HumidityInfo.
+
 
 <a name="HumidityInfo.GetCategory"></a>
 ### func \(\*HumidityInfo\) GetCategory
@@ -1143,7 +1143,7 @@ NewHumidityInfo creates a new HumidityInfo.
 
 	func (s *HumidityInfo) GetCurrent() float64
 
-GetCurrent returns the current relative humidity.
+
 
 <a name="HumidityInfo.GetType"></a>
 ### func \(\*HumidityInfo\) GetType
@@ -1186,7 +1186,7 @@ LeakSensor reports water leak detection state.
 
 	func NewLeakSensor(name string) *LeakSensor
 
-NewLeakSensor creates a new LeakSensor.
+
 
 <a name="LeakSensor.GetCategory"></a>
 ### func \(\*LeakSensor\) GetCategory
@@ -1207,7 +1207,7 @@ NewLeakSensor creates a new LeakSensor.
 
 	func (s *LeakSensor) IsDetected() bool
 
-IsDetected returns whether a leak is detected.
+
 
 <a name="LeakSensor.SetDetected"></a>
 ### func \(\*LeakSensor\) SetDetected
@@ -1277,7 +1277,7 @@ LicensePlateDetectorSensor is a license plate sensor that consumes video frames 
 
 	func NewLicensePlateDetectorSensor(name string) *LicensePlateDetectorSensor
 
-NewLicensePlateDetectorSensor creates a new LicensePlateDetectorSensor with the given name.
+
 
 <a name="LicensePlateResult"></a>
 
@@ -1305,7 +1305,7 @@ Plugin authors call ReportDetections to push detected plates. The \`detected\` f
 
 	func NewLicensePlateSensor(name string) *LicensePlateSensor
 
-NewLicensePlateSensor creates a new LicensePlateSensor with the given name.
+
 
 <a name="LicensePlateSensor.ClearDetections"></a>
 ### func \(\*LicensePlateSensor\) ClearDetections
@@ -1319,7 +1319,7 @@ ClearDetections explicitly clears license plate state \(detected = false, detect
 
 	func (s *LicensePlateSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="LicensePlateSensor.GetDetections"></a>
 ### func \(\*LicensePlateSensor\) GetDetections
@@ -1333,7 +1333,7 @@ GetDetections returns the current license plate detections.
 
 	func (s *LicensePlateSensor) GetType() SensorType
 
-GetType returns SensorTypeLicensePlate.
+
 
 <a name="LicensePlateSensor.IsDetected"></a>
 ### func \(\*LicensePlateSensor\) IsDetected
@@ -1366,7 +1366,7 @@ Example:
 
 	func (s *LicensePlateSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="LicensePlateSensor.UpdateValue"></a>
 ### func \(\*LicensePlateSensor\) UpdateValue
@@ -1392,14 +1392,14 @@ For hardware\-pushed updates \(someone manually flipped the switch\), call the e
 
 	func NewLightControl(name string) *LightControl
 
-NewLightControl creates a new LightControl.
+
 
 <a name="LightControl.GetBrightness"></a>
 ### func \(\*LightControl\) GetBrightness
 
 	func (s *LightControl) GetBrightness() int
 
-GetBrightness returns the brightness level \(0–100\).
+
 
 <a name="LightControl.GetCategory"></a>
 ### func \(\*LightControl\) GetCategory
@@ -1420,7 +1420,7 @@ GetBrightness returns the brightness level \(0–100\).
 
 	func (s *LightControl) IsOn() bool
 
-IsOn returns whether the light is on.
+
 
 <a name="LightControl.SetBrightness"></a>
 ### func \(\*LightControl\) SetBrightness
@@ -1470,7 +1470,7 @@ Example:
 
 	func (s *LightControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Numeric values arriving via msgpack may be any int/uint/float width — \`toInt64\` normalizes them. Boolean values are checked directly.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="LineDirection"></a>
 
@@ -1487,7 +1487,7 @@ For asymmetric flows \(long\-running unlock with intermediate state\) override S
 
 	func NewLockControl(name string) *LockControl
 
-NewLockControl creates a new LockControl.
+
 
 <a name="LockControl.GetCategory"></a>
 ### func \(\*LockControl\) GetCategory
@@ -1501,14 +1501,14 @@ NewLockControl creates a new LockControl.
 
 	func (s *LockControl) GetCurrentState() LockState
 
-GetCurrentState returns the current lock state.
+
 
 <a name="LockControl.GetTargetState"></a>
 ### func \(\*LockControl\) GetTargetState
 
 	func (s *LockControl) GetTargetState() LockState
 
-GetTargetState returns the target lock state.
+
 
 <a name="LockControl.GetType"></a>
 ### func \(\*LockControl\) GetType
@@ -1553,7 +1553,7 @@ Example:
 
 	func (s *LockControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Numeric values arriving via msgpack may be any int/uint/float width — the \`toInt64\` helper normalizes them so the LockState cast is consistent.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="LockState"></a>
 
@@ -1566,9 +1566,9 @@ LockState defines lock states \(HomeKit\-compatible values\).
 <a name="LockStateSecured"></a>
 
 	const (
-	    LockStateSecured   LockState = 0 // Lock is secured (locked)
-	    LockStateUnsecured LockState = 1 // Lock is unsecured (unlocked)
-	    LockStateUnknown   LockState = 2 // Lock state is unknown
+	    LockStateSecured   LockState = 0
+	    LockStateUnsecured LockState = 1
+	    LockStateUnknown   LockState = 2
 	)
 
 <a name="Logger"></a>
@@ -1609,7 +1609,7 @@ MotionDetectorSensor is a motion sensor that consumes video frames from the back
 
 	func NewMotionDetectorSensor(name string) *MotionDetectorSensor
 
-NewMotionDetectorSensor creates a new MotionDetectorSensor with the given name.
+
 
 <a name="MotionResolution"></a>
 
@@ -1639,7 +1639,7 @@ Plugin authors call ReportDetections to push detection results. The \`detected\`
 
 	func NewMotionSensor(name string) *MotionSensor
 
-NewMotionSensor creates a new MotionSensor with the given name.
+
 
 <a name="MotionSensor.ClearDetections"></a>
 ### func \(\*MotionSensor\) ClearDetections
@@ -1653,7 +1653,7 @@ ClearDetections explicitly clears motion state \(detected = false, detections = 
 
 	func (s *MotionSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="MotionSensor.GetDetections"></a>
 ### func \(\*MotionSensor\) GetDetections
@@ -1667,7 +1667,7 @@ GetDetections returns the current motion detections.
 
 	func (s *MotionSensor) GetType() SensorType
 
-GetType returns SensorTypeMotion.
+
 
 <a name="MotionSensor.IsBlocked"></a>
 ### func \(\*MotionSensor\) IsBlocked
@@ -1709,7 +1709,7 @@ Example:
 
 	func (s *MotionSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="MotionSensor.UpdateValue"></a>
 ### func \(\*MotionSensor\) UpdateValue
@@ -1746,7 +1746,7 @@ ObjectDetectorSensor is an object sensor that consumes video frames from the bac
 
 	func NewObjectDetectorSensor(name string) *ObjectDetectorSensor
 
-NewObjectDetectorSensor creates a new ObjectDetectorSensor with the given name.
+
 
 <a name="ObjectModelSpec"></a>
 
@@ -1786,7 +1786,7 @@ Plugin authors call ReportDetections to push detection results. The \`detected\`
 
 	func NewObjectSensor(name string) *ObjectSensor
 
-NewObjectSensor creates a new ObjectSensor with the given name.
+
 
 <a name="ObjectSensor.ClearDetections"></a>
 ### func \(\*ObjectSensor\) ClearDetections
@@ -1800,7 +1800,7 @@ ClearDetections explicitly clears detection state \(detected = false, detections
 
 	func (s *ObjectSensor) GetCategory() SensorCategory
 
-GetCategory returns SensorCategorySensor.
+
 
 <a name="ObjectSensor.GetDetections"></a>
 ### func \(\*ObjectSensor\) GetDetections
@@ -1821,7 +1821,7 @@ GetLabels returns the unique labels of the current detections.
 
 	func (s *ObjectSensor) GetType() SensorType
 
-GetType returns SensorTypeObject.
+
 
 <a name="ObjectSensor.IsDetected"></a>
 ### func \(\*ObjectSensor\) IsDetected
@@ -1854,7 +1854,7 @@ Example:
 
 	func (s *ObjectSensor) ToJSON() sensorJSON
 
-ToJSON serializes this sensor to a JSON\-safe representation for RPC transport.
+
 
 <a name="ObjectSensor.UpdateValue"></a>
 ### func \(\*ObjectSensor\) UpdateValue
@@ -1876,7 +1876,7 @@ OccupancySensor reports occupancy/presence state.
 
 	func NewOccupancySensor(name string) *OccupancySensor
 
-NewOccupancySensor creates a new OccupancySensor.
+
 
 <a name="OccupancySensor.GetCategory"></a>
 ### func \(\*OccupancySensor\) GetCategory
@@ -1897,7 +1897,7 @@ NewOccupancySensor creates a new OccupancySensor.
 
 	func (s *OccupancySensor) IsDetected() bool
 
-IsDetected returns whether occupancy is detected.
+
 
 <a name="OccupancySensor.SetDetected"></a>
 ### func \(\*OccupancySensor\) SetDetected
@@ -1940,7 +1940,7 @@ Set capabilities to advertise supported axes and features. Use SetPresets to pub
 
 	func NewPTZControl(name string) *PTZControl
 
-NewPTZControl creates a new PTZControl.
+
 
 <a name="PTZControl.GetCategory"></a>
 ### func \(\*PTZControl\) GetCategory
@@ -1954,14 +1954,14 @@ NewPTZControl creates a new PTZControl.
 
 	func (s *PTZControl) GetPosition() PTZPosition
 
-GetPosition returns the current PTZ position.
+
 
 <a name="PTZControl.GetPresets"></a>
 ### func \(\*PTZControl\) GetPresets
 
 	func (s *PTZControl) GetPresets() []string
 
-GetPresets returns the list of available preset names.
+
 
 <a name="PTZControl.GetType"></a>
 ### func \(\*PTZControl\) GetType
@@ -1987,7 +1987,7 @@ Example:
 
 	func (s *PTZControl) IsMoving() bool
 
-IsMoving returns whether the PTZ is currently moving.
+
 
 <a name="PTZControl.SetMoving"></a>
 ### func \(\*PTZControl\) SetMoving
@@ -2061,7 +2061,7 @@ Example:
 
 	func (s *PTZControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Only Position, Velocity, and TargetPreset are externally writable.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="PTZDirection"></a>
 
@@ -2076,7 +2076,7 @@ SecuritySystem is a security system arm/disarm control sensor.
 
 	func NewSecuritySystem(name string) *SecuritySystem
 
-NewSecuritySystem creates a new SecuritySystem.
+
 
 <a name="SecuritySystem.GetCategory"></a>
 ### func \(\*SecuritySystem\) GetCategory
@@ -2090,14 +2090,14 @@ NewSecuritySystem creates a new SecuritySystem.
 
 	func (s *SecuritySystem) GetCurrentState() SecuritySystemState
 
-GetCurrentState returns the current security system state.
+
 
 <a name="SecuritySystem.GetTargetState"></a>
 ### func \(\*SecuritySystem\) GetTargetState
 
 	func (s *SecuritySystem) GetTargetState() SecuritySystemState
 
-GetTargetState returns the target security system state.
+
 
 <a name="SecuritySystem.GetType"></a>
 ### func \(\*SecuritySystem\) GetType
@@ -2142,7 +2142,7 @@ Example:
 
 	func (s *SecuritySystem) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Numeric values arriving via msgpack may be any int/uint/float width — \`toInt64\` normalizes them.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="SecuritySystemState"></a>
 
@@ -2291,7 +2291,7 @@ SirenControl is a siren on/off and volume control sensor. Override SetActive / S
 
 	func NewSirenControl(name string) *SirenControl
 
-NewSirenControl creates a new SirenControl.
+
 
 <a name="SirenControl.GetCategory"></a>
 ### func \(\*SirenControl\) GetCategory
@@ -2312,14 +2312,14 @@ NewSirenControl creates a new SirenControl.
 
 	func (s *SirenControl) GetVolume() int
 
-GetVolume returns the siren volume \(0–100\).
+
 
 <a name="SirenControl.IsActive"></a>
 ### func \(\*SirenControl\) IsActive
 
 	func (s *SirenControl) IsActive() bool
 
-IsActive returns whether the siren is active.
+
 
 <a name="SirenControl.SetActive"></a>
 ### func \(\*SirenControl\) SetActive
@@ -2369,7 +2369,7 @@ Example:
 
 	func (s *SirenControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Numeric values arriving via msgpack may be any int/uint/float width — \`toInt64\` normalizes them. Boolean values are checked directly.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="SmokeSensor"></a>
 
@@ -2384,7 +2384,7 @@ SmokeSensor reports smoke detection state.
 
 	func NewSmokeSensor(name string) *SmokeSensor
 
-NewSmokeSensor creates a new SmokeSensor.
+
 
 <a name="SmokeSensor.GetCategory"></a>
 ### func \(\*SmokeSensor\) GetCategory
@@ -2405,7 +2405,7 @@ NewSmokeSensor creates a new SmokeSensor.
 
 	func (s *SmokeSensor) IsDetected() bool
 
-IsDetected returns whether smoke is detected.
+
 
 <a name="SmokeSensor.SetDetected"></a>
 ### func \(\*SmokeSensor\) SetDetected
@@ -2446,7 +2446,7 @@ SwitchControl is a generic on/off switch control sensor. Override SetOn / SetOff
 
 	func NewSwitchControl(name string) *SwitchControl
 
-NewSwitchControl creates a new SwitchControl.
+
 
 <a name="SwitchControl.GetCategory"></a>
 ### func \(\*SwitchControl\) GetCategory
@@ -2467,7 +2467,7 @@ NewSwitchControl creates a new SwitchControl.
 
 	func (s *SwitchControl) IsOn() bool
 
-IsOn returns whether the switch is on.
+
 
 <a name="SwitchControl.SetOff"></a>
 ### func \(\*SwitchControl\) SetOff
@@ -2505,7 +2505,7 @@ Example:
 
 	func (s *SwitchControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods. Numeric values arriving via msgpack may be any int/uint/float width — \`toInt64\` normalizes them. Boolean values are checked directly.
+UpdateValue dispatches generic property writes to semantic methods.
 
 <a name="TemperatureInfo"></a>
 
@@ -2520,7 +2520,7 @@ TemperatureInfo reports current temperature in °C.
 
 	func NewTemperatureInfo(name string) *TemperatureInfo
 
-NewTemperatureInfo creates a new TemperatureInfo.
+
 
 <a name="TemperatureInfo.GetCategory"></a>
 ### func \(\*TemperatureInfo\) GetCategory
@@ -2534,7 +2534,7 @@ NewTemperatureInfo creates a new TemperatureInfo.
 
 	func (s *TemperatureInfo) GetCurrent() float64
 
-GetCurrent returns the current temperature in °C.
+
 
 <a name="TemperatureInfo.GetType"></a>
 ### func \(\*TemperatureInfo\) GetType

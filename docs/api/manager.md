@@ -15,13 +15,6 @@ Exposes cross\-cutting services like the FFmpeg binary path, server addresses, H
 	    // contains filtered or unexported fields
 	}
 
-<a name="CoreManager.Close"></a>
-### func \(\*CoreManager\) Close
-
-	func (cm *CoreManager) Close()
-
-Close unsubscribes from core events and completes the event subject.
-
 <a name="CoreManager.ConnectToPlugin"></a>
 ### func \(\*CoreManager\) ConnectToPlugin
 
@@ -85,7 +78,7 @@ Emitted when a core system event occurs \(e.g. cloud account changes, remote\-se
 
 ## type CreateDownloadOptions
 
-CreateDownloadOptions specifies how to register an existing file as a downloadable artifact. The file must already be fully written when this is called.
+CreateDownloadOptions specifies how to register an existing file as a downloadable artifact.
 
 	type CreateDownloadOptions struct {
 	    // FilePath is the absolute path to the file on disk.
@@ -106,7 +99,7 @@ CreateDownloadOptions specifies how to register an existing file as a downloadab
 
 ## type CreateStreamDownloadOptions
 
-CreateStreamDownloadOptions specifies how to register a file that is still being written. The file is served progressively while writing continues, and the marker file at MarkerPath signals completion to the download server.
+CreateStreamDownloadOptions specifies how to register a file that is still being written and served progressively.
 
 	type CreateStreamDownloadOptions struct {
 	    // FilePath is the absolute path to the file being written.
@@ -131,7 +124,7 @@ CreateStreamDownloadOptions specifies how to register a file that is still being
 
 DeviceManager provides camera lookup and discovery operations via RPC.
 
-Handles camera lifecycle events from the backend \(cameraAdded / cameraReleased\) and forwards them to the plugin's OnCameraAdded / OnCameraReleased callbacks. Use GetCamera to retrieve a camera proxy by ID or name, and PushDiscoveredCameras to surface cameras found during async discovery \(e.g. after a cloud login\) without waiting for the next discovery poll.
+Use GetCamera to retrieve a camera by ID or name, and PushDiscoveredCameras to surface cameras found during async discovery \(e.g. after a cloud login\).
 
 Accessed via api.DeviceManager from within a plugin.
 
@@ -144,7 +137,7 @@ Accessed via api.DeviceManager from within a plugin.
 
 	func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error)
 
-GetCamera retrieves a camera by ID or name. Cached locally on first lookup; subsequent calls return the same proxy. Returns nil if no matching camera exists.
+GetCamera retrieves a camera by ID or name. Returns nil if no matching camera exists.
 
 <a name="DeviceManager.PushDiscoveredCameras"></a>
 ### func \(\*DeviceManager\) PushDiscoveredCameras
@@ -179,7 +172,7 @@ DownloadCleanup controls when the file on disk is deleted. Registry entry always
 
 DownloadManager provides token\-based file download registration via RPC.
 
-Allows plugins to register files for HTTP download via a token URL. No JWT authentication is needed — the token itself is the auth. Useful for exporting recordings, sharing snapshots, or attaching images to outbound notifications. Accessed via api.DownloadManager from within a plugin.
+Allows plugins to register files for HTTP download via a token URL. No JWT authentication is needed — the token itself is the auth. Accessed via api.DownloadManager from within a plugin.
 
 	type DownloadManager struct {
 	    // contains filtered or unexported fields
@@ -190,29 +183,27 @@ Allows plugins to register files for HTTP download via a token URL. No JWT authe
 
 	func (dm *DownloadManager) CreateDownload(options CreateDownloadOptions) (DownloadToken, error)
 
-CreateDownload registers a file for HTTP download and returns a token\-based URL. The download is valid until the TTL expires; control when the underlying file is removed from disk via options.Cleanup.
+CreateDownload registers a file for HTTP download and returns a token\-based URL.
 
 <a name="DownloadManager.CreateStreamDownload"></a>
 ### func \(\*DownloadManager\) CreateStreamDownload
 
 	func (dm *DownloadManager) CreateStreamDownload(options *CreateStreamDownloadOptions) (DownloadToken, error)
 
-CreateStreamDownload registers a streaming file for progressive HTTP download. The file is tailed during writing; the marker file \(options.MarkerPath\) signals when writing is complete and the response can be closed. Useful for serving recordings while they are still being exported.
+CreateStreamDownload registers a streaming file for progressive HTTP download. The file is tailed during writing; the marker file signals completion.
 
 <a name="DownloadManager.DeleteDownload"></a>
 ### func \(\*DownloadManager\) DeleteDownload
 
 	func (dm *DownloadManager) DeleteDownload(token string) error
 
-DeleteDownload removes a download token from the registry and optionally deletes the underlying file \(depending on the cleanup mode used at creation time\). Subsequent requests using the token return 404.
+DeleteDownload removes a download token and optionally deletes the underlying file.
 
 <a name="DownloadToken"></a>
 
 ## type DownloadToken
 
 DownloadToken is returned after registering a download.
-
-Pass either URL \(in\-app\) or PublicURL \(cloud\) to whoever should fetch the file. The token expires at ExpiresAt regardless of cleanup mode.
 
 	type DownloadToken struct {
 	    // Token is the unique download token (also embedded in URL/PublicURL).
@@ -251,9 +242,9 @@ Accessed via api.NotificationManager from within a plugin.
 
 	func (nm *NotificationManager) Publish(n *Notification) error
 
-Publish sends a notification to the host for fan\-out to every installed Notifier\-plugin and the in\-app UI. Fire\-and\-forget: errors marshalling the payload or transmitting on NATS are returned, but the host's downstream processing \(recipient resolve, notifier delivery\) is async and failures there never propagate back here.
+Publish sends a notification to the host for fan\-out to every installed Notifier\-plugin and the in\-app UI. Fire\-and\-forget: marshalling/transport errors are returned, but downstream delivery is async and failures there never propagate back here.
 
-The plugin's contract MUST declare CapabilityPublishNotifications; otherwise the host drops the notification and logs an error.
+The plugin's contract MUST declare CapabilityPublishNotifications; otherwise the host drops the notification.
 
 Example:
 

@@ -41,7 +41,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 	    "package", "audio",
 	}
 
-<a name="ErrNoValue"></a>ErrNoValue is returned by FirstValueFrom when the source completes without emitting.
+<a name="ErrNoValue"></a>
 
 	var ErrNoValue = errors.New("observable completed without emitting a value")
 
@@ -93,19 +93,7 @@ Int returns a pointer to the given int value. Use this for optional pointer fiel
 
 ## type Logger
 
-Logger emits structured JSON log lines on stdout for the parent \(host\) process to parse, classify, and forward to the configured log sinks.
 
-Each entry is wrapped in a childLogMessage envelope and contains the severity level, message text, optional prefix/suffix, and the target \(plugin/camera/sensor\) the entry belongs to.
-
-Severity levels mirror the LoggerService interface in the other SDKs:
-
-- log: general informational message \(default level\).
-- warn: potential problem that does not stop execution.
-- error: a failure or unexpected condition.
-- success: confirmation of a completed operation.
-- debug: diagnostic detail; only emitted when DebugEnabled is true.
-- trace: very fine\-grained diagnostic detail; only emitted when TraceEnabled is true.
-- attention: highlighted message that should stand out in the log stream.
 
 	type Logger struct {
 	    // contains filtered or unexported fields
@@ -116,55 +104,55 @@ Severity levels mirror the LoggerService interface in the other SDKs:
 
 	func (l *Logger) Attention(args ...any)
 
-Attention writes an attention\-level \(highlighted message that should stand out in the log stream\) entry.
+
 
 <a name="Logger.CreateLogger"></a>
 ### func \(\*Logger\) CreateLogger
 
 	func (l *Logger) CreateLogger(opts *loggerOptions) *Logger
 
-CreateLogger derives a child logger that inherits the parent's prefix, pluginID and debug/trace toggles, but uses a fresh suffix and target identification \(typically a camera or sensor scope\).
+
 
 <a name="Logger.Debug"></a>
 ### func \(\*Logger\) Debug
 
 	func (l *Logger) Debug(args ...any)
 
-Debug writes a debug\-level \(diagnostic detail\) entry. Only emitted when DebugEnabled is true on the logger.
+
 
 <a name="Logger.Error"></a>
 ### func \(\*Logger\) Error
 
 	func (l *Logger) Error(args ...any)
 
-Error writes an error\-level \(failure or unexpected condition\) entry.
+
 
 <a name="Logger.Log"></a>
 ### func \(\*Logger\) Log
 
 	func (l *Logger) Log(args ...any)
 
-Log writes an info\-level \(general informational\) entry.
+
 
 <a name="Logger.Success"></a>
 ### func \(\*Logger\) Success
 
 	func (l *Logger) Success(args ...any)
 
-Success writes a success\-level \(confirmation of a completed operation\) entry.
+
 
 <a name="Logger.Trace"></a>
 ### func \(\*Logger\) Trace
 
 	func (l *Logger) Trace(args ...any)
 
-Trace writes a trace\-level \(very fine\-grained diagnostic detail\) entry. Only emitted when TraceEnabled is true on the logger.
+
 
 <a name="Logger.Warn"></a>
 ### func \(\*Logger\) Warn
 
 	func (l *Logger) Warn(args ...any)
 
-Warn writes a warning\-level \(potential problem that does not stop execution\) entry.
+
 
 <a name="ModelSpec"></a>

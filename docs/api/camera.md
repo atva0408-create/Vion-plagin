@@ -464,7 +464,7 @@ OnFrameWorkerConnected returns an Observable that emits distinct frame worker st
 
 	func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent]
 
-OnPropertyChange returns an Observable that emits when any of the specified camera properties change. Uses Pairwise \+ MergeMap \+ Filter on cameraSubject \(consistent with Node/Python SDKs\).
+OnPropertyChange returns an Observable that emits when any of the specified camera properties change.
 
 <a name="CameraDevice.OnSensorAdded"></a>
 ### func \(\*CameraDevice\) OnSensorAdded
@@ -676,6 +676,8 @@ CameraFrameWorkerSettings is frame worker \(decoder\) settings.
 	type CameraFrameWorkerSettings struct {
 	    // FPS is the target frames per second for detection.
 	    FPS int `msgpack:"fps" json:"fps"`
+	    // Capture event thumbnails from the highest-resolution source.
+	    HQSnapshots bool `msgpack:"hqSnapshots,omitempty" json:"hqSnapshots,omitempty"`
 	}
 
 <a name="CameraInformation"></a>
@@ -830,7 +832,7 @@ DetectionEvent is an aggregated detection event with lifecycle \(start \-\> upda
 
 ## type DetectionEventData
 
-DetectionEventData wraps a detection event with its lifecycle type. Emitted to OnDetectionEvent subscribers for each start/update/end/segment\-\* message.
+DetectionEventData wraps a detection event with its lifecycle type.
 
 	type DetectionEventData struct {
 	    Type  DetectionEventType
@@ -1140,11 +1142,8 @@ ProbeStream is the result of a stream probe — SDP plus track information.
 PropertyChangeEvent is emitted when a camera property changes.
 
 	type PropertyChangeEvent struct {
-	    // Property is the JSON name of the property that changed.
-	    Property string
-	    // OldCamera is the camera snapshot before the change.
+	    Property  string
 	    OldCamera Camera
-	    // NewCamera is the camera snapshot after the change.
 	    NewCamera Camera
 	}
 

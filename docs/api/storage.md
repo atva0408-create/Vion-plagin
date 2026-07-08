@@ -14,25 +14,17 @@ ButtonColor controls the color variant of a button\-type schema.
 <a name="ButtonColorSuccess"></a>
 
 	const (
-	    // ButtonColorSuccess — green/positive action.
 	    ButtonColorSuccess ButtonColor = "success"
-	    // ButtonColorInfo — neutral informational action.
-	    ButtonColorInfo ButtonColor = "info"
-	    // ButtonColorWarn — yellow/cautionary action.
-	    ButtonColorWarn ButtonColor = "warn"
-	    // ButtonColorDanger — red/destructive action.
-	    ButtonColorDanger ButtonColor = "danger"
+	    ButtonColorInfo    ButtonColor = "info"
+	    ButtonColorWarn    ButtonColor = "warn"
+	    ButtonColorDanger  ButtonColor = "danger"
 	)
 
 <a name="Camera"></a>
 
 ## type DeviceStorage
 
-DeviceStorage is the schema\-driven configuration store for a plugin, camera, or sensor. Each plugin and each device gets its own scoped instance, keyed by Prefix.
-
-Define the fields the UI should render via DefineSchemas \(typically once at startup\), then read/write values via GetValue / SetValue. Values whose schema has Store=true are persisted to disk; the rest live only in memory for the lifetime of the process. Submit\-button schemas drive transactional flows via SubmitValue.
-
-It implements the storage protocol expected by the server via RPC.
+DeviceStorage is the schema\-driven configuration store for a plugin, camera, or sensor. Define the fields the UI renders via DefineSchemas, then read/write values via GetValue / SetValue. Each plugin and camera can have its own storage instance.
 
 Example:
 
@@ -42,7 +34,9 @@ Example:
 	})
 	
 	threshold := storage.GetValue("motionThreshold", 50)
-	storage.SetValue("motionThreshold", 75)
+	if err := storage.SetValue("motionThreshold", 75); err != nil {
+	    log.Error("persist failed:", err)
+	}
 	
 
 	type DeviceStorage struct {
@@ -54,32 +48,37 @@ Example:
 <a name="DeviceStorage.AddSchema"></a>
 ### func \(\*DeviceStorage\) AddSchema
 
-	func (ds *DeviceStorage) AddSchema(schema *JsonSchema)
+	func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error
 
-AddSchema adds a new schema field.
+AddSchema adds a new schema field. Returns an error if a schema with that key already exists — use ChangeSchema to modify an existing field.
 
 <a name="DeviceStorage.ChangeSchema"></a>
 ### func \(\*DeviceStorage\) ChangeSchema
 
-	func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema)
+	func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error
 
-ChangeSchema replaces the schema for an existing key. The passed key always wins \(newSchema.Key is overwritten with key\). It is a no\-op when no schema with that key is currently registered — use AddSchema to add a new field. Persists when the changed schema is storable.
-
-Unlike the Node/Python SDKs \(which merge a partial schema into the existing one\), the Go SDK takes a full JsonSchema and replaces the entry.
+ChangeSchema replaces an existing key's schema with a full JsonSchema; individual fields are not merged. The passed key always wins. It is a no\-op when no schema with that key is registered — use AddSchema to add a new field.
 
 <a name="DeviceStorage.DefineSchemas"></a>
 ### func \(\*DeviceStorage\) DefineSchemas
 
 	func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema)
 
-DefineSchemas sets the schemas for this storage.
+DefineSchemas sets all schemas for this storage. Schema defaults fill any key the store does not carry; existing stored values win.
+
+<a name="DeviceStorage.Destroy"></a>
+### func \(\*DeviceStorage\) Destroy
+
+	func (ds *DeviceStorage) Destroy() error
+
+Destroy clears this storage's values and deletes its location from the store, blocking until the deletion is durable.
 
 <a name="DeviceStorage.GetConfig"></a>
 ### func \(\*DeviceStorage\) GetConfig
 
 	func (ds *DeviceStorage) GetConfig() map[string]any
 
-GetConfig returns the full schema configuration.
+GetConfig returns the full schema configuration \(schema definitions and current values\).
 
 <a name="DeviceStorage.GetSchema"></a>
 ### func \(\*DeviceStorage\) GetSchema
@@ -93,7 +92,7 @@ GetSchema returns a schema by key.
 
 	func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any
 
-GetValue retrieves a configuration value. If the schema for this key has an OnGet callback, it is called and its return value is used. Falls back to stored value, then schema default, then provided default.
+GetValue retrieves a configuration value. Resolves in order: the schema's OnGet callback \(if any\), the stored value, the schema default, then the provided default.
 
 <a name="DeviceStorage.HasSchema"></a>
 ### func \(\*DeviceStorage\) HasSchema
@@ -109,47 +108,54 @@ HasSchema checks if a schema exists.
 
 HasValue checks if a configuration value exists.
 
+<a name="DeviceStorage.RPCMethods"></a>
+### func \(\*DeviceStorage\) RPCMethods
+
+	func (ds *DeviceStorage) RPCMethods() []string
+
+RPCMethods restricts the storage's RPC surface to the config API. Exported lifecycle methods \(Save, DefineSchemas\) stay callable in\-process for plugin authors but are not reachable over the wire.
+
 <a name="DeviceStorage.RemoveSchema"></a>
 ### func \(\*DeviceStorage\) RemoveSchema
 
-	func (ds *DeviceStorage) RemoveSchema(key string)
+	func (ds *DeviceStorage) RemoveSchema(key string) error
 
-RemoveSchema removes a schema field by key.
+RemoveSchema removes a schema field by key, deleting its stored value along with it.
 
 <a name="DeviceStorage.Save"></a>
 ### func \(\*DeviceStorage\) Save
 
-	func (ds *DeviceStorage) Save()
+	func (ds *DeviceStorage) Save() error
 
-Save persists all changes to storage.
+Save persists the storable configuration state, returning once the write is durable \(file synced or master acknowledged\).
 
 <a name="DeviceStorage.SetConfig"></a>
 ### func \(\*DeviceStorage\) SetConfig
 
-	func (ds *DeviceStorage) SetConfig(newConfig map[string]any)
+	func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error
 
-SetConfig merges new configuration values into the existing config. Triggers OnSet callbacks for any keys whose values actually changed \(deep compare\). Consistent with Node/Python SDK behavior.
+SetConfig merges new configuration values into the existing config and blocks until the merged state is durable. Values outside the storable domain reject the whole call before anything is applied. OnSet callbacks for keys whose values actually changed \(deep compare\) fire detached after the persist.
 
 <a name="DeviceStorage.SetInternalValue"></a>
 ### func \(\*DeviceStorage\) SetInternalValue
 
-	func (ds *DeviceStorage) SetInternalValue(key string, value any)
+	func (ds *DeviceStorage) SetInternalValue(key string, value any) error
 
-SetInternalValue sets a system\-internal value \(e.g. \_displayName\) without requiring a schema and persists it.
+SetInternalValue sets a system\-internal value \(e.g. \_displayName\) without requiring a schema, blocking until it is persisted. A nil value deletes the key; values outside the storable domain are rejected.
 
 <a name="DeviceStorage.SetValue"></a>
 ### func \(\*DeviceStorage\) SetValue
 
-	func (ds *DeviceStorage) SetValue(key string, value any)
+	func (ds *DeviceStorage) SetValue(key string, value any) error
 
-SetValue sets a configuration value and persists it. Only processes if a schema exists for the key \(consistent with Node/Python SDK\). Calls OnSet\(oldValue, newValue\) after the value is stored.
+SetValue sets a configuration value. A nil value deletes the key. Only processes if a schema exists for the key. When the schema has Store=true the call blocks until the write is durable and returns its error; values outside the storable domain are rejected and the previous value kept. OnSet\(newValue, oldValue\) fires detached after the persist.
 
 <a name="DeviceStorage.SubmitValue"></a>
 ### func \(\*DeviceStorage\) SubmitValue
 
 	func (ds *DeviceStorage) SubmitValue(key string, value any) map[string]any
 
-SubmitValue handles submit button clicks. Finds the schema by key, calls OnClick if present, and returns the response \(with optional toast\). This is the Go equivalent of the Node/Python submitValue method.
+SubmitValue handles a submit\-type field click, invoking OnClick and returning its optional toast/schema response.
 
 <a name="DiscoveredCamera"></a>
 
@@ -162,9 +168,7 @@ Used to react to a user\-triggered submit \(e.g. "Test connection", "Pair device
 	type FormSubmitResponse struct {
 	    // Toast is an optional banner to display after the submit completes.
 	    Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
-	    // Schema optionally replaces the rendered form fields — used to advance a
-	    // multi-step form or re-render with different fields. The UI applies the
-	    // replacement; callbacks are stripped during serialization.
+	    // Schema optionally replaces the rendered form fields (full replacement).
 	    Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
 	}
 
@@ -229,13 +233,11 @@ This is a unified struct that covers every schema variant — Type acts as the d
 	    // Color is the button color variant (Type=button or Type=submit only).
 	    Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
 	
-	    // OnSet is invoked after a value changes (Type=string/number/boolean/array/button).
-	    // Receives (oldValue, newValue). Not serialized.
-	    OnSet func(oldValue, newValue any) any `json:"-" msgpack:"-"`
-	    // OnGet is invoked to compute the current value at read time. Not serialized.
+	    // OnSet is invoked after a value changes. Receives (newValue, oldValue).
+	    OnSet func(newValue, oldValue any) any `json:"-" msgpack:"-"`
+	    // OnGet is invoked to compute the current value at read time.
 	    OnGet func() any `json:"-" msgpack:"-"`
 	    // OnClick is invoked when a submit-type field is submitted (Type=submit only).
-	    // May return a toast or updated schema. Not serialized.
 	    OnClick func(value any) *FormSubmitResponse `json:"-" msgpack:"-"`
 	}
 
@@ -250,25 +252,19 @@ ToMap converts a JsonSchema to a map for RPC serialization.
 
 ## type JsonSchemaType
 
-JsonSchemaType is the discriminator for a schema field. Determines which UI control renders the value and which subset of JsonSchema fields is meaningful.
+JsonSchemaType is the field type discriminating which UI control renders the value.
 
 	type JsonSchemaType string
 
 <a name="JsonSchemaTypeString"></a>
 
 	const (
-	    // JsonSchemaTypeString — text input. Pair with Format for specialized controls.
-	    JsonSchemaTypeString JsonSchemaType = "string"
-	    // JsonSchemaTypeNumber — numeric input with optional min/max/step.
-	    JsonSchemaTypeNumber JsonSchemaType = "number"
-	    // JsonSchemaTypeBoolean — toggle/checkbox.
+	    JsonSchemaTypeString  JsonSchemaType = "string"
+	    JsonSchemaTypeNumber  JsonSchemaType = "number"
 	    JsonSchemaTypeBoolean JsonSchemaType = "boolean"
-	    // JsonSchemaTypeArray — list of nested items defined by Items.
-	    JsonSchemaTypeArray JsonSchemaType = "array"
-	    // JsonSchemaTypeButton — fires OnSet on click; stores no value.
-	    JsonSchemaTypeButton JsonSchemaType = "button"
-	    // JsonSchemaTypeSubmit — submits the form via OnClick; can return a toast or new schema.
-	    JsonSchemaTypeSubmit JsonSchemaType = "submit"
+	    JsonSchemaTypeArray   JsonSchemaType = "array"
+	    JsonSchemaTypeButton  JsonSchemaType = "button"
+	    JsonSchemaTypeSubmit  JsonSchemaType = "submit"
 	)
 
 <a name="LeakSensor"></a>
@@ -309,17 +305,11 @@ SchemaConditionOperator defines comparison operators for SchemaCondition.
 <a name="SchemaConditionEq"></a>
 
 	const (
-	    // SchemaConditionEq — value equals the expected value.
-	    SchemaConditionEq SchemaConditionOperator = "eq"
-	    // SchemaConditionNeq — value does not equal the expected value.
+	    SchemaConditionEq  SchemaConditionOperator = "eq"
 	    SchemaConditionNeq SchemaConditionOperator = "neq"
-	    // SchemaConditionGt — value is greater than the expected value.
-	    SchemaConditionGt SchemaConditionOperator = "gt"
-	    // SchemaConditionLt — value is less than the expected value.
-	    SchemaConditionLt SchemaConditionOperator = "lt"
-	    // SchemaConditionIn — value is contained in the expected array.
-	    SchemaConditionIn SchemaConditionOperator = "in"
-	    // SchemaConditionNin — value is not contained in the expected array.
+	    SchemaConditionGt  SchemaConditionOperator = "gt"
+	    SchemaConditionLt  SchemaConditionOperator = "lt"
+	    SchemaConditionIn  SchemaConditionOperator = "in"
 	    SchemaConditionNin SchemaConditionOperator = "nin"
 	)
 
@@ -327,7 +317,7 @@ SchemaConditionOperator defines comparison operators for SchemaCondition.
 
 ## type StorageController
 
-StorageController manages storage instances for plugins, cameras, and sensors.
+
 
 	type StorageController struct {
 	    // contains filtered or unexported fields
@@ -344,26 +334,16 @@ StringFormat selects a specialized UI control for a string field.
 <a name="StringFormatDateTime"></a>
 
 	const (
-	    // StringFormatDateTime — ISO 8601 date+time picker.
 	    StringFormatDateTime StringFormat = "date-time"
-	    // StringFormatDate — date-only picker.
-	    StringFormatDate StringFormat = "date"
-	    // StringFormatTime — time-only picker.
-	    StringFormatTime StringFormat = "time"
-	    // StringFormatEmail — email input with format validation.
-	    StringFormatEmail StringFormat = "email"
-	    // StringFormatUUID — UUID input with format validation.
-	    StringFormatUUID StringFormat = "uuid"
-	    // StringFormatIPv4 — IPv4 address input.
-	    StringFormatIPv4 StringFormat = "ipv4"
-	    // StringFormatIPv6 — IPv6 address input.
-	    StringFormatIPv6 StringFormat = "ipv6"
-	    // StringFormatPassword — masked input that hides characters.
+	    StringFormatDate     StringFormat = "date"
+	    StringFormatTime     StringFormat = "time"
+	    StringFormatEmail    StringFormat = "email"
+	    StringFormatUUID     StringFormat = "uuid"
+	    StringFormatIPv4     StringFormat = "ipv4"
+	    StringFormatIPv6     StringFormat = "ipv6"
 	    StringFormatPassword StringFormat = "password"
-	    // StringFormatQRCode — value is rendered as a QR code (read-only display).
-	    StringFormatQRCode StringFormat = "qrCode"
-	    // StringFormatImage — value is a data URL or path; rendered as a thumbnail.
-	    StringFormatImage StringFormat = "image"
+	    StringFormatQRCode   StringFormat = "qrCode"
+	    StringFormatImage    StringFormat = "image"
 	)
 
 <a name="Subject"></a>
@@ -392,14 +372,10 @@ ToastType is the severity of a toast notification.
 <a name="ToastInfo"></a>
 
 	const (
-	    // ToastInfo — neutral notification.
-	    ToastInfo ToastType = "info"
-	    // ToastSuccess — positive notification (e.g. operation succeeded).
+	    ToastInfo    ToastType = "info"
 	    ToastSuccess ToastType = "success"
-	    // ToastWarning — cautionary notification.
 	    ToastWarning ToastType = "warning"
-	    // ToastError — failure notification.
-	    ToastError ToastType = "error"
+	    ToastError   ToastType = "error"
 	)
 
 <a name="TrackVelocity"></a>

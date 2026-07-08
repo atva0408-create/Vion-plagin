@@ -100,7 +100,7 @@ Example:
 
 	func Run(constructor pluginConstructor)
 
-Run is the entry point a Go plugin's main package calls to hand control to the SDK runtime. It performs the full handshake with the host \(RPC connect, ready/start/stop messages\), opens the per\-plugin storage, instantiates the plugin via constructor, calls ConfigureCameras with the assigned cameras, emits APIEventFinishLaunching, then blocks until SIGTERM/SIGINT or a stop command from the host. On exit it emits APIEventShutdown and tears down the RPC connection. This mirrors the lifecycle the Node/Python plugin runtimes implement \(server/src/plugins/runtime/\{node,python\}/\).
+Run is the entry point a Go plugin's main package calls to hand control to the SDK runtime.
 
 <a name="ValidateContractConsistency"></a>
 
@@ -173,7 +173,7 @@ AudioDetectionInterface is implemented by plugins that perform audio event or ke
 
 ## type AudioDetectionResponse
 
-AudioDetectionResponse is the result of an audio detection run. Decibels is optional and reports the measured loudness when the plugin computes it.
+AudioDetectionResponse is the result of an audio detection run.
 
 	type AudioDetectionResponse struct {
 	    Detected   bool        `msgpack:"detected" json:"detected"`
@@ -226,14 +226,8 @@ Example:
 	
 
 	type BasePlugin struct {
-	    // Logger is the per-plugin logger; messages are tagged with the plugin
-	    // name and forwarded to the host.
-	    Logger *Logger
-	    // API is the PluginAPI handle injected by the host (managers + lifecycle
-	    // eventEmitter).
-	    API *PluginAPI
-	    // Storage is the plugin-level storage instance (per-camera storage is
-	    // obtained via API.DeviceManager).
+	    Logger  *Logger
+	    API     *PluginAPI
 	    Storage *DeviceStorage
 	}
 
@@ -365,7 +359,7 @@ FaceDetectionInterface is implemented by plugins that locate faces and emit per\
 
 ## type FaceDetectionResponse
 
-FaceDetectionResponse is the result of a face detection run. EmbeddingModel names the model that produced the embeddings so the NVR can refuse to mix different models when matching.
+FaceDetectionResponse is the result of a face detection run.
 
 	type FaceDetectionResponse struct {
 	    Detected       bool            `msgpack:"detected" json:"detected"`
@@ -577,9 +571,8 @@ OAuthCapable is the base interface every OAuth\-capable plugin implements, along
 	    // GetOAuthMetadata returns the IdP display info, scope descriptions and
 	    // which flow sub-interfaces the plugin implements. Called on UI mount.
 	    GetOAuthMetadata() (*OAuthMetadata, error)
-	    // GetOAuthState returns a snapshot of the current lifecycle state. The
-	    // host polls this (~1.5s during a flow, ~30s otherwise) to reflect
-	    // progress; there is no streaming.
+	    // GetOAuthState returns a snapshot of the current lifecycle state; the
+	    // host polls this to mirror progress.
 	    GetOAuthState() (*OAuthState, error)
 	    // Disconnect revokes the current grant at the IdP and clears the stored
 	    // tokens.
@@ -619,7 +612,7 @@ OAuthDeviceFlowCapable is implemented by plugins whose IdP supports the RFC 8628
 
 ## type OAuthMetadata
 
-OAuthMetadata is informational data the host renders in the connect dialog. The plugin author hardcodes it; the host shows IdpDisplayName plus the scope descriptions for the scopes it is about to request.
+OAuthMetadata is informational data the host renders in the connect dialog.
 
 	type OAuthMetadata struct {
 	    // IdpDisplayName is the human name of the identity provider, e.g.
@@ -636,7 +629,7 @@ OAuthMetadata is informational data the host renders in the connect dialog. The 
 
 ## type OAuthProviderConfig
 
-OAuthProviderConfig points the plugin's OAuth manager at an identity provider. Preset selects a built\-in endpoint set \(e.g. "cameraui.com"\); otherwise the explicit endpoints are used.
+OAuthProviderConfig points the plugin's OAuth manager at an identity provider.
 
 	type OAuthProviderConfig struct {
 	    // Preset names a built-in IdP endpoint set. When empty the explicit
@@ -654,7 +647,7 @@ OAuthProviderConfig points the plugin's OAuth manager at an identity provider. P
 
 ## type OAuthProviderDeclaration
 
-OAuthProviderDeclaration is one provider a plugin integrates with, returned from the plugin so the host can render the connection affordance. A single\-provider plugin \(e.g. camera\-ui\-nvr\) declares exactly one.
+OAuthProviderDeclaration is one provider a plugin integrates with. A single\-provider plugin declares exactly one.
 
 	type OAuthProviderDeclaration struct {
 	    // ID is the plugin-local provider identifier (storage key dimension for
@@ -709,24 +702,18 @@ OAuthState is a snapshot of a provider connection's lifecycle. It lives in the p
 
 ## type OAuthStatus
 
-OAuthStatus is the lifecycle phase of an OAuth provider connection, carried in OAuthState.Status. It drives the host UI's button/dialog state machine.
+OAuthStatus is the lifecycle phase of an OAuth provider connection, carried in OAuthState.Status.
 
 	type OAuthStatus = string
 
 <a name="OAuthStatusDisconnected"></a>
 
 	const (
-	    // OAuthStatusDisconnected — no grant; the user can start a flow.
 	    OAuthStatusDisconnected OAuthStatus = "disconnected"
-	    // OAuthStatusAwaitingUser — a flow is in progress and waiting on the user
-	    // (device code shown / browser redirect pending).
 	    OAuthStatusAwaitingUser OAuthStatus = "awaiting_user"
-	    // OAuthStatusPolling — the plugin is polling the IdP for the token.
-	    OAuthStatusPolling OAuthStatus = "polling"
-	    // OAuthStatusConnected — a valid grant is stored.
-	    OAuthStatusConnected OAuthStatus = "connected"
-	    // OAuthStatusError — the last attempt failed; see ErrorCode/ErrorMessage.
-	    OAuthStatusError OAuthStatus = "error"
+	    OAuthStatusPolling      OAuthStatus = "polling"
+	    OAuthStatusConnected    OAuthStatus = "connected"
+	    OAuthStatusError        OAuthStatus = "error"
 	)
 
 <a name="ObjectDetectionInterface"></a>
@@ -1029,35 +1016,20 @@ PluginRole identifies the role a plugin plays in the system. The role decides wh
 
 ## type PluginStatus
 
-PluginStatus reports the lifecycle state of the plugin process as seen by the host. Sent over the private bootstrap channel during startup and shutdown \(see run.go\).
+PluginStatus reports the lifecycle state of the plugin process as seen by the host.
 
 	type PluginStatus string
 
 <a name="PluginStatusReady"></a>
 
 	const (
-	    // PluginStatusReady is sent after the plugin process has connected and
-	    // registered its message handler — it is now waiting for the start
-	    // command from the host.
-	    PluginStatusReady PluginStatus = "ready"
-	    // PluginStatusStarting indicates the plugin is currently bootstrapping
-	    // (constructing managers, opening storage, configuring cameras).
+	    PluginStatusReady    PluginStatus = "ready"
 	    PluginStatusStarting PluginStatus = "starting"
-	    // PluginStatusStarted is sent once ConfigureCameras has returned and the
-	    // plugin is fully operational.
-	    PluginStatusStarted PluginStatus = "started"
-	    // PluginStatusStopping indicates the plugin is in graceful shutdown.
+	    PluginStatusStarted  PluginStatus = "started"
 	    PluginStatusStopping PluginStatus = "stopping"
-	    // PluginStatusStopped indicates the plugin has finished shutdown and the
-	    // process is about to exit.
-	    PluginStatusStopped PluginStatus = "stopped"
-	    // PluginStatusError is sent when the plugin failed to start; an `Error`
-	    // message accompanies it.
-	    PluginStatusError PluginStatus = "error"
-	    // PluginStatusUnknown is the zero-value placeholder.
-	    PluginStatusUnknown PluginStatus = "unknown"
-	    // PluginStatusDisabled indicates the plugin is installed but disabled
-	    // in the host configuration.
+	    PluginStatusStopped  PluginStatus = "stopped"
+	    PluginStatusError    PluginStatus = "error"
+	    PluginStatusUnknown  PluginStatus = "unknown"
 	    PluginStatusDisabled PluginStatus = "disabled"
 	)
 
@@ -1065,15 +1037,10 @@ PluginStatus reports the lifecycle state of the plugin process as seen by the ho
 
 ## type PluginStorage
 
-PluginStorage carries the storage paths the host hands to the plugin during the start handshake. Only used inside the bootstrap message; plugin code should read PluginAPI.StoragePath instead.
+PluginStorage carries the storage paths the host hands to the plugin during the start handshake. Plugin code should read PluginAPI.StoragePath instead.
 
 	type PluginStorage struct {
-	    // InstallPath is the read-only directory where the plugin binary /
-	    // package was installed by the host.
 	    InstallPath string `msgpack:"installPath" json:"installPath"`
-	    // StoragePath is the writable directory the plugin owns for caches,
-	    // models, sqlite/bolt files. The same string is exposed as
-	    // PluginAPI.StoragePath.
 	    StoragePath string `msgpack:"storagePath" json:"storagePath"`
 	}
 
@@ -1123,8 +1090,6 @@ Severity classifies how urgent a Notification is. Notifiers map this to platform
 StorageSchemaProvider is an optional interface plugins can implement to register a JSON schema for their plugin\-level storage. The host renders it as a settings form in the UI.
 
 	type StorageSchemaProvider interface {
-	    // StorageSchema returns the schemas describing the plugin-level config.
-	    // Called once after plugin construction; see run.go.
 	    StorageSchema() []JsonSchema
 	}
 
