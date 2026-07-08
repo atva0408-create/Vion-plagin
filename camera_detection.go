@@ -105,6 +105,16 @@ type PtzAutotrackSettings struct {
 	// TriggerDeadZone is the dead zone around frame center (0 - 0.3).
 	// No motor command is issued while the target is inside this zone.
 	TriggerDeadZone float64 `msgpack:"triggerDeadZone" json:"triggerDeadZone"`
+	// TrackingSpeed is how aggressively the camera moves to re-center the target (1 - 5).
+	// Higher reaches full pan/tilt speed at a smaller off-center error.
+	TrackingSpeed float64 `msgpack:"trackingSpeed" json:"trackingSpeed"`
+	// LeadFrames is the motion prediction (0 - 6): aim this many detection-frames
+	// ahead along the target's measured velocity. 0 disables prediction.
+	LeadFrames float64 `msgpack:"leadFrames" json:"leadFrames"`
+	// PanRate is the camera pan-rate calibration (0.1 - 3): assumed pan travel at
+	// full motor speed in normalized frame-widths per second. Lower it if the
+	// camera stops short of the target, raise it if it overshoots.
+	PanRate float64 `msgpack:"panRate" json:"panRate"`
 	// ReturnToHome enables returning to the home position when no target is found for HomeWaitMs.
 	ReturnToHome bool `msgpack:"returnToHome" json:"returnToHome"`
 	// HomeWaitMs is how long to wait (ms) without a target before returning home.
