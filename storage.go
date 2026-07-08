@@ -3,6 +3,7 @@ package sdk
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"sync"
@@ -96,6 +97,80 @@ func schemaStorable(schema *JsonSchema) bool {
 		schema.Type != JsonSchemaTypeButton && schema.Type != JsonSchemaTypeSubmit
 }
 
+// generateConfigFromSchemas builds the type-based default value map: every
+// non-button/submit schema key gets its explicit DefaultValue, else the typed
+// zero for its type.
+func generateConfigFromSchemas(schemas []JsonSchema) map[string]any {
+	config := make(map[string]any, len(schemas))
+	for i := range schemas {
+		s := &schemas[i]
+		if s.Type == JsonSchemaTypeButton || s.Type == JsonSchemaTypeSubmit {
+			continue
+		}
+		config[s.Key] = generateDefaultValue(s)
+	}
+	return config
+}
+
+// generateDefaultValue returns a schema's explicit DefaultValue, or the typed
+// zero for its type when none is set.
+func generateDefaultValue(s *JsonSchema) any {
+	if s.DefaultValue != nil {
+		return s.DefaultValue
+	}
+	switch s.Type {
+	case JsonSchemaTypeString:
+		if len(s.Enum) > 0 {
+			if s.Multiple {
+				return []any{}
+			}
+			if s.Required {
+				return s.Enum[0]
+			}
+		}
+		return ""
+	case JsonSchemaTypeNumber:
+		return 0
+	case JsonSchemaTypeBoolean:
+		return false
+	case JsonSchemaTypeArray:
+		return []any{}
+	default:
+		return nil
+	}
+}
+
+// mergeValues deep-merges src into dst and returns the result: nested
+// string-keyed maps merge recursively, arrays and scalars from src replace
+// dst wholesale, and keys present only in dst are kept.
+func mergeValues(dst, src map[string]any) map[string]any {
+	out := make(map[string]any, len(dst)+len(src))
+	maps.Copy(out, dst)
+	for k, sv := range src {
+		if dv, ok := out[k]; ok {
+			if dm, dOk := dv.(map[string]any); dOk {
+				if sm, sOk := sv.(map[string]any); sOk {
+					out[k] = mergeValues(dm, sm)
+					continue
+				}
+			}
+		}
+		out[k] = sv
+	}
+	return out
+}
+
+// mergeValue merges a single incoming value onto the existing one: two
+// string-keyed maps deep-merge (incoming wins), anything else replaces.
+func mergeValue(old, incoming any) any {
+	oldMap, oOk := old.(map[string]any)
+	newMap, nOk := incoming.(map[string]any)
+	if oOk && nOk {
+		return mergeValues(oldMap, newMap)
+	}
+	return incoming
+}
+
 // persist writes the current persistable state and blocks until it is
 // durable. It must not be called with ds.mu or ds.persistMu held: the wait
 // blocks on disk or on the master's acknowledgement, and holding a lock
@@ -119,6 +194,17 @@ func (ds *DeviceStorage) persist() error {
 	}
 	ds.mu.Unlock()
 	return err
+}
+
+// RPCMethods restricts the storage's RPC surface to the config API. Exported
+// lifecycle methods (Save, DefineSchemas) stay callable in-process for plugin
+// authors but are not reachable over the wire, matching the node/python runtimes.
+func (ds *DeviceStorage) RPCMethods() []string {
+	return []string{
+		"getValue", "setValue", "submitValue", "setInternalValue", "hasValue",
+		"getConfig", "setConfig", "addSchema", "removeSchema", "changeSchema",
+		"getSchema", "hasSchema", "destroy",
+	}
 }
 
 // GetValue retrieves a configuration value.
@@ -157,7 +243,7 @@ func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 // processes if a schema exists for the key. When the schema has Store=true
 // the call blocks until the write is durable and returns its error; values
 // outside the storable domain are rejected and the previous value kept.
-// OnSet(oldValue, newValue) fires detached after the persist.
+// OnSet(newValue, oldValue) fires detached after the persist.
 func (ds *DeviceStorage) SetValue(key string, value any) error {
 	if err := validateStoreValue(key, value); err != nil {
 		return err
@@ -197,7 +283,7 @@ func (ds *DeviceStorage) SetValue(key string, value any) error {
 
 	// Detached: the callback may call back into this storage.
 	if onSet != nil {
-		go onSet(oldValue, value)
+		go onSet(value, oldValue)
 	}
 	return err
 }
@@ -244,19 +330,26 @@ func (ds *DeviceStorage) HasValue(key string) bool {
 	return ok
 }
 
-// GetConfig returns the full schema configuration.
+// GetConfig returns the full schema configuration. Each schema's OnGet is
+// resolved first and its result baked into the values, so computed fields
+// appear in the returned snapshot.
 func (ds *DeviceStorage) GetConfig() map[string]any {
+	ds.mu.RLock()
+	schemas := ds.Schemas
+	ds.mu.RUnlock()
+
+	ds.resolveOnGet(schemas)
+
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
 
-	// Build schema config without callbacks (for RPC serialization)
-	schemas := make([]map[string]any, 0, len(ds.Schemas))
+	out := make([]map[string]any, 0, len(ds.Schemas))
 	for i := range ds.Schemas {
-		schemas = append(schemas, ds.Schemas[i].ToMap())
+		out = append(out, ds.Schemas[i].ToMap())
 	}
 
 	return map[string]any{
-		"schema": schemas,
+		"schema": out,
 		"config": ds.Values,
 	}
 }
@@ -273,33 +366,30 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 		}
 	}
 
-	ds.mu.Lock()
-
 	// Collect OnSet callbacks for changed keys
 	type pendingCallback struct {
-		onSet    func(any, any) any
+		onSet    func(newValue, oldValue any) any
 		oldValue any
 		newValue any
 	}
 	var pending []pendingCallback
 
-	// Merge: only update keys present in newConfig (not a full replace)
+	ds.mu.Lock()
+
+	// Merge each incoming key into the existing value: nested maps deep-merge,
+	// arrays and scalars replace. Only keys present in newConfig are touched.
 	for key, newVal := range newConfig {
 		oldVal := ds.Values[key]
+		merged := mergeValue(oldVal, newVal)
+		ds.Values[key] = deepCopyValue(merged)
 
-		if newVal == nil {
-			delete(ds.Values, key)
-		} else {
-			ds.Values[key] = newVal
-		}
-
-		if !deepEqualLoose(oldVal, newVal) {
+		if !deepEqualLoose(oldVal, merged) {
 			schema := ds.findSchemaByKey(key)
-			if schema != nil && schema.OnSet != nil {
+			if schema != nil && schema.Type != JsonSchemaTypeSubmit && schema.OnSet != nil {
 				pending = append(pending, pendingCallback{
 					onSet:    schema.OnSet,
 					oldValue: oldVal,
-					newValue: newVal,
+					newValue: merged,
 				})
 			}
 		}
@@ -313,92 +403,73 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 		// Detached: callbacks may call back into this storage.
 		go func() {
 			for _, cb := range pending {
-				cb.onSet(cb.oldValue, cb.newValue)
+				cb.onSet(cb.newValue, cb.oldValue)
 			}
 		}()
 	}
 	return err
 }
 
-// DefineSchemas sets the schemas for this storage. Persist errors are logged;
-// the in-memory schemas and defaults are applied regardless.
+// DefineSchemas sets the schemas for this storage and rebuilds the values from
+// the schema defaults overlaid with the currently stored values: type-based
+// defaults ("" / 0 / false / []) fill any key the store does not carry, while
+// existing stored values win. Held in memory until the next write, matching
+// node/python.
 func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
-	changed := false
-
 	ds.mu.Lock()
 	ds.Schemas = schemas
-
-	for key, val := range ds.Values {
-		if _, isMap := val.(map[string]any); isMap && ds.findSchemaByKey(key) != nil {
-			delete(ds.Values, key)
-			changed = true
-		}
-	}
-
-	// Apply default values for schemas that have them
-	for i := range schemas {
-		if schemas[i].DefaultValue != nil && !ds.hasValueLocked(schemas[i].Key) {
-			ds.Values[schemas[i].Key] = schemas[i].DefaultValue
-			changed = true
-		}
-	}
+	ds.Values = mergeValues(generateConfigFromSchemas(schemas), ds.Values)
 	ds.mu.Unlock()
-
-	// Registering schemas over an already-seeded store changes nothing —
-	// skip the whole-document write in that case.
-	if !changed {
-		return
-	}
-
-	if err := ds.persist(); err != nil {
-		ds.logger.Error("store: persist after DefineSchemas failed:", err)
-	}
 }
 
-// AddSchema adds a new schema field. Persist errors are logged; the in-memory
-// schema and default are applied regardless.
-func (ds *DeviceStorage) AddSchema(schema *JsonSchema) {
+// AddSchema adds a new schema field and returns the persist error if the
+// durable write fails. The in-memory schema and default are applied regardless.
+// An OnGet callback is resolved and its result baked into the value. Adding a
+// key that already has a schema returns an error — use ChangeSchema to modify
+// an existing field.
+func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error {
 	ds.mu.Lock()
 
-	// Check if schema with this key already exists
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == schema.Key {
-			ds.Schemas[i] = *schema
 			ds.mu.Unlock()
-			return
+			return fmt.Errorf("schema with key %s already exists", schema.Key)
 		}
 	}
 	ds.Schemas = append(ds.Schemas, *schema)
 
-	seeded := false
+	oldValue := ds.Values[schema.Key]
 	if schema.DefaultValue != nil && !ds.hasValueLocked(schema.Key) {
 		ds.Values[schema.Key] = schema.DefaultValue
-		seeded = true
 	}
 	ds.mu.Unlock()
 
-	// Only an actually-seeded default changes persisted state.
-	if !seeded {
-		return
+	ds.resolveOnGet([]JsonSchema{*schema})
+
+	ds.mu.RLock()
+	newValue := ds.Values[schema.Key]
+	ds.mu.RUnlock()
+
+	if !schemaStorable(schema) || deepEqualLoose(oldValue, newValue) {
+		return nil
 	}
 
-	if err := ds.persist(); err != nil {
-		ds.logger.Error("store: persist after AddSchema failed:", err)
-	}
+	return ds.persist()
 }
 
 // ChangeSchema replaces the schema for an existing key with a full JsonSchema;
 // partial fields are not merged. The passed key always wins (newSchema.Key is
 // overwritten with key). It is a no-op when no schema with that key is currently
-// registered — use AddSchema to add a new field. Values are untouched, so nothing
-// is persisted immediately; when the change flips the key's storable-ness the next
-// write is forced to persist so the flip becomes durable even if the value itself
-// compares unchanged.
-func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) {
+// registered — use AddSchema to add a new field. An OnGet callback is resolved
+// and its result baked into the value, persisting (and returning any persist
+// error) when that changes a storable value. When the change flips the key's
+// storable-ness the next write is forced to persist so the flip becomes durable
+// even if the value itself compares unchanged. Returns nil when no schema with
+// that key is registered.
+func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error {
 	ds.mu.Lock()
-	defer ds.mu.Unlock()
-
 	newSchema.Key = key
+	found := false
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == key {
 			if schemaStorable(&ds.Schemas[i]) != schemaStorable(newSchema) {
@@ -408,14 +479,34 @@ func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) {
 				ds.persistSeq++
 			}
 			ds.Schemas[i] = *newSchema
-			return
+			found = true
+			break
 		}
 	}
+	oldValue := ds.Values[key]
+	ds.mu.Unlock()
+
+	if !found {
+		return nil
+	}
+
+	ds.resolveOnGet([]JsonSchema{*newSchema})
+
+	ds.mu.RLock()
+	newValue := ds.Values[key]
+	ds.mu.RUnlock()
+
+	if !schemaStorable(newSchema) || deepEqualLoose(oldValue, newValue) {
+		return nil
+	}
+
+	return ds.persist()
 }
 
 // RemoveSchema removes a schema field by key, together with its value — the
 // key would otherwise turn schema-less and persist as an internal value.
-func (ds *DeviceStorage) RemoveSchema(key string) {
+// Returns the persist error if the durable write fails.
+func (ds *DeviceStorage) RemoveSchema(key string) error {
 	removedStorable := false
 	hadValue := false
 
@@ -432,12 +523,10 @@ func (ds *DeviceStorage) RemoveSchema(key string) {
 	ds.mu.Unlock()
 
 	if !removedStorable || !hadValue {
-		return
+		return nil
 	}
 
-	if err := ds.persist(); err != nil {
-		ds.logger.Error("store: persist after RemoveSchema failed:", err)
-	}
+	return ds.persist()
 }
 
 // GetSchema returns a schema by key.
@@ -519,9 +608,45 @@ func (ds *DeviceStorage) close() {
 	if err := ds.Save(); err != nil {
 		ds.logger.Error("store: close save failed:", err)
 	}
+	ds.unregister()
+}
+
+// Destroy clears this storage's values and deletes its location from the store,
+// blocking until the deletion is durable and returning any persist error. The
+// host calls this when the owning device is removed so the persisted section
+// does not linger.
+func (ds *DeviceStorage) Destroy() error {
+	ds.mu.Lock()
+	ds.Values = make(map[string]any)
+	ds.mu.Unlock()
+	return ds.persist()
+}
+
+// unregister removes this storage's RPC handler. Unlike close it does not flush
+// first — the caller has already destroyed the values.
+func (ds *DeviceStorage) unregister() {
 	if ds.closeHandler != nil {
 		_ = ds.closeHandler()
 		ds.closeHandler = nil
+	}
+}
+
+// resolveOnGet runs each schema's OnGet and bakes the returned value into
+// Values, so a later config snapshot reflects computed fields. onGet callbacks
+// may read back into this storage, so they run without ds.mu held.
+func (ds *DeviceStorage) resolveOnGet(schemas []JsonSchema) {
+	for i := range schemas {
+		s := &schemas[i]
+		if s.OnGet == nil || s.Type == JsonSchemaTypeButton || s.Type == JsonSchemaTypeSubmit {
+			continue
+		}
+		val := s.OnGet()
+		if val == nil {
+			continue
+		}
+		ds.mu.Lock()
+		ds.Values[s.Key] = val
+		ds.mu.Unlock()
 	}
 }
 

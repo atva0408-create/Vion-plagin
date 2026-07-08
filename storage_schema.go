@@ -162,8 +162,8 @@ type JsonSchema struct {
 	Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
 
 	// OnSet is invoked after a value changes (Type=string/number/boolean/array/button).
-	// Receives (oldValue, newValue). Not serialized.
-	OnSet func(oldValue, newValue any) any `json:"-" msgpack:"-"`
+	// Receives (newValue, oldValue). Not serialized.
+	OnSet func(newValue, oldValue any) any `json:"-" msgpack:"-"`
 	// OnGet is invoked to compute the current value at read time. Not serialized.
 	OnGet func() any `json:"-" msgpack:"-"`
 	// OnClick is invoked when a submit-type field is submitted (Type=submit only).

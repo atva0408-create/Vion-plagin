@@ -33,6 +33,10 @@ func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error)
 		return nil, fmt.Errorf("unsupported storage scope: %s", scope)
 	}
 
+	if existing := sc.storages[scope]; existing != nil {
+		return existing, nil
+	}
+
 	storage := newDeviceStorage(sc.persistence, storeLocation{kind: storeLocationPlugin}, sc.logger)
 	sc.storages[scope] = storage
 
@@ -48,9 +52,14 @@ func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error)
 
 // createCameraStorage creates storage for a specific camera.
 func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorage, error) {
+	key := "camera." + cameraID
+	if existing := sc.storages[key]; existing != nil {
+		return existing, nil
+	}
+
 	loc := storeLocation{kind: storeLocationCamera, cameraID: cameraID}
 	storage := newDeviceStorage(sc.persistence, loc, sc.logger)
-	sc.storages["camera."+cameraID] = storage
+	sc.storages[key] = storage
 
 	ns := getPluginCameraNamespaces(sc.pluginInfo.ID, cameraID)
 	cleanup, err := sc.client.RegisterHandler(ns.CameraStorageRPC, storage)
@@ -66,9 +75,14 @@ func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorag
 // sensor data by type and name (stable across restarts); sensorID only scopes
 // the RPC namespace.
 func (sc *StorageController) createSensorStorage(cameraID, sensorID, sensorType, sensorName string) (*DeviceStorage, error) {
+	key := "sensor." + sensorID
+	if existing := sc.storages[key]; existing != nil {
+		return existing, nil
+	}
+
 	loc := storeLocation{kind: storeLocationSensor, cameraID: cameraID, sensorType: sensorType, sensorName: sensorName}
 	storage := newDeviceStorage(sc.persistence, loc, sc.logger)
-	sc.storages["sensor."+sensorID] = storage
+	sc.storages[key] = storage
 
 	ns := getPluginSensorNamespaces(sc.pluginInfo.ID, cameraID, sensorID)
 	cleanup, err := sc.client.RegisterHandler(ns.SensorStorageRPC, storage)
@@ -80,9 +94,20 @@ func (sc *StorageController) createSensorStorage(cameraID, sensorID, sensorType,
 	return storage, nil
 }
 
-// removeCameraStorage removes a camera's storage from the controller.
+// removeCameraStorage destroys a camera's persisted storage, unregisters its
+// RPC handler and drops it from the controller.
 func (sc *StorageController) removeCameraStorage(cameraID string) {
-	delete(sc.storages, "camera."+cameraID)
+	key := "camera." + cameraID
+	storage := sc.storages[key]
+	if storage == nil {
+		return
+	}
+
+	if err := storage.Destroy(); err != nil {
+		sc.logger.Error("store: destroy camera storage failed:", err)
+	}
+	storage.unregister()
+	delete(sc.storages, key)
 }
 
 // close is the runtime-owned teardown, called by the runtime after the plugin's

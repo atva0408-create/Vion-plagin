@@ -659,7 +659,9 @@ func TestDeviceStorageChangeSchemaStoreFlip(t *testing.T) {
 		t.Fatal("Store=false key was persisted")
 	}
 
-	ds.ChangeSchema("k", &JsonSchema{Type: JsonSchemaTypeString, Key: "k", Store: Bool(true)})
+	if err := ds.ChangeSchema("k", &JsonSchema{Type: JsonSchemaTypeString, Key: "k", Store: Bool(true)}); err != nil {
+		t.Fatal(err)
+	}
 
 	// The value compares unchanged, but the flipped store flag must make it
 	// durable with the next write.

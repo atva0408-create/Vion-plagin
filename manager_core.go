@@ -178,20 +178,23 @@ func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 		return nil, nil
 	}
 
-	m, ok := result.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("getPlugin: unexpected result type %T", result)
-	}
-
 	info := &PluginInfo{}
-	if v, ok := m["id"].(string); ok {
-		info.ID = v
-	}
-	if v, ok := m["name"].(string); ok {
-		info.Name = v
+	if err := decodePluginInfo(result, info); err != nil {
+		return nil, fmt.Errorf("getPlugin: %w", err)
 	}
 
 	return info, nil
+}
+
+// decodePluginInfo decodes an RPC plugin object into a PluginInfo, preserving
+// the full contract (not just id/name) so callers see the same shape the
+// node/python runtimes return.
+func decodePluginInfo(v any, out *PluginInfo) error {
+	encoded, err := rpc.Encode(v)
+	if err != nil {
+		return err
+	}
+	return rpc.Decode(encoded, out)
 }
 
 // GetPluginsByInterface returns all active plugins that implement a specific interface.
@@ -212,16 +215,9 @@ func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]P
 
 	var plugins []PluginInfo
 	for _, item := range arr {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
 		info := PluginInfo{}
-		if v, ok := m["id"].(string); ok {
-			info.ID = v
-		}
-		if v, ok := m["name"].(string); ok {
-			info.Name = v
+		if err := decodePluginInfo(item, &info); err != nil {
+			continue
 		}
 		plugins = append(plugins, info)
 	}

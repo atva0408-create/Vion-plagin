@@ -63,6 +63,9 @@ func (nm *NotificationManager) Publish(n *Notification) error {
 	if n == nil {
 		return fmt.Errorf("notification is nil")
 	}
+	if n.Title == "" {
+		return fmt.Errorf("notification.title is required")
+	}
 
 	envelope := &notificationPublishEnvelope{
 		PluginID:     nm.pluginInfo.ID,

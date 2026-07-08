@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,9 +15,17 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+// errStopRequested signals that a host STOP arrived mid-startup, so the plugin
+// tears down immediately instead of reporting a startup error and waiting.
+var errStopRequested = errors.New("stop requested during startup")
+
 // rpcTeardownTimeout bounds the final RPC teardown so a dead transport can't
 // hang the process past the host's force-kill grace.
 const rpcTeardownTimeout = 500 * time.Millisecond
+
+// gracefulShutdownTimeout bounds the whole teardown sequence so an unresponsive
+// manager close can't hang the exit — mirrors the node/python 2s shutdown guard.
+const gracefulShutdownTimeout = 2 * time.Second
 
 // Run is the entry point a Go plugin's main package calls to hand control to
 // the SDK runtime. It performs the full handshake with the host (RPC connect,
@@ -80,7 +89,7 @@ func Run(constructor pluginConstructor) {
 	var (
 		stopped    bool
 		stoppedMu  sync.Mutex
-		stopCh     = make(chan struct{})
+		stopCh     = make(chan struct{}, 1)
 		api        *PluginAPI
 		plugin     Plugin
 		cleanupRPC rpc.CleanupFunc
@@ -150,6 +159,48 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
+	// stopPluginBounded runs the graceful teardown under a hard outer deadline so
+	// an unresponsive manager close can't hang the exit; the internal shutdown/RPC
+	// steps bound themselves, this bounds the whole sequence.
+	stopPluginBounded := func() {
+		done := make(chan struct{})
+		go func() {
+			stopPlugin()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(gracefulShutdownTimeout):
+			logger.Warn("Graceful shutdown exceeded deadline, forcing exit")
+		}
+	}
+
+	// Watch for termination signals for the whole startup window, not just the
+	// final block: the host stops a plugin with SIGTERM, and one arriving mid-
+	// startup must still trigger graceful teardown. The watcher only funnels
+	// into stopCh so stopPlugin stays owned by this goroutine (no data race on
+	// the shared handles it tears down).
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigCh
+		select {
+		case stopCh <- struct{}{}:
+		default:
+		}
+	}()
+
+	// stopRequested reports a pending stop (host STOP command or signal) so the
+	// startup steps can bail out between them instead of running to completion.
+	stopRequested := func() bool {
+		select {
+		case <-stopCh:
+			return true
+		default:
+			return false
+		}
+	}
+
 	// 6. Register message handler BEFORE sending ready (avoid race condition)
 	startCh := make(chan *processLoadMessage, 1)
 
@@ -209,6 +260,20 @@ func Run(constructor pluginConstructor) {
 		os.Exit(1)
 	}
 
+	// From here on a panic in the startup sequence must still emit SHUTDOWN and
+	// tear the RPC connection down instead of crashing silently — mirrors the
+	// node/python uncaughtException guard. Registered after the early os.Exit
+	// bail-outs so it only guards the steps that construct and run the plugin.
+	// Panics in the plugin's own goroutines cannot be caught here (Go has no
+	// process-wide handler).
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("Plugin panicked:", r)
+			stopPluginBounded()
+			os.Exit(1)
+		}
+	}()
+
 	// Wait for start message
 	var loadMsg *processLoadMessage
 	select {
@@ -218,144 +283,153 @@ func Run(constructor pluginConstructor) {
 		return
 	}
 
-	// 8. Configure persistence. Host-local writable dir first — on a remote
-	// worker the master's path from the START message would point at the
-	// wrong machine.
-	storagePath := loadMsg.Storage.StoragePath
-	if envPath := os.Getenv("PLUGIN_STORAGE_PATH"); envPath != "" {
-		storagePath = envPath
-	}
+	// 8-16. Bring the plugin up. A step failure returns an error; a host STOP
+	// caught between steps returns errStopRequested.
+	startPlugin := func() error {
+		// 8. Configure persistence. Host-local writable dir first — on a remote
+		// worker the master's path from the START message would point at the
+		// wrong machine.
+		storagePath := loadMsg.Storage.StoragePath
+		if envPath := os.Getenv("PLUGIN_STORAGE_PATH"); envPath != "" {
+			storagePath = envPath
+		}
 
-	pluginInfo := loadMsg.Plugin
+		pluginInfo := loadMsg.Plugin
 
-	var persistence configPersistence
+		var persistence configPersistence
+		if os.Getenv("PLUGIN_CONFIG_STORE_RPC") != "" {
+			// Remote-hosted: config lives on the master (re-homing safe) —
+			// persist through its config store instead of a worker-local file.
+			remote, err := newRemotePersistence(client, pluginInfo.ID, logger)
+			if err != nil {
+				return fmt.Errorf("failed to connect config store: %w", err)
+			}
+			persistence = remote
+		} else {
+			storePath := filepath.Join(storagePath, "volume", storeFileName)
+			local, err := newFilePersistence(storePath, pluginInfo.ID, logger)
+			if err != nil {
+				return fmt.Errorf("failed to open config store: %w", err)
+			}
+			persistence = local
+		}
 
-	if os.Getenv("PLUGIN_CONFIG_STORE_RPC") != "" {
-		// Remote-hosted: config lives on the master (re-homing safe) —
-		// persist through its config store instead of a worker-local file.
-		remote, err := newRemotePersistence(client, pluginInfo.ID, logger)
+		if stopRequested() {
+			return errStopRequested
+		}
+
+		// 9. Create PluginAPI
+		coreManager = newCoreManager(client, logger)
+		deviceManager = newDeviceManager(client, &pluginInfo, logger)
+		downloadManager := newDownloadManager(client)
+
+		// Remote-hosted: serve this worker's files so the master can stream
+		// downloads/exports of them.
+		if os.Getenv("PLUGIN_REMOTE_MODE") != "" {
+			fs, err := newFileServer(client, pluginInfo.ID)
+			if err != nil {
+				return fmt.Errorf("failed to register file server: %w", err)
+			}
+			fileSrv = fs
+		}
+		notificationManager := newNotificationManager(client, &pluginInfo, logger)
+		storageController = newStorageController(client, persistence, &pluginInfo, logger)
+
+		api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
+		deviceManager.setAPI(api, storageController)
+
+		// 10. Construct plugin
+		pluginStorage, err := storageController.createStorage("plugin")
 		if err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to connect config store: %v", err)})
-			stopPlugin()
-			return
+			return fmt.Errorf("failed to create storage: %w", err)
 		}
-		persistence = remote
-	} else {
-		storePath := filepath.Join(storagePath, "volume", storeFileName)
-		local, err := newFilePersistence(storePath, pluginInfo.ID, logger)
+
+		plugin = constructor(logger, api, pluginStorage)
+
+		// 11. If StorageSchemaProvider -> define schemas
+		if schemaProvider, ok := plugin.(StorageSchemaProvider); ok {
+			schemas := schemaProvider.StorageSchema()
+			if len(schemas) > 0 {
+				pluginStorage.DefineSchemas(schemas)
+			}
+		}
+
+		// 12. Register RPC handler
+		cleanupRPC, err = client.RegisterHandler(namespaces.PluginChildRPC, plugin)
 		if err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to open config store: %v", err)})
-			stopPlugin()
-			return
+			return fmt.Errorf("failed to register handler: %w", err)
 		}
-		persistence = local
-	}
 
-	// 9. Create PluginAPI
-
-	coreManager = newCoreManager(client, logger)
-	deviceManager = newDeviceManager(client, &pluginInfo, logger)
-	downloadManager := newDownloadManager(client)
-
-	// Remote-hosted: serve this worker's files so the master can stream
-	// downloads/exports of them.
-	if os.Getenv("PLUGIN_REMOTE_MODE") != "" {
-		fileSrv, err = newFileServer(client, pluginInfo.ID)
-		if err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to register file server: %v", err)})
-			stopPlugin()
-			return
+		if stopRequested() {
+			return errStopRequested
 		}
-	}
-	notificationManager := newNotificationManager(client, &pluginInfo, logger)
-	storageController = newStorageController(client, persistence, &pluginInfo, logger)
 
-	api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
-	deviceManager.setAPI(api, storageController)
-
-	// 10. Construct plugin
-	pluginStorage, err := storageController.createStorage("plugin")
-	if err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to create storage: %v", err)})
-		stopPlugin()
-		return
-	}
-
-	plugin = constructor(logger, api, pluginStorage)
-
-	// 11. If StorageSchemaProvider -> define schemas
-	if schemaProvider, ok := plugin.(StorageSchemaProvider); ok {
-		schemas := schemaProvider.StorageSchema()
-		if len(schemas) > 0 {
-			pluginStorage.DefineSchemas(schemas)
+		// 13. Init managers
+		deviceManager.setPlugin(plugin)
+		if err := deviceManager.init(); err != nil {
+			return fmt.Errorf("failed to init device manager: %w", err)
 		}
-	}
-
-	// 12. Register RPC handler
-	cleanupRPC, err = client.RegisterHandler(namespaces.PluginChildRPC, plugin)
-	if err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to register handler: %v", err)})
-		stopPlugin()
-		return
-	}
-
-	// 13. Init managers
-	deviceManager.setPlugin(plugin)
-	if err := deviceManager.init(); err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to init device manager: %v", err)})
-		stopPlugin()
-		return
-	}
-	if err := coreManager.init(); err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to init core manager: %v", err)})
-		stopPlugin()
-		return
-	}
-
-	// 14. Configure cameras
-	cameras := loadMsg.Cameras
-	cameraDevices := make([]*CameraDevice, 0, len(cameras))
-	for i := range cameras {
-		cam := &cameras[i]
-		camLogger := logger.CreateLogger(&loggerOptions{
-			Suffix:     cam.Name,
-			TargetID:   cam.ID,
-			TargetType: "camera",
-		})
-		cameraDevice := newCameraDeviceProxy(client, api, storageController, cam, &pluginInfo, camLogger)
-		if err := cameraDevice.init(); err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to init camera device %s: %v", cam.Name, err)})
-			stopPlugin()
-			return
+		if err := coreManager.init(); err != nil {
+			return fmt.Errorf("failed to init core manager: %w", err)
 		}
-		cameraDevices = append(cameraDevices, cameraDevice)
+
+		if stopRequested() {
+			return errStopRequested
+		}
+
+		// 14. Configure cameras
+		cameras := loadMsg.Cameras
+		cameraDevices := make([]*CameraDevice, 0, len(cameras))
+		for i := range cameras {
+			cam := &cameras[i]
+			camLogger := logger.CreateLogger(&loggerOptions{
+				Suffix:     cam.Name,
+				TargetID:   cam.ID,
+				TargetType: "camera",
+			})
+			cameraDevice := newCameraDeviceProxy(client, api, storageController, cam, &pluginInfo, camLogger)
+			if err := cameraDevice.init(); err != nil {
+				return fmt.Errorf("failed to init camera device %s: %w", cam.Name, err)
+			}
+			cameraDevices = append(cameraDevices, cameraDevice)
+		}
+
+		deviceManager.configureCameras(cameraDevices)
+
+		if err := plugin.ConfigureCameras(cameraDevices); err != nil {
+			return fmt.Errorf("ConfigureCameras failed: %w", err)
+		}
+
+		if stopRequested() {
+			return errStopRequested
+		}
+
+		return nil
 	}
 
-	deviceManager.configureCameras(cameraDevices)
+	switch startErr := startPlugin(); {
+	case startErr == nil:
+		// 15. Send started
+		_ = channel.Send(processResponse{Type: string(PluginStatusStarted)})
 
-	if err := plugin.ConfigureCameras(cameraDevices); err != nil {
-		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("ConfigureCameras failed: %v", err)})
+		time.Sleep(100 * time.Millisecond)
+
+		// 16. Emit finishLaunching
+		api.Emit(string(APIEventFinishLaunching))
+	case errors.Is(startErr, errStopRequested):
+		// A stop arrived mid-startup — honour it and tear down now.
 		stopPlugin()
 		return
+	default:
+		// Startup failed: report ERROR and stay alive so the host decides (send
+		// STOP), matching node/python which never self-terminate here.
+		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: startErr.Error()})
 	}
 
-	// 15. Send started
-	_ = channel.Send(processResponse{Type: string(PluginStatusStarted)})
-
-	time.Sleep(100 * time.Millisecond)
-
-	// 16. Emit finishLaunching
-	api.Emit(string(APIEventFinishLaunching))
-
-	// 17. Block on signal or stop command
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-
-	select {
-	case <-sigCh:
-	case <-stopCh:
-	}
+	// 17. Block until a stop command or termination signal arrives (signals are
+	// funneled into stopCh by the watcher installed above).
+	<-stopCh
 
 	// 18. Shutdown
-	stopPlugin()
+	stopPluginBounded()
 }
