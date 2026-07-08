@@ -33,22 +33,6 @@ type ClassifierDetector interface {
 	DetectClassifications(frames []VideoFrameData) ([]ClassifierResult, error)
 }
 
-func dedupClassifierLabels(detections []ClassifierDetection) []string {
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(detections))
-	for _, d := range detections {
-		if d.Label == "" {
-			continue
-		}
-		if _, ok := seen[d.Label]; ok {
-			continue
-		}
-		seen[d.Label] = struct{}{}
-		result = append(result, d.Label)
-	}
-	return result
-}
-
 // ClassifierSensor reports classification results from image analysis.
 //
 // Plugin authors call ReportDetections to push classification results. The
@@ -148,4 +132,20 @@ func NewClassifierDetectorSensor(name string) *ClassifierDetectorSensor {
 	s := &ClassifierDetectorSensor{ClassifierSensor: *NewClassifierSensor(name)}
 	s.requiresFrames = true
 	return s
+}
+
+func dedupClassifierLabels(detections []ClassifierDetection) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(detections))
+	for _, d := range detections {
+		if d.Label == "" {
+			continue
+		}
+		if _, ok := seen[d.Label]; ok {
+			continue
+		}
+		seen[d.Label] = struct{}{}
+		result = append(result, d.Label)
+	}
+	return result
 }

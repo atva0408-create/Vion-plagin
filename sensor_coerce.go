@@ -6,8 +6,6 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-type coerceFunc func(raw any) any
-
 var propertyTypeRegistry = map[SensorType]map[string]coerceFunc{
 	SensorTypeMotion: {
 		"detected":      coerceBool,
@@ -73,6 +71,8 @@ var propertyTypeRegistry = map[SensorType]map[string]coerceFunc{
 		"ring": coerceBool,
 	},
 }
+
+type coerceFunc func(raw any) any
 
 func coercePropertyValue(sensorType SensorType, property string, raw any) any {
 	if raw == nil {

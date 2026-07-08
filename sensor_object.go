@@ -43,22 +43,6 @@ type ObjectDetector interface {
 	DetectObjects(frame VideoFrameData) (*ObjectResult, error)
 }
 
-func dedupLabels(detections []TrackedDetection) []string {
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(detections))
-	for _, d := range detections {
-		if d.Label == "" {
-			continue
-		}
-		if _, ok := seen[d.Label]; ok {
-			continue
-		}
-		seen[d.Label] = struct{}{}
-		result = append(result, d.Label)
-	}
-	return result
-}
-
 // ObjectSensor reports detected objects (person, vehicle, animal, etc.).
 //
 // Plugin authors call ReportDetections to push detection results. The
@@ -159,4 +143,20 @@ func NewObjectDetectorSensor(name string) *ObjectDetectorSensor {
 	s := &ObjectDetectorSensor{ObjectSensor: *NewObjectSensor(name)}
 	s.requiresFrames = true
 	return s
+}
+
+func dedupLabels(detections []TrackedDetection) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(detections))
+	for _, d := range detections {
+		if d.Label == "" {
+			continue
+		}
+		if _, ok := seen[d.Label]; ok {
+			continue
+		}
+		seen[d.Label] = struct{}{}
+		result = append(result, d.Label)
+	}
+	return result
 }

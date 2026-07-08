@@ -47,6 +47,57 @@ func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sens
 	return s
 }
 
+func (s *sensorProxy) GetType() SensorType         { return s.sensorType }
+func (s *sensorProxy) GetCategory() SensorCategory { return s.category }
+func (s *sensorProxy) ToJSON() sensorJSON          { return s.toBaseJSON(s.sensorType, s.category) }
+
+func (s *sensorProxy) Refresh() error {
+	if s.proxy == nil {
+		return nil
+	}
+	ctx := context.Background()
+	result, err := s.proxy.Invoke(ctx, "getValues")
+	if err != nil {
+		return err
+	}
+
+	if props, ok := result.(map[string]any); ok {
+		s.mu.Lock()
+		for k, v := range props {
+			s.properties[k] = coercePropertyValue(s.sensorType, k, v)
+		}
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+func (s *sensorProxy) UpdateValue(property string, value any) error {
+	if s.proxy == nil || !isControlCategory(s.category) {
+		return nil
+	}
+	ctx := context.Background()
+	_, err := s.proxy.Invoke(ctx, "updateValue", property, value)
+	return err
+}
+
+func (s *sensorProxy) ToStoredData() storedSensorData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	props := make(map[string]any, len(s.properties))
+	maps.Copy(props, s.properties)
+	caps := make([]string, len(s.capabilities))
+	copy(caps, s.capabilities)
+	return storedSensorData{
+		ID:           s.id,
+		Type:         s.sensorType,
+		Name:         s.name,
+		DisplayName:  s.displayName,
+		PluginID:     s.pluginID,
+		Properties:   props,
+		Capabilities: caps,
+	}
+}
+
 func (s *sensorProxy) handleSensorEvent(msg sensorEventMessage) {
 	switch msg.Type {
 	case "property:changed":
@@ -68,6 +119,14 @@ func (s *sensorProxy) handleSensorEvent(msg sensorEventMessage) {
 			s.SetDisplayName(name)
 		}
 	}
+}
+
+func (s *sensorProxy) cleanupProxy() {
+	if s.unsubEvent != nil {
+		s.unsubEvent()
+		s.unsubEvent = nil
+	}
+	s.cleanup()
 }
 
 // toInt64 converts any Go numeric type to int64. Used for msgpack-decoded
@@ -132,67 +191,8 @@ func toStringSlice(v any) []string {
 	return result
 }
 
-func (s *sensorProxy) GetType() SensorType         { return s.sensorType }
-func (s *sensorProxy) GetCategory() SensorCategory { return s.category }
-func (s *sensorProxy) ToJSON() sensorJSON          { return s.toBaseJSON(s.sensorType, s.category) }
-
-func (s *sensorProxy) Refresh() error {
-	if s.proxy == nil {
-		return nil
-	}
-	ctx := context.Background()
-	result, err := s.proxy.Invoke(ctx, "getValues")
-	if err != nil {
-		return err
-	}
-
-	if props, ok := result.(map[string]any); ok {
-		s.mu.Lock()
-		for k, v := range props {
-			s.properties[k] = coercePropertyValue(s.sensorType, k, v)
-		}
-		s.mu.Unlock()
-	}
-	return nil
-}
-
-func (s *sensorProxy) UpdateValue(property string, value any) error {
-	if s.proxy == nil || !isControlCategory(s.category) {
-		return nil
-	}
-	ctx := context.Background()
-	_, err := s.proxy.Invoke(ctx, "updateValue", property, value)
-	return err
-}
-
 func isControlCategory(cat SensorCategory) bool {
 	return cat == SensorCategoryControl || cat == SensorCategoryTrigger
-}
-
-func (s *sensorProxy) ToStoredData() storedSensorData {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	props := make(map[string]any, len(s.properties))
-	maps.Copy(props, s.properties)
-	caps := make([]string, len(s.capabilities))
-	copy(caps, s.capabilities)
-	return storedSensorData{
-		ID:           s.id,
-		Type:         s.sensorType,
-		Name:         s.name,
-		DisplayName:  s.displayName,
-		PluginID:     s.pluginID,
-		Properties:   props,
-		Capabilities: caps,
-	}
-}
-
-func (s *sensorProxy) cleanupProxy() {
-	if s.unsubEvent != nil {
-		s.unsubEvent()
-		s.unsubEvent = nil
-	}
-	s.cleanup()
 }
 
 func categoryForSensorType(st SensorType) SensorCategory {

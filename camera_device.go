@@ -22,6 +22,19 @@ type SnapshotInterface interface {
 	Snapshot(sourceID string, forceNew bool) ([]byte, error)
 }
 
+type sensorInternalInit interface {
+	setCameraID(id string)
+	setPluginID(id string)
+	setStorage(storage *DeviceStorage)
+	initUpdateFn(updateFn propertyUpdateFn)
+	initCapabilitiesUpdateFn(updateFn func([]string))
+	setAssigned(assigned bool)
+}
+
+type backendPropertyReceiver interface {
+	onBackendPropertyChanged(property string, value any)
+}
+
 // CameraDevice represents a camera assigned to this plugin.
 // Plugins receive CameraDevice instances in ConfigureCameras and OnCameraAdded.
 type CameraDevice struct {
@@ -92,120 +105,6 @@ func newCameraDeviceProxy(
 	}
 
 	return dev
-}
-
-func (d *CameraDevice) init() error {
-	d.mu.Lock()
-	if d.initialized {
-		d.mu.Unlock()
-		return nil
-	}
-	d.initialized = true
-	d.mu.Unlock()
-
-	pluginCamNS := getPluginCameraNamespaces(d.info.ID, d.camera.ID)
-	sensorCtrlNS := getSensorControllerNamespaces(d.camera.ID)
-
-	st, err := d.storageCtrl.createCameraStorage(d.camera.ID)
-	if err != nil {
-		return fmt.Errorf("create camera storage: %w", err)
-	}
-	d.storageDevice = st
-
-	cleanup, err := d.client.RegisterHandler(pluginCamNS.CameraInterfacesRPC, map[string]any{
-		"streamUrl": func(sourceID string) (string, error) {
-			return d.getStreamURL(sourceID)
-		},
-		"snapshot": func(sourceID string, forceNew bool) ([]byte, error) {
-			return d.getSnapshot(sourceID, forceNew)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("register camera interfaces RPC: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, func() { _ = cleanup() })
-
-	camEventNS := getCameraNamespaces(d.camera.ID)
-	unsub, err := d.client.Subscribe(camEventNS.CameraSubject, func(data []byte) {
-		var msg cameraEventMessage
-		if !decodeMsgpack(d.logger, data, &msg, "cameraEventMessage") {
-			return
-		}
-		d.handleCameraEvent(msg)
-	})
-	if err != nil {
-		return fmt.Errorf("subscribe camera events: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, unsub)
-
-	unsubSensors, err := d.client.Subscribe(sensorCtrlNS.SensorSubject, func(data []byte) {
-		var msg sensorControllerEventMessage
-		if !decodeMsgpack(d.logger, data, &msg, "sensorControllerEventMessage") {
-			return
-		}
-		d.handleSensorControllerEvent(msg)
-	})
-	if err != nil {
-		return fmt.Errorf("subscribe sensor events: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, unsubSensors)
-
-	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
-	unsubDetectionEvents, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
-		var msg detectionEventMessage
-		if !decodeMsgpack(d.logger, data, &msg, "detectionEventMessage") {
-			return
-		}
-		d.handleDetectionEvent(&msg)
-	})
-	if err != nil {
-		return fmt.Errorf("subscribe detection events: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, unsubDetectionEvents)
-
-	// Refresh initial states from server (camera connected, frame worker state).
-	// Without this, cameraState starts as false and misses the initial connected
-	// event that was already emitted before the plugin subscribed.
-	d.refreshStates()
-
-	// Auto-initialize foreign sensors; init failures are ignored so a sensor that
-	// can't initialize doesn't abort the attach.
-	d.initSensors()
-
-	return nil
-}
-
-func (d *CameraDevice) refreshStates() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	result, err := d.controllerProxy.Invoke(ctx, "refreshStates")
-	if err != nil {
-		d.logger.Error("Failed to refresh camera states:", err)
-		return
-	}
-
-	if result == nil {
-		return
-	}
-
-	encoded, err := rpc.Encode(result)
-	if err != nil {
-		d.logger.Error("Failed to encode refreshStates result:", err)
-		return
-	}
-
-	var states struct {
-		CameraState      bool `msgpack:"cameraState"`
-		FrameWorkerState bool `msgpack:"frameWorkerState"`
-	}
-	if err := rpc.Decode(encoded, &states); err != nil {
-		d.logger.Error("Failed to decode refreshStates result:", err)
-		return
-	}
-
-	d.cameraState.Next(states.CameraState)
-	d.frameWorkerState.Next(states.FrameWorkerState)
 }
 
 // ID returns the camera ID.
@@ -381,17 +280,6 @@ func (d *CameraDevice) SnapshotSource() *CameraDeviceSource {
 	return d.getSourceByRole(CameraRoleSnapshot)
 }
 
-func (d *CameraDevice) getSourceByRole(role CameraRole) *CameraDeviceSource {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	for _, src := range d.sources {
-		if src.input.Role == role {
-			return src
-		}
-	}
-	return nil
-}
-
 // GetSourceByID returns a source by its ID.
 func (d *CameraDevice) GetSourceByID(id string) *CameraDeviceSource {
 	d.mu.RLock()
@@ -440,19 +328,6 @@ func (d *CameraDevice) Disconnect() error {
 	ctx := context.Background()
 	_, err := d.controllerProxy.Invoke(ctx, "disconnect")
 	return err
-}
-
-type sensorInternalInit interface {
-	setCameraID(id string)
-	setPluginID(id string)
-	setStorage(storage *DeviceStorage)
-	initUpdateFn(updateFn propertyUpdateFn)
-	initCapabilitiesUpdateFn(updateFn func([]string))
-	setAssigned(assigned bool)
-}
-
-type backendPropertyReceiver interface {
-	onBackendPropertyChanged(property string, value any)
 }
 
 // AddSensor adds a sensor to this camera.
@@ -642,6 +517,262 @@ func (d *CameraDevice) GetSensorsByType(sensorType SensorType) []Sensor {
 	return result
 }
 
+// OnSensorAdded registers a callback for when a sensor from another plugin is added.
+// The callback receives (sensorID, sensorType). Returns a Disposable to unsubscribe.
+func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable {
+	return d.sensorAdded.Subscribe(func(e sensorEvent) {
+		callback(e.SensorID, e.SensorType)
+	})
+}
+
+// OnSensorRemoved registers a callback for when a sensor from another plugin is removed.
+// Returns a Disposable to unsubscribe.
+func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable {
+	return d.sensorRemoved.Subscribe(func(e sensorEvent) {
+		callback(e.SensorID, e.SensorType)
+	})
+}
+
+// OnDetectionEvent registers a callback for detection events (start/update/end).
+// Thumbnails are inline in the event's segment structures, only populated on 'end' events.
+// Returns a Disposable to unsubscribe.
+func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable {
+	return d.detectionEvent.Subscribe(func(e DetectionEventData) {
+		callback(e.Type, e.Event)
+	})
+}
+
+// Connected returns whether the camera is currently connected.
+func (d *CameraDevice) Connected() bool {
+	return d.cameraState.Value()
+}
+
+// FrameWorkerConnected returns whether the frame worker is currently connected.
+func (d *CameraDevice) FrameWorkerConnected() bool {
+	return d.frameWorkerState.Value()
+}
+
+// OnPropertyChange returns an Observable that emits when any of the specified camera properties change.
+func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent] {
+	propSet := make(map[string]struct{}, len(properties))
+	for _, p := range properties {
+		propSet[p] = struct{}{}
+	}
+
+	paired := Pairwise(d.cameraSubject.AsObservable())
+
+	mapped := MergeMap(paired, func(pair [2]Camera, _ int) []PropertyChangeEvent {
+		oldCam, newCam := pair[0], pair[1]
+
+		changed := changedCameraProps(reflect.ValueOf(oldCam), reflect.ValueOf(newCam))
+		events := make([]PropertyChangeEvent, 0, len(changed))
+		for _, prop := range changed {
+			events = append(events, PropertyChangeEvent{
+				Property:  prop,
+				OldCamera: oldCam,
+				NewCamera: newCam,
+			})
+		}
+		return events
+	})
+
+	filtered := Filter(mapped, func(e PropertyChangeEvent) bool {
+		if len(propSet) == 0 {
+			return true
+		}
+		_, ok := propSet[e.Property]
+		return ok
+	})
+
+	return Share(filtered, nil)
+}
+
+// OnConnected returns an Observable that emits distinct connection state changes.
+func (d *CameraDevice) OnConnected() *Observable[bool] {
+	return Share(DistinctUntilChanged(d.cameraState.AsObservable()), nil)
+}
+
+// OnFrameWorkerConnected returns an Observable that emits distinct frame worker state changes.
+func (d *CameraDevice) OnFrameWorkerConnected() *Observable[bool] {
+	return Share(DistinctUntilChanged(d.frameWorkerState.AsObservable()), nil)
+}
+
+// OnSensorProperty subscribes to a specific property on a sensor type with full lifecycle management.
+// Automatically subscribes/unsubscribes when sensors of the given type are added/removed.
+func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, callback func(value any, timestamp int64, sensor Sensor)) *Disposable {
+	var propertySub *Disposable
+
+	subscribeTo := func(sensor Sensor) {
+		if propertySub != nil {
+			propertySub.Dispose()
+		}
+		propertySub = sensor.OnPropertyChanged(func(e SensorPropertyChange) {
+			if e.Property == property {
+				callback(e.Value, e.Timestamp, sensor)
+			}
+		})
+	}
+
+	// Subscribe to existing sensor
+	sensors := d.GetSensorsByType(sensorType)
+	if len(sensors) > 0 {
+		subscribeTo(sensors[0])
+	}
+
+	// Auto-subscribe when sensor is added
+	addedSub := d.OnSensorAdded(func(sensorID string, st SensorType) {
+		if st == sensorType {
+			sensors := d.GetSensorsByType(sensorType)
+			if len(sensors) > 0 {
+				subscribeTo(sensors[0])
+			}
+		}
+	})
+
+	// Auto-unsubscribe when sensor is removed
+	removedSub := d.OnSensorRemoved(func(_ string, st SensorType) {
+		if st == sensorType {
+			if propertySub != nil {
+				propertySub.Dispose()
+				propertySub = nil
+			}
+		}
+	})
+
+	return NewDisposable(func() {
+		if propertySub != nil {
+			propertySub.Dispose()
+		}
+		addedSub.Dispose()
+		removedSub.Dispose()
+	})
+}
+
+func (d *CameraDevice) init() error {
+	d.mu.Lock()
+	if d.initialized {
+		d.mu.Unlock()
+		return nil
+	}
+	d.initialized = true
+	d.mu.Unlock()
+
+	pluginCamNS := getPluginCameraNamespaces(d.info.ID, d.camera.ID)
+	sensorCtrlNS := getSensorControllerNamespaces(d.camera.ID)
+
+	st, err := d.storageCtrl.createCameraStorage(d.camera.ID)
+	if err != nil {
+		return fmt.Errorf("create camera storage: %w", err)
+	}
+	d.storageDevice = st
+
+	cleanup, err := d.client.RegisterHandler(pluginCamNS.CameraInterfacesRPC, map[string]any{
+		"streamUrl": func(sourceID string) (string, error) {
+			return d.getStreamURL(sourceID)
+		},
+		"snapshot": func(sourceID string, forceNew bool) ([]byte, error) {
+			return d.getSnapshot(sourceID, forceNew)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("register camera interfaces RPC: %w", err)
+	}
+	d.cleanupFns = append(d.cleanupFns, func() { _ = cleanup() })
+
+	camEventNS := getCameraNamespaces(d.camera.ID)
+	unsub, err := d.client.Subscribe(camEventNS.CameraSubject, func(data []byte) {
+		var msg cameraEventMessage
+		if !decodeMsgpack(d.logger, data, &msg, "cameraEventMessage") {
+			return
+		}
+		d.handleCameraEvent(msg)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe camera events: %w", err)
+	}
+	d.cleanupFns = append(d.cleanupFns, unsub)
+
+	unsubSensors, err := d.client.Subscribe(sensorCtrlNS.SensorSubject, func(data []byte) {
+		var msg sensorControllerEventMessage
+		if !decodeMsgpack(d.logger, data, &msg, "sensorControllerEventMessage") {
+			return
+		}
+		d.handleSensorControllerEvent(msg)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe sensor events: %w", err)
+	}
+	d.cleanupFns = append(d.cleanupFns, unsubSensors)
+
+	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
+	unsubDetectionEvents, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
+		var msg detectionEventMessage
+		if !decodeMsgpack(d.logger, data, &msg, "detectionEventMessage") {
+			return
+		}
+		d.handleDetectionEvent(&msg)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe detection events: %w", err)
+	}
+	d.cleanupFns = append(d.cleanupFns, unsubDetectionEvents)
+
+	// Refresh initial states from server (camera connected, frame worker state).
+	// Without this, cameraState starts as false and misses the initial connected
+	// event that was already emitted before the plugin subscribed.
+	d.refreshStates()
+
+	// Auto-initialize foreign sensors; init failures are ignored so a sensor that
+	// can't initialize doesn't abort the attach.
+	d.initSensors()
+
+	return nil
+}
+
+func (d *CameraDevice) refreshStates() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := d.controllerProxy.Invoke(ctx, "refreshStates")
+	if err != nil {
+		d.logger.Error("Failed to refresh camera states:", err)
+		return
+	}
+
+	if result == nil {
+		return
+	}
+
+	encoded, err := rpc.Encode(result)
+	if err != nil {
+		d.logger.Error("Failed to encode refreshStates result:", err)
+		return
+	}
+
+	var states struct {
+		CameraState      bool `msgpack:"cameraState"`
+		FrameWorkerState bool `msgpack:"frameWorkerState"`
+	}
+	if err := rpc.Decode(encoded, &states); err != nil {
+		d.logger.Error("Failed to decode refreshStates result:", err)
+		return
+	}
+
+	d.cameraState.Next(states.CameraState)
+	d.frameWorkerState.Next(states.FrameWorkerState)
+}
+
+func (d *CameraDevice) getSourceByRole(role CameraRole) *CameraDeviceSource {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	for _, src := range d.sources {
+		if src.input.Role == role {
+			return src
+		}
+	}
+	return nil
+}
+
 func (d *CameraDevice) getStreamURL(sourceID string) (string, error) {
 	d.mu.RLock()
 	impl := d.impl
@@ -724,123 +855,6 @@ func (d *CameraDevice) handleCameraEvent(msg cameraEventMessage) {
 			d.frameWorkerState.Next(state)
 		}
 	}
-}
-
-// OnSensorAdded registers a callback for when a sensor from another plugin is added.
-// The callback receives (sensorID, sensorType). Returns a Disposable to unsubscribe.
-func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable {
-	return d.sensorAdded.Subscribe(func(e sensorEvent) {
-		callback(e.SensorID, e.SensorType)
-	})
-}
-
-// OnSensorRemoved registers a callback for when a sensor from another plugin is removed.
-// Returns a Disposable to unsubscribe.
-func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable {
-	return d.sensorRemoved.Subscribe(func(e sensorEvent) {
-		callback(e.SensorID, e.SensorType)
-	})
-}
-
-// OnDetectionEvent registers a callback for detection events (start/update/end).
-// Thumbnails are inline in the event's segment structures, only populated on 'end' events.
-// Returns a Disposable to unsubscribe.
-func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable {
-	return d.detectionEvent.Subscribe(func(e DetectionEventData) {
-		callback(e.Type, e.Event)
-	})
-}
-
-// Connected returns whether the camera is currently connected.
-func (d *CameraDevice) Connected() bool {
-	return d.cameraState.Value()
-}
-
-// FrameWorkerConnected returns whether the frame worker is currently connected.
-func (d *CameraDevice) FrameWorkerConnected() bool {
-	return d.frameWorkerState.Value()
-}
-
-// OnPropertyChange returns an Observable that emits when any of the specified camera properties change.
-func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent] {
-	propSet := make(map[string]struct{}, len(properties))
-	for _, p := range properties {
-		propSet[p] = struct{}{}
-	}
-
-	paired := Pairwise(d.cameraSubject.AsObservable())
-
-	mapped := MergeMap(paired, func(pair [2]Camera, _ int) []PropertyChangeEvent {
-		oldCam, newCam := pair[0], pair[1]
-
-		changed := changedCameraProps(reflect.ValueOf(oldCam), reflect.ValueOf(newCam))
-		events := make([]PropertyChangeEvent, 0, len(changed))
-		for _, prop := range changed {
-			events = append(events, PropertyChangeEvent{
-				Property:  prop,
-				OldCamera: oldCam,
-				NewCamera: newCam,
-			})
-		}
-		return events
-	})
-
-	filtered := Filter(mapped, func(e PropertyChangeEvent) bool {
-		if len(propSet) == 0 {
-			return true
-		}
-		_, ok := propSet[e.Property]
-		return ok
-	})
-
-	return Share(filtered, nil)
-}
-
-// changedCameraProps returns the json names of the camera fields that differ
-// between old and new, recursing into anonymous embedded structs (BaseCamera).
-func changedCameraProps(oldV, newV reflect.Value) []string {
-	var props []string
-	t := oldV.Type()
-	for i := range t.NumField() {
-		sf := t.Field(i)
-		if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
-			props = append(props, changedCameraProps(oldV.Field(i), newV.Field(i))...)
-			continue
-		}
-		if sf.Name == "ID" {
-			continue
-		}
-		jsonTag := sf.Tag.Get("json")
-		if jsonTag == "" || jsonTag == "-" {
-			continue
-		}
-		if comma := indexOf(jsonTag, ','); comma >= 0 {
-			jsonTag = jsonTag[:comma]
-		}
-		if !reflect.DeepEqual(oldV.Field(i).Interface(), newV.Field(i).Interface()) {
-			props = append(props, jsonTag)
-		}
-	}
-	return props
-}
-
-func indexOf(s string, c byte) int {
-	for i := range len(s) {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
-}
-
-// OnConnected returns an Observable that emits distinct connection state changes.
-func (d *CameraDevice) OnConnected() *Observable[bool] {
-	return Share(DistinctUntilChanged(d.cameraState.AsObservable()), nil)
-}
-
-// OnFrameWorkerConnected returns an Observable that emits distinct frame worker state changes.
-func (d *CameraDevice) OnFrameWorkerConnected() *Observable[bool] {
-	return Share(DistinctUntilChanged(d.frameWorkerState.AsObservable()), nil)
 }
 
 func (d *CameraDevice) handleDetectionEvent(msg *detectionEventMessage) {
@@ -1026,57 +1040,6 @@ func (d *CameraDevice) handleSensorControllerEvent(msg sensorControllerEventMess
 	}
 }
 
-// OnSensorProperty subscribes to a specific property on a sensor type with full lifecycle management.
-// Automatically subscribes/unsubscribes when sensors of the given type are added/removed.
-func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, callback func(value any, timestamp int64, sensor Sensor)) *Disposable {
-	var propertySub *Disposable
-
-	subscribeTo := func(sensor Sensor) {
-		if propertySub != nil {
-			propertySub.Dispose()
-		}
-		propertySub = sensor.OnPropertyChanged(func(e SensorPropertyChange) {
-			if e.Property == property {
-				callback(e.Value, e.Timestamp, sensor)
-			}
-		})
-	}
-
-	// Subscribe to existing sensor
-	sensors := d.GetSensorsByType(sensorType)
-	if len(sensors) > 0 {
-		subscribeTo(sensors[0])
-	}
-
-	// Auto-subscribe when sensor is added
-	addedSub := d.OnSensorAdded(func(sensorID string, st SensorType) {
-		if st == sensorType {
-			sensors := d.GetSensorsByType(sensorType)
-			if len(sensors) > 0 {
-				subscribeTo(sensors[0])
-			}
-		}
-	})
-
-	// Auto-unsubscribe when sensor is removed
-	removedSub := d.OnSensorRemoved(func(_ string, st SensorType) {
-		if st == sensorType {
-			if propertySub != nil {
-				propertySub.Dispose()
-				propertySub = nil
-			}
-		}
-	})
-
-	return NewDisposable(func() {
-		if propertySub != nil {
-			propertySub.Dispose()
-		}
-		addedSub.Dispose()
-		removedSub.Dispose()
-	})
-}
-
 func (d *CameraDevice) canAccessSensor(data *storedSensorData) bool {
 	if data.PluginID == d.info.ID {
 		return true
@@ -1253,4 +1216,41 @@ func (s *CameraDeviceSource) GenerateRTSPUrl(options *RTSPUrlOptions) (string, e
 // GenerateSnapshotUrl generates a snapshot URL for this source with the given options.
 func (s *CameraDeviceSource) GenerateSnapshotUrl(options *SnapshotUrlOptions) (string, error) {
 	return BuildSnapshotUrl(s.device.Name(), s.Name(), s.Urls().Snapshot.JPEG, options)
+}
+
+// changedCameraProps returns the json names of the camera fields that differ
+// between old and new, recursing into anonymous embedded structs (BaseCamera).
+func changedCameraProps(oldV, newV reflect.Value) []string {
+	var props []string
+	t := oldV.Type()
+	for i := range t.NumField() {
+		sf := t.Field(i)
+		if sf.Anonymous && sf.Type.Kind() == reflect.Struct {
+			props = append(props, changedCameraProps(oldV.Field(i), newV.Field(i))...)
+			continue
+		}
+		if sf.Name == "ID" {
+			continue
+		}
+		jsonTag := sf.Tag.Get("json")
+		if jsonTag == "" || jsonTag == "-" {
+			continue
+		}
+		if comma := indexOf(jsonTag, ','); comma >= 0 {
+			jsonTag = jsonTag[:comma]
+		}
+		if !reflect.DeepEqual(oldV.Field(i).Interface(), newV.Field(i).Interface()) {
+			props = append(props, jsonTag)
+		}
+	}
+	return props
+}
+
+func indexOf(s string, c byte) int {
+	for i := range len(s) {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }

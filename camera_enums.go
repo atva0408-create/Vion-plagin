@@ -173,9 +173,6 @@ const (
 	VideoFFmpegCodecRawvideo VideoFFmpegCodec = "rawvideo"
 )
 
-// Point is a zone polygon coordinate as [x, y] (0-100 percentage).
-type Point [2]float64
-
 // LineDirection is the line crossing direction filter.
 //   - both: Trigger on crossings in either direction
 //   - a-to-b: Trigger only when crossing from A side to B side
@@ -222,3 +219,6 @@ const (
 	DetectionEventSegmentUpdate DetectionEventType = "segment-update"
 	DetectionEventSegmentEnd    DetectionEventType = "segment-end"
 )
+
+// Point is a zone polygon coordinate as [x, y] (0-100 percentage).
+type Point [2]float64

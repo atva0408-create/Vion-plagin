@@ -20,16 +20,6 @@ type CoreManagerEvent struct {
 	Data any
 }
 
-// pluginProxy is an RPC handle to a remote plugin, returned by ConnectToPlugin.
-type pluginProxy struct {
-	proxy *rpc.Proxy
-}
-
-// Invoke calls a method on the remote plugin and returns the result.
-func (pp *pluginProxy) Invoke(ctx context.Context, method string, args ...any) (any, error) {
-	return pp.proxy.Invoke(ctx, method, args...)
-}
-
 // CoreManager provides system-level functionality via RPC.
 //
 // Exposes cross-cutting services like the FFmpeg binary path, server
@@ -54,41 +44,6 @@ func newCoreManager(client *rpc.Client, logger *Logger) *CoreManager {
 		event:       NewSubject[CoreManagerEvent](),
 		connections: make(map[string]*pluginProxy),
 	}
-}
-
-func (cm *CoreManager) init() error {
-	ns := getCoreManagerNamespaces()
-	unsub, err := cm.client.Subscribe(ns.CoreManagerSubject, func(data []byte) {
-		var msg map[string]any
-		if !decodeMsgpack(cm.logger, data, &msg, "CoreManagerEvent") {
-			return
-		}
-		cm.handleCoreEvent(msg)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to core events: %w", err)
-	}
-	cm.closeSub = unsub
-	return nil
-}
-
-// close unsubscribes from core events and completes the event subject.
-func (cm *CoreManager) close() {
-	if cm.closeSub != nil {
-		cm.closeSub()
-		cm.closeSub = nil
-	}
-	if cm.event != nil {
-		cm.event.Complete()
-	}
-}
-
-func (cm *CoreManager) handleCoreEvent(msg map[string]any) {
-	eventType, _ := msg["type"].(string)
-	if eventType == "" {
-		return
-	}
-	cm.event.Next(CoreManagerEvent{Type: eventType, Data: msg["data"]})
 }
 
 // OnEvent returns an Observable for core manager events (e.g. cloud account changes).
@@ -160,32 +115,6 @@ func (cm *CoreManager) GetCloudServerID() (string, error) {
 	return id, nil
 }
 
-func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
-	ctx := context.Background()
-	result, err := cm.proxy.Invoke(ctx, "getPlugin", pluginName)
-	if err != nil {
-		return nil, fmt.Errorf("getPlugin: %w", err)
-	}
-	if result == nil {
-		return nil, nil
-	}
-
-	info := &PluginInfo{}
-	if err := decodePluginInfo(result, info); err != nil {
-		return nil, fmt.Errorf("getPlugin: %w", err)
-	}
-
-	return info, nil
-}
-
-func decodePluginInfo(v any, out *PluginInfo) error {
-	encoded, err := rpc.Encode(v)
-	if err != nil {
-		return err
-	}
-	return rpc.Decode(encoded, out)
-}
-
 // GetPluginsByInterface returns all active plugins that implement a specific interface.
 func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]PluginInfo, error) {
 	ctx := context.Background()
@@ -235,4 +164,75 @@ func (cm *CoreManager) ConnectToPlugin(pluginName string) (*pluginProxy, error) 
 	}
 	cm.connections[ns.PluginChildRPC] = pp
 	return pp, nil
+}
+
+func (cm *CoreManager) init() error {
+	ns := getCoreManagerNamespaces()
+	unsub, err := cm.client.Subscribe(ns.CoreManagerSubject, func(data []byte) {
+		var msg map[string]any
+		if !decodeMsgpack(cm.logger, data, &msg, "CoreManagerEvent") {
+			return
+		}
+		cm.handleCoreEvent(msg)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to core events: %w", err)
+	}
+	cm.closeSub = unsub
+	return nil
+}
+
+// close unsubscribes from core events and completes the event subject.
+func (cm *CoreManager) close() {
+	if cm.closeSub != nil {
+		cm.closeSub()
+		cm.closeSub = nil
+	}
+	if cm.event != nil {
+		cm.event.Complete()
+	}
+}
+
+func (cm *CoreManager) handleCoreEvent(msg map[string]any) {
+	eventType, _ := msg["type"].(string)
+	if eventType == "" {
+		return
+	}
+	cm.event.Next(CoreManagerEvent{Type: eventType, Data: msg["data"]})
+}
+
+func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
+	ctx := context.Background()
+	result, err := cm.proxy.Invoke(ctx, "getPlugin", pluginName)
+	if err != nil {
+		return nil, fmt.Errorf("getPlugin: %w", err)
+	}
+	if result == nil {
+		return nil, nil
+	}
+
+	info := &PluginInfo{}
+	if err := decodePluginInfo(result, info); err != nil {
+		return nil, fmt.Errorf("getPlugin: %w", err)
+	}
+
+	return info, nil
+}
+
+// pluginProxy is an RPC handle to a remote plugin, returned by ConnectToPlugin.
+type pluginProxy struct {
+	proxy *rpc.Proxy
+}
+
+// Invoke calls a method on the remote plugin and returns the result.
+func (pp *pluginProxy) Invoke(ctx context.Context, method string, args ...any) (any, error) {
+	return pp.proxy.Invoke(ctx, method, args...)
+}
+
+func decodePluginInfo(v any, out *PluginInfo) error {
+	encoded, err := rpc.Encode(v)
+	if err != nil {
+		return err
+	}
+	return rpc.Decode(encoded, out)
 }

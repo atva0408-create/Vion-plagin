@@ -11,12 +11,6 @@ var BaseAudioLabels = []string{
 	"scream", "cat", "car_alarm", "smoke_alarm",
 }
 
-const (
-	audioPropertyDetected   = "detected"
-	audioPropertyDetections = "detections"
-	audioPropertyDecibels   = "decibels"
-)
-
 // AudioFormat identifies the sample format of an audio buffer.
 type AudioFormat string
 
@@ -24,6 +18,12 @@ type AudioFormat string
 const (
 	AudioFormatPCM16   AudioFormat = "pcm16"   // 16-bit signed integer PCM
 	AudioFormatFloat32 AudioFormat = "float32" // 32-bit float
+)
+
+const (
+	audioPropertyDetected   = "detected"
+	audioPropertyDetections = "detections"
+	audioPropertyDecibels   = "decibels"
 )
 
 // AudioFrameData is audio frame data delivered to audio detector sensors by

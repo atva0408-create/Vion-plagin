@@ -41,6 +41,26 @@ const (
 	SchemaConditionNin SchemaConditionOperator = "nin"
 )
 
+// ButtonColor controls the color variant of a button-type schema.
+type ButtonColor string
+
+const (
+	ButtonColorSuccess ButtonColor = "success"
+	ButtonColorInfo    ButtonColor = "info"
+	ButtonColorWarn    ButtonColor = "warn"
+	ButtonColorDanger  ButtonColor = "danger"
+)
+
+// ToastType is the severity of a toast notification.
+type ToastType string
+
+const (
+	ToastInfo    ToastType = "info"
+	ToastSuccess ToastType = "success"
+	ToastWarning ToastType = "warning"
+	ToastError   ToastType = "error"
+)
+
 // SchemaCondition controls conditional field visibility.
 // The field is shown only when the condition evaluates to true against
 // the current form values.
@@ -65,15 +85,28 @@ type SchemaCondition struct {
 	Operator SchemaConditionOperator `json:"operator,omitempty" msgpack:"operator,omitempty"`
 }
 
-// ButtonColor controls the color variant of a button-type schema.
-type ButtonColor string
+// ToastMessage represents a transient banner to show in the UI.
+//
+// Returned from a submit handler (JsonSchema.OnClick) inside a
+// FormSubmitResponse to surface UI feedback — for example to confirm
+// that a credential check succeeded or failed.
+type ToastMessage struct {
+	// Type is the severity that controls the icon/color of the banner.
+	Type ToastType `json:"type" msgpack:"type"`
+	// Message is the human-readable message text.
+	Message string `json:"message" msgpack:"message"`
+}
 
-const (
-	ButtonColorSuccess ButtonColor = "success"
-	ButtonColorInfo    ButtonColor = "info"
-	ButtonColorWarn    ButtonColor = "warn"
-	ButtonColorDanger  ButtonColor = "danger"
-)
+// FormSubmitResponse is returned by JsonSchema.OnClick (Type=submit).
+//
+// Used to react to a user-triggered submit (e.g. "Test connection",
+// "Pair device") with optional UI feedback.
+type FormSubmitResponse struct {
+	// Toast is an optional banner to display after the submit completes.
+	Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
+	// Schema optionally replaces the rendered form fields (full replacement).
+	Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
+}
 
 // JsonSchema represents a single configuration field rendered in the UI.
 //
@@ -140,39 +173,6 @@ type JsonSchema struct {
 	OnGet func() any `json:"-" msgpack:"-"`
 	// OnClick is invoked when a submit-type field is submitted (Type=submit only).
 	OnClick func(value any) *FormSubmitResponse `json:"-" msgpack:"-"`
-}
-
-// ToastType is the severity of a toast notification.
-type ToastType string
-
-const (
-	ToastInfo    ToastType = "info"
-	ToastSuccess ToastType = "success"
-	ToastWarning ToastType = "warning"
-	ToastError   ToastType = "error"
-)
-
-// ToastMessage represents a transient banner to show in the UI.
-//
-// Returned from a submit handler (JsonSchema.OnClick) inside a
-// FormSubmitResponse to surface UI feedback — for example to confirm
-// that a credential check succeeded or failed.
-type ToastMessage struct {
-	// Type is the severity that controls the icon/color of the banner.
-	Type ToastType `json:"type" msgpack:"type"`
-	// Message is the human-readable message text.
-	Message string `json:"message" msgpack:"message"`
-}
-
-// FormSubmitResponse is returned by JsonSchema.OnClick (Type=submit).
-//
-// Used to react to a user-triggered submit (e.g. "Test connection",
-// "Pair device") with optional UI feedback.
-type FormSubmitResponse struct {
-	// Toast is an optional banner to display after the submit completes.
-	Toast *ToastMessage `json:"toast,omitempty" msgpack:"toast,omitempty"`
-	// Schema optionally replaces the rendered form fields (full replacement).
-	Schema []JsonSchema `json:"schema,omitempty" msgpack:"schema,omitempty"`
 }
 
 // ToMap converts a JsonSchema to a map for RPC serialization.

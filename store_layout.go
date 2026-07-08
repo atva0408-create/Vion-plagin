@@ -13,6 +13,8 @@ const (
 	storeLocationSensor storeLocationKind = "sensor"
 )
 
+var canonicalStoreSections = []string{"plugin", "cameras", "sensors"}
+
 // storeLocation addresses one value map inside a plugin's store document:
 // the plugin section, one camera, or one sensor. Every component is a literal
 // map key — never parsed or split, so ids may contain any characters.
@@ -99,8 +101,6 @@ func pruneIfEmpty(parent map[string]any, key string) {
 		delete(parent, key)
 	}
 }
-
-var canonicalStoreSections = []string{"plugin", "cameras", "sensors"}
 
 func isCanonicalStoreSection(key string) bool {
 	return key == "plugin" || key == "cameras" || key == "sensors"

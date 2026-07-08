@@ -21,13 +21,6 @@ type createStreamDownloadWire struct {
 	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
 }
 
-func remotePluginID() string {
-	if os.Getenv("PLUGIN_REMOTE_MODE") == "" {
-		return ""
-	}
-	return os.Getenv("PLUGIN_ID")
-}
-
 // DownloadManager provides token-based file download registration via RPC.
 //
 // Allows plugins to register files for HTTP download via a token URL.
@@ -83,6 +76,24 @@ func (dm *DownloadManager) CreateStreamDownload(options *CreateStreamDownloadOpt
 	return decodeDownloadToken(m), nil
 }
 
+// DeleteDownload removes a download token and optionally deletes the
+// underlying file.
+func (dm *DownloadManager) DeleteDownload(token string) error {
+	ctx := context.Background()
+	_, err := dm.proxy.Invoke(ctx, "deleteDownload", token)
+	if err != nil {
+		return fmt.Errorf("deleteDownload: %w", err)
+	}
+	return nil
+}
+
+func remotePluginID() string {
+	if os.Getenv("PLUGIN_REMOTE_MODE") == "" {
+		return ""
+	}
+	return os.Getenv("PLUGIN_ID")
+}
+
 // decodeDownloadToken pulls the typed fields out of the response map.
 // expiresAt may arrive as int64, float64, or uint64 depending on the encoder
 // path, so it is coerced.
@@ -105,15 +116,4 @@ func decodeDownloadToken(m map[string]any) DownloadToken {
 		PublicURL: publicURL,
 		ExpiresAt: expiresAtRaw,
 	}
-}
-
-// DeleteDownload removes a download token and optionally deletes the
-// underlying file.
-func (dm *DownloadManager) DeleteDownload(token string) error {
-	ctx := context.Background()
-	_, err := dm.proxy.Invoke(ctx, "deleteDownload", token)
-	if err != nil {
-		return fmt.Errorf("deleteDownload: %w", err)
-	}
-	return nil
 }

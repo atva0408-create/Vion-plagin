@@ -9,17 +9,6 @@ import (
 	"time"
 )
 
-type Logger struct {
-	mu           sync.Mutex
-	prefix       string
-	suffix       string
-	targetID     string
-	targetType   string
-	pluginID     string
-	debugEnabled bool
-	traceEnabled bool
-}
-
 type logEntry struct {
 	Timestamp  int64  `json:"timestamp"`
 	Level      string `json:"level"`
@@ -49,6 +38,17 @@ type loggerOptions struct {
 	TraceEnabled bool
 }
 
+type Logger struct {
+	mu           sync.Mutex
+	prefix       string
+	suffix       string
+	targetID     string
+	targetType   string
+	pluginID     string
+	debugEnabled bool
+	traceEnabled bool
+}
+
 func newLogger(opts *loggerOptions) *Logger {
 	return &Logger{
 		prefix:       opts.Prefix,
@@ -70,6 +70,28 @@ func (l *Logger) CreateLogger(opts *loggerOptions) *Logger {
 		pluginID:     l.pluginID,
 		debugEnabled: l.debugEnabled,
 		traceEnabled: l.traceEnabled,
+	}
+}
+
+func (l *Logger) Log(args ...any) { l.write("log", args...) }
+
+func (l *Logger) Error(args ...any) { l.write("error", args...) }
+
+func (l *Logger) Warn(args ...any) { l.write("warn", args...) }
+
+func (l *Logger) Success(args ...any) { l.write("success", args...) }
+
+func (l *Logger) Attention(args ...any) { l.write("attention", args...) }
+
+func (l *Logger) Debug(args ...any) {
+	if l.debugEnabled {
+		l.write("debug", args...)
+	}
+}
+
+func (l *Logger) Trace(args ...any) {
+	if l.traceEnabled {
+		l.write("trace", args...)
 	}
 }
 
@@ -110,26 +132,4 @@ func formatArgs(args ...any) string {
 		parts[i] = fmt.Sprintf("%v", arg)
 	}
 	return strings.Join(parts, " ")
-}
-
-func (l *Logger) Log(args ...any) { l.write("log", args...) }
-
-func (l *Logger) Error(args ...any) { l.write("error", args...) }
-
-func (l *Logger) Warn(args ...any) { l.write("warn", args...) }
-
-func (l *Logger) Success(args ...any) { l.write("success", args...) }
-
-func (l *Logger) Attention(args ...any) { l.write("attention", args...) }
-
-func (l *Logger) Debug(args ...any) {
-	if l.debugEnabled {
-		l.write("debug", args...)
-	}
-}
-
-func (l *Logger) Trace(args ...any) {
-	if l.traceEnabled {
-		l.write("trace", args...)
-	}
 }

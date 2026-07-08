@@ -51,6 +51,70 @@ func newDeviceManager(client *rpc.Client, pluginInfo *PluginInfo, logger *Logger
 	}
 }
 
+// GetCamera retrieves a camera by ID or name. Returns nil if no matching
+// camera exists.
+func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error) {
+	dm.mu.RLock()
+	for _, dev := range dm.devices {
+		if dev.ID() == cameraIDOrName || dev.Name() == cameraIDOrName {
+			dm.mu.RUnlock()
+			return dev, nil
+		}
+	}
+	dm.mu.RUnlock()
+
+	ctx := context.Background()
+	result, err := dm.proxy.Invoke(ctx, "getCamera", cameraIDOrName, dm.pluginInfo.ID)
+	if err != nil {
+		return nil, fmt.Errorf("getCamera: %w", err)
+	}
+
+	if result == nil {
+		return nil, nil
+	}
+
+	encoded, err := rpc.Encode(result)
+	if err != nil {
+		return nil, fmt.Errorf("getCamera encode: %w", err)
+	}
+
+	var cam Camera
+	if err := rpc.Decode(encoded, &cam); err != nil {
+		return nil, fmt.Errorf("getCamera decode: %w", err)
+	}
+
+	camLogger := dm.logger.CreateLogger(&loggerOptions{
+		Suffix:     cam.Name,
+		TargetID:   cam.ID,
+		TargetType: "camera",
+	})
+	cameraDevice := newCameraDeviceProxy(dm.client, dm.api, dm.storageController, &cam, &dm.pluginInfo, camLogger)
+	if err := cameraDevice.init(); err != nil {
+		return nil, fmt.Errorf("init camera device: %w", err)
+	}
+
+	dm.mu.Lock()
+	dm.devices[cam.ID] = cameraDevice
+	dm.mu.Unlock()
+
+	return cameraDevice, nil
+}
+
+// PushDiscoveredCameras pushes discovered cameras to the backend so the
+// user can pick them in the UI without waiting for the next discovery
+// poll. Use this when cameras are discovered asynchronously (e.g. after
+// a cloud login or mDNS event).
+func (dm *DeviceManager) PushDiscoveredCameras(cameras []DiscoveredCamera) error {
+	ns := getDiscoveryManagerNamespaces()
+	discoveryProxy := dm.client.CreateProxy(ns.DiscoveryManagerRPC)
+	ctx := context.Background()
+	_, err := discoveryProxy.Invoke(ctx, "pushDiscoveredCameras", dm.pluginInfo.ID, cameras)
+	if err != nil {
+		return fmt.Errorf("pushDiscoveredCameras: %w", err)
+	}
+	return nil
+}
+
 func (dm *DeviceManager) setAPI(api *PluginAPI, storageCtrl *StorageController) {
 	dm.api = api
 	dm.storageController = storageCtrl
@@ -207,68 +271,4 @@ func (dm *DeviceManager) handleCameraReleased(msg deviceManagerEventMessage) {
 	if dm.storageController != nil {
 		dm.storageController.removeCameraStorage(cameraID)
 	}
-}
-
-// GetCamera retrieves a camera by ID or name. Returns nil if no matching
-// camera exists.
-func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error) {
-	dm.mu.RLock()
-	for _, dev := range dm.devices {
-		if dev.ID() == cameraIDOrName || dev.Name() == cameraIDOrName {
-			dm.mu.RUnlock()
-			return dev, nil
-		}
-	}
-	dm.mu.RUnlock()
-
-	ctx := context.Background()
-	result, err := dm.proxy.Invoke(ctx, "getCamera", cameraIDOrName, dm.pluginInfo.ID)
-	if err != nil {
-		return nil, fmt.Errorf("getCamera: %w", err)
-	}
-
-	if result == nil {
-		return nil, nil
-	}
-
-	encoded, err := rpc.Encode(result)
-	if err != nil {
-		return nil, fmt.Errorf("getCamera encode: %w", err)
-	}
-
-	var cam Camera
-	if err := rpc.Decode(encoded, &cam); err != nil {
-		return nil, fmt.Errorf("getCamera decode: %w", err)
-	}
-
-	camLogger := dm.logger.CreateLogger(&loggerOptions{
-		Suffix:     cam.Name,
-		TargetID:   cam.ID,
-		TargetType: "camera",
-	})
-	cameraDevice := newCameraDeviceProxy(dm.client, dm.api, dm.storageController, &cam, &dm.pluginInfo, camLogger)
-	if err := cameraDevice.init(); err != nil {
-		return nil, fmt.Errorf("init camera device: %w", err)
-	}
-
-	dm.mu.Lock()
-	dm.devices[cam.ID] = cameraDevice
-	dm.mu.Unlock()
-
-	return cameraDevice, nil
-}
-
-// PushDiscoveredCameras pushes discovered cameras to the backend so the
-// user can pick them in the UI without waiting for the next discovery
-// poll. Use this when cameras are discovered asynchronously (e.g. after
-// a cloud login or mDNS event).
-func (dm *DeviceManager) PushDiscoveredCameras(cameras []DiscoveredCamera) error {
-	ns := getDiscoveryManagerNamespaces()
-	discoveryProxy := dm.client.CreateProxy(ns.DiscoveryManagerRPC)
-	ctx := context.Background()
-	_, err := discoveryProxy.Invoke(ctx, "pushDiscoveredCameras", dm.pluginInfo.ID, cameras)
-	if err != nil {
-		return fmt.Errorf("pushDiscoveredCameras: %w", err)
-	}
-	return nil
 }

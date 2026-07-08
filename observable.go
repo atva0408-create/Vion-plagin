@@ -5,6 +5,16 @@ import (
 	"sync"
 )
 
+var ErrNoValue = errors.New("observable completed without emitting a value")
+
+type Subscribable[T any] interface {
+	Subscribe(func(T)) *Disposable
+}
+
+type completionNotifier interface {
+	onCompleteNotify(handler func()) *Disposable
+}
+
 type Disposable struct {
 	mu       sync.Mutex
 	closed   bool
@@ -96,6 +106,29 @@ func (s *Subject[T]) Complete() {
 	}
 }
 
+func (s *Subject[T]) Subscribe(callback func(T)) *Disposable {
+	s.mu.Lock()
+	if s.completed {
+		s.mu.Unlock()
+		return NewDisposable(func() {})
+	}
+	cb := &callback
+	s.subscribers[cb] = struct{}{}
+	s.mu.Unlock()
+
+	return NewDisposable(func() {
+		s.mu.Lock()
+		delete(s.subscribers, cb)
+		s.mu.Unlock()
+	})
+}
+
+func (s *Subject[T]) AsObservable() *Observable[T] {
+	return NewObservable(func(callback func(T)) *Disposable {
+		return s.Subscribe(callback)
+	})
+}
+
 func (s *Subject[T]) onCompleteNotify(handler func()) *Disposable {
 	s.mu.Lock()
 	if s.completed {
@@ -114,33 +147,10 @@ func (s *Subject[T]) onCompleteNotify(handler func()) *Disposable {
 	})
 }
 
-func (s *Subject[T]) Subscribe(callback func(T)) *Disposable {
-	s.mu.Lock()
-	if s.completed {
-		s.mu.Unlock()
-		return NewDisposable(func() {})
-	}
-	cb := &callback
-	s.subscribers[cb] = struct{}{}
-	s.mu.Unlock()
-
-	return NewDisposable(func() {
-		s.mu.Lock()
-		delete(s.subscribers, cb)
-		s.mu.Unlock()
-	})
-}
-
 func (s *Subject[T]) isCompleted() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.completed
-}
-
-func (s *Subject[T]) AsObservable() *Observable[T] {
-	return NewObservable(func(callback func(T)) *Disposable {
-		return s.Subscribe(callback)
-	})
 }
 
 type BehaviorSubject[T any] struct {
@@ -333,16 +343,6 @@ func Share[T any](source *Observable[T], connector func() *Subject[T]) *Observab
 			}
 		})
 	})
-}
-
-var ErrNoValue = errors.New("observable completed without emitting a value")
-
-type Subscribable[T any] interface {
-	Subscribe(func(T)) *Disposable
-}
-
-type completionNotifier interface {
-	onCompleteNotify(handler func()) *Disposable
 }
 
 func FirstValueFrom[T any](source Subscribable[T]) (T, error) {

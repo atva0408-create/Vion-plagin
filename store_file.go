@@ -25,6 +25,14 @@ const storeFileName = "store.cui"
 // msgpack payload + little-endian CRC32 (IEEE) of the payload bytes.
 var storeMagic = []byte("CUI1")
 
+var renameRetryDelays = []time.Duration{
+	10 * time.Millisecond,
+	25 * time.Millisecond,
+	60 * time.Millisecond,
+	150 * time.Millisecond,
+	300 * time.Millisecond,
+}
+
 // storeCorruptError marks a file that failed the magic/CRC/decode checks, as
 // opposed to an I/O error. Only corruption triggers the backup fallback.
 type storeCorruptError struct{ reason string }
@@ -118,14 +126,6 @@ func normalizeStoreUint(v uint64) any {
 		return v
 	}
 	return int64(v)
-}
-
-var renameRetryDelays = []time.Duration{
-	10 * time.Millisecond,
-	25 * time.Millisecond,
-	60 * time.Millisecond,
-	150 * time.Millisecond,
-	300 * time.Millisecond,
 }
 
 func renameWithRetry(tmpPath, path string) error {

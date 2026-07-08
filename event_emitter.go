@@ -7,14 +7,14 @@ import (
 
 type eventHandler func(args ...any)
 
-type eventEmitter struct {
-	mu        sync.RWMutex
-	listeners map[string][]eventEntry
-}
-
 type eventEntry struct {
 	handler eventHandler
 	once    bool
+}
+
+type eventEmitter struct {
+	mu        sync.RWMutex
+	listeners map[string][]eventEntry
 }
 
 func newEventEmitter() *eventEmitter {
@@ -69,6 +69,17 @@ func (e *eventEmitter) Emit(event string, args ...any) {
 		}
 		e.listeners[event] = current
 		e.mu.Unlock()
+	}
+}
+
+// An empty event removes listeners for every event.
+func (e *eventEmitter) RemoveAllListeners(event string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if event == "" {
+		e.listeners = make(map[string][]eventEntry)
+	} else {
+		delete(e.listeners, event)
 	}
 }
 
@@ -127,16 +138,5 @@ func (e *eventEmitter) emitAndWait(event string, timeout time.Duration, onPanic 
 		return true
 	case <-timer.C:
 		return false
-	}
-}
-
-// An empty event removes listeners for every event.
-func (e *eventEmitter) RemoveAllListeners(event string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if event == "" {
-		e.listeners = make(map[string][]eventEntry)
-	} else {
-		delete(e.listeners, event)
 	}
 }

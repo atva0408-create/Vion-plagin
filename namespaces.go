@@ -66,14 +66,14 @@ type detectionEventNamespaces struct {
 	DetectionEventSubject string
 }
 
+type frameWorkerDetectionNamespaces struct {
+	DetectionRPC string
+}
+
 func getDetectionEventNamespaces(cameraID string) detectionEventNamespaces {
 	return detectionEventNamespaces{
 		DetectionEventSubject: fmt.Sprintf("camera.%s.events.subject", cameraID),
 	}
-}
-
-type frameWorkerDetectionNamespaces struct {
-	DetectionRPC string
 }
 
 func getFrameWorkerDetectionNamespaces(cameraID string) frameWorkerDetectionNamespaces {

@@ -30,13 +30,6 @@ func newFileServer(client *rpc.Client, pluginID string) (*fileServer, error) {
 	return fs, nil
 }
 
-func (fs *fileServer) close() {
-	if fs.cleanup != nil {
-		_ = fs.cleanup()
-		fs.cleanup = nil
-	}
-}
-
 func (fs *fileServer) StatFile(filePath string) (fileServeStat, error) {
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
@@ -64,4 +57,11 @@ func (fs *fileServer) ReadFileChunk(filePath string, offset int64, length int64)
 func (fs *fileServer) DeleteFile(filePath string) error {
 	_ = os.Remove(filePath)
 	return nil
+}
+
+func (fs *fileServer) close() {
+	if fs.cleanup != nil {
+		_ = fs.cleanup()
+		fs.cleanup = nil
+	}
 }

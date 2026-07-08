@@ -11,6 +11,12 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+const maxSafeStoreInt = 1<<53 - 1
+
+// maxStoreValueDepth bounds recursion so a circular reference fails with a
+// clear error instead of a stack overflow.
+const maxStoreValueDepth = 64
+
 // DeviceStorage is the schema-driven configuration store for a plugin,
 // camera, or sensor. Define the fields the UI renders via DefineSchemas,
 // then read/write values via GetValue / SetValue. Each plugin and camera
@@ -63,112 +69,6 @@ func newDeviceStorage(persistence configPersistence, location storeLocation, log
 		ds.Values = values
 	}
 	return ds
-}
-
-// persistedValues collects the keys that belong in the store. Caller must hold ds.mu.
-func (ds *DeviceStorage) persistedValues() map[string]any {
-	out := make(map[string]any, len(ds.Values))
-	for key, val := range ds.Values {
-		schema := ds.findSchemaByKey(key)
-		if schema == nil || schemaStorable(schema) {
-			out[key] = val
-		}
-	}
-	return out
-}
-
-func schemaStorable(schema *JsonSchema) bool {
-	return schema.Store != nil && *schema.Store &&
-		schema.Type != JsonSchemaTypeButton && schema.Type != JsonSchemaTypeSubmit
-}
-
-func generateConfigFromSchemas(schemas []JsonSchema) map[string]any {
-	config := make(map[string]any, len(schemas))
-	for i := range schemas {
-		s := &schemas[i]
-		if s.Type == JsonSchemaTypeButton || s.Type == JsonSchemaTypeSubmit {
-			continue
-		}
-		config[s.Key] = generateDefaultValue(s)
-	}
-	return config
-}
-
-func generateDefaultValue(s *JsonSchema) any {
-	if s.DefaultValue != nil {
-		return s.DefaultValue
-	}
-	switch s.Type {
-	case JsonSchemaTypeString:
-		if len(s.Enum) > 0 {
-			if s.Multiple {
-				return []any{}
-			}
-			if s.Required {
-				return s.Enum[0]
-			}
-		}
-		return ""
-	case JsonSchemaTypeNumber:
-		return 0
-	case JsonSchemaTypeBoolean:
-		return false
-	case JsonSchemaTypeArray:
-		return []any{}
-	default:
-		return nil
-	}
-}
-
-func mergeValues(dst, src map[string]any) map[string]any {
-	out := make(map[string]any, len(dst)+len(src))
-	maps.Copy(out, dst)
-	for k, sv := range src {
-		if dv, ok := out[k]; ok {
-			if dm, dOk := dv.(map[string]any); dOk {
-				if sm, sOk := sv.(map[string]any); sOk {
-					out[k] = mergeValues(dm, sm)
-					continue
-				}
-			}
-		}
-		out[k] = sv
-	}
-	return out
-}
-
-func mergeValue(old, incoming any) any {
-	oldMap, oOk := old.(map[string]any)
-	newMap, nOk := incoming.(map[string]any)
-	if oOk && nOk {
-		return mergeValues(oldMap, newMap)
-	}
-	return incoming
-}
-
-// persist writes the current persistable state and blocks until it is
-// durable. It must not be called with ds.mu or ds.persistMu held: the wait
-// blocks on disk or on the master's acknowledgement, and holding a lock
-// across that would stall every access for the duration of a flush.
-func (ds *DeviceStorage) persist() error {
-	ds.persistMu.Lock()
-	ds.mu.Lock()
-	values := ds.persistedValues()
-	ds.persistSeq++
-	seq := ds.persistSeq
-	ds.mu.Unlock()
-	wait := ds.persistence.save(ds.location, values)
-	ds.persistMu.Unlock()
-
-	err := wait()
-
-	ds.mu.Lock()
-	// A newer snapshot supersedes this one: leave dirty to its persist.
-	if seq == ds.persistSeq {
-		ds.dirty = err != nil
-	}
-	ds.mu.Unlock()
-	return err
 }
 
 // RPCMethods restricts the storage's RPC surface to the config API. Exported
@@ -503,21 +403,6 @@ func (ds *DeviceStorage) HasSchema(key string) bool {
 	return ds.GetSchema(key) != nil
 }
 
-func (ds *DeviceStorage) hasValueLocked(key string) bool {
-	_, ok := ds.Values[key]
-	return ok
-}
-
-// findSchemaByKey looks up a schema by key. Caller must hold ds.mu (read or write).
-func (ds *DeviceStorage) findSchemaByKey(key string) *JsonSchema {
-	for i := range ds.Schemas {
-		if ds.Schemas[i].Key == key {
-			return &ds.Schemas[i]
-		}
-	}
-	return nil
-}
-
 // SetInternalValue sets a system-internal value (e.g. _displayName) without
 // requiring a schema, blocking until it is persisted. A nil value deletes the
 // key; values outside the storable domain are rejected.
@@ -558,14 +443,6 @@ func (ds *DeviceStorage) Save() error {
 	return ds.persist()
 }
 
-// close flushes a final snapshot and unregisters the storage's RPC handler.
-func (ds *DeviceStorage) close() {
-	if err := ds.Save(); err != nil {
-		ds.logger.Error("store: close save failed:", err)
-	}
-	ds.unregister()
-}
-
 // Destroy clears this storage's values and deletes its location from the store,
 // blocking until the deletion is durable.
 func (ds *DeviceStorage) Destroy() error {
@@ -573,6 +450,66 @@ func (ds *DeviceStorage) Destroy() error {
 	ds.Values = make(map[string]any)
 	ds.mu.Unlock()
 	return ds.persist()
+}
+
+// persistedValues collects the keys that belong in the store. Caller must hold ds.mu.
+func (ds *DeviceStorage) persistedValues() map[string]any {
+	out := make(map[string]any, len(ds.Values))
+	for key, val := range ds.Values {
+		schema := ds.findSchemaByKey(key)
+		if schema == nil || schemaStorable(schema) {
+			out[key] = val
+		}
+	}
+	return out
+}
+
+// persist writes the current persistable state and blocks until it is
+// durable. It must not be called with ds.mu or ds.persistMu held: the wait
+// blocks on disk or on the master's acknowledgement, and holding a lock
+// across that would stall every access for the duration of a flush.
+func (ds *DeviceStorage) persist() error {
+	ds.persistMu.Lock()
+	ds.mu.Lock()
+	values := ds.persistedValues()
+	ds.persistSeq++
+	seq := ds.persistSeq
+	ds.mu.Unlock()
+	wait := ds.persistence.save(ds.location, values)
+	ds.persistMu.Unlock()
+
+	err := wait()
+
+	ds.mu.Lock()
+	// A newer snapshot supersedes this one: leave dirty to its persist.
+	if seq == ds.persistSeq {
+		ds.dirty = err != nil
+	}
+	ds.mu.Unlock()
+	return err
+}
+
+func (ds *DeviceStorage) hasValueLocked(key string) bool {
+	_, ok := ds.Values[key]
+	return ok
+}
+
+// findSchemaByKey looks up a schema by key. Caller must hold ds.mu (read or write).
+func (ds *DeviceStorage) findSchemaByKey(key string) *JsonSchema {
+	for i := range ds.Schemas {
+		if ds.Schemas[i].Key == key {
+			return &ds.Schemas[i]
+		}
+	}
+	return nil
+}
+
+// close flushes a final snapshot and unregisters the storage's RPC handler.
+func (ds *DeviceStorage) close() {
+	if err := ds.Save(); err != nil {
+		ds.logger.Error("store: close save failed:", err)
+	}
+	ds.unregister()
 }
 
 // unregister removes this storage's RPC handler without flushing.
@@ -601,11 +538,74 @@ func (ds *DeviceStorage) resolveOnGet(schemas []JsonSchema) {
 	}
 }
 
-const maxSafeStoreInt = 1<<53 - 1
+func schemaStorable(schema *JsonSchema) bool {
+	return schema.Store != nil && *schema.Store &&
+		schema.Type != JsonSchemaTypeButton && schema.Type != JsonSchemaTypeSubmit
+}
 
-// maxStoreValueDepth bounds recursion so a circular reference fails with a
-// clear error instead of a stack overflow.
-const maxStoreValueDepth = 64
+func generateConfigFromSchemas(schemas []JsonSchema) map[string]any {
+	config := make(map[string]any, len(schemas))
+	for i := range schemas {
+		s := &schemas[i]
+		if s.Type == JsonSchemaTypeButton || s.Type == JsonSchemaTypeSubmit {
+			continue
+		}
+		config[s.Key] = generateDefaultValue(s)
+	}
+	return config
+}
+
+func generateDefaultValue(s *JsonSchema) any {
+	if s.DefaultValue != nil {
+		return s.DefaultValue
+	}
+	switch s.Type {
+	case JsonSchemaTypeString:
+		if len(s.Enum) > 0 {
+			if s.Multiple {
+				return []any{}
+			}
+			if s.Required {
+				return s.Enum[0]
+			}
+		}
+		return ""
+	case JsonSchemaTypeNumber:
+		return 0
+	case JsonSchemaTypeBoolean:
+		return false
+	case JsonSchemaTypeArray:
+		return []any{}
+	default:
+		return nil
+	}
+}
+
+func mergeValues(dst, src map[string]any) map[string]any {
+	out := make(map[string]any, len(dst)+len(src))
+	maps.Copy(out, dst)
+	for k, sv := range src {
+		if dv, ok := out[k]; ok {
+			if dm, dOk := dv.(map[string]any); dOk {
+				if sm, sOk := sv.(map[string]any); sOk {
+					out[k] = mergeValues(dm, sm)
+					continue
+				}
+			}
+		}
+		out[k] = sv
+	}
+	return out
+}
+
+func mergeValue(old, incoming any) any {
+	oldMap, oOk := old.(map[string]any)
+	newMap, nOk := incoming.(map[string]any)
+	if oOk && nOk {
+		return mergeValues(oldMap, newMap)
+	}
+	return incoming
+}
 
 func validateStoreValue(key string, value any) error {
 	return walkStoreValue(value, key, 0)
