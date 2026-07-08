@@ -179,15 +179,14 @@ func (d *CameraDevice) init() error {
 	// event that was already emitted before the plugin subscribed.
 	d.refreshStates()
 
-	// Auto-initialize foreign sensors — silent on error (matches Node/Python behavior:
-	// try { sensors = await getSensors(...) } catch { /* ignore */ })
+	// Auto-initialize foreign sensors; init failures are ignored so a sensor that
+	// can't initialize doesn't abort the attach.
 	d.initSensors()
 
 	return nil
 }
 
 // refreshStates fetches current camera/frameWorker state from the server.
-// Matches Node.js CameraDeviceProxy#refreshStates() behavior.
 func (d *CameraDevice) refreshStates() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -493,7 +492,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	d.cleanupFns = append(d.cleanupFns, func() { _ = sensorCleanup() })
 
 	// Create sensor storage
-	sensorStorage, err := d.storageCtrl.createSensorStorage(d.camera.ID, s.GetID())
+	sensorStorage, err := d.storageCtrl.createSensorStorage(d.camera.ID, s.GetID(), string(s.GetType()), s.GetName())
 	if err != nil {
 		return fmt.Errorf("failed to create sensor storage: %w", err)
 	}
@@ -537,8 +536,8 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	ctx := context.Background()
 	sensorJSON := s.ToJSON()
 
-	// Inject modelSpec for detector sensors (mirrors Node/Python proxy behavior).
-	// Detector interfaces define ModelSpec() but the base ToJSON() doesn't include it.
+	// Inject modelSpec for detector sensors: detector interfaces define ModelSpec()
+	// but the base ToJSON() doesn't include it.
 	switch v := s.(type) {
 	case ObjectDetector:
 		sensorJSON.ModelSpec = v.ModelSpec()
@@ -783,7 +782,6 @@ func (d *CameraDevice) FrameWorkerConnected() bool {
 }
 
 // OnPropertyChange returns an Observable that emits when any of the specified camera properties change.
-// Uses Pairwise + MergeMap + Filter on cameraSubject (consistent with Node/Python SDKs).
 func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent] {
 	propSet := make(map[string]struct{}, len(properties))
 	for _, p := range properties {
@@ -918,7 +916,6 @@ func (d *CameraDevice) initSensors() {
 }
 
 // getSensorStates fetches current state for all sensors and applies to proxies.
-// Matches Node.js CameraDeviceProxy#getSensorStates() behavior.
 func (d *CameraDevice) getSensorStates(proxies []*sensorProxy) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

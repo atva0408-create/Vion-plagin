@@ -31,10 +31,10 @@ func TestDeepCopyValueIsIndependent(t *testing.T) {
 	}
 }
 
-// Reproduces the reported crash at the data-structure level: the async config
-// encoder walks the persisted snapshot while the plugin keeps mutating its own
-// config map. With a proper deep copy the two share nothing, so `-race` stays
-// clean; a shallow copy would flag "concurrent map iteration and map write".
+// The store walks its owned copy of a value map while the plugin keeps
+// mutating the original it handed in. With a proper deep copy the two share
+// nothing, so `-race` stays clean; a shallow copy would flag "concurrent map
+// iteration and map write".
 func TestDeepCopyValueRaceIsolation(t *testing.T) {
 	source := map[string]any{"cfg": map[string]any{"x": 0, "nested": map[string]any{"y": 0}}}
 	copied := deepCopyValue(source)

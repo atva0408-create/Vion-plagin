@@ -12,22 +12,19 @@ import (
 	"time"
 
 	rpc "github.com/cameraui/rpc/go"
-	bolt "go.etcd.io/bbolt"
 )
 
-// storageBucket is the bbolt bucket used for plugin-level configuration.
-// One bucket per plugin DB; per-camera storage uses additional buckets keyed
-// by camera ID inside the same DB.
-var storageBucket = []byte("config")
+// rpcTeardownTimeout bounds the final RPC teardown so a dead transport can't
+// hang the process past the host's force-kill grace.
+const rpcTeardownTimeout = 500 * time.Millisecond
 
 // Run is the entry point a Go plugin's main package calls to hand control to
 // the SDK runtime. It performs the full handshake with the host (RPC connect,
 // ready/start/stop messages), opens the per-plugin storage, instantiates the
 // plugin via constructor, calls ConfigureCameras with the assigned cameras,
 // emits APIEventFinishLaunching, then blocks until SIGTERM/SIGINT or a stop
-// command from the host. On exit it emits APIEventShutdown and tears down
-// the RPC connection. This mirrors the lifecycle the Node/Python plugin
-// runtimes implement (server/src/plugins/runtime/{node,python}/).
+// command from the host. On exit it emits APIEventShutdown, waits (bounded)
+// for the shutdown listeners to finish, and tears down the RPC connection.
 func Run(constructor pluginConstructor) {
 	// 1. Process title from os.Args
 	processName := "Plugin"
@@ -86,12 +83,15 @@ func Run(constructor pluginConstructor) {
 		stopCh     = make(chan struct{})
 		api        *PluginAPI
 		plugin     Plugin
-		pluginDB   *bolt.DB
 		cleanupRPC rpc.CleanupFunc
 		fileSrv    *fileServer
 	)
 
-	var coreManager *CoreManager
+	var (
+		coreManager       *CoreManager
+		deviceManager     *DeviceManager
+		storageController *StorageController
+	)
 
 	stopPlugin := func() {
 		stoppedMu.Lock()
@@ -103,29 +103,51 @@ func Run(constructor pluginConstructor) {
 		stoppedMu.Unlock()
 
 		if api != nil {
-			api.Emit(string(APIEventShutdown))
-			time.Sleep(500 * time.Millisecond)
+			completed := api.emitAndWait(string(APIEventShutdown), 1*time.Second, func(recovered any) {
+				logger.Error("Shutdown listener panicked:", recovered)
+			})
+			if !completed {
+				logger.Warn("Shutdown listeners still pending after 1s, continuing teardown")
+			}
+
+			// Runtime-owned teardown, ordered and separate from the plugin's
+			// SHUTDOWN listeners above: devices (+ their sensors) -> core manager
+			// -> storages (flushed last so any device/sensor cleanup writes land).
+			// The runtime closes them directly so the shutdown event stays purely
+			// author-facing and the order stays deterministic.
+			if deviceManager != nil {
+				deviceManager.close()
+			}
+			if coreManager != nil {
+				coreManager.close()
+			}
+			if storageController != nil {
+				storageController.close()
+			}
+
 			api.RemoveAllListeners("")
 		}
 
-		if coreManager != nil {
-			coreManager.Close()
+		// The RPC teardown can park forever when the master/NATS is already gone.
+		// Bound it so the process exits well within the host's force-kill grace
+		// instead of hanging on a dead transport.
+		done := make(chan struct{})
+		go func() {
+			if cleanupRPC != nil {
+				_ = cleanupRPC()
+			}
+			if fileSrv != nil {
+				fileSrv.close()
+			}
+			_ = channel.Close()
+			_ = client.Disconnect()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(rpcTeardownTimeout):
+			logger.Warn("RPC teardown still pending after 500ms, exiting anyway")
 		}
-
-		if pluginDB != nil {
-			_ = pluginDB.Close()
-		}
-
-		if cleanupRPC != nil {
-			_ = cleanupRPC()
-		}
-
-		if fileSrv != nil {
-			fileSrv.close()
-		}
-
-		_ = channel.Close()
-		_ = client.Disconnect()
 	}
 
 	// 6. Register message handler BEFORE sending ready (avoid race condition)
@@ -219,36 +241,20 @@ func Run(constructor pluginConstructor) {
 		}
 		persistence = remote
 	} else {
-		volumePath := filepath.Join(storagePath, "volume")
-		if err := os.MkdirAll(volumePath, 0755); err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to create volume dir: %v", err)})
-			stopPlugin()
-			return
-		}
-
-		dbPath := filepath.Join(volumePath, "plugin.db")
-		pluginDB, err = bolt.Open(dbPath, 0600, &bolt.Options{Timeout: 5 * time.Second})
+		storePath := filepath.Join(storagePath, "volume", storeFileName)
+		local, err := newFilePersistence(storePath, pluginInfo.ID, logger)
 		if err != nil {
-			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to open DB: %v", err)})
+			_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: fmt.Sprintf("Failed to open config store: %v", err)})
 			stopPlugin()
 			return
 		}
-
-		// Initialize the config bucket
-		if err := pluginDB.Update(func(tx *bolt.Tx) error {
-			_, err := tx.CreateBucketIfNotExists(storageBucket)
-			return err
-		}); err != nil {
-			logger.Error("Failed to initialize config bucket:", err)
-		}
-
-		persistence = &boltPersistence{db: pluginDB}
+		persistence = local
 	}
 
 	// 9. Create PluginAPI
 
 	coreManager = newCoreManager(client, logger)
-	deviceManager := newDeviceManager(client, &pluginInfo, logger)
+	deviceManager = newDeviceManager(client, &pluginInfo, logger)
 	downloadManager := newDownloadManager(client)
 
 	// Remote-hosted: serve this worker's files so the master can stream
@@ -262,7 +268,7 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 	notificationManager := newNotificationManager(client, &pluginInfo, logger)
-	storageController := newStorageController(client, persistence, &pluginInfo, logger)
+	storageController = newStorageController(client, persistence, &pluginInfo, logger)
 
 	api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
 	deviceManager.setAPI(api, storageController)

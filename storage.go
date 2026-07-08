@@ -2,21 +2,24 @@ package sdk
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"reflect"
 	"sync"
-)
 
-var configBucket = []byte("config")
+	rpc "github.com/cameraui/rpc/go"
+)
 
 // DeviceStorage is the schema-driven configuration store for a plugin,
 // camera, or sensor. Each plugin and each device gets its own scoped
-// instance, keyed by Prefix.
+// instance.
 //
 // Define the fields the UI should render via DefineSchemas (typically
 // once at startup), then read/write values via GetValue / SetValue.
-// Values whose schema has Store=true are persisted to disk; the rest
-// live only in memory for the lifetime of the process. Submit-button
-// schemas drive transactional flows via SubmitValue.
+// Values whose schema has Store=true are persisted; the rest live only
+// in memory for the lifetime of the process. Persisting methods return
+// once the write is durable. Submit-button schemas drive transactional
+// flows via SubmitValue.
 //
 // It implements the storage protocol expected by the server via RPC.
 //
@@ -28,36 +31,94 @@ var configBucket = []byte("config")
 //	})
 //
 //	threshold := storage.GetValue("motionThreshold", 50)
-//	storage.SetValue("motionThreshold", 75)
+//	if err := storage.SetValue("motionThreshold", 75); err != nil {
+//	    log.Error("persist failed:", err)
+//	}
 type DeviceStorage struct {
-	mu          sync.RWMutex
+	mu sync.RWMutex
+	// persistMu orders whole-document snapshots: held from taking the values
+	// snapshot until the persistence layer has enqueued it, so a snapshot
+	// taken earlier can never be enqueued after — and thus overwrite — a
+	// newer one. Never held while waiting for the flush itself.
+	persistMu   sync.Mutex
 	persistence configPersistence
-	prefix      string // "plugin", "camera.{id}", "sensor.{id}"
+	location    storeLocation
 	Schemas     []JsonSchema
 	Values      map[string]any
 	logger      *Logger
+
+	// dirty forces the next write to persist even when the value compares
+	// unchanged: set while the last persist failed (the on-disk state needs
+	// repair) and when a schema change flips a key's storable-ness (the
+	// current value's presence on disk no longer matches its schema).
+	dirty bool
+	// persistSeq guards dirty: only the persist holding the newest snapshot
+	// may clear it.
+	persistSeq uint64
+
+	// closeHandler unregisters this storage's RPC handler; set by the
+	// StorageController at registration, released on close.
+	closeHandler rpc.CleanupFunc
 }
 
 // newDeviceStorage creates a new DeviceStorage instance.
-func newDeviceStorage(persistence configPersistence, prefix string, logger *Logger) *DeviceStorage {
+func newDeviceStorage(persistence configPersistence, location storeLocation, logger *Logger) *DeviceStorage {
 	ds := &DeviceStorage{
 		persistence: persistence,
-		prefix:      prefix,
+		location:    location,
 		logger:      logger,
 		Values:      make(map[string]any),
 	}
-	ds.load()
+	if values := persistence.load(location); values != nil {
+		ds.Values = values
+	}
 	return ds
 }
 
-func (ds *DeviceStorage) load() {
-	if values := ds.persistence.load(ds.prefix); values != nil {
-		ds.Values = values
+// persistedValues filters Values down to what belongs in the store: keys
+// whose schema opts in via Store (buttons/submits never store), plus every
+// schema-less key (internal values). Caller must hold ds.mu.
+func (ds *DeviceStorage) persistedValues() map[string]any {
+	out := make(map[string]any, len(ds.Values))
+	for key, val := range ds.Values {
+		schema := ds.findSchemaByKey(key)
+		if schema == nil || schemaStorable(schema) {
+			out[key] = val
+		}
 	}
+	return out
 }
 
-func (ds *DeviceStorage) save() {
-	ds.persistence.save(ds.prefix, ds.Values)
+// schemaStorable reports whether values under this schema belong in the
+// persisted store (buttons and submits never store).
+func schemaStorable(schema *JsonSchema) bool {
+	return schema.Store != nil && *schema.Store &&
+		schema.Type != JsonSchemaTypeButton && schema.Type != JsonSchemaTypeSubmit
+}
+
+// persist writes the current persistable state and blocks until it is
+// durable. It must not be called with ds.mu or ds.persistMu held: the wait
+// blocks on disk or on the master's acknowledgement, and holding a lock
+// across that would stall every access for the duration of a flush.
+func (ds *DeviceStorage) persist() error {
+	ds.persistMu.Lock()
+	ds.mu.Lock()
+	values := ds.persistedValues()
+	ds.persistSeq++
+	seq := ds.persistSeq
+	ds.mu.Unlock()
+	wait := ds.persistence.save(ds.location, values)
+	ds.persistMu.Unlock()
+
+	err := wait()
+
+	ds.mu.Lock()
+	// A newer snapshot supersedes this one: leave dirty to its persist.
+	if seq == ds.persistSeq {
+		ds.dirty = err != nil
+	}
+	ds.mu.Unlock()
+	return err
 }
 
 // GetValue retrieves a configuration value.
@@ -92,43 +153,57 @@ func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 	return nil
 }
 
-// SetValue sets a configuration value and persists it.
-// Only processes if a schema exists for the key (consistent with Node/Python SDK).
-// Calls OnSet(oldValue, newValue) after the value is stored.
-func (ds *DeviceStorage) SetValue(key string, value any) {
-	ds.mu.Lock()
+// SetValue sets a configuration value. A nil value deletes the key. Only
+// processes if a schema exists for the key. When the schema has Store=true
+// the call blocks until the write is durable and returns its error; values
+// outside the storable domain are rejected and the previous value kept.
+// OnSet(oldValue, newValue) fires detached after the persist.
+func (ds *DeviceStorage) SetValue(key string, value any) error {
+	if err := validateStoreValue(key, value); err != nil {
+		return err
+	}
 
+	ds.mu.Lock()
 	schema := ds.findSchemaByKey(key)
 	if schema == nil {
 		ds.mu.Unlock()
-		return
+		return nil
 	}
 
-	oldValue := ds.Values[key]
-
+	oldValue, existed := ds.Values[key]
 	if value == nil {
 		delete(ds.Values, key)
 	} else {
-		ds.Values[key] = value
+		// Store an owned copy: a caller may mutate the value it passed in and
+		// re-set it, and the next compare needs the previous state, not an alias.
+		ds.Values[key] = deepCopyValue(value)
 	}
 
-	// Only persist if schema has Store=true
-	if schema.Store != nil && *schema.Store {
-		ds.save()
+	var unchanged bool
+	if value == nil {
+		unchanged = !existed
+	} else {
+		unchanged = existed && deepEqualLoose(oldValue, value)
 	}
 
+	shouldPersist := schemaStorable(schema) && (!unchanged || ds.dirty)
 	onSet := schema.OnSet
 	ds.mu.Unlock()
 
-	// Call OnSet outside lock — callback may use other storage methods
-	if onSet != nil {
-		onSet(oldValue, value)
+	var err error
+	if shouldPersist {
+		err = ds.persist()
 	}
+
+	// Detached: the callback may call back into this storage.
+	if onSet != nil {
+		go onSet(oldValue, value)
+	}
+	return err
 }
 
 // SubmitValue handles submit button clicks. Finds the schema by key,
 // calls OnClick if present, and returns the response (with optional toast).
-// This is the Go equivalent of the Node/Python submitValue method.
 func (ds *DeviceStorage) SubmitValue(key string, value any) map[string]any {
 	ds.mu.RLock()
 	schema := ds.findSchemaByKey(key)
@@ -186,10 +261,18 @@ func (ds *DeviceStorage) GetConfig() map[string]any {
 	}
 }
 
-// SetConfig merges new configuration values into the existing config.
-// Triggers OnSet callbacks for any keys whose values actually changed (deep compare).
-// Consistent with Node/Python SDK behavior.
-func (ds *DeviceStorage) SetConfig(newConfig map[string]any) {
+// SetConfig merges new configuration values into the existing config and
+// blocks until the merged state is durable. Values outside the storable
+// domain reject the whole call before anything is applied. OnSet callbacks
+// for keys whose values actually changed (deep compare) fire detached after
+// the persist.
+func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
+	for key, value := range newConfig {
+		if err := validateStoreValue(key, value); err != nil {
+			return err
+		}
+	}
+
 	ds.mu.Lock()
 
 	// Collect OnSet callbacks for changed keys
@@ -222,24 +305,33 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) {
 		}
 	}
 
-	ds.save()
 	ds.mu.Unlock()
 
-	// Fire OnSet callbacks outside lock
-	for _, cb := range pending {
-		cb.onSet(cb.oldValue, cb.newValue)
+	err := ds.persist()
+
+	if len(pending) > 0 {
+		// Detached: callbacks may call back into this storage.
+		go func() {
+			for _, cb := range pending {
+				cb.onSet(cb.oldValue, cb.newValue)
+			}
+		}()
 	}
+	return err
 }
 
-// DefineSchemas sets the schemas for this storage.
+// DefineSchemas sets the schemas for this storage. Persist errors are logged;
+// the in-memory schemas and defaults are applied regardless.
 func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
+	changed := false
+
 	ds.mu.Lock()
-	defer ds.mu.Unlock()
 	ds.Schemas = schemas
 
 	for key, val := range ds.Values {
 		if _, isMap := val.(map[string]any); isMap && ds.findSchemaByKey(key) != nil {
 			delete(ds.Values, key)
+			changed = true
 		}
 	}
 
@@ -247,38 +339,61 @@ func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
 	for i := range schemas {
 		if schemas[i].DefaultValue != nil && !ds.hasValueLocked(schemas[i].Key) {
 			ds.Values[schemas[i].Key] = schemas[i].DefaultValue
+			changed = true
 		}
 	}
-	ds.save()
+	ds.mu.Unlock()
+
+	// Registering schemas over an already-seeded store changes nothing —
+	// skip the whole-document write in that case.
+	if !changed {
+		return
+	}
+
+	if err := ds.persist(); err != nil {
+		ds.logger.Error("store: persist after DefineSchemas failed:", err)
+	}
 }
 
-// AddSchema adds a new schema field.
+// AddSchema adds a new schema field. Persist errors are logged; the in-memory
+// schema and default are applied regardless.
 func (ds *DeviceStorage) AddSchema(schema *JsonSchema) {
 	ds.mu.Lock()
-	defer ds.mu.Unlock()
 
 	// Check if schema with this key already exists
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == schema.Key {
 			ds.Schemas[i] = *schema
+			ds.mu.Unlock()
 			return
 		}
 	}
 	ds.Schemas = append(ds.Schemas, *schema)
 
+	seeded := false
 	if schema.DefaultValue != nil && !ds.hasValueLocked(schema.Key) {
 		ds.Values[schema.Key] = schema.DefaultValue
+		seeded = true
 	}
-	ds.save()
+	ds.mu.Unlock()
+
+	// Only an actually-seeded default changes persisted state.
+	if !seeded {
+		return
+	}
+
+	if err := ds.persist(); err != nil {
+		ds.logger.Error("store: persist after AddSchema failed:", err)
+	}
 }
 
-// ChangeSchema replaces the schema for an existing key. The passed key always
-// wins (newSchema.Key is overwritten with key). It is a no-op when no schema
-// with that key is currently registered — use AddSchema to add a new field.
-// Persists when the changed schema is storable.
-//
-// Unlike the Node/Python SDKs (which merge a partial schema into the existing
-// one), the Go SDK takes a full JsonSchema and replaces the entry.
+// ChangeSchema replaces the schema for an existing key with a full JsonSchema;
+// partial fields are not merged. The passed key always wins (newSchema.Key is
+// overwritten with key). It is a no-op when no schema with that key is currently
+// registered — use AddSchema to add a new field. Values are untouched, so nothing
+// is persisted immediately; when the change flips the key's storable-ness the next
+// write is forced to persist so the flip becomes durable even if the value itself
+// compares unchanged.
 func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -286,26 +401,42 @@ func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) {
 	newSchema.Key = key
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == key {
-			ds.Schemas[i] = *newSchema
-			if newSchema.Store != nil && *newSchema.Store &&
-				newSchema.Type != JsonSchemaTypeButton && newSchema.Type != JsonSchemaTypeSubmit {
-				ds.save()
+			if schemaStorable(&ds.Schemas[i]) != schemaStorable(newSchema) {
+				ds.dirty = true
+				// Bump the sequence so an in-flight persist whose snapshot
+				// predates the flip cannot clear the flag.
+				ds.persistSeq++
 			}
+			ds.Schemas[i] = *newSchema
 			return
 		}
 	}
 }
 
-// RemoveSchema removes a schema field by key.
+// RemoveSchema removes a schema field by key, together with its value — the
+// key would otherwise turn schema-less and persist as an internal value.
 func (ds *DeviceStorage) RemoveSchema(key string) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
+	removedStorable := false
+	hadValue := false
 
+	ds.mu.Lock()
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == key {
+			removedStorable = schemaStorable(&ds.Schemas[i])
 			ds.Schemas = append(ds.Schemas[:i], ds.Schemas[i+1:]...)
-			return
+			_, hadValue = ds.Values[key]
+			delete(ds.Values, key)
+			break
 		}
+	}
+	ds.mu.Unlock()
+
+	if !removedStorable || !hadValue {
+		return
+	}
+
+	if err := ds.persist(); err != nil {
+		ds.logger.Error("store: persist after RemoveSchema failed:", err)
 	}
 }
 
@@ -342,19 +473,161 @@ func (ds *DeviceStorage) findSchemaByKey(key string) *JsonSchema {
 	return nil
 }
 
-// SetInternalValue sets a system-internal value (e.g. _displayName) without requiring a schema and persists it.
-func (ds *DeviceStorage) SetInternalValue(key string, value any) {
+// SetInternalValue sets a system-internal value (e.g. _displayName) without
+// requiring a schema, blocking until it is persisted. A nil value deletes the
+// key; values outside the storable domain are rejected.
+func (ds *DeviceStorage) SetInternalValue(key string, value any) error {
+	if err := validateStoreValue(key, value); err != nil {
+		return err
+	}
+
 	ds.mu.Lock()
-	ds.Values[key] = value
-	ds.save()
+	oldValue, existed := ds.Values[key]
+	if value == nil {
+		delete(ds.Values, key)
+	} else {
+		// Owned copy, same reasoning as SetValue.
+		ds.Values[key] = deepCopyValue(value)
+	}
+
+	var unchanged bool
+	if value == nil {
+		unchanged = !existed
+	} else {
+		unchanged = existed && deepEqualLoose(oldValue, value)
+	}
+	skip := unchanged && !ds.dirty
 	ds.mu.Unlock()
+
+	// An unchanged value is already durable — skip the whole-document write.
+	if skip {
+		return nil
+	}
+
+	return ds.persist()
 }
 
-// Save persists all changes to storage.
-func (ds *DeviceStorage) Save() {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	ds.save()
+// Save persists the storable configuration state, returning once the write
+// is durable (file synced or master acknowledged).
+func (ds *DeviceStorage) Save() error {
+	return ds.persist()
+}
+
+// close is the runtime-owned teardown, called by StorageController.close() —
+// flushes a final snapshot and unregisters the storage's RPC handler.
+func (ds *DeviceStorage) close() {
+	if err := ds.Save(); err != nil {
+		ds.logger.Error("store: close save failed:", err)
+	}
+	if ds.closeHandler != nil {
+		_ = ds.closeHandler()
+		ds.closeHandler = nil
+	}
+}
+
+const maxSafeStoreInt = 1<<53 - 1
+
+// validateStoreValue rejects values outside the cross-runtime store domain
+// (strings, bools, float64-safe numbers, arrays, string-keyed maps) before
+// they replace the previous value.
+// maxStoreValueDepth rejects circular references (and absurd nesting) with a
+// clear error instead of unbounded recursion.
+const maxStoreValueDepth = 64
+
+func validateStoreValue(key string, value any) error {
+	return walkStoreValue(value, key, 0)
+}
+
+func walkStoreValue(v any, path string, depth int) error {
+	if depth > maxStoreValueDepth {
+		return fmt.Errorf("store: value at '%s' exceeds %d nesting levels — circular reference?", path, maxStoreValueDepth)
+	}
+	switch val := v.(type) {
+	case nil, string, bool, int8, int16, int32, uint8, uint16, uint32:
+		return nil
+	case float32:
+		return checkStoreFloat(float64(val), path)
+	case float64:
+		return checkStoreFloat(val, path)
+	case int:
+		return checkStoreInt(int64(val), path)
+	case int64:
+		return checkStoreInt(val, path)
+	case uint:
+		return checkStoreUint(uint64(val), path)
+	case uint64:
+		return checkStoreUint(val, path)
+	case json.Number:
+		f, err := val.Float64()
+		if err != nil {
+			return fmt.Errorf("store: value at '%s' is not a storable number: %v", path, err)
+		}
+		return checkStoreFloat(f, path)
+	case []byte:
+		return fmt.Errorf("store: value at '%s' is binary — large artifacts belong in files under the plugin storage dir", path)
+	case []any:
+		for i, item := range val {
+			if err := walkStoreValue(item, fmt.Sprintf("%s[%d]", path, i), depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]any:
+		for k, item := range val {
+			if err := walkStoreValue(item, path+"."+k, depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := range rv.Len() {
+			if err := walkStoreValue(rv.Index(i).Interface(), fmt.Sprintf("%s[%d]", path, i), depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			return fmt.Errorf("store: value at '%s' is a %T — map keys must be strings", path, v)
+		}
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := walkStoreValue(iter.Value().Interface(), path+"."+iter.Key().String(), depth+1); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("store: value at '%s' is a %T — only strings, bools, float64-domain numbers, arrays and string-keyed maps are storable", path, v)
+	}
+}
+
+func checkStoreFloat(f float64, path string) error {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Errorf("store: value at '%s' is %v — NaN/Infinity are not storable", path, f)
+	}
+	if f == math.Trunc(f) && math.Abs(f) > maxSafeStoreInt {
+		return fmt.Errorf("store: value at '%s' exceeds the float64-safe integer range (±2^53)", path)
+	}
+	return nil
+}
+
+func checkStoreInt(n int64, path string) error {
+	if n > maxSafeStoreInt || n < -maxSafeStoreInt {
+		return fmt.Errorf("store: value at '%s' exceeds the float64-safe integer range (±2^53)", path)
+	}
+	return nil
+}
+
+func checkStoreUint(n uint64, path string) error {
+	if n > maxSafeStoreInt {
+		return fmt.Errorf("store: value at '%s' exceeds the float64-safe integer range (±2^53)", path)
+	}
+	return nil
 }
 
 // deepEqualLoose compares two values with recursive numeric type normalization.

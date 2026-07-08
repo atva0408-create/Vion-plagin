@@ -77,8 +77,10 @@ func (cm *CoreManager) init() error {
 	return nil
 }
 
-// Close unsubscribes from core events and completes the event subject.
-func (cm *CoreManager) Close() {
+// close is the runtime-owned teardown, invoked by the runtime after the plugin's
+// SHUTDOWN listeners run. Unsubscribes from core events and completes the event
+// subject.
+func (cm *CoreManager) close() {
 	if cm.closeSub != nil {
 		cm.closeSub()
 		cm.closeSub = nil

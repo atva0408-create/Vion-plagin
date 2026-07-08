@@ -6,7 +6,7 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// fileServeStat mirrors the master's FileServeStat.
+// fileServeStat is the wire shape for a served file's stat over the file-serve RPC.
 type fileServeStat struct {
 	Exists bool  `msgpack:"exists" json:"exists"`
 	Size   int64 `msgpack:"size" json:"size"`

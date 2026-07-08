@@ -39,8 +39,9 @@ type DeviceManager struct {
 	logger            *Logger
 	plugin            Plugin
 
-	mu      sync.RWMutex
-	devices map[string]*CameraDevice
+	mu           sync.RWMutex
+	devices      map[string]*CameraDevice
+	closeRequest func()
 }
 
 // newDeviceManager creates a new DeviceManager.
@@ -81,7 +82,7 @@ func (dm *DeviceManager) configureCameras(cameras []*CameraDevice) {
 func (dm *DeviceManager) init() error {
 	ns := getPluginNamespaces(dm.pluginInfo.ID)
 
-	_, err := dm.client.OnRequest(ns.PluginDeviceManagerSubject, func(data []byte) (any, error) {
+	cleanup, err := dm.client.OnRequest(ns.PluginDeviceManagerSubject, func(data []byte) (any, error) {
 		var msg deviceManagerEventMessage
 		// Raw wire bytes — may be a CUIB frame when the host request carried
 		// large binaries; DecodeMessageInto handles plain msgpack unchanged.
@@ -98,7 +99,35 @@ func (dm *DeviceManager) init() error {
 
 		return nil, nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	dm.closeRequest = cleanup
+	return nil
+}
+
+// close is the runtime-owned teardown, invoked by the runtime after the plugin's
+// SHUTDOWN listeners run. Cascades to each camera device's cleanup so their
+// sensors tear down in a deterministic order.
+func (dm *DeviceManager) close() {
+	if dm.closeRequest != nil {
+		dm.closeRequest()
+		dm.closeRequest = nil
+	}
+
+	// Snapshot under the lock, then release it before invoking cleanup — a
+	// device cleanup must never run while the manager mutex is held.
+	dm.mu.Lock()
+	devices := make([]*CameraDevice, 0, len(dm.devices))
+	for _, device := range dm.devices {
+		devices = append(devices, device)
+	}
+	dm.devices = make(map[string]*CameraDevice)
+	dm.mu.Unlock()
+
+	for _, device := range devices {
+		device.cleanup()
+	}
 }
 
 func (dm *DeviceManager) handleCameraAdded(msg deviceManagerEventMessage) {

@@ -6,7 +6,10 @@ package sdk
 // registered via On / Once, removed via Off / RemoveAllListeners, and
 // invoked through Emit.
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 // eventHandler is a listener invoked when an event is emitted.
 type eventHandler func(args ...any)
@@ -87,6 +90,64 @@ func (e *eventEmitter) Emit(event string, args ...any) {
 		}
 		e.listeners[event] = current
 		e.mu.Unlock()
+	}
+}
+
+// emitAndWait invokes every listener registered for event, each in its own
+// goroutine, and waits until all of them return or timeout elapses. It
+// reports whether every listener finished in time. Panics are recovered and
+// handed to onPanic (may be nil) so one failing listener never propagates or
+// blocks the rest; work a handler spawns in goroutines of its own is not
+// tracked.
+func (e *eventEmitter) emitAndWait(event string, timeout time.Duration, onPanic func(recovered any), args ...any) bool {
+	e.mu.Lock()
+	current := e.listeners[event]
+	entries := make([]eventEntry, len(current))
+	copy(entries, current)
+	// Drop once-listeners before invoking so they cannot fire again.
+	kept := current[:0]
+	for _, entry := range current {
+		if !entry.once {
+			kept = append(kept, entry)
+		}
+	}
+	if len(kept) == 0 {
+		delete(e.listeners, event)
+	} else {
+		e.listeners[event] = kept
+	}
+	e.mu.Unlock()
+
+	if len(entries) == 0 {
+		return true
+	}
+
+	var wg sync.WaitGroup
+	for _, entry := range entries {
+		wg.Go(func() {
+			defer func() {
+				if r := recover(); r != nil && onPanic != nil {
+					onPanic(r)
+				}
+			}()
+			entry.handler(args...)
+		})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
 
