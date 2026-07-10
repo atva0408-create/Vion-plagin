@@ -18,6 +18,8 @@ type DiscoveredCamera struct {
 	Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
 	// Model is the model name (if known).
 	Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+	// Address is the network address (IP or hostname) shown in the UI to disambiguate same-model cameras.
+	Address string `msgpack:"address,omitempty" json:"address,omitempty"`
 }
 
 // DeviceManager provides camera lookup and discovery operations via RPC.
