@@ -19,6 +19,7 @@ import (
 // tears down immediately instead of reporting a startup error and waiting.
 var errStopRequested = errors.New("stop requested during startup")
 
+const shutdownListenerTimeout = 1500 * time.Millisecond
 const rpcTeardownTimeout = 500 * time.Millisecond
 
 const gracefulShutdownTimeout = 2 * time.Second
@@ -96,11 +97,11 @@ func Run(constructor pluginConstructor) {
 		stoppedMu.Unlock()
 
 		if api != nil {
-			completed := api.emitAndWait(string(APIEventShutdown), 1*time.Second, func(recovered any) {
+			completed := api.emitAndWait(string(APIEventShutdown), shutdownListenerTimeout, func(recovered any) {
 				logger.Error("Shutdown listener panicked:", recovered)
 			})
 			if !completed {
-				logger.Warn("Shutdown listeners still pending after 1s, continuing teardown")
+				logger.Warn("Shutdown listeners still pending after", shutdownListenerTimeout, ", continuing teardown")
 			}
 
 			// Runtime-owned teardown, ordered and separate from the plugin's
@@ -136,7 +137,7 @@ func Run(constructor pluginConstructor) {
 		select {
 		case <-done:
 		case <-time.After(rpcTeardownTimeout):
-			logger.Warn("RPC teardown still pending after 500ms, exiting anyway")
+			logger.Warn("RPC teardown still pending after", rpcTeardownTimeout, ", exiting anyway")
 		}
 	}
 
