@@ -14,6 +14,8 @@ type CameraInput struct {
 	HotMode bool `msgpack:"hotMode,omitempty" json:"hotMode,omitempty"`
 	// Preload toggles stream preloading on startup.
 	Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
+	// Muted strips the audio track from this source.
+	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
 	// Urls are the generated streaming URLs.
 	Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
@@ -162,6 +164,8 @@ type CameraConfigInputSettings struct {
 	HotMode bool `msgpack:"hotMode" json:"hotMode"`
 	// Preload toggles stream preloading on startup.
 	Preload bool `msgpack:"preload" json:"preload"`
+	// Muted strips the audio track from this source.
+	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
 	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 	// Urls are the raw source URLs (resolved into streaming URLs by the host).
