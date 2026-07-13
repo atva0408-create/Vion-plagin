@@ -105,7 +105,7 @@ func (s *ObjectSensor) ReportDetections(detected bool, detections []TrackedDetec
 	case !detected:
 		list = []TrackedDetection{}
 	case len(detections) > 0:
-		list = detections
+		list = fillMissingTrackedBoxes(detections)
 	default:
 		list = []TrackedDetection{{
 			Detection: Detection{
@@ -121,6 +121,18 @@ func (s *ObjectSensor) ReportDetections(detected bool, detections []TrackedDetec
 		objectPropertyDetections: list,
 		objectPropertyLabels:     labels,
 	})
+}
+
+// fillMissingTrackedBoxes is fillMissingBoxes for tracked detections.
+func fillMissingTrackedBoxes(detections []TrackedDetection) []TrackedDetection {
+	out := make([]TrackedDetection, len(detections))
+	for i, d := range detections {
+		if d.Box == nil {
+			d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
+		}
+		out[i] = d
+	}
+	return out
 }
 
 // ClearDetections explicitly clears detection state (detected = false, detections = [], labels = []).

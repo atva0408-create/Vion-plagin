@@ -439,7 +439,7 @@ func generateSensorID() string {
 // normalizeReportedDetections is a helper for `ReportDetections(detected, detections)` flows.
 //
 //   - If `detected` is false → returns an empty slice (clear).
-//   - If `detected` is true and `detections` has items → returns them as-is.
+//   - If `detected` is true and `detections` has items → returns them, substituting a full-frame box where missing.
 //   - If `detected` is true and `detections` is empty → returns a single
 //     synthesized full-frame detection with the given fallback label and any
 //     fallback extras applied (used for type-specific properties like `attribute`).
@@ -448,7 +448,7 @@ func normalizeReportedDetections(detected bool, detections []Detection, fallback
 		return []Detection{}
 	}
 	if len(detections) > 0 {
-		return detections
+		return fillMissingBoxes(detections)
 	}
 	d := Detection{
 		Label:      fallbackLabel,
@@ -459,6 +459,21 @@ func normalizeReportedDetections(detected bool, detections []Detection, fallback
 		d.Attribute = fallbackAttribute
 	}
 	return []Detection{d}
+}
+
+// fillMissingBoxes substitutes a full-frame bounding box for detections
+// reported without one. Smart-camera plugins (Ring, Reolink, ...) report
+// labels without coordinates, while downstream consumers (detection
+// coordinator, zone matching) require a box on every detection.
+func fillMissingBoxes(detections []Detection) []Detection {
+	out := make([]Detection, len(detections))
+	for i, d := range detections {
+		if d.Box == nil {
+			d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
+		}
+		out[i] = d
+	}
+	return out
 }
 
 func isDetectionSensorType(t SensorType) bool {
