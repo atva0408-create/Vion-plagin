@@ -656,7 +656,11 @@ export function categorizeEvent(topic: string): EventCategory {
   }
 
   // Audio patterns
-  if (topicLower.includes('audioanalytics') || topicLower.includes('audiodetect')) {
+  if (
+    topicLower.includes('audioanalytics') ||
+    topicLower.includes('audiodetect') ||
+    topicLower.includes('sounddetect')
+  ) {
     return 'audio'
   }
 
@@ -950,21 +954,66 @@ export function parseAudioEvent(message: NotificationMessage): AudioEventData | 
   return result
 }
 
+const DETECTION_CATEGORIES: EventCategory[] = [
+  'motion',
+  'face',
+  'person',
+  'vehicle',
+  'animal',
+  'license_plate',
+  'audio'
+]
+
 /**
- * Check if device supports audio detection based on event properties
+ * Extract all advertised topic paths from a parsed TopicSet tree
+ *
+ * @param topicSet - The topicSet from getEventProperties()
+ */
+export function extractTopicPaths(topicSet: unknown): string[] {
+  const paths: string[] = []
+  const walk = (node: unknown, path: string): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+    const record = node as Record<string, unknown>
+    const childKeys = Object.keys(record).filter((key) => {
+      const value = record[key]
+      return (
+        value !== null &&
+        typeof value === 'object' &&
+        key !== 'messageDescription' &&
+        key !== 'topicNamespaceLocation'
+      )
+    })
+    if ((record.messageDescription || childKeys.length === 0) && path) {
+      paths.push(path)
+    }
+    for (const key of childKeys) {
+      walk(record[key], path ? `${path}/${key}` : key)
+    }
+  }
+  walk(topicSet, '')
+  return paths
+}
+
+/**
+ * Get all supported detection types for a device.
+ *
+ * Walks the advertised topic paths through categorizeEvent so sensor creation
+ * and event routing share one heuristic. Substring-matching the whole topicSet
+ * JSON created phantom sensors: Dahua/Amcrest advertise face/recognition
+ * topics their firmware never fires.
  *
  * @param properties - The event properties
  */
-export function supportsAudioDetection(properties: EventProperties): boolean {
+export function getSupportedDetectionTypes(properties: EventProperties): EventCategory[] {
   if (!properties.topicSet) {
-    return false
+    return []
   }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return (
-    topicSetStr.includes('audioanalytics') ||
-    topicSetStr.includes('audiodetect') ||
-    topicSetStr.includes('sounddetect')
+  const categories = new Set(
+    extractTopicPaths(properties.topicSet).map((topic) => categorizeEvent(topic))
   )
+  return DETECTION_CATEGORIES.filter((category) => categories.has(category))
 }
 
 /**
@@ -973,21 +1022,7 @@ export function supportsAudioDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsMotionDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-
-  // Convert topic set to string for pattern matching
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-
-  // Check for common motion detection patterns
-  return (
-    topicSetStr.includes('motiondetect') ||
-    topicSetStr.includes('cellmotion') ||
-    topicSetStr.includes('linedetect') ||
-    topicSetStr.includes('fielddetect') ||
-    topicSetStr.includes('motionalarm')
-  )
+  return getSupportedDetectionTypes(properties).includes('motion')
 }
 
 /**
@@ -996,15 +1031,7 @@ export function supportsMotionDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsFaceDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return (
-    topicSetStr.includes('facedetect') ||
-    topicSetStr.includes('facedetection') ||
-    topicSetStr.includes('myruledetector') // Reolink cameras use MyRuleDetector/FaceDetect
-  )
+  return getSupportedDetectionTypes(properties).includes('face')
 }
 
 /**
@@ -1013,16 +1040,7 @@ export function supportsFaceDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsPersonDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return (
-    topicSetStr.includes('peopledetect') ||
-    topicSetStr.includes('persondetect') ||
-    topicSetStr.includes('humandetect') ||
-    topicSetStr.includes('myruledetector') // Reolink cameras use MyRuleDetector/PeopleDetect
-  )
+  return getSupportedDetectionTypes(properties).includes('person')
 }
 
 /**
@@ -1031,15 +1049,7 @@ export function supportsPersonDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsVehicleDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return (
-    topicSetStr.includes('vehicledetect') ||
-    topicSetStr.includes('cardetect') ||
-    topicSetStr.includes('myruledetector') // Reolink cameras use MyRuleDetector/VehicleDetect
-  )
+  return getSupportedDetectionTypes(properties).includes('vehicle')
 }
 
 /**
@@ -1048,16 +1058,7 @@ export function supportsVehicleDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsAnimalDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return (
-    topicSetStr.includes('dogcatdetect') ||
-    topicSetStr.includes('animaldetect') ||
-    topicSetStr.includes('petdetect') ||
-    topicSetStr.includes('myruledetector') // Reolink cameras use MyRuleDetector/DogCatDetect
-  )
+  return getSupportedDetectionTypes(properties).includes('animal')
 }
 
 /**
@@ -1066,30 +1067,16 @@ export function supportsAnimalDetection(properties: EventProperties): boolean {
  * @param properties - The event properties
  */
 export function supportsLicensePlateDetection(properties: EventProperties): boolean {
-  if (!properties.topicSet) {
-    return false
-  }
-  const topicSetStr = JSON.stringify(properties.topicSet).toLowerCase()
-  return topicSetStr.includes('licenseplate') || topicSetStr.includes('anpr')
+  return getSupportedDetectionTypes(properties).includes('license_plate')
 }
 
 /**
- * Get all supported detection types for a device
+ * Check if device supports audio detection based on event properties
  *
  * @param properties - The event properties
  */
-export function getSupportedDetectionTypes(properties: EventProperties): EventCategory[] {
-  const supported: EventCategory[] = []
-
-  if (supportsMotionDetection(properties)) supported.push('motion')
-  if (supportsFaceDetection(properties)) supported.push('face')
-  if (supportsPersonDetection(properties)) supported.push('person')
-  if (supportsVehicleDetection(properties)) supported.push('vehicle')
-  if (supportsAnimalDetection(properties)) supported.push('animal')
-  if (supportsLicensePlateDetection(properties)) supported.push('license_plate')
-  if (supportsAudioDetection(properties)) supported.push('audio')
-
-  return supported
+export function supportsAudioDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('audio')
 }
 
 /**

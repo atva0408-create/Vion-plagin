@@ -43,3 +43,5 @@ coverage
 .env
 /test
 dist
+## Inspector
+tools/.inspect-credentials.json

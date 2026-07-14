@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "rimraf dist && tsc",
+    "inspect": "node tools/inspect.mjs",
     "format": "prettier --write 'src/' --ignore-unknown --no-error-on-unmatched-pattern",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
