@@ -485,9 +485,11 @@ export class PTZ {
 
   private static PTZVectorToXML(input: PTZVector | PTZInputVector): string {
     const vector: PTZVector = PTZ.isPTZInputVector(input) ? PTZ.formatPTZSimpleVector(input) : input
+    const panTiltSpace = vector.panTilt?.space ? ` space="${vector.panTilt.space}"` : ''
+    const zoomSpace = vector.zoom?.space ? ` space="${vector.zoom.space}"` : ''
     return `
-      ${vector.panTilt ? `<PanTilt x="${vector.panTilt.x}" y="${vector.panTilt.y}" xmlns="http://www.onvif.org/ver10/schema"/>` : ''}
-      ${vector.zoom ? `<Zoom x="${vector.zoom.x}" xmlns="http://www.onvif.org/ver10/schema"/>` : ''}
+      ${vector.panTilt ? `<PanTilt x="${vector.panTilt.x}" y="${vector.panTilt.y}"${panTiltSpace} xmlns="http://www.onvif.org/ver10/schema"/>` : ''}
+      ${vector.zoom ? `<Zoom x="${vector.zoom.x}"${zoomSpace} xmlns="http://www.onvif.org/ver10/schema"/>` : ''}
     `
   }
 

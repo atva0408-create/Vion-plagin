@@ -85,19 +85,23 @@ export async function parseSOAPString<T>(rawXml: string): Promise<[T, string]> {
   // Filter out XML namespaces
   const xml = rawXml.replace(/xmlns([^=]*?)=(".*?")/g, '')
 
+  // attributes need the same treatment as tags: ONVIF attributes are
+  // PascalCase (Name, Value, PropertyOperation) but every consumer reads
+  // them camelCase; without this, event payloads parse to empty defaults
+  const nameProcessor = (raw: string) => {
+    const str = raw.replace(prefixMatch, '')
+    const secondLetter = str.charAt(1)
+    if (secondLetter && secondLetter.toUpperCase() !== secondLetter) {
+      return str.charAt(0).toLowerCase() + str.slice(1)
+    }
+    return str
+  }
+
   // eslint-disable-next-line import-x/no-named-as-default-member
   const result = await xml2js.parseStringPromise(xml, {
     explicitArray: false,
-    tagNameProcessors: [
-      (tag: string) => {
-        const str = tag.replace(prefixMatch, '')
-        const secondLetter = str.charAt(1)
-        if (secondLetter && secondLetter.toUpperCase() !== secondLetter) {
-          return str.charAt(0).toLowerCase() + str.slice(1)
-        }
-        return str
-      }
-    ]
+    tagNameProcessors: [nameProcessor],
+    attrNameProcessors: [nameProcessor]
   })
 
   if (!result?.envelope?.body) {

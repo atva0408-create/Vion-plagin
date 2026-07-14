@@ -415,11 +415,16 @@ export class Events extends EventEmitter {
         if (!this.subscription || !this.terminationTime || Date.now() > this.terminationTime.getTime()) {
           await this.createPullPointSubscription()
           this.reconnectMs = 10
+          // a healthy loop resubscribes once at start and then never again;
+          // consumers can watch this to spot subscription churn (each new
+          // subscription re-emits Initialized property states)
+          this.emit('resubscribed')
         }
 
         // Pull messages
         const result = await this.pullMessages({ messageLimit: this.messageLimit })
         this.reconnectMs = 10
+        this.emit('pull', result.notificationMessage?.length ?? 0)
 
         // Emit events and track observed categories
         if (result.notificationMessage && result.notificationMessage.length > 0) {
@@ -444,8 +449,11 @@ export class Events extends EventEmitter {
         try {
           const renewResult = await this.renew()
           this.terminationTime = this.calculateTerminationTime(renewResult)
-        } catch {
-          // Renew failed, continue anyway - subscription might still be valid
+        } catch (renewError) {
+          // renew failure is not fatal (subscription may still be valid) but
+          // consumers need to see it: some cameras tear the subscription down
+          // on a failed renew and every later pull dies silently
+          this.emit('renewfailed', renewError)
         }
       } catch (error) {
         this.emit('error', error)
@@ -496,8 +504,16 @@ export class Events extends EventEmitter {
    * @param response - The response containing currentTime and terminationTime
    */
   private calculateTerminationTime(response: { currentTime: Date; terminationTime: Date }): Date {
-    const serverOffset = response.currentTime.getTime() - Date.now()
-    return new Date(response.terminationTime.getTime() - serverOffset)
+    // some cameras omit or garble these dates; a crash here kills the loop
+    // iteration, forces a resubscribe on every cycle and drops real Changed
+    // events into the gaps while Initialized dumps spam the consumer
+    const termination = response.terminationTime instanceof Date ? response.terminationTime.getTime() : NaN
+    if (Number.isNaN(termination)) {
+      return new Date(Date.now() + 60_000)
+    }
+    const current = response.currentTime instanceof Date ? response.currentTime.getTime() : NaN
+    const serverOffset = Number.isNaN(current) ? 0 : current - Date.now()
+    return new Date(termination - serverOffset)
   }
 
   /**
@@ -682,6 +698,21 @@ export function categorizeEvent(topic: string): EventCategory {
  *
  * @param message - The notification message
  */
+/**
+ * Resolve the actual event payload of a notification message.
+ *
+ * ONVIF nests the payload twice: the WS-Notification `wsnt:Message` element
+ * wraps the ONVIF `tt:Message` that carries PropertyOperation, Source and
+ * Data. Reading `message.message` directly yields the wrapper and every
+ * field parses to its default. Tolerates already-flattened shapes.
+ *
+ * @param message - The notification message
+ */
+export function messagePayload(message: NotificationMessage): NotificationMessage['message'] {
+  const outer = message.message as NotificationMessage['message'] & { message?: NotificationMessage['message'] }
+  return outer?.message ?? outer
+}
+
 export function parseMotionEvent(message: NotificationMessage): MotionEventData | undefined {
   const topic = message.topic?._
   if (!topic) {
@@ -694,8 +725,9 @@ export function parseMotionEvent(message: NotificationMessage): MotionEventData 
   }
 
   // Extract motion state from data
-  const data = message.message?.data
-  const source = message.message?.source
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
 
   let isMotion = false
   let videoSourceToken: string | undefined
@@ -736,8 +768,8 @@ export function parseMotionEvent(message: NotificationMessage): MotionEventData 
   if (rule !== undefined) {
     result.rule = rule
   }
-  if (message.message?.utcTime) {
-    result.timestamp = toDate(message.message.utcTime)
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
   }
 
   return result
@@ -763,8 +795,9 @@ export function parseDetectionEvent(message: NotificationMessage): DetectionEven
   }
 
   // Extract detection state from data
-  const data = message.message?.data
-  const source = message.message?.source
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
 
   let isDetected = false
   let videoSourceToken: string | undefined
@@ -814,8 +847,8 @@ export function parseDetectionEvent(message: NotificationMessage): DetectionEven
   if (rule !== undefined) {
     result.rule = rule
   }
-  if (message.message?.utcTime) {
-    result.timestamp = toDate(message.message.utcTime)
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
   }
   if (Object.keys(additionalData).length > 0) {
     result.data = additionalData
@@ -841,8 +874,9 @@ export function parseAudioEvent(message: NotificationMessage): AudioEventData | 
   }
 
   // Extract audio state from data
-  const data = message.message?.data
-  const source = message.message?.source
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
 
   let isAudioDetected = false
   let audioSourceToken: string | undefined
@@ -909,8 +943,8 @@ export function parseAudioEvent(message: NotificationMessage): AudioEventData | 
   if (rule !== undefined) {
     result.rule = rule
   }
-  if (message.message?.utcTime) {
-    result.timestamp = toDate(message.message.utcTime)
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
   }
 
   return result
