@@ -756,6 +756,8 @@ ObjectDetectionSettings is object detection configuration.
 	type ObjectDetectionSettings struct {
 	    // Confidence is the minimum confidence threshold (0-1).
 	    Confidence float64 `msgpack:"confidence" json:"confidence"`
+	    // SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
+	    SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
 	}
 
 <a name="ObjectDetector"></a>
