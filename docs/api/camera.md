@@ -904,7 +904,7 @@ DetectionLine is a virtual tripwire for line crossing detection. The two points 
 
 ## type DetectionZone
 
-DetectionZone is a polygon zone used for detection filtering or privacy masking.
+DetectionZone is a polygon zone that restricts or drops detections.
 
 	type DetectionZone struct {
 	    // Name is the zone display name.
@@ -917,7 +917,7 @@ DetectionZone is a polygon zone used for detection filtering or privacy masking.
 	    Filter ZoneFilter `msgpack:"filter" json:"filter"`
 	    // Labels are the labels to filter (empty = all labels).
 	    Labels []DetectionLabel `msgpack:"labels" json:"labels"`
-	    // IsPrivacyMask indicates whether this is a privacy mask (blur/block area).
+	    // IsPrivacyMask indicates an ignore zone: detections fully inside it are dropped.
 	    IsPrivacyMask bool `msgpack:"isPrivacyMask" json:"isPrivacyMask"`
 	    // Color is the zone display color (hex).
 	    Color string `msgpack:"color" json:"color"`
