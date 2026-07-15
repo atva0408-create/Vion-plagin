@@ -221,8 +221,9 @@ async function showPtz(cam) {
     const nodes = await cam.ptz.getNodes()
     for (const node of Object.values(nodes ?? {})) {
       const byType = {}
-      for (const space of node.supportedPTZSpaces ?? []) {
-        for (const [key, desc] of Object.entries(space)) {
+      for (const [key, descs] of Object.entries(node.supportedPTZSpaces ?? {})) {
+        if (!Array.isArray(descs)) continue
+        for (const desc of descs) {
           const uri = desc?.URI
           if (uri) (byType[key] ??= []).push(spaceName(uri))
         }
@@ -239,6 +240,34 @@ async function showPtz(cam) {
   } catch (error) {
     console.log(`getStatus failed: ${error.message}`)
   }
+}
+
+const PAN_TILT_SPACES = {
+  fov: 'http://www.onvif.org/ver10/tptz/PanTiltSpaces/TranslationSpaceFov',
+  generic: 'http://www.onvif.org/ver10/tptz/PanTiltSpaces/TranslationGenericSpace'
+}
+
+async function testMove(cam, dx, dy, spaceArg) {
+  if (Number.isNaN(dx) || Number.isNaN(dy)) {
+    console.log('usage: move <dx> <dy> [fov|generic]  (deltas -1..1, default space of the camera if omitted)')
+    return
+  }
+  const space = spaceArg ? PAN_TILT_SPACES[spaceArg] : undefined
+  if (spaceArg && !space) {
+    console.log(`unknown space "${spaceArg}" — use fov or generic`)
+    return
+  }
+  const posOf = (status) => {
+    const pt = status?.position?.panTilt
+    return pt ? `pan=${pt.x} tilt=${pt.y}` : '(no position)'
+  }
+  const before = await cam.ptz.getStatus().catch(() => undefined)
+  console.log(`before: ${posOf(before)}`)
+  await cam.ptz.relativeMove({ translation: { panTilt: { x: dx, y: dy, ...(space ? { space } : {}) } } })
+  console.log(`sent relativeMove dx=${dx} dy=${dy} space=${spaceArg ?? '(default)'}`)
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  const after = await cam.ptz.getStatus().catch(() => undefined)
+  console.log(`after:  ${posOf(after)}`)
 }
 
 async function auditAll() {
@@ -278,14 +307,17 @@ async function connectQuiet(d) {
 
 async function deviceMenu(cam, key) {
   for (;;) {
-    const cmd = await rl.question(`[${key}] info | topics | watch | watch raw | ptz | back > `)
+    const cmd = await rl.question(`[${key}] info | topics | watch | watch raw | ptz | move <dx> <dy> [fov|generic] | back > `)
     try {
       if (cmd === 'info') await showInfo(cam)
       else if (cmd === 'topics') await showTopics(cam)
       else if (cmd === 'watch') await watch(cam, false)
       else if (cmd === 'watch raw') await watch(cam, true)
       else if (cmd === 'ptz') await showPtz(cam)
-      else if (cmd === 'back' || cmd === 'q') return
+      else if (cmd.startsWith('move')) {
+        const [, dx, dy, spaceArg] = cmd.split(/\s+/)
+        await testMove(cam, Number(dx), Number(dy), spaceArg)
+      } else if (cmd === 'back' || cmd === 'q') return
       else console.log('unknown command')
     } catch (error) {
       console.log(`error: ${error.message}`)
