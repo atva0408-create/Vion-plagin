@@ -122,6 +122,10 @@ func (ds *DeviceStorage) SetValue(key string, value any) error {
 		return err
 	}
 
+	// RPC msgpack decodes numbers to the narrowest fitting type (int8, uint64, …);
+	// normalize so stored values and OnSet payloads match the load path
+	value = normalizeStoreValue(deepCopyValue(value))
+
 	ds.mu.Lock()
 	schema := ds.findSchemaByKey(key)
 	if schema == nil {
@@ -237,6 +241,9 @@ func (ds *DeviceStorage) SetConfig(newConfig map[string]any) error {
 			return err
 		}
 	}
+
+	// same normalization as SetValue, see there
+	newConfig, _ = normalizeStoreValue(deepCopyValue(newConfig)).(map[string]any)
 
 	type pendingCallback struct {
 		onSet    func(newValue, oldValue any) any
@@ -410,6 +417,9 @@ func (ds *DeviceStorage) SetInternalValue(key string, value any) error {
 	if err := validateStoreValue(key, value); err != nil {
 		return err
 	}
+
+	// same normalization as SetValue, see there
+	value = normalizeStoreValue(deepCopyValue(value))
 
 	ds.mu.Lock()
 	oldValue, existed := ds.Values[key]

@@ -511,6 +511,42 @@ func TestDeviceStoragePropagatesSaveErrors(t *testing.T) {
 	}
 }
 
+// RPC msgpack decodes numbers to the narrowest fitting type; the write path
+// must normalize like the load path or type switches on GetValue results miss.
+func TestDeviceStorageNormalizesRPCNumericTypes(t *testing.T) {
+	mp := newMemPersistence()
+	ds := newDeviceStorage(mp, storeLocation{kind: storeLocationPlugin}, testLogger())
+	ds.DefineSchemas([]JsonSchema{
+		{Type: JsonSchemaTypeNumber, Key: "a", Store: Bool(true)},
+		{Type: JsonSchemaTypeNumber, Key: "b", Store: Bool(true)},
+		{Type: JsonSchemaTypeNumber, Key: "c", Store: Bool(true)},
+	})
+
+	if err := ds.SetValue("a", int8(50)); err != nil {
+		t.Fatal(err)
+	}
+	if got := ds.GetValue("a"); got != int64(50) {
+		t.Errorf("SetValue(int8) stored %T(%v), want int64(50)", got, got)
+	}
+
+	if err := ds.SetConfig(map[string]any{"b": uint64(30), "c": float32(1.5)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ds.GetValue("b"); got != int64(30) {
+		t.Errorf("SetConfig(uint64) stored %T(%v), want int64(30)", got, got)
+	}
+	if got := ds.GetValue("c"); got != float64(float32(1.5)) {
+		t.Errorf("SetConfig(float32) stored %T(%v), want float64", got, got)
+	}
+
+	if err := ds.SetInternalValue("_d", uint16(7)); err != nil {
+		t.Fatal(err)
+	}
+	if got := ds.GetValue("_d"); got != int64(7) {
+		t.Errorf("SetInternalValue(uint16) stored %T(%v), want int64(7)", got, got)
+	}
+}
+
 // watchdog fails the test if fn does not return within the deadline —
 // the concurrency tests must fail on deadlock instead of hanging.
 func watchdog(t *testing.T, timeout time.Duration, fn func()) {
