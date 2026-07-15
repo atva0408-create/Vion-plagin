@@ -1055,11 +1055,14 @@ PTZCapability defines PTZ capabilities.
 <a name="PTZCapabilityPan"></a>
 
 	const (
-	    PTZCapabilityPan     PTZCapability = "pan"
-	    PTZCapabilityTilt    PTZCapability = "tilt"
-	    PTZCapabilityZoom    PTZCapability = "zoom"
-	    PTZCapabilityPresets PTZCapability = "presets"
-	    PTZCapabilityHome    PTZCapability = "home"
+	    PTZCapabilityPan              PTZCapability = "pan"
+	    PTZCapabilityTilt             PTZCapability = "tilt"
+	    PTZCapabilityZoom             PTZCapability = "zoom"
+	    PTZCapabilityPresets          PTZCapability = "presets"
+	    PTZCapabilityHome             PTZCapability = "home"
+	    PTZCapabilityRelativeMove     PTZCapability = "relativeMove"
+	    PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition"
+	    PTZCapabilityVelocityControl  PTZCapability = "velocityControl"
 	)
 
 <a name="PTZControl"></a>
@@ -1088,7 +1091,7 @@ PTZPosition represents an absolute PTZ position.
 	    Zoom float64 `msgpack:"zoom" json:"zoom"`
 	}
 
-<a name="Plugin"></a>
+<a name="PTZRelativeMove"></a>
 
 ## type Point
 

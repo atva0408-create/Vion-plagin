@@ -4,11 +4,14 @@ package sdk
 type PTZCapability string
 
 const (
-	PTZCapabilityPan     PTZCapability = "pan"
-	PTZCapabilityTilt    PTZCapability = "tilt"
-	PTZCapabilityZoom    PTZCapability = "zoom"
-	PTZCapabilityPresets PTZCapability = "presets"
-	PTZCapabilityHome    PTZCapability = "home"
+	PTZCapabilityPan              PTZCapability = "pan"
+	PTZCapabilityTilt             PTZCapability = "tilt"
+	PTZCapabilityZoom             PTZCapability = "zoom"
+	PTZCapabilityPresets          PTZCapability = "presets"
+	PTZCapabilityHome             PTZCapability = "home"
+	PTZCapabilityRelativeMove     PTZCapability = "relativeMove"
+	PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition"
+	PTZCapabilityVelocityControl  PTZCapability = "velocityControl"
 )
 
 // PTZDirection represents PTZ movement speed for continuous move commands.
@@ -31,12 +34,26 @@ type PTZPosition struct {
 	Zoom float64 `msgpack:"zoom" json:"zoom"`
 }
 
+// PTZRelativeMove represents a relative displacement for a single PTZ move.
+//
+// Deltas are normalized to the camera's field of view: PanDelta 1 moves the
+// view by one full frame width, TiltDelta 1 by one full frame height.
+// Conventions match PTZDirection: positive PanDelta = right, positive
+// TiltDelta = up, positive ZoomDelta = zoom in. Plugins map the deltas to
+// hardware-specific translation spaces (e.g. ONVIF RelativeMove).
+type PTZRelativeMove struct {
+	PanDelta  float64 `msgpack:"panDelta" json:"panDelta"`
+	TiltDelta float64 `msgpack:"tiltDelta" json:"tiltDelta"`
+	ZoomDelta float64 `msgpack:"zoomDelta" json:"zoomDelta"`
+}
+
 const (
 	ptzPropertyPosition     = "position"
 	ptzPropertyMoving       = "moving"
 	ptzPropertyPresets      = "presets"
 	ptzPropertyVelocity     = "velocity"
 	ptzPropertyTargetPreset = "targetPreset"
+	ptzPropertyRelativeMove = "relativeMove"
 )
 
 // PTZControl is a pan-tilt-zoom camera control sensor. Override SetPosition /
@@ -102,6 +119,19 @@ func (s *PTZControl) SetVelocity(value PTZDirection) {
 	s.writeState(map[string]any{ptzPropertyVelocity: value})
 }
 
+// SetRelativeMove issues a relative displacement move. Shadow this method to
+// drive hardware (e.g. ONVIF RelativeMove in a translation space) and call the
+// embedded method after success to sync the SDK state. Advertise
+// PTZCapabilityRelativeMove when the camera supports it.
+//
+// Example:
+//
+//	// move the view a third of a frame to the right, a tenth down
+//	ptz.SetRelativeMove(PTZRelativeMove{PanDelta: 0.33, TiltDelta: -0.1, ZoomDelta: 0})
+func (s *PTZControl) SetRelativeMove(value PTZRelativeMove) {
+	s.writeState(map[string]any{ptzPropertyRelativeMove: value})
+}
+
 // SetTargetPreset sets the target preset ID.
 //
 // Example:
@@ -153,6 +183,10 @@ func (s *PTZControl) UpdateValue(property string, value any) error {
 		if str, ok := value.(string); ok {
 			s.SetTargetPreset(str)
 		}
+	case ptzPropertyRelativeMove:
+		if move, ok := coercePTZRelativeMove(value); ok {
+			s.SetRelativeMove(move)
+		}
 	}
 	return nil
 }
@@ -181,4 +215,17 @@ func coercePTZDirection(value any) (PTZDirection, bool) {
 		return PTZDirection{PanSpeed: pan, TiltSpeed: tilt, ZoomSpeed: zoom}, true
 	}
 	return PTZDirection{}, false
+}
+
+func coercePTZRelativeMove(value any) (PTZRelativeMove, bool) {
+	switch v := value.(type) {
+	case PTZRelativeMove:
+		return v, true
+	case map[string]any:
+		pan, _ := toFloat64(v["panDelta"])
+		tilt, _ := toFloat64(v["tiltDelta"])
+		zoom, _ := toFloat64(v["zoomDelta"])
+		return PTZRelativeMove{PanDelta: pan, TiltDelta: tilt, ZoomDelta: zoom}, true
+	}
+	return PTZRelativeMove{}, false
 }

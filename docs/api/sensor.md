@@ -2025,6 +2025,19 @@ Example:
 	ptz.SetPresets([]string{"Home", "Driveway", "Backyard"})
 	
 
+<a name="PTZControl.SetRelativeMove"></a>
+### func \(\*PTZControl\) SetRelativeMove
+
+	func (s *PTZControl) SetRelativeMove(value PTZRelativeMove)
+
+SetRelativeMove issues a relative displacement move. Shadow this method to drive hardware \(e.g. ONVIF RelativeMove in a translation space\) and call the embedded method after success to sync the SDK state. Advertise PTZCapabilityRelativeMove when the camera supports it.
+
+Example:
+
+	// move the view a third of a frame to the right, a tenth down
+	ptz.SetRelativeMove(PTZRelativeMove{PanDelta: 0.33, TiltDelta: -0.1, ZoomDelta: 0})
+	
+
 <a name="PTZControl.SetTargetPreset"></a>
 ### func \(\*PTZControl\) SetTargetPreset
 
