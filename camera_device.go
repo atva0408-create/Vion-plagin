@@ -517,7 +517,9 @@ func (d *CameraDevice) GetSensorsByType(sensorType SensorType) []Sensor {
 	return result
 }
 
-// OnSensorAdded registers a callback for when a sensor from another plugin is added.
+// OnSensorAdded registers a callback for when a sensor from another plugin is added,
+// and only when its type is listed in contract.consumes. This plugin's own sensors do
+// not fire it.
 // The callback receives (sensorID, sensorType). Returns a Disposable to unsubscribe.
 func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable {
 	return d.sensorAdded.Subscribe(func(e sensorEvent) {
@@ -525,7 +527,9 @@ func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType S
 	})
 }
 
-// OnSensorRemoved registers a callback for when a sensor from another plugin is removed.
+// OnSensorRemoved registers a callback for when a sensor is removed from this camera.
+// Unlike OnSensorAdded it is not filtered: it fires for this plugin's own sensors and
+// for other plugins' sensors alike.
 // Returns a Disposable to unsubscribe.
 func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable {
 	return d.sensorRemoved.Subscribe(func(e sensorEvent) {
@@ -533,8 +537,12 @@ func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Dispo
 	})
 }
 
-// OnDetectionEvent registers a callback for detection events (start/update/end).
-// Thumbnails are inline in the event's segment structures, only populated on 'end' events.
+// OnDetectionEvent registers a callback for detection events (start/update/end and
+// segment-start/segment-update/segment-end).
+// Segments only ship on the segment-* events; the 'end' message carries none.
+// Thumbnails are inline in the segment structures: detection and attribute crops on
+// 'segment-start' and 'segment-end', the scene thumbnail also once on the first
+// 'segment-update' after it becomes available.
 // Returns a Disposable to unsubscribe.
 func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable {
 	return d.detectionEvent.Subscribe(func(e DetectionEventData) {
@@ -1107,11 +1115,18 @@ func (d *CameraDevice) cleanup() {
 	d.detectionEvent.Complete()
 
 	d.mu.Lock()
+	sensors := d.sensors
+	d.sensors = nil
 	for _, proxy := range d.proxySensors {
 		proxy.cleanupProxy()
 	}
 	d.proxySensors = nil
 	d.mu.Unlock()
+
+	// dispatch outside d.mu, a plugin hook may call back into the device
+	for _, s := range sensors {
+		setAssignedWithLifecycle(s, false)
+	}
 }
 
 // CameraDeviceSource is a camera source (one of the camera's video inputs)

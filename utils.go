@@ -153,7 +153,7 @@ func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *Snapshot
 		params = append(params, fmt.Sprintf("h=%d", opts.Height))
 	}
 
-	if opts.Rotate > 0 {
+	if opts.Rotate != 0 {
 		params = append(params, fmt.Sprintf("rotate=%d", opts.Rotate))
 	}
 

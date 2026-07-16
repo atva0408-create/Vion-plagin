@@ -12,7 +12,8 @@ type CameraInput struct {
 	UseForSnapshot bool `msgpack:"useForSnapshot,omitempty" json:"useForSnapshot,omitempty"`
 	// HotMode keeps the connection always active.
 	HotMode bool `msgpack:"hotMode,omitempty" json:"hotMode,omitempty"`
-	// Preload toggles stream preloading on startup.
+	// Preload keeps a keyframe cache for this source so the view opens faster.
+	// Use HotMode to keep the stream connected.
 	Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
 	// Muted strips the audio track from this source.
 	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
@@ -162,7 +163,8 @@ type CameraConfigInputSettings struct {
 	UseForSnapshot bool `msgpack:"useForSnapshot" json:"useForSnapshot"`
 	// HotMode keeps the connection always active.
 	HotMode bool `msgpack:"hotMode" json:"hotMode"`
-	// Preload toggles stream preloading on startup.
+	// Preload keeps a keyframe cache for this source so the view opens faster.
+	// Use HotMode to keep the stream connected.
 	Preload bool `msgpack:"preload" json:"preload"`
 	// Muted strips the audio track from this source.
 	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`

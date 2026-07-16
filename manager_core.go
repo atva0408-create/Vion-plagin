@@ -10,9 +10,8 @@ import (
 
 // CoreManagerEvent is the payload emitted by CoreManager.OnEvent.
 //
-// Emitted when a core system event occurs (e.g. cloud account changes,
-// remote-server availability, plugin lifecycle changes). Subscribe via
-// OnEvent to react to system-level state changes.
+// The host currently publishes one event type, "cloudAccountChanged".
+// Subscribe via OnEvent to react to it.
 type CoreManagerEvent struct {
 	// Type is the event type identifier (e.g. "cloudAccountChanged").
 	Type string
@@ -23,9 +22,8 @@ type CoreManagerEvent struct {
 // CoreManager provides system-level functionality via RPC.
 //
 // Exposes cross-cutting services like the FFmpeg binary path, server
-// addresses, HMAC signing for cloud requests, inter-plugin lookup, and
-// a stream of core system events. Accessed via api.CoreManager from
-// within a plugin.
+// addresses, the cloud server id, inter-plugin lookup, and a stream of
+// core system events. Accessed via api.CoreManager from within a plugin.
 type CoreManager struct {
 	client      *rpc.Client
 	proxy       *rpc.Proxy
@@ -115,7 +113,9 @@ func (cm *CoreManager) GetCloudServerID() (string, error) {
 	return id, nil
 }
 
-// GetPluginsByInterface returns all active plugins that implement a specific interface.
+// GetPluginsByInterface returns all installed, enabled plugins that implement a
+// specific interface. Plugins the admin disabled are excluded. A returned plugin
+// may still be starting up or may have crashed, so a call into one can fail.
 func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]PluginInfo, error) {
 	ctx := context.Background()
 	result, err := cm.proxy.Invoke(ctx, "getPluginsByInterface", string(interfaceName))

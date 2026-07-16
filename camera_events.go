@@ -77,7 +77,8 @@ type EventSegment struct {
 	FirstSeen int64 `msgpack:"firstSeen" json:"firstSeen"`
 	// LastSeen is the segment end time (Unix ms).
 	LastSeen int64 `msgpack:"lastSeen" json:"lastSeen"`
-	// Thumbnail is the best-selected JPEG scene thumbnail for this segment. Only present on 'end' events.
+	// Thumbnail is the best-selected JPEG scene thumbnail for this segment. Present on
+	// 'segment-start' and 'segment-end', and on the first 'segment-update' that has a candidate.
 	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
 	// Detections are the object detections in this segment.
 	Detections []EventDetection `msgpack:"detections" json:"detections"`
@@ -99,7 +100,8 @@ type EventDetection struct {
 	MaxCount int `msgpack:"maxCount" json:"maxCount"`
 	// Box is the bounding box of the highest-confidence detection (normalized 0-1).
 	Box *BoundingBox `msgpack:"box,omitempty" json:"box,omitempty"`
-	// Thumbnail is the best-selected JPEG thumbnail crop. Only present on 'end' events.
+	// Thumbnail is the best-selected JPEG thumbnail crop. Present on 'segment-start' and
+	// 'segment-end', omitted when it matches the segment thumbnail.
 	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
 	// TrackID is the object tracker ID (links this detection across frames).
 	TrackID int `msgpack:"trackId,omitempty" json:"trackId,omitempty"`
@@ -115,7 +117,8 @@ type EventAttribute struct {
 	Label string `msgpack:"label" json:"label"`
 	// Confidence is the detection confidence (0-1).
 	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
-	// Thumbnail is the best-selected JPEG thumbnail crop. Only present on 'end' events.
+	// Thumbnail is the best-selected JPEG thumbnail crop. Present on 'segment-start' and
+	// 'segment-end', and on 'segment-update' for unknown faces.
 	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
 	// Embedding is the face embedding vector for unknown face persistence. Only present for face attributes.
 	Embedding []float64 `msgpack:"embedding,omitempty" json:"embedding,omitempty"`

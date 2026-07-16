@@ -47,9 +47,10 @@ type Notification struct {
 	// Severity drives DND / Critical-Alerts behaviour and Quiet-Hours
 	// bypass. Defaults to SeverityInfo if empty.
 	Severity Severity `msgpack:"severity,omitempty" json:"severity,omitempty"`
-	// Tag is a collapse-key for dedup at both manager and notifier level
-	// (e.g. "motion:cam-1" — multiple events with the same tag inside the
-	// throttle window collapse into one notification on the device).
+	// Tag is a collapse-key (e.g. "motion:cam-1"). The host uses it to replace
+	// an older entry with the same tag in the in-app notification list.
+	// Delivery is not throttled: every publish is sent. Notifiers may map it to
+	// a platform collapse-id.
 	Tag string `msgpack:"tag,omitempty" json:"tag,omitempty"`
 	// Thumbnail is an optional inline JPEG attached to the notification.
 	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`

@@ -9,13 +9,15 @@ const (
 
 // MotionResult is the return value of MotionDetector.DetectMotion.
 type MotionResult struct {
-	Detected   bool        `msgpack:"detected" json:"detected"`     // Whether motion is detected in this frame
+	Detected   bool        `msgpack:"detected" json:"detected"`     // Whether motion is detected in this frame. Ignored by the backend, which re-derives it from the detections
 	Detections []Detection `msgpack:"detections" json:"detections"` // Detections emitted for this frame
 }
 
 // MotionDetector is implemented by plugins that analyze video frames for motion.
-// The runtime calls DetectMotion at the configured frame interval and applies
-// the returned MotionResult to the associated MotionSensor.
+// The runtime calls DetectMotion at the configured frame interval, zone-filters
+// the returned detections and applies them to the associated MotionSensor.
+// Detected is re-derived from the surviving detections, so a result with no
+// detections reports no motion.
 type MotionDetector interface {
 	// DetectMotion analyzes a single video frame and returns the motion result.
 	DetectMotion(frame VideoFrameData) (*MotionResult, error)

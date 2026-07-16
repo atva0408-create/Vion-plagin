@@ -222,7 +222,8 @@ CameraConfigInputSettings is a camera input/source definition supplied when crea
 	    UseForSnapshot bool `msgpack:"useForSnapshot" json:"useForSnapshot"`
 	    // HotMode keeps the connection always active.
 	    HotMode bool `msgpack:"hotMode" json:"hotMode"`
-	    // Preload toggles stream preloading on startup.
+	    // Preload keeps a keyframe cache for this source so the view opens faster.
+	    // Use HotMode to keep the stream connected.
 	    Preload bool `msgpack:"preload" json:"preload"`
 	    // Muted strips the audio track from this source.
 	    Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
@@ -452,7 +453,7 @@ OnConnected returns an Observable that emits distinct connection state changes.
 
 	func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable
 
-OnDetectionEvent registers a callback for detection events \(start/update/end\). Thumbnails are inline in the event's segment structures, only populated on 'end' events. Returns a Disposable to unsubscribe.
+OnDetectionEvent registers a callback for detection events \(start/update/end and segment\-start/segment\-update/segment\-end\). Segments only ship on the segment\-\* events; the 'end' message carries none. Thumbnails are inline in the segment structures: detection and attribute crops on 'segment\-start' and 'segment\-end', the scene thumbnail also once on the first 'segment\-update' after it becomes available. Returns a Disposable to unsubscribe.
 
 <a name="CameraDevice.OnFrameWorkerConnected"></a>
 ### func \(\*CameraDevice\) OnFrameWorkerConnected
@@ -473,7 +474,7 @@ OnPropertyChange returns an Observable that emits when any of the specified came
 
 	func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable
 
-OnSensorAdded registers a callback for when a sensor from another plugin is added. The callback receives \(sensorID, sensorType\). Returns a Disposable to unsubscribe.
+OnSensorAdded registers a callback for when a sensor from another plugin is added, and only when its type is listed in contract.consumes. This plugin's own sensors do not fire it. The callback receives \(sensorID, sensorType\). Returns a Disposable to unsubscribe.
 
 <a name="CameraDevice.OnSensorProperty"></a>
 ### func \(\*CameraDevice\) OnSensorProperty
@@ -487,7 +488,7 @@ OnSensorProperty subscribes to a specific property on a sensor type with full li
 
 	func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable
 
-OnSensorRemoved registers a callback for when a sensor from another plugin is removed. Returns a Disposable to unsubscribe.
+OnSensorRemoved registers a callback for when a sensor is removed from this camera. Unlike OnSensorAdded it is not filtered: it fires for this plugin's own sensors and for other plugins' sensors alike. Returns a Disposable to unsubscribe.
 
 <a name="CameraDevice.PTZAutotrack"></a>
 ### func \(\*CameraDevice\) PTZAutotrack
@@ -720,7 +721,8 @@ CameraInput is a camera video input/source with resolved URLs.
 	    UseForSnapshot bool `msgpack:"useForSnapshot,omitempty" json:"useForSnapshot,omitempty"`
 	    // HotMode keeps the connection always active.
 	    HotMode bool `msgpack:"hotMode,omitempty" json:"hotMode,omitempty"`
-	    // Preload toggles stream preloading on startup.
+	    // Preload keeps a keyframe cache for this source so the view opens faster.
+	    // Use HotMode to keep the stream connected.
 	    Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
 	    // Muted strips the audio track from this source.
 	    Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
@@ -1177,9 +1179,10 @@ PtzAutotrackSettings configures automatic PTZ tracking of detected objects.
 	    // TrackingSpeed is how aggressively the camera moves to re-center the target (1 - 5).
 	    // Higher reaches full pan/tilt speed at a smaller off-center error.
 	    TrackingSpeed float64 `msgpack:"trackingSpeed" json:"trackingSpeed"`
-	    // LeadFrames is the motion prediction (0 - 6): aim this many detection-frames
-	    // ahead along the target's measured velocity. 0 disables prediction.
-	    LeadFrames float64 `msgpack:"leadFrames" json:"leadFrames"`
+	    // LeadMs is the motion prediction (0 - 4000): aim this many milliseconds ahead
+	    // along the target's measured velocity, covering the time the camera needs to
+	    // move and settle. 0 disables prediction.
+	    LeadMs float64 `msgpack:"leadMs" json:"leadMs"`
 	    // PanRate is the camera pan-rate calibration (0.1 - 3): assumed pan travel at
 	    // full motor speed in normalized frame-widths per second. Lower it if the
 	    // camera stops short of the target, raise it if it overshoots.
@@ -1468,7 +1471,7 @@ ZoneFilter is the detection zone filter mode.
 
 ZoneType is the detection zone intersection type.
 
-- intersect: Trigger when object touches the zone boundary
+- intersect: Trigger when object overlaps the zone at all
 - contain: Trigger only when object is fully inside the zone
 
 	type ZoneType string

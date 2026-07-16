@@ -204,12 +204,12 @@ The other detector base types follow the same shape — but note the input cardi
 - `cameraui.NewObjectDetectorSensor(name)` pairs with `ObjectDetector.DetectObjects(frame VideoFrameData)` — one frame at a time.
 - `cameraui.NewMotionDetectorSensor(name)` pairs with `MotionDetector.DetectMotion(frame VideoFrameData)` — one frame at a time.
 - `cameraui.NewAudioDetectorSensor(name)` pairs with `AudioDetector.DetectAudio(audio AudioFrameData)` — one audio frame at a time.
-- `cameraui.NewFaceDetectorSensor(name)` pairs with `FaceDetector.DetectFaces(frames []VideoFrameData)` — a batch of pre-cropped person regions.
-- `cameraui.NewLicensePlateDetectorSensor(name)` pairs with `LicensePlateDetector.DetectLicensePlates(frames []VideoFrameData)` — a batch of pre-cropped vehicle regions.
-- `cameraui.NewClassifierDetectorSensor(name)` pairs with `ClassifierDetector.DetectClassifications(frames []VideoFrameData)` — a batch of pre-cropped trigger regions.
-- `cameraui.NewClipDetectorSensor(name)` pairs with `ClipDetector.DetectEmbeddings(frames []VideoFrameData)` — a batch of pre-cropped trigger regions.
+- `cameraui.NewFaceDetectorSensor(name)` pairs with `FaceDetector.DetectFaces(frames []VideoFrameData)` — a batch of person regions.
+- `cameraui.NewLicensePlateDetectorSensor(name)` pairs with `LicensePlateDetector.DetectLicensePlates(frames []VideoFrameData)` — a batch of vehicle regions.
+- `cameraui.NewClassifierDetectorSensor(name)` pairs with `ClassifierDetector.DetectClassifications(frames []VideoFrameData)` — a batch of trigger regions.
+- `cameraui.NewClipDetectorSensor(name)` pairs with `ClipDetector.DetectEmbeddings(frames []VideoFrameData)` — a batch of trigger regions.
 
-The frame-based detectors with a batch shape (face, license plate, classifier, clip) also expose a `ModelSpec()` method on the detector interface — return the input dimensions and (for classifier) the trigger labels.
+The frame-based detectors with a batch shape (face, license plate, classifier, clip) also expose a `ModelSpec()` method on the detector interface — return the input dimensions and (for classifier) the trigger labels. Every frame in a batch is scaled to that input. Normally it is a region the upstream object detector cropped around a matching detection, but when the pipeline has no decoded loop frame, the whole scene is scaled instead and you get a single full-frame entry.
 
 Smart-home sensors expose semantic methods instead. You construct one, call `cam.AddSensor`, and then call those methods when your hardware reports a change:
 
@@ -574,7 +574,7 @@ func (n *MyNotifier) UpdateDevice(deviceID string, patch map[string]any) (*camer
 }
 ```
 
-`Notification.Tag` is a collapse key for dedup at both the manager and notifier level — multiple events with the same tag inside the throttle window collapse into one notification. `Notification.Severity` is `cameraui.SeverityInfo | SeverityWarn | SeverityError | SeverityCritical`; map `SeverityCritical` to whatever DND-bypass mechanism your platform offers.
+`Notification.Tag` is a collapse key (e.g. `"motion:cam-1"`). The host uses it to replace an older entry with the same tag in the in-app notification list. Delivery is not throttled: every publish reaches your notifier, so map the tag to a platform collapse-id if you want the same behavior on the device. `Notification.Severity` is `cameraui.SeverityInfo | SeverityWarn | SeverityError | SeverityCritical`; map `SeverityCritical` to whatever DND-bypass mechanism your platform offers.
 
 ### 6.3 Detection interfaces
 

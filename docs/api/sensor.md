@@ -872,14 +872,16 @@ FaceDetection is a face detection result, extending Detection with face\-specifi
 
 ## type FaceDetector
 
-FaceDetector is implemented by plugins that perform face detection and recognition on pre\-cropped person regions.
+FaceDetector is implemented by plugins that perform face detection and recognition.
 
 	type FaceDetector interface {
 	    // ModelSpec declares the expected input dimensions and trigger labels. The
 	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
-	    // DetectFaces analyzes a batch of pre-cropped, pre-scaled person regions
-	    // and must return exactly one FaceResult per input frame, in the same order.
+	    // DetectFaces analyzes a batch of frames, each scaled to ModelSpec().Input:
+	    // normally a person region cropped by the upstream object detector, but the
+	    // whole scene when no decoded frame is available. Must return exactly one
+	    // FaceResult per input frame, in the same order.
 	    DetectFaces(frames []VideoFrameData) ([]FaceResult, error)
 	}
 
@@ -1580,14 +1582,14 @@ ModelSpec describes a detection model with fixed output labels \(face, classifie
 	type ModelSpec struct {
 	    Input          VideoInputSpec `msgpack:"input" json:"input"`                                       // Required input frame dimensions and pixel format
 	    TriggerLabels  []string       `msgpack:"triggerLabels" json:"triggerLabels"`                       // Labels emitted by an upstream object detector that activate this detector
-	    EmbeddingModel string         `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"` // Embedding model identifier for face recognition
+	    EmbeddingModel string         `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"` // Embedding model identifier, required for face recognition and CLIP: embeddings are stored and matched under this id
 	}
 
 <a name="MotionDetectionInterface"></a>
 
 ## type MotionDetector
 
-MotionDetector is implemented by plugins that analyze video frames for motion. The runtime calls DetectMotion at the configured frame interval and applies the returned MotionResult to the associated MotionSensor.
+MotionDetector is implemented by plugins that analyze video frames for motion. The runtime calls DetectMotion at the configured frame interval, zone\-filters the returned detections and applies them to the associated MotionSensor. Detected is re\-derived from the surviving detections, so a result with no detections reports no motion.
 
 	type MotionDetector interface {
 	    // DetectMotion analyzes a single video frame and returns the motion result.
@@ -1618,7 +1620,7 @@ MotionDetectorSensor is a motion sensor that consumes video frames from the back
 MotionResult is the return value of MotionDetector.DetectMotion.
 
 	type MotionResult struct {
-	    Detected   bool        `msgpack:"detected" json:"detected"`     // Whether motion is detected in this frame
+	    Detected   bool        `msgpack:"detected" json:"detected"`     // Whether motion is detected in this frame. Ignored by the backend, which re-derives it from the detections
 	    Detections []Detection `msgpack:"detections" json:"detections"` // Detections emitted for this frame
 	}
 

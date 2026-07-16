@@ -9,7 +9,7 @@ System-level services injected onto `PluginAPI`: `CoreManager` for FFmpeg path /
 
 CoreManager provides system\-level functionality via RPC.
 
-Exposes cross\-cutting services like the FFmpeg binary path, server addresses, HMAC signing for cloud requests, inter\-plugin lookup, and a stream of core system events. Accessed via api.CoreManager from within a plugin.
+Exposes cross\-cutting services like the FFmpeg binary path, server addresses, the cloud server id, inter\-plugin lookup, and a stream of core system events. Accessed via api.CoreManager from within a plugin.
 
 	type CoreManager struct {
 	    // contains filtered or unexported fields
@@ -43,7 +43,7 @@ GetFFmpegPath returns the path to the FFmpeg binary.
 
 	func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]PluginInfo, error)
 
-GetPluginsByInterface returns all active plugins that implement a specific interface.
+GetPluginsByInterface returns all installed, enabled plugins that implement a specific interface. Plugins the admin disabled are excluded. A returned plugin may still be starting up or may have crashed, so a call into one can fail.
 
 <a name="CoreManager.GetServerAddresses"></a>
 ### func \(\*CoreManager\) GetServerAddresses
@@ -65,7 +65,7 @@ OnEvent returns an Observable for core manager events \(e.g. cloud account chang
 
 CoreManagerEvent is the payload emitted by CoreManager.OnEvent.
 
-Emitted when a core system event occurs \(e.g. cloud account changes, remote\-server availability, plugin lifecycle changes\). Subscribe via OnEvent to react to system\-level state changes.
+The host currently publishes one event type, "cloudAccountChanged". Subscribe via OnEvent to react to it.
 
 	type CoreManagerEvent struct {
 	    // Type is the event type identifier (e.g. "cloudAccountChanged").

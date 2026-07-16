@@ -23,13 +23,15 @@ type FaceResult struct {
 }
 
 // FaceDetector is implemented by plugins that perform face detection and
-// recognition on pre-cropped person regions.
+// recognition.
 type FaceDetector interface {
 	// ModelSpec declares the expected input dimensions and trigger labels. The
 	// runtime scales frames to match.
 	ModelSpec() ModelSpec
-	// DetectFaces analyzes a batch of pre-cropped, pre-scaled person regions
-	// and must return exactly one FaceResult per input frame, in the same order.
+	// DetectFaces analyzes a batch of frames, each scaled to ModelSpec().Input:
+	// normally a person region cropped by the upstream object detector, but the
+	// whole scene when no decoded frame is available. Must return exactly one
+	// FaceResult per input frame, in the same order.
 	DetectFaces(frames []VideoFrameData) ([]FaceResult, error)
 }
 

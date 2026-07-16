@@ -92,7 +92,7 @@ GetSchema returns a schema by key.
 
 	func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any
 
-GetValue retrieves a configuration value. Resolves in order: the schema's OnGet callback \(if any\), the stored value, the schema default, then the provided default.
+GetValue retrieves a configuration value. If the schema declares an OnGet callback, its result is returned as\-is, with no fallback. Otherwise resolves in order: the stored value, the schema default, then the provided default.
 
 <a name="DeviceStorage.HasSchema"></a>
 ### func \(\*DeviceStorage\) HasSchema
@@ -233,7 +233,8 @@ This is a unified struct that covers every schema variant — Type acts as the d
 	    // Color is the button color variant (Type=button or Type=submit only).
 	    Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
 	
-	    // OnSet is invoked after a value changes. Receives (newValue, oldValue).
+	    // OnSet is invoked after SetValue writes the key, changed or not; SetConfig
+	    // calls it only for keys that changed. Receives (newValue, oldValue).
 	    OnSet func(newValue, oldValue any) any `json:"-" msgpack:"-"`
 	    // OnGet is invoked to compute the current value at read time.
 	    OnGet func() any `json:"-" msgpack:"-"`

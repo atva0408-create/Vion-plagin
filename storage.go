@@ -82,9 +82,9 @@ func (ds *DeviceStorage) RPCMethods() []string {
 	}
 }
 
-// GetValue retrieves a configuration value. Resolves in order: the schema's
-// OnGet callback (if any), the stored value, the schema default, then the
-// provided default.
+// GetValue retrieves a configuration value. If the schema declares an OnGet
+// callback, its result is returned as-is, with no fallback. Otherwise resolves
+// in order: the stored value, the schema default, then the provided default.
 func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 	ds.mu.RLock()
 	schema := ds.findSchemaByKey(key)

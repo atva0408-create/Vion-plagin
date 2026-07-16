@@ -44,7 +44,7 @@ type MotionDetectionSettings struct {
 
 // ObjectDetectionSettings is object detection configuration.
 type ObjectDetectionSettings struct {
-	// Confidence is the minimum confidence threshold (0-1).
+	// Confidence is the minimum confidence threshold (0.3 - 1.0).
 	Confidence float64 `msgpack:"confidence" json:"confidence"`
 	// SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
 	SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
@@ -110,9 +110,10 @@ type PtzAutotrackSettings struct {
 	// TrackingSpeed is how aggressively the camera moves to re-center the target (1 - 5).
 	// Higher reaches full pan/tilt speed at a smaller off-center error.
 	TrackingSpeed float64 `msgpack:"trackingSpeed" json:"trackingSpeed"`
-	// LeadFrames is the motion prediction (0 - 6): aim this many detection-frames
-	// ahead along the target's measured velocity. 0 disables prediction.
-	LeadFrames float64 `msgpack:"leadFrames" json:"leadFrames"`
+	// LeadMs is the motion prediction (0 - 4000): aim this many milliseconds ahead
+	// along the target's measured velocity, covering the time the camera needs to
+	// move and settle. 0 disables prediction.
+	LeadMs float64 `msgpack:"leadMs" json:"leadMs"`
 	// PanRate is the camera pan-rate calibration (0.1 - 3): assumed pan travel at
 	// full motor speed in normalized frame-widths per second. Lower it if the
 	// camera stops short of the target, raise it if it overshoots.

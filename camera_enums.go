@@ -66,7 +66,7 @@ const (
 )
 
 // ZoneType is the detection zone intersection type.
-//   - intersect: Trigger when object touches the zone boundary
+//   - intersect: Trigger when object overlaps the zone at all
 //   - contain: Trigger only when object is fully inside the zone
 type ZoneType string
 
