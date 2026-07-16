@@ -181,7 +181,7 @@ Camera is BaseCamera with its video sources resolved into streaming URLs.
 
 ## type CameraAspectRatio
 
-CameraAspectRatio is the camera aspect ratio for UI display.
+CameraAspectRatio is the camera aspect ratio for UI display. The constants are the built\-in presets; any custom "width:height" ratio is also valid.
 
 	type CameraAspectRatio string
 
@@ -192,7 +192,7 @@ CameraAspectRatio is the camera aspect ratio for UI display.
 	    CameraAspectRatio9x16 CameraAspectRatio = "9:16"
 	    CameraAspectRatio8x3  CameraAspectRatio = "8:3"
 	    CameraAspectRatio4x3  CameraAspectRatio = "4:3"
-	    CameraAspectRatioAuto CameraAspectRatio = "1:1"
+	    CameraAspectRatio1x1  CameraAspectRatio = "1:1"
 	)
 
 <a name="CameraConfig"></a>

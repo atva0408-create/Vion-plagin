@@ -44,7 +44,8 @@ const (
 	VideoStreamingModeWebRTCTCP VideoStreamingMode = "webrtc/tcp"
 )
 
-// CameraAspectRatio is the camera aspect ratio for UI display.
+// CameraAspectRatio is the camera aspect ratio for UI display. The constants are
+// the built-in presets; any custom "width:height" ratio is also valid.
 type CameraAspectRatio string
 
 const (
@@ -52,7 +53,7 @@ const (
 	CameraAspectRatio9x16 CameraAspectRatio = "9:16"
 	CameraAspectRatio8x3  CameraAspectRatio = "8:3"
 	CameraAspectRatio4x3  CameraAspectRatio = "4:3"
-	CameraAspectRatioAuto CameraAspectRatio = "1:1"
+	CameraAspectRatio1x1  CameraAspectRatio = "1:1"
 )
 
 // MotionResolution is the motion detection resolution setting.
