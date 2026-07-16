@@ -35,7 +35,24 @@ export type {
 }
 
 /** Error codes that warrant automatic reconnection */
-const RETRY_ERROR_CODES = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH']
+const RETRY_ERROR_CODES = [
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+  // undici: dropped keep-alive sockets and timeouts ("other side closed"),
+  // the subscription is usually still alive, tearing it down churns the camera
+  'UND_ERR_SOCKET',
+  'UND_ERR_CLOSED',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT'
+]
+
+/** Minimum delay before retrying after any event-loop error */
+const MIN_RECONNECT_MS = 1000
 
 /** Maximum reconnection delay in milliseconds (2 minutes) */
 const MAX_RECONNECT_MS = 2 * 60 * 1000
@@ -458,20 +475,21 @@ export class Events extends EventEmitter {
       } catch (error) {
         this.emit('error', error)
 
-        if (this.isRetryableError(error)) {
-          // Wait before retry with exponential backoff
-          await this.sleep(this.reconnectMs)
-          if (this.reconnectMs < MAX_RECONNECT_MS) {
-            this.reconnectMs = Math.min(this.reconnectMs * 1.5, MAX_RECONNECT_MS)
-          }
-        } else {
-          // Non-retryable error, try to unsubscribe and restart
+        if (!this.isRetryableError(error)) {
+          // subscription is likely dead (e.g. HTTP 400 on pull), drop it so
+          // the next iteration resubscribes
           try {
             await this.unsubscribe()
           } catch {
             // Ignore
           }
         }
+
+        // always back off: a delay-free retry loop hammers embedded onvif
+        // daemons until discovery and ptz stop answering camera-wide
+        const delay = Math.max(this.reconnectMs, MIN_RECONNECT_MS)
+        await this.sleep(delay)
+        this.reconnectMs = Math.min(delay * 1.5, MAX_RECONNECT_MS)
       }
     }
   }
