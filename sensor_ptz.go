@@ -54,6 +54,7 @@ const (
 	ptzPropertyVelocity     = "velocity"
 	ptzPropertyTargetPreset = "targetPreset"
 	ptzPropertyRelativeMove = "relativeMove"
+	ptzPropertyHome         = "home"
 )
 
 // PTZControl is a pan-tilt-zoom camera control sensor. Override SetPosition /
@@ -159,7 +160,9 @@ func (s *PTZControl) SetMoving(value bool) {
 	s.writeState(map[string]any{ptzPropertyMoving: value})
 }
 
-// GoHome moves the PTZ to the home position (0, 0, 0).
+// GoHome moves the PTZ to the home position (0, 0, 0). To drive a hardware home
+// command, shadow UpdateValue and handle "home" there: UpdateValue calls the
+// embedded GoHome, so shadowing GoHome alone is never reached.
 //
 // Example:
 //
@@ -187,6 +190,8 @@ func (s *PTZControl) UpdateValue(property string, value any) error {
 		if move, ok := coercePTZRelativeMove(value); ok {
 			s.SetRelativeMove(move)
 		}
+	case ptzPropertyHome:
+		s.GoHome()
 	}
 	return nil
 }
