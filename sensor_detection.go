@@ -14,11 +14,11 @@ const (
 // DetectionLabel is a label identifying a type of detection.
 type DetectionLabel = string
 
+// ObjectDetectionLabels lists the object-detection labels the detector groups its classes into.
+var ObjectDetectionLabels = []string{"person", "vehicle", "animal", "package"}
+
 // DetectionLabels lists the built-in detection label types recognized across the system.
-var DetectionLabels = []string{
-	"motion", "person", "vehicle", "animal",
-	"package", "audio",
-}
+var DetectionLabels = append(append([]string{"motion"}, ObjectDetectionLabels...), "audio")
 
 // DetectionAttribute identifies the kind of a sub-detection (face, license plate, ...).
 type DetectionAttribute = string
