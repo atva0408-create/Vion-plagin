@@ -29,7 +29,7 @@ const (
 	SensorTypeSecuritySystem SensorType = "securitySystem" // Security system arm/disarm control
 	SensorTypeDoorbell       SensorType = "doorbell"       // Doorbell ring trigger
 	SensorTypeTemperature    SensorType = "temperature"    // Temperature sensor (°C)
-	SensorTypeHumidity       SensorType = "humidity"       // Humidity sensor (0–100%)
+	SensorTypeHumidity       SensorType = "humidity"       // Humidity sensor (0-100%)
 	SensorTypeOccupancy      SensorType = "occupancy"      // Occupancy/presence sensor
 	SensorTypeSmoke          SensorType = "smoke"          // Smoke detector
 	SensorTypeLeak           SensorType = "leak"           // Water leak detector

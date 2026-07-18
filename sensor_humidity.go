@@ -1,10 +1,10 @@
 package sdk
 
 const (
-	humidityPropertyCurrent = "current"
+	humidityPropertyCurrent = "current" // Current relative humidity (0-100%)
 )
 
-// HumidityInfo reports current relative humidity (0–100%).
+// HumidityInfo reports current relative humidity (0-100%).
 type HumidityInfo struct{ BaseSensor }
 
 func NewHumidityInfo(name string) *HumidityInfo {

@@ -3,7 +3,7 @@ package sdk
 import "time"
 
 const (
-	doorbellPropertyRing = "ring"
+	doorbellPropertyRing = "ring" // Whether the doorbell is currently ringing
 )
 
 const ringAutoResetMs = 2000

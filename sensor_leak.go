@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	leakPropertyDetected = "detected"
+	leakPropertyDetected = "detected" // Whether a leak is detected
 )
 
 // LeakSensor reports water leak detection state.

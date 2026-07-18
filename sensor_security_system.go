@@ -12,8 +12,8 @@ const (
 )
 
 const (
-	securitySystemPropertyCurrentState = "currentState"
-	securitySystemPropertyTargetState  = "targetState"
+	securitySystemPropertyCurrentState = "currentState" // The actual current state of the security system
+	securitySystemPropertyTargetState  = "targetState"  // The desired target state (set by user, transitions to currentState)
 )
 
 // SecuritySystem is a security system arm/disarm control sensor.

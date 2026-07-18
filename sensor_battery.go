@@ -11,9 +11,9 @@ const (
 )
 
 const (
-	batteryPropertyLevel    = "level"
-	batteryPropertyCharging = "charging"
-	batteryPropertyLow      = "low"
+	batteryPropertyLevel    = "level"    // Battery level percentage (0-100)
+	batteryPropertyCharging = "charging" // Current charging state
+	batteryPropertyLow      = "low"      // Whether battery is critically low
 )
 
 // BatteryCapability defines optional capabilities for battery info sensors.

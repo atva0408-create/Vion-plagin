@@ -1,13 +1,13 @@
 package sdk
 
 const (
-	lightPropertyOn         = "on"
-	lightPropertyBrightness = "brightness"
+	lightPropertyOn         = "on"         // Whether the light is on
+	lightPropertyBrightness = "brightness" // Brightness level (0-100)
 )
 
 // LightCapability defines optional capabilities for light controls.
 const (
-	LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0–100)
+	LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0-100)
 )
 
 // LightControl is a light on/off and brightness control sensor. Override

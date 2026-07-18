@@ -1,8 +1,8 @@
 package sdk
 
 const (
-	sirenPropertyActive = "active"
-	sirenPropertyVolume = "volume"
+	sirenPropertyActive = "active" // Whether the siren is currently active
+	sirenPropertyVolume = "volume" // Volume level (0-100)
 )
 
 // SirenControl is a siren on/off and volume control sensor. Override

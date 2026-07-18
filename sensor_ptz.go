@@ -4,14 +4,14 @@ package sdk
 type PTZCapability string
 
 const (
-	PTZCapabilityPan              PTZCapability = "pan"
-	PTZCapabilityTilt             PTZCapability = "tilt"
-	PTZCapabilityZoom             PTZCapability = "zoom"
-	PTZCapabilityPresets          PTZCapability = "presets"
-	PTZCapabilityHome             PTZCapability = "home"
-	PTZCapabilityRelativeMove     PTZCapability = "relativeMove"
-	PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition"
-	PTZCapabilityVelocityControl  PTZCapability = "velocityControl"
+	PTZCapabilityPan              PTZCapability = "pan"              // Camera supports panning (horizontal movement)
+	PTZCapabilityTilt             PTZCapability = "tilt"             // Camera supports tilting (vertical movement)
+	PTZCapabilityZoom             PTZCapability = "zoom"             // Camera supports zoom
+	PTZCapabilityPresets          PTZCapability = "presets"          // Camera supports named position presets
+	PTZCapabilityHome             PTZCapability = "home"             // Camera supports a home position
+	PTZCapabilityRelativeMove     PTZCapability = "relativeMove"     // Camera executes relative displacement moves
+	PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition" // Camera accepts absolute position writes via `setPosition()`
+	PTZCapabilityVelocityControl  PTZCapability = "velocityControl"  // Camera accepts continuous-move commands via `setVelocity()`
 )
 
 // PTZDirection represents PTZ movement speed for continuous move commands.

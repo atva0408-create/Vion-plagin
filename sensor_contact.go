@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	contactPropertyDetected = "detected"
+	contactPropertyDetected = "detected" // Whether the contact is open (true = open, false = closed)
 )
 
 // ContactSensor reports door/window open-close state.

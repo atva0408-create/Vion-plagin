@@ -10,8 +10,8 @@ const (
 )
 
 const (
-	lockPropertyCurrentState = "currentState"
-	lockPropertyTargetState  = "targetState"
+	lockPropertyCurrentState = "currentState" // The actual current state of the lock
+	lockPropertyTargetState  = "targetState"  // The desired target state (set by user, transitions to currentState)
 )
 
 // LockControl is a lock/unlock control sensor. Override SetTargetState (by

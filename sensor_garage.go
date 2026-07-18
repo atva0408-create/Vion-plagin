@@ -12,9 +12,9 @@ const (
 )
 
 const (
-	garagePropertyCurrentState        = "currentState"
-	garagePropertyTargetState         = "targetState"
-	garagePropertyObstructionDetected = "obstructionDetected"
+	garagePropertyCurrentState        = "currentState"        // The actual current state of the garage door
+	garagePropertyTargetState         = "targetState"         // The desired target state (set by user, transitions to currentState)
+	garagePropertyObstructionDetected = "obstructionDetected" // Whether an obstruction is detected
 )
 
 // GarageControl is a garage door control sensor. Override SetTargetState (by

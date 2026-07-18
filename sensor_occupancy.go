@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	occupancyPropertyDetected = "detected"
+	occupancyPropertyDetected = "detected" // Whether occupancy is detected (true = occupied)
 )
 
 // OccupancySensor reports occupancy/presence state.

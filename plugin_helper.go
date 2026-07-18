@@ -13,6 +13,7 @@ var validSensorTypes = []SensorType{
 	SensorTypeSmoke, SensorTypeLeak,
 	SensorTypeLight, SensorTypeSiren, SensorTypeSwitch, SensorTypeLock, SensorTypeGarage,
 	SensorTypePTZ, SensorTypeSecuritySystem, SensorTypeDoorbell, SensorTypeBattery,
+	SensorTypeClip,
 }
 
 var validRoles = []PluginRole{

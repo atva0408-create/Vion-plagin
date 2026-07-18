@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	temperaturePropertyCurrent = "current"
+	temperaturePropertyCurrent = "current" // Current temperature in degrees Celsius
 )
 
 // TemperatureInfo reports current temperature in °C.

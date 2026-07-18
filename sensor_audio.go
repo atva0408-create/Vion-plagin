@@ -21,9 +21,9 @@ const (
 )
 
 const (
-	audioPropertyDetected   = "detected"
-	audioPropertyDetections = "detections"
-	audioPropertyDecibels   = "decibels"
+	audioPropertyDetected   = "detected"   // Whether an audio event is currently detected
+	audioPropertyDetections = "detections" // List of detected audio events (e.g. glass break, scream)
+	audioPropertyDecibels   = "decibels"   // Current audio level in decibels
 )
 
 // AudioFrameData is audio frame data delivered to audio detector sensors by

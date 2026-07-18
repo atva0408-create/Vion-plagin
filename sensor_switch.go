@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	switchPropertyOn = "on"
+	switchPropertyOn = "on" // Whether the switch is on
 )
 
 // SwitchControl is a generic on/off switch control sensor. Override SetOn /

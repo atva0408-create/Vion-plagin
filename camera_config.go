@@ -69,6 +69,8 @@ type PluginAssignments struct {
 	Battery *AssignedPlugin `msgpack:"battery,omitempty" json:"battery,omitempty"`
 	// CameraController is the assigned camera controller plugin.
 	CameraController *AssignedPlugin `msgpack:"cameraController,omitempty" json:"cameraController,omitempty"`
+	// Clip is the assigned CLIP embedding plugin.
+	Clip *AssignedPlugin `msgpack:"clip,omitempty" json:"clip,omitempty"`
 
 	// Multi-provider sensors
 
@@ -80,6 +82,26 @@ type PluginAssignments struct {
 	Contact []AssignedPlugin `msgpack:"contact,omitempty" json:"contact,omitempty"`
 	// Doorbell are the assigned doorbell trigger plugins.
 	Doorbell []AssignedPlugin `msgpack:"doorbell,omitempty" json:"doorbell,omitempty"`
+	// Switch are the assigned switch control plugins.
+	Switch []AssignedPlugin `msgpack:"switch,omitempty" json:"switch,omitempty"`
+	// SecuritySystem are the assigned security system control plugins.
+	SecuritySystem []AssignedPlugin `msgpack:"securitySystem,omitempty" json:"securitySystem,omitempty"`
+	// Lock are the assigned lock control plugins.
+	Lock []AssignedPlugin `msgpack:"lock,omitempty" json:"lock,omitempty"`
+	// Garage are the assigned garage control plugins.
+	Garage []AssignedPlugin `msgpack:"garage,omitempty" json:"garage,omitempty"`
+	// Occupancy are the assigned occupancy sensor plugins.
+	Occupancy []AssignedPlugin `msgpack:"occupancy,omitempty" json:"occupancy,omitempty"`
+	// Smoke are the assigned smoke sensor plugins.
+	Smoke []AssignedPlugin `msgpack:"smoke,omitempty" json:"smoke,omitempty"`
+	// Leak are the assigned leak sensor plugins.
+	Leak []AssignedPlugin `msgpack:"leak,omitempty" json:"leak,omitempty"`
+	// Temperature are the assigned temperature info plugins.
+	Temperature []AssignedPlugin `msgpack:"temperature,omitempty" json:"temperature,omitempty"`
+	// Humidity are the assigned humidity info plugins.
+	Humidity []AssignedPlugin `msgpack:"humidity,omitempty" json:"humidity,omitempty"`
+	// Classifier are the assigned image classifier plugins.
+	Classifier []AssignedPlugin `msgpack:"classifier,omitempty" json:"classifier,omitempty"`
 	// Hub are the assigned hub/bridge plugins.
 	Hub []AssignedPlugin `msgpack:"hub,omitempty" json:"hub,omitempty"`
 }

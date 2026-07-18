@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	smokePropertyDetected = "detected"
+	smokePropertyDetected = "detected" // Whether smoke is detected
 )
 
 // SmokeSensor reports smoke detection state.
