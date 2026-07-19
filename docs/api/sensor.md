@@ -1122,7 +1122,7 @@ GarageState defines garage door states \(HomeKit\-compatible values\).
 
 ## type HumidityInfo
 
-HumidityInfo reports current relative humidity \(0–100%\).
+HumidityInfo reports current relative humidity \(0\-100%\).
 
 	type HumidityInfo struct{ BaseSensor }
 
@@ -1977,7 +1977,7 @@ Set capabilities to advertise supported axes and features. Use SetPresets to pub
 
 	func (s *PTZControl) GoHome()
 
-GoHome moves the PTZ to the home position \(0, 0, 0\).
+GoHome moves the PTZ to the home position \(0, 0, 0\). To drive a hardware home command, shadow UpdateValue and handle "home" there: UpdateValue calls the embedded GoHome, so shadowing GoHome alone is never reached.
 
 Example:
 
@@ -2285,7 +2285,7 @@ SensorType identifies the kind of sensor. Each maps to a smart\-home concept.
 	    SensorTypeSecuritySystem SensorType = "securitySystem" // Security system arm/disarm control
 	    SensorTypeDoorbell       SensorType = "doorbell"       // Doorbell ring trigger
 	    SensorTypeTemperature    SensorType = "temperature"    // Temperature sensor (°C)
-	    SensorTypeHumidity       SensorType = "humidity"       // Humidity sensor (0–100%)
+	    SensorTypeHumidity       SensorType = "humidity"       // Humidity sensor (0-100%)
 	    SensorTypeOccupancy      SensorType = "occupancy"      // Occupancy/presence sensor
 	    SensorTypeSmoke          SensorType = "smoke"          // Smoke detector
 	    SensorTypeLeak           SensorType = "leak"           // Water leak detector

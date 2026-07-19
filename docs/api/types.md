@@ -17,7 +17,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 <a name="LightCapabilityBrightness"></a>LightCapability defines optional capabilities for light controls.
 
 	const (
-	    LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0–100)
+	    LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0-100)
 	)
 
 ## Variables
@@ -36,10 +36,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 <a name="DetectionLabels"></a>DetectionLabels lists the built\-in detection label types recognized across the system.
 
-	var DetectionLabels = []string{
-	    "motion", "person", "vehicle", "animal",
-	    "package", "audio",
-	}
+	var DetectionLabels = append(append([]string{"motion"}, ObjectDetectionLabels...), "audio")
 
 <a name="ErrNoValue"></a>
 
@@ -64,6 +61,10 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 	    }
 	    return m
 	}()
+
+<a name="ObjectDetectionLabels"></a>ObjectDetectionLabels lists the object\-detection labels the detector groups its classes into.
+
+	var ObjectDetectionLabels = []string{"person", "vehicle", "animal", "package"}
 
 <a name="Bool"></a>
 
