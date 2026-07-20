@@ -47,7 +47,7 @@ extra:
   # Per-SDK version shown in the header (rendered by overrides/partials/source.html).
   # Kept in sync by scripts/release.sh. All three SDKs share one repo, so the
   # auto-fetched GitHub "latest release" tag would be wrong here.
-  sdk_version: "go/v1.1.13"
+  sdk_version: "go/v1.1.14"
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/seydx/camera.ui
