@@ -369,7 +369,7 @@ FaceDetectionResponse is the result of a face detection run.
 	    EmbeddingModel string          `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
 	}
 
-<a name="FaceDetector"></a>
+<a name="FaceDetectionSettings"></a>
 
 ## type ImageMetadata
 
@@ -408,7 +408,7 @@ LicensePlateDetectionResponse is the result of a license plate detection run.
 	    Detections []LicensePlateDetection `msgpack:"detections" json:"detections"`
 	}
 
-<a name="LicensePlateDetector"></a>
+<a name="LicensePlateDetectionSettings"></a>
 
 ## type MotionDetectionInterface
 

@@ -214,6 +214,13 @@ func (d *CameraDevice) PTZAutotrack() PtzAutotrackSettings {
 	return d.camera.PtzAutotrack
 }
 
+// RecordingSettings returns the recording settings.
+func (d *CameraDevice) RecordingSettings() CameraRecordingSettings {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.camera.RecordingSettings
+}
+
 // FrameWorkerSettings returns the frame worker settings.
 func (d *CameraDevice) FrameWorkerSettings() CameraFrameWorkerSettings {
 	d.mu.RLock()

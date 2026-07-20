@@ -138,6 +138,8 @@ BaseCamera is the stored camera data structure \(database row\) without resolved
 	    DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
 	    // PtzAutotrack is the PTZ autotracking configuration.
 	    PtzAutotrack PtzAutotrackSettings `msgpack:"ptzAutotrack,omitempty" json:"ptzAutotrack"`
+	    // RecordingSettings is the recording configuration.
+	    RecordingSettings CameraRecordingSettings `msgpack:"recordingSettings,omitempty" json:"recordingSettings"`
 	    // FrameWorkerSettings is the frame worker configuration.
 	    FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
 	    // InterfaceSettings is the UI display settings.
@@ -246,6 +248,10 @@ CameraDetectionSettings is the combined detection settings for a camera.
 	    Object ObjectDetectionSettings `msgpack:"object" json:"object"`
 	    // Audio is the audio detection settings.
 	    Audio AudioDetectionSettings `msgpack:"audio" json:"audio"`
+	    // Face is the face detection settings.
+	    Face *FaceDetectionSettings `msgpack:"face,omitempty" json:"face,omitempty"`
+	    // LicensePlate is the license plate detection settings.
+	    LicensePlate *LicensePlateDetectionSettings `msgpack:"licensePlate,omitempty" json:"licensePlate,omitempty"`
 	    // Sensor is the sensor trigger settings.
 	    Sensor SensorTriggerSettings `msgpack:"sensor" json:"sensor"`
 	    // CascadeDetection enables the detection cascade.
@@ -504,6 +510,13 @@ PTZAutotrack returns the PTZ autotracking settings.
 
 PluginInfo returns the source plugin information, or nil if not set.
 
+<a name="CameraDevice.RecordingSettings"></a>
+### func \(\*CameraDevice\) RecordingSettings
+
+	func (d *CameraDevice) RecordingSettings() CameraRecordingSettings
+
+RecordingSettings returns the recording settings.
+
 <a name="CameraDevice.RemoveSensor"></a>
 ### func \(\*CameraDevice\) RemoveSensor
 
@@ -745,7 +758,7 @@ CameraPluginInfo identifies the plugin that provides a camera \(id \+ display na
 	    Name string `msgpack:"name" json:"name"`
 	}
 
-<a name="CameraRole"></a>
+<a name="CameraRecordingSettings"></a>
 
 ## type CameraRole
 
@@ -1230,7 +1243,7 @@ RTSPUrlOptions is options for generating RTSP URLs.
 	    Timeout int `msgpack:"timeout,omitempty" json:"timeout"`
 	}
 
-<a name="ReplaySubject"></a>
+<a name="RecordingMode"></a>
 
 ## type SnapshotInterface
 

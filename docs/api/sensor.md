@@ -1245,7 +1245,8 @@ LicensePlateDetection is a license plate detection result, extending Detection w
 
 	type LicensePlateDetection struct {
 	    Detection
-	    PlateText string `msgpack:"plateText,omitempty" json:"plateText,omitempty"` // Recognized plate text (e.g. "ABC 1234")
+	    PlateText     string  `msgpack:"plateText,omitempty" json:"plateText,omitempty"`         // Recognized plate text (e.g. "ABC 1234")
+	    OcrConfidence float64 `msgpack:"ocrConfidence,omitempty" json:"ocrConfidence,omitempty"` // Average text recognition confidence (0-1), separate from the box confidence
 	}
 
 <a name="LicensePlateDetectionInterface"></a>
