@@ -78,6 +78,20 @@ type SensorTriggerSettings struct {
 	Triggers []SensorTriggerRef `msgpack:"triggers" json:"triggers"`
 }
 
+// FaceDetectionSettings is the face detection settings.
+type FaceDetectionSettings struct {
+	// Confidence is the minimum confidence threshold (0 - 1) for a face to count.
+	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+}
+
+// LicensePlateDetectionSettings is the license plate detection settings.
+type LicensePlateDetectionSettings struct {
+	// Confidence is the minimum text recognition confidence (0 - 1) for a plate read to count.
+	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+	// MinLength is the minimum plate text length, shorter reads are dropped as fragments.
+	MinLength int `msgpack:"minLength,omitempty" json:"minLength,omitempty"`
+}
+
 // CameraDetectionSettings is the combined detection settings for a camera.
 type CameraDetectionSettings struct {
 	// Motion is the motion detection settings.
@@ -86,6 +100,10 @@ type CameraDetectionSettings struct {
 	Object ObjectDetectionSettings `msgpack:"object" json:"object"`
 	// Audio is the audio detection settings.
 	Audio AudioDetectionSettings `msgpack:"audio" json:"audio"`
+	// Face is the face detection settings.
+	Face *FaceDetectionSettings `msgpack:"face,omitempty" json:"face,omitempty"`
+	// LicensePlate is the license plate detection settings.
+	LicensePlate *LicensePlateDetectionSettings `msgpack:"licensePlate,omitempty" json:"licensePlate,omitempty"`
 	// Sensor is the sensor trigger settings.
 	Sensor SensorTriggerSettings `msgpack:"sensor" json:"sensor"`
 	// CascadeDetection enables the detection cascade.
