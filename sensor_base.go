@@ -20,6 +20,7 @@ const (
 	SensorTypeLicensePlate   SensorType = "licensePlate"   // License plate detection and OCR
 	SensorTypeClassifier     SensorType = "classifier"     // Generic image classification
 	SensorTypeClip           SensorType = "clip"           // CLIP embedding generation
+	SensorTypeObjectAssist   SensorType = "objectAssist"   // Object assist that locates objects in a frame so secondaries get real crops from camera-side detections
 	SensorTypeContact        SensorType = "contact"        // Door/window open-close contact sensor
 	SensorTypeLight          SensorType = "light"          // Light on/off and brightness control
 	SensorTypeSiren          SensorType = "siren"          // Siren on/off and volume control

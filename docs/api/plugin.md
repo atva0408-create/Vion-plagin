@@ -843,6 +843,8 @@ PluginAssignments maps sensor types to their assigned plugin\(s\) for a camera. 
 	    CameraController *AssignedPlugin `msgpack:"cameraController,omitempty" json:"cameraController,omitempty"`
 	    // Clip is the assigned CLIP embedding plugin.
 	    Clip *AssignedPlugin `msgpack:"clip,omitempty" json:"clip,omitempty"`
+	    // ObjectAssist is the assigned object assist plugin for camera-side detections.
+	    ObjectAssist *AssignedPlugin `msgpack:"objectAssist,omitempty" json:"objectAssist,omitempty"`
 	
 	    // Light are the assigned light control plugins.
 	    Light []AssignedPlugin `msgpack:"light,omitempty" json:"light,omitempty"`

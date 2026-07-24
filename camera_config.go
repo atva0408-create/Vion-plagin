@@ -71,6 +71,8 @@ type PluginAssignments struct {
 	CameraController *AssignedPlugin `msgpack:"cameraController,omitempty" json:"cameraController,omitempty"`
 	// Clip is the assigned CLIP embedding plugin.
 	Clip *AssignedPlugin `msgpack:"clip,omitempty" json:"clip,omitempty"`
+	// ObjectAssist is the assigned object assist plugin for camera-side detections.
+	ObjectAssist *AssignedPlugin `msgpack:"objectAssist,omitempty" json:"objectAssist,omitempty"`
 
 	// Multi-provider sensors
 
