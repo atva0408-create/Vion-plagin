@@ -192,6 +192,8 @@ AudioDetectionSettings is audio detection configuration.
 	    MinDecibels float64 `msgpack:"minDecibels" json:"minDecibels"`
 	    // Timeout is the audio dwell time in seconds.
 	    Timeout int `msgpack:"timeout" json:"timeout"`
+	    // Confidence is the minimum confidence threshold (0 - 1) for a labelled audio detection to count.
+	    Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
 	}
 
 <a name="AudioDetector"></a>
