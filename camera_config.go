@@ -19,6 +19,16 @@ type CameraInput struct {
 	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
 	// Urls are the generated streaming URLs.
 	Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
+	// VideoCodec is the probed video codec of this source. Filled by the
+	// server once the stream has been probed; empty until then.
+	VideoCodec VideoCodec `msgpack:"videoCodec,omitempty" json:"videoCodec,omitempty"`
+	// AudioCodecs are the probed audio codecs of this source (camera to
+	// client, deduplicated, in track order). Filled by the server once the
+	// stream has been probed; empty until then.
+	AudioCodecs []AudioCodec `msgpack:"audioCodecs,omitempty" json:"audioCodecs,omitempty"`
+	// BackchannelAudioCodec is the probed talkback audio codec (client to
+	// camera). Set only when the probed source has a backchannel.
+	BackchannelAudioCodec AudioCodec `msgpack:"backchannelAudioCodec,omitempty" json:"backchannelAudioCodec,omitempty"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
 	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 }
