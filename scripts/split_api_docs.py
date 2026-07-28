@@ -115,6 +115,8 @@ BUCKETS: dict[str, str] = {
     "CameraAspectRatio": "camera",
     "CameraDetectionSettings": "camera",
     "CameraFrameWorkerSettings": "camera",
+    "FrameWorkerDecoderHardware": "camera",
+    "FrameWorkerDecoderSettings": "camera",
     "CameraUiSettings": "camera",
     "DetectionZone": "camera",
     "DetectionLine": "camera",
