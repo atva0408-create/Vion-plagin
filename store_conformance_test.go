@@ -70,9 +70,9 @@ func TestStoreConformanceCLI(t *testing.T) {
 		counter := doc["plugin"].(map[string]any)["killCounter"]
 		fmt.Printf("GO-READ-COUNTER %v\n", counter)
 	case "open-verify":
-		// Exercises the production open path: read, legacy layout remap and
-		// write-back. CUI_STORE_PLUGIN_ID scopes the remap.
-		fp, err := newFilePersistence(file, os.Getenv("CUI_STORE_PLUGIN_ID"), log)
+		// Exercises the production open path: read, layout upgrade and
+		// write-back.
+		fp, err := newFilePersistence(file, log)
 		if err != nil {
 			t.Fatalf("GO-OPEN-VERIFY FAILED: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestStoreConformanceCLI(t *testing.T) {
 			}
 		})
 
-		fp, err := newFilePersistence(file+"-burst", "bench", log)
+		fp, err := newFilePersistence(file+"-burst", log)
 		if err != nil {
 			t.Fatal(err)
 		}

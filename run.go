@@ -275,7 +275,7 @@ func Run(constructor pluginConstructor) {
 			persistence = remote
 		} else {
 			storePath := filepath.Join(storagePath, "volume", storeFileName)
-			local, err := newFilePersistence(storePath, pluginInfo.ID, logger)
+			local, err := newFilePersistence(storePath, logger)
 			if err != nil {
 				return fmt.Errorf("failed to open config store: %w", err)
 			}

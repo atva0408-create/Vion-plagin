@@ -110,7 +110,7 @@ type filePersistence struct {
 	doc map[string]any
 }
 
-func newFilePersistence(path, pluginID string, logger *Logger) (*filePersistence, error) {
+func newFilePersistence(path string, logger *Logger) (*filePersistence, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -125,9 +125,8 @@ func newFilePersistence(path, pluginID string, logger *Logger) (*filePersistence
 		doc = map[string]any{}
 	}
 
-	doc, changed := remapLegacyGoLayout(doc, pluginID, logger)
-	// A fresh store persists its (possibly empty) envelope immediately so the
-	// server's legacy-env probe stops running on every boot.
+	doc, changed := upgradeStoreLayout(doc)
+	// a fresh store persists its (possibly empty) envelope immediately
 	if !found || changed {
 		if err := writeStoreFile(path, doc, logger); err != nil {
 			return nil, err
@@ -211,7 +210,7 @@ func newRemotePersistence(client *rpc.Client, pluginID string, logger *Logger) (
 		rp.cache = doc
 	}
 
-	doc, changed := remapLegacyGoLayout(rp.cache, pluginID, logger)
+	doc, changed := upgradeStoreLayout(rp.cache)
 	rp.cache = doc
 	if changed {
 		if err := rp.flushSnapshot(snapshotStoreDoc(doc)); err != nil {

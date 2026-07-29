@@ -132,35 +132,33 @@ func TestReadStoreFileCorruptWithoutBackupFails(t *testing.T) {
 	}
 }
 
-func TestRemapLegacyGoLayout(t *testing.T) {
-	log := testLogger()
-	legacy := map[string]any{
-		"my-plugin.plugin":          map[string]any{"a": int64(1)},
-		"my-plugin.camera.cam-1":    map[string]any{"b": int64(2)},
-		"my-plugin.sensor.cam-1.s1": map[string]any{"c": int64(3)},
+func TestUpgradeStoreLayout(t *testing.T) {
+	preV2 := map[string]any{
+		"plugin":  map[string]any{"a": int64(1)},
+		"cameras": map[string]any{"cam-1": map[string]any{"b": int64(2)}},
+		"sensors": map[string]any{"cam-1": map[string]any{"motion": map[string]any{"c": int64(3)}}},
 	}
 
-	doc, changed := remapLegacyGoLayout(legacy, "my-plugin", log)
+	doc, changed := upgradeStoreLayout(preV2)
 	if !changed {
-		t.Fatal("legacy layout not detected")
+		t.Fatal("pre-v2 layout not detected")
 	}
 	if doc["plugin"].(map[string]any)["a"] != int64(1) {
-		t.Errorf("plugin remap failed: %v", doc)
-	}
-	cameras := doc["cameras"].(map[string]any)
-	if cameras["cam-1"].(map[string]any)["b"] != int64(2) {
-		t.Errorf("camera remap failed: %v", doc)
+		t.Errorf("plugin section altered: %v", doc)
 	}
 	if _, exists := doc["sensors"]; exists {
-		t.Error("legacy sensor keys must be dropped")
+		t.Error("pre-v2 sensor trees must be dropped")
+	}
+	if v, _ := toInt64(doc[storeLayoutVersionKey]); v != storeLayoutVersion {
+		t.Errorf("version not stamped: %v", doc)
 	}
 
-	again, changedAgain := remapLegacyGoLayout(doc, "my-plugin", log)
+	again, changedAgain := upgradeStoreLayout(doc)
 	if changedAgain {
-		t.Error("remap is not idempotent")
+		t.Error("upgrade is not idempotent")
 	}
 	if fmt.Sprint(again) != fmt.Sprint(doc) {
-		t.Error("idempotent remap altered the document")
+		t.Error("idempotent upgrade altered the document")
 	}
 }
 
@@ -282,7 +280,7 @@ func TestFilePersistenceRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "store.cui")
 	log := testLogger()
 
-	fp, err := newFilePersistence(path, "my-plugin", log)
+	fp, err := newFilePersistence(path, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +290,7 @@ func TestFilePersistenceRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := newFilePersistence(path, "my-plugin", log)
+	reopened, err := newFilePersistence(path, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +303,7 @@ func TestFilePersistenceRoundTrip(t *testing.T) {
 	if err := reopened.save(camLoc, map[string]any{})(); err != nil {
 		t.Fatal(err)
 	}
-	final, err := newFilePersistence(path, "my-plugin", log)
+	final, err := newFilePersistence(path, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,34 +312,37 @@ func TestFilePersistenceRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFilePersistenceMigratesLegacyLayout(t *testing.T) {
+func TestFilePersistenceUpgradesLayout(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "store.cui")
 	log := testLogger()
 
-	legacy := map[string]any{"my-plugin.plugin": map[string]any{"token": "abc"}}
-	if err := writeStoreFile(path, legacy, log); err != nil {
+	preV2 := map[string]any{
+		"plugin":  map[string]any{"token": "abc"},
+		"sensors": map[string]any{"cam-1": map[string]any{"motion": map[string]any{"x": int64(1)}}},
+	}
+	if err := writeStoreFile(path, preV2, log); err != nil {
 		t.Fatal(err)
 	}
 
-	fp, err := newFilePersistence(path, "my-plugin", log)
+	fp, err := newFilePersistence(path, log)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fp.load(storeLocation{kind: storeLocationPlugin})["token"] != "abc" {
-		t.Error("legacy plugin values not remapped")
+		t.Error("plugin values lost by upgrade")
 	}
 
-	// The migration is written back immediately: the raw file is canonical.
+	// The upgrade is written back immediately: the raw file is stamped.
 	payload, found, err := readStoreFile(path, log)
 	if err != nil || !found {
 		t.Fatal(err)
 	}
-	if _, hasLegacy := payload["my-plugin.plugin"]; hasLegacy {
-		t.Errorf("legacy key survived migration write-back: %v", payload)
+	if _, hasSensors := payload["sensors"]; hasSensors {
+		t.Errorf("pre-v2 sensor tree survived upgrade write-back: %v", payload)
 	}
-	if payload["plugin"].(map[string]any)["token"] != "abc" {
-		t.Errorf("canonical key missing after migration: %v", payload)
+	if v, _ := toInt64(payload[storeLayoutVersionKey]); v != storeLayoutVersion {
+		t.Errorf("version not stamped after write-back: %v", payload)
 	}
 }
 
@@ -566,7 +567,7 @@ func watchdog(t *testing.T, timeout time.Duration, fn func()) {
 func TestDeviceStorageConcurrentStress(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "store.cui")
-	fp, err := newFilePersistence(path, "my-plugin", testLogger())
+	fp, err := newFilePersistence(path, testLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +620,7 @@ func TestDeviceStorageConcurrentStress(t *testing.T) {
 	// Every acknowledged write must be durable: reload the file from disk and
 	// check that no goroutine's last acknowledged value was overwritten by a
 	// staler concurrent whole-document snapshot.
-	reloaded, err := newFilePersistence(path, "my-plugin", testLogger())
+	reloaded, err := newFilePersistence(path, testLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -635,7 +636,7 @@ func TestDeviceStorageConcurrentStress(t *testing.T) {
 func TestDeviceStorageMutateInPlacePersists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "store.cui")
-	fp, err := newFilePersistence(path, "my-plugin", testLogger())
+	fp, err := newFilePersistence(path, testLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,7 +648,7 @@ func TestDeviceStorageMutateInPlacePersists(t *testing.T) {
 	// mask an earlier write that was wrongly skipped as "unchanged".
 	reload := func(key string) any {
 		t.Helper()
-		reloaded, err := newFilePersistence(path, "my-plugin", testLogger())
+		reloaded, err := newFilePersistence(path, testLogger())
 		if err != nil {
 			t.Fatal(err)
 		}
