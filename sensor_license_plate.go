@@ -1,9 +1,8 @@
 package sdk
 
-// Property names of a license plate detection sensor.
 const (
-	licensePlatePropertyDetected   = "detected"   // Whether any license plate is currently detected
-	licensePlatePropertyDetections = "detections" // List of detected plates with OCR text
+	licensePlatePropertyDetected   = "detected"
+	licensePlatePropertyDetections = "detections"
 )
 
 // LicensePlateDetection is a license plate detection result, extending
@@ -22,21 +21,22 @@ type LicensePlateResult struct {
 }
 
 // LicensePlateDetector is implemented by plugins that perform license plate
-// detection and OCR on pre-cropped vehicle regions.
+// detection and OCR.
 type LicensePlateDetector interface {
 	// ModelSpec declares the expected input dimensions and trigger labels. The
 	// runtime scales frames to match.
 	ModelSpec() ModelSpec
-	// DetectLicensePlates analyzes a batch of pre-cropped, pre-scaled vehicle
-	// regions and must return exactly one LicensePlateResult per input frame,
-	// in the same order.
+	// DetectLicensePlates analyzes a batch of frames pre-scaled to the ModelSpec
+	// input: normally a vehicle region cropped by the upstream object detector,
+	// but the whole scene when no decoded frame is available. Must return exactly
+	// one result per input frame, in the same order.
 	DetectLicensePlates(frames []VideoFrameData) ([]LicensePlateResult, error)
 }
 
 // LicensePlateSensor reports detected license plates and OCR results.
 //
-// Plugin authors call ReportDetections to push detected plates. The
-// `detected` flag is auto-derived from the detection list.
+// Plugin authors call ReportDetections to push detected plates. The detected
+// flag is auto-derived from the detection list.
 type LicensePlateSensor struct{ BaseSensor }
 
 func NewLicensePlateSensor(name string, opts ...SensorOption) *LicensePlateSensor {
@@ -48,21 +48,17 @@ func NewLicensePlateSensor(name string, opts ...SensorOption) *LicensePlateSenso
 	return s
 }
 
-func (s *LicensePlateSensor) GetType() SensorType { return SensorTypeLicensePlate }
-
+func (s *LicensePlateSensor) GetType() SensorType         { return SensorTypeLicensePlate }
 func (s *LicensePlateSensor) GetCategory() SensorCategory { return SensorCategorySensor }
-
 func (s *LicensePlateSensor) ToJSON() sensorJSON {
 	return s.toBaseJSON(s.GetType(), s.GetCategory())
 }
 
-// IsDetected reports whether any license plate is currently detected.
 func (s *LicensePlateSensor) IsDetected() bool {
 	v, _ := s.GetValue(licensePlatePropertyDetected).(bool)
 	return v
 }
 
-// GetDetections returns the current license plate detections.
 func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
 	v, _ := s.GetValue(licensePlatePropertyDetections).([]LicensePlateDetection)
 	return v
@@ -70,10 +66,10 @@ func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
 
 // ReportDetections reports detected license plates.
 //
-//   - ReportDetections(true, nil) — plate detected without specifics; the SDK
+//   - ReportDetections(true, nil): plate detected without specifics, the SDK
 //     synthesizes a single full-frame detection with empty plateText.
-//   - ReportDetections(true, [...]) — explicit plate detections with OCR text.
-//   - ReportDetections(false, nil) — clear.
+//   - ReportDetections(true, [...]): explicit plate detections with OCR text.
+//   - ReportDetections(false, nil): clear.
 //
 // Example:
 //
@@ -109,7 +105,7 @@ func (s *LicensePlateSensor) ClearDetections() {
 	s.ReportDetections(false, nil)
 }
 
-// UpdateValue is a no-op for read-only license plate sensors. State is reported via ReportDetections.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *LicensePlateSensor) UpdateValue(property string, value any) error {
 	return nil
 }

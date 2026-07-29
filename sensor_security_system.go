@@ -12,8 +12,8 @@ const (
 )
 
 const (
-	securitySystemPropertyCurrentState = "currentState" // The actual current state of the security system
-	securitySystemPropertyTargetState  = "targetState"  // The desired target state (set by user, transitions to currentState)
+	securitySystemPropertyCurrentState = "currentState"
+	securitySystemPropertyTargetState  = "targetState"
 )
 
 // SecuritySystem is a security system arm/disarm control sensor.
@@ -46,7 +46,9 @@ func (s *SecuritySystem) GetTargetState() SecuritySystemState {
 	return SecuritySystemStateDisarmed
 }
 
-// SetTargetState sets the target state. Writes both targetState and currentState.
+// SetTargetState sets the target state. Writes both targetState and
+// currentState. The target state is never SecuritySystemStateAlarmTriggered,
+// publish that through SetCurrentState.
 //
 // Example:
 //
@@ -58,11 +60,10 @@ func (s *SecuritySystem) SetTargetState(value SecuritySystemState) {
 	})
 }
 
-// SetCurrentState publishes the actual security system state. Use this to
-// drive transitions that diverge from the user-requested target — most notably
-// the AlarmTriggered state when an intruder is detected, or arming-delay
-// intermediate states. Read-only from cross-process consumers (`UpdateValue`
-// ignores it).
+// SetCurrentState publishes the actual security system state. Use this for
+// transitions that diverge from the user-requested target: AlarmTriggered when
+// an intruder is detected, or arming-delay intermediate states. Read-only from
+// cross-process consumers (UpdateValue ignores it).
 //
 // Example:
 //
@@ -71,7 +72,7 @@ func (s *SecuritySystem) SetCurrentState(value SecuritySystemState) {
 	s.writeState(map[string]any{securitySystemPropertyCurrentState: int(value)})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
 func (s *SecuritySystem) UpdateValue(property string, value any) error {
 	if property == securitySystemPropertyTargetState {
 		if v, ok := toInt64(value); ok {

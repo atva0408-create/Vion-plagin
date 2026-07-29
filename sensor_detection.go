@@ -65,8 +65,8 @@ type Detection struct {
 }
 
 // VideoFrameData is the video frame payload delivered to detector sensors by
-// the backend pipeline. The backend handles capture, decoding, and scaling —
-// detectors only need to process the pixel buffer.
+// the backend pipeline. The backend handles capture, decoding and scaling.
+// Detectors only process the pixel buffer.
 type VideoFrameData struct {
 	ID        string      `msgpack:"id" json:"id"`                           // Unique frame or crop identifier used to map batch results back to inputs
 	CameraID  string      `msgpack:"cameraId" json:"cameraId"`               // Camera the frame originated from

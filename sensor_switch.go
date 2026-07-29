@@ -1,15 +1,15 @@
 package sdk
 
 const (
-	switchPropertyOn = "on" // Whether the switch is on
+	switchPropertyOn = "on"
 )
 
 // SwitchControl is a generic on/off switch control sensor. Override SetOn /
 // SetOff (by embedding SwitchControl in your own type and shadowing the
 // methods) to drive hardware, then call the embedded SwitchControl's methods
 // to sync the SDK state. For hardware-pushed updates, call the embedded
-// methods directly from your event handler — that bypasses any plugin
-// override and only syncs state.
+// methods directly from your event handler. That bypasses any plugin override
+// and only syncs state.
 type SwitchControl struct{ BaseSensor }
 
 func NewSwitchControl(name string, opts ...SensorOption) *SwitchControl {
@@ -47,7 +47,7 @@ func (s *SwitchControl) SetOff() {
 	s.writeState(map[string]any{switchPropertyOn: false})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
 func (s *SwitchControl) UpdateValue(property string, value any) error {
 	if property == switchPropertyOn {
 		on := false

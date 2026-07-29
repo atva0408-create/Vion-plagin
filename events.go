@@ -67,8 +67,7 @@ type storedSensorData struct {
 	RequiresFrames    bool           `msgpack:"requiresFrames,omitempty"`
 }
 
-// Data is decoded as map[string]any to avoid msgpack reflection panics when the
-// inner Value field is typed as `any`.
+// Data stays map[string]any, msgpack reflection panics on an inner any-typed Value
 type sensorEventMessage struct {
 	Type string         `msgpack:"type"`
 	Data map[string]any `msgpack:"data"`

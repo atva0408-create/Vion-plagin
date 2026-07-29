@@ -3,7 +3,6 @@ package sdk
 // RecordingMode selects how recordings are captured.
 type RecordingMode string
 
-// Recording modes.
 const (
 	// RecordingModeContinuous records around the clock.
 	RecordingModeContinuous RecordingMode = "continuous"
@@ -16,7 +15,6 @@ const (
 // RecordingSource is a stream tier to record.
 type RecordingSource string
 
-// Recording sources.
 const (
 	// RecordingSourceHigh is the high resolution stream.
 	RecordingSourceHigh RecordingSource = "high"
@@ -26,7 +24,7 @@ const (
 	RecordingSourceLow RecordingSource = "low"
 )
 
-// CameraRecordingSettings is the recording configuration for a camera.
+// CameraRecordingSettings is the recording settings for a camera.
 type CameraRecordingSettings struct {
 	// Enabled reports whether recording is enabled.
 	Enabled bool `msgpack:"enabled" json:"enabled"`

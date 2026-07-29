@@ -37,7 +37,7 @@ type DetectionEvent struct {
 	Segments []EventSegment `msgpack:"segments" json:"segments"`
 	// SegmentIndex is the index of the segment in segments[0] for segment-* messages.
 	SegmentIndex int `msgpack:"segmentIndex,omitempty" json:"segmentIndex,omitempty"`
-	// ExpectedEndTime is the expected event end time (Unix ms) — the latest dwell expiry across all
+	// ExpectedEndTime is the expected event end time (Unix ms): the latest dwell expiry across all
 	// currently-active triggers. Monotonically non-decreasing during the event lifetime.
 	// Updated on each update / segment-* message.
 	ExpectedEndTime int64 `msgpack:"expectedEndTime,omitempty" json:"expectedEndTime,omitempty"`

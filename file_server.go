@@ -11,9 +11,8 @@ type fileServeStat struct {
 	Size   int64 `msgpack:"size" json:"size"`
 }
 
-// fileServer exposes ranged reads of this worker's local files to the master,
-// so downloads/exports of remote-hosted plugin files (e.g. NVR recordings)
-// work. Registered only when the plugin runs remote-hosted.
+// registered only when the plugin runs remote-hosted, it is how the master
+// reaches worker-local files like NVR recordings
 type fileServer struct {
 	cleanup rpc.CleanupFunc
 }
@@ -48,7 +47,7 @@ func (fs *fileServer) ReadFileChunk(filePath string, offset int64, length int64)
 	buf := make([]byte, length)
 	n, err := f.ReadAt(buf, offset)
 	if err != nil && n == 0 {
-		// EOF at offset with no bytes → empty chunk signals done.
+		// EOF at offset with no bytes: an empty chunk signals done
 		return []byte{}, nil
 	}
 	return buf[:n], nil

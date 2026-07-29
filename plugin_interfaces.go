@@ -2,13 +2,82 @@ package sdk
 
 // ImageMetadata is image metadata passed to detector test methods.
 type ImageMetadata struct {
-	Width  int `msgpack:"width" json:"width"`
+	// Width is the image width in pixels.
+	Width int `msgpack:"width" json:"width"`
+	// Height is the image height in pixels.
 	Height int `msgpack:"height" json:"height"`
 }
 
 // AudioMetadata is audio metadata passed to audio detector test methods.
 type AudioMetadata struct {
+	// MimeType is the container format of the audio buffer.
 	MimeType string `msgpack:"mimeType" json:"mimeType"`
+}
+
+// MotionDetectionResponse is the result of a motion detection run.
+type MotionDetectionResponse struct {
+	// Detected is true when the run produced at least one detection.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the motion regions found in the input.
+	Detections []Detection `msgpack:"detections" json:"detections"`
+	// VideoData is an annotated re-encoded clip for the UI test panel, when
+	// the plugin renders one.
+	VideoData []byte `msgpack:"videoData,omitempty" json:"videoData,omitempty"`
+}
+
+// ObjectDetectionResponse is the result of an object detection run.
+type ObjectDetectionResponse struct {
+	// Detected is true when the run produced at least one detection.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the detected objects with label, score and bounding box.
+	Detections []Detection `msgpack:"detections" json:"detections"`
+}
+
+// AudioDetectionResponse is the result of an audio detection run.
+type AudioDetectionResponse struct {
+	// Detected is true when the run produced at least one detection.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the detected audio events.
+	Detections []Detection `msgpack:"detections" json:"detections"`
+	// Decibels is the loudness of the analysed buffer in dBFS.
+	Decibels float64 `msgpack:"decibels,omitempty" json:"decibels,omitempty"`
+}
+
+// FaceDetectionResponse is the result of a face detection run.
+type FaceDetectionResponse struct {
+	// Detected is true when the run produced at least one detection.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the detected faces, each with its embedding.
+	Detections []FaceDetection `msgpack:"detections" json:"detections"`
+	// EmbeddingModel is the model that produced the embeddings; consumers
+	// must not mix models.
+	EmbeddingModel string `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
+}
+
+// LicensePlateDetectionResponse is the result of a license plate detection
+// run.
+type LicensePlateDetectionResponse struct {
+	// Detected is true when the run produced at least one detection.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the detected plates with their OCR text.
+	Detections []LicensePlateDetection `msgpack:"detections" json:"detections"`
+}
+
+// ClassifierDetectionResponse is the result of a classifier detection run.
+type ClassifierDetectionResponse struct {
+	// Detected is true when the run produced at least one classification.
+	Detected bool `msgpack:"detected" json:"detected"`
+	// Detections are the attribute/label pairs the classifier emitted.
+	Detections []ClassifierDetection `msgpack:"detections" json:"detections"`
+}
+
+// ClipTextEmbeddingResult is the result of a CLIP text embedding request.
+type ClipTextEmbeddingResult struct {
+	// Embedding is the embedding vector for the query text.
+	Embedding []float64 `msgpack:"embedding" json:"embedding"`
+	// EmbeddingModel is the model that produced the embedding; consumers must
+	// not mix models.
+	EmbeddingModel string `msgpack:"embeddingModel" json:"embeddingModel"`
 }
 
 // DiscoveryProvider is implemented by plugins that can scan the network for
@@ -21,7 +90,7 @@ type DiscoveryProvider interface {
 	OnDiscoverCameras() ([]DiscoveredCamera, error)
 	// OnGetCameraSettings returns a JSON schema describing the form fields
 	// (credentials, transport options, ...) the user must fill in to adopt
-	// this specific discovered camera.
+	// this discovered camera.
 	OnGetCameraSettings(camera DiscoveredCamera) ([]JsonSchema, error)
 	// OnAdoptCamera probes the device with the user-provided settings and
 	// returns the camera configuration the host should persist. The host
@@ -31,17 +100,16 @@ type DiscoveryProvider interface {
 
 // MotionDetectionInterface is implemented by plugins that perform video-based
 // motion detection. The host invokes TestMotion from the UI test panel and
-// DetectMotion from automation / benchmarking pipelines.
+// DetectMotion from automation / benchmark pipelines.
 type MotionDetectionInterface interface {
 	// TestMotion runs detection on a raw video buffer captured by the UI
 	// test panel and returns the result for preview rendering.
 	TestMotion(videoData []byte, config map[string]any) (*MotionDetectionResponse, error)
-	// DetectMotion runs detection on already-decoded VideoFrameData.
-	// Called from automation / benchmark pipelines that supply pre-decoded
-	// frames directly to avoid re-encoding.
+	// DetectMotion runs detection on already-decoded frames, supplied by
+	// automation / benchmark pipelines to avoid re-encoding.
 	DetectMotion(frames []VideoFrameData, config map[string]any) (*MotionDetectionResponse, error)
 	// MotionSettings returns the JSON schema used to render the
-	// motion-detection settings form in the UI. Return nil for no schema.
+	// motion-detection settings form in the UI, or nil for no schema.
 	MotionSettings() ([]JsonSchema, error)
 }
 
@@ -55,7 +123,7 @@ type ObjectDetectionInterface interface {
 	// from automation / benchmark pipelines.
 	DetectObjects(frame VideoFrameData, config map[string]any) (*ObjectDetectionResponse, error)
 	// ObjectSettings returns the JSON schema used to render the
-	// object-detection settings form in the UI. Return nil for no schema.
+	// object-detection settings form in the UI, or nil for no schema.
 	ObjectSettings() ([]JsonSchema, error)
 }
 
@@ -63,16 +131,16 @@ type ObjectDetectionInterface interface {
 // or keyword detection.
 type AudioDetectionInterface interface {
 	// TestAudio runs detection on an audio buffer captured by the UI test
-	// panel; metadata carries the input MIME type (mpeg/wav/ogg).
+	// panel; metadata carries the input MIME type.
 	TestAudio(audioData []byte, metadata AudioMetadata, config map[string]any) (*AudioDetectionResponse, error)
 	// AudioSettings returns the JSON schema used to render the
-	// audio-detection settings form in the UI. Return nil for no schema.
+	// audio-detection settings form in the UI, or nil for no schema.
 	AudioSettings() ([]JsonSchema, error)
 }
 
-// FaceDetectionInterface is implemented by plugins that locate faces and
-// emit per-face embeddings. The NVR owns matching against enrolled faces;
-// the plugin only emits raw detections + embeddings.
+// FaceDetectionInterface is implemented by plugins that locate faces and emit
+// per-face embeddings. The NVR owns matching against enrolled faces, the
+// plugin only emits raw detections and embeddings.
 type FaceDetectionInterface interface {
 	// TestFaces runs face detection on a single image captured by the UI
 	// test panel and returns the result for preview rendering.
@@ -80,7 +148,7 @@ type FaceDetectionInterface interface {
 	// DetectFaces runs face detection on a pre-decoded video frame.
 	DetectFaces(frame VideoFrameData, config map[string]any) (*FaceDetectionResponse, error)
 	// FaceSettings returns the JSON schema for the face-detection settings
-	// form in the UI. Return nil for no schema.
+	// form in the UI, or nil for no schema.
 	FaceSettings() ([]JsonSchema, error)
 }
 
@@ -93,7 +161,7 @@ type LicensePlateDetectionInterface interface {
 	// DetectLicensePlates runs detection on a pre-decoded video frame.
 	DetectLicensePlates(frame VideoFrameData, config map[string]any) (*LicensePlateDetectionResponse, error)
 	// PlateSettings returns the JSON schema for the license-plate-detection
-	// settings form in the UI. Return nil for no schema.
+	// settings form in the UI, or nil for no schema.
 	PlateSettings() ([]JsonSchema, error)
 }
 
@@ -107,18 +175,8 @@ type ClassifierDetectionInterface interface {
 	// DetectClassifications runs classification on a pre-decoded video frame.
 	DetectClassifications(frame VideoFrameData, config map[string]any) (*ClassifierDetectionResponse, error)
 	// ClassifierSettings returns the JSON schema for the
-	// classifier-detection settings form in the UI. Return nil for no
-	// schema.
+	// classifier-detection settings form in the UI, or nil for no schema.
 	ClassifierSettings() ([]JsonSchema, error)
-}
-
-// ClipTextEmbeddingResult is the return type for
-// ClipDetectionInterface.GetTextEmbedding — a single embedding vector plus
-// the model name used to produce it (so downstream code can refuse to mix
-// embeddings from different models).
-type ClipTextEmbeddingResult struct {
-	Embedding      []float64 `msgpack:"embedding" json:"embedding"`
-	EmbeddingModel string    `msgpack:"embeddingModel" json:"embeddingModel"`
 }
 
 // ClipDetectionInterface is implemented by plugins that generate CLIP
@@ -130,52 +188,10 @@ type ClipDetectionInterface interface {
 	// DetectClipEmbedding runs the CLIP image branch on a pre-decoded
 	// video frame.
 	DetectClipEmbedding(frame VideoFrameData, config map[string]any) (*ClipResult, error)
-	// GetTextEmbedding runs the CLIP text branch and returns a single
-	// embedding vector usable for semantic-search queries against
-	// previously stored image embeddings.
+	// GetTextEmbedding runs the CLIP text branch and returns a vector usable
+	// for semantic-search queries against stored image embeddings.
 	GetTextEmbedding(text string) (*ClipTextEmbeddingResult, error)
 	// ClipSettings returns the JSON schema for the CLIP settings form in
-	// the UI. Return nil for no schema.
+	// the UI, or nil for no schema.
 	ClipSettings() ([]JsonSchema, error)
-}
-
-// MotionDetectionResponse is the result of a motion detection run. VideoData
-// optionally carries an annotated re-encoded clip for the UI test panel.
-type MotionDetectionResponse struct {
-	Detected   bool        `msgpack:"detected" json:"detected"`
-	Detections []Detection `msgpack:"detections" json:"detections"`
-	VideoData  []byte      `msgpack:"videoData,omitempty" json:"videoData,omitempty"`
-}
-
-// ObjectDetectionResponse is the result of an object detection run.
-type ObjectDetectionResponse struct {
-	Detected   bool        `msgpack:"detected" json:"detected"`
-	Detections []Detection `msgpack:"detections" json:"detections"`
-}
-
-// AudioDetectionResponse is the result of an audio detection run.
-type AudioDetectionResponse struct {
-	Detected   bool        `msgpack:"detected" json:"detected"`
-	Detections []Detection `msgpack:"detections" json:"detections"`
-	Decibels   float64     `msgpack:"decibels,omitempty" json:"decibels,omitempty"`
-}
-
-// FaceDetectionResponse is the result of a face detection run.
-type FaceDetectionResponse struct {
-	Detected       bool            `msgpack:"detected" json:"detected"`
-	Detections     []FaceDetection `msgpack:"detections" json:"detections"`
-	EmbeddingModel string          `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
-}
-
-// LicensePlateDetectionResponse is the result of a license plate detection
-// run.
-type LicensePlateDetectionResponse struct {
-	Detected   bool                    `msgpack:"detected" json:"detected"`
-	Detections []LicensePlateDetection `msgpack:"detections" json:"detections"`
-}
-
-// ClassifierDetectionResponse is the result of a classifier detection run.
-type ClassifierDetectionResponse struct {
-	Detected   bool                  `msgpack:"detected" json:"detected"`
-	Detections []ClassifierDetection `msgpack:"detections" json:"detections"`
 }

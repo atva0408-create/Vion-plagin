@@ -547,8 +547,8 @@ func TestDeviceStorageNormalizesRPCNumericTypes(t *testing.T) {
 	}
 }
 
-// watchdog fails the test if fn does not return within the deadline —
-// the concurrency tests must fail on deadlock instead of hanging.
+// watchdog fails the test if fn does not return within the deadline, the
+// concurrency tests must fail on deadlock instead of hanging.
 func watchdog(t *testing.T, timeout time.Duration, fn func()) {
 	t.Helper()
 	done := make(chan struct{})

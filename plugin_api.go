@@ -2,32 +2,30 @@ package sdk
 
 // PluginAPI is injected into the plugin at runtime and exposes the system
 // services the plugin is allowed to talk to. It also acts as an eventEmitter
-// for plugin lifecycle events (see APIEvent constants in plugin.go).
+// for plugin lifecycle events (see APIEvent).
 //
 // Example:
 //
-//	// Access FFmpeg path
 //	ffmpeg, err := api.CoreManager.GetFFmpegPath()
 type PluginAPI struct {
 	*eventEmitter
-	// CoreManager exposes system-level operations such as the FFmpeg path
-	// and server addresses.
+	// CoreManager exposes system-level operations: the FFmpeg path and the
+	// server addresses used for media URLs (HTTP/RTSP).
 	CoreManager *CoreManager
 	// DeviceManager owns the camera devices assigned to this plugin and
 	// publishes camera-state changes.
 	DeviceManager *DeviceManager
-	// SensorManager registers standalone sensors (devices without a camera)
-	// and holds the sensors this plugin provides in this session.
+	// SensorManager registers standalone sensors: entities of their own,
+	// persisted across restarts, assignable to cameras by the user.
 	SensorManager *SensorManager
 	// DownloadManager mints token-protected download URLs for files the
-	// plugin wants to expose to the UI.
+	// plugin exposes to the UI (clip exports, snapshots).
 	DownloadManager *DownloadManager
-	// NotificationManager publishes notifications into the host so they fan
-	// out to every installed Notifier-plugin and the in-app UI. Requires
-	// CapabilityPublishNotifications in the plugin contract.
+	// NotificationManager publishes notifications to every installed notifier
+	// and the in-app UI. Requires CapabilityPublishNotifications.
 	NotificationManager *NotificationManager
 	// StoragePath is the absolute path to the plugin's writable storage
-	// directory (created and cleaned up by the host).
+	// directory, created and cleaned up by the host.
 	StoragePath string
 
 	storageController *StorageController

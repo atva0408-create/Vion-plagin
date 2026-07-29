@@ -9,19 +9,21 @@ import (
 	"time"
 )
 
-// SensorType identifies the kind of sensor. Each maps to a smart-home concept.
+// SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella
+// term for the smallest smart-home unit, like Home Assistant's "entity" or
+// HomeKit's "service": it covers measuring devices and controllable ones alike.
 type SensorType string
 
 const (
 	SensorTypeMotion         SensorType = "motion"         // Video-based motion detection
 	SensorTypeObject         SensorType = "object"         // Object detection (person, vehicle, animal, etc.)
-	SensorTypeAudio          SensorType = "audio"          // Audio event detection
+	SensorTypeAudio          SensorType = "audio"          // Audio event detection (glass break, scream, etc.)
 	SensorTypeFace           SensorType = "face"           // Face detection and recognition
 	SensorTypeLicensePlate   SensorType = "licensePlate"   // License plate detection and OCR
-	SensorTypeClassifier     SensorType = "classifier"     // Generic image classification
-	SensorTypeClip           SensorType = "clip"           // CLIP embedding generation
-	SensorTypeObjectAssist   SensorType = "objectAssist"   // Object assist that locates objects in a frame so secondaries get real crops from camera-side detections
-	SensorTypeContact        SensorType = "contact"        // Door/window open-close contact sensor
+	SensorTypeClassifier     SensorType = "classifier"     // General-purpose image classifier
+	SensorTypeClip           SensorType = "clip"           // CLIP embedding generation for semantic search
+	SensorTypeObjectAssist   SensorType = "objectAssist"   // Locates objects in a frame so secondary detectors get real crops from camera-side detections
+	SensorTypeContact        SensorType = "contact"        // Contact/open-close sensor (door, window)
 	SensorTypeLight          SensorType = "light"          // Light on/off and brightness control
 	SensorTypeSiren          SensorType = "siren"          // Siren on/off and volume control
 	SensorTypeSwitch         SensorType = "switch"         // Generic on/off switch
@@ -38,58 +40,62 @@ const (
 	SensorTypeBattery        SensorType = "battery"        // Battery level and charging state
 )
 
-// SensorCategory categorizes a sensor's role in the system.
+// SensorCategory categorizes a sensor's role in the system. It determines how
+// the backend treats the sensor, read-only or controllable.
 type SensorCategory string
 
 const (
-	SensorCategorySensor  SensorCategory = "sensor"  // Reports detected state (read-only from user perspective)
-	SensorCategoryControl SensorCategory = "control" // Accepts commands (light, PTZ, siren, etc.)
-	SensorCategoryTrigger SensorCategory = "trigger" // Fires one-shot events (doorbell ring)
-	SensorCategoryInfo    SensorCategory = "info"    // Read-only informational data (battery level)
+	SensorCategorySensor  SensorCategory = "sensor"  // Read-only detection sensor (motion, object, audio, etc.)
+	SensorCategoryControl SensorCategory = "control" // Controllable sensor with set methods (light, siren, PTZ, etc.)
+	SensorCategoryTrigger SensorCategory = "trigger" // Event trigger (doorbell ring)
+	SensorCategoryInfo    SensorCategory = "info"    // Informational read-only state (battery level)
 )
 
 // Sensor is the interface all sensors must implement.
 //
-// Plugin-author state-modifying methods (`SetOn`, `ReportDetections`, etc.) live
-// on the concrete sensor types, not on Sensor. Code that holds a Sensor reference
-// can READ state and observe changes, plus invoke `UpdateValue` for cross-process
-// generic property writes (HomeKit bridge etc.).
+// State-modifying methods (SetOn, ReportDetections, etc.) live on the concrete
+// sensor types, not on Sensor. Code that holds a Sensor reference can read state
+// and observe changes, plus invoke UpdateValue for cross-process generic
+// property writes such as the HomeKit bridge.
 type Sensor interface {
 	GetID() string
 	GetType() SensorType
 	GetCategory() SensorCategory
 	GetName() string
 	GetDisplayName() string
+	// SetDisplayName sets the label shown in the UI.
 	SetDisplayName(name string)
 	GetNativeID() string
 	GetPluginID() string
-	// GetAssignedCameraIDs returns the cameras this sensor is currently
-	// assigned to. Empty for unassigned standalone sensors.
 	GetAssignedCameraIDs() []string
-	// Connected reports whether the owning plugin currently provides this sensor.
 	Connected() bool
 	GetCapabilities() []string
+	// SetCapabilities replaces the advertised feature flags.
 	SetCapabilities(caps []string)
+	// HasCapability reports whether the sensor advertises a capability.
 	HasCapability(cap string) bool
-	// GetValue returns the current value of a sensor property.
 	GetValue(property string) any
-	// GetValues returns a snapshot of all property values.
 	GetValues() map[string]any
-	// UpdateValue is the cross-process consumer entry point. Concrete sensor types
-	// implement it to dispatch known properties to semantic methods (`SetOn`,
-	// `SetTargetState`, ...) so plugin-side hardware-action overrides are honored.
-	// Read-only sensors implement it as a no-op. Plugin authors **must not** call
-	// this — they should call the semantic methods directly.
+	// UpdateValue is the generic property write coming from a consumer. Concrete
+	// sensor types dispatch known properties to semantic methods (SetOn,
+	// SetTargetState) so plugin-side hardware overrides run. Read-only sensors
+	// implement it as a no-op. Plugin authors call the semantic methods instead.
 	UpdateValue(property string, value any) error
+	// OnPropertyChanged fires on every property change.
 	OnPropertyChanged(callback func(SensorPropertyChange)) *Disposable
+	// OnCapabilitiesChanged fires with the full capability list whenever it changes.
 	OnCapabilitiesChanged(callback func([]string)) *Disposable
 	// OnAssignmentChanged fires with the current camera id list whenever the
 	// user changes this sensor's camera assignments.
 	OnAssignmentChanged(callback func([]string)) *Disposable
 	// OnConnectedChanged fires when the owning plugin's connectivity changes.
 	OnConnectedChanged(callback func(bool)) *Disposable
+	// ToJSON returns the wire representation used to mirror the sensor across processes.
 	ToJSON() sensorJSON
 }
+
+// SensorOption configures a sensor at construction time.
+type SensorOption func(*sensorOptions)
 
 type sensorJSON struct {
 	ID             string         `msgpack:"id" json:"id"`
@@ -107,32 +113,8 @@ type sensorJSON struct {
 
 type propertyUpdateFn func(properties map[string]any)
 
-// sensorLifecycle is an OPTIONAL interface sensors can satisfy to receive
-// lifecycle notifications. Implement it on your concrete sensor type to run
-// work whose lifetime matches the sensor's — polling loops, subscriptions,
-// timers, external connections.
-//
-// The SDK calls OnStart() after the sensor is registered and live (storage and
-// RPC channels are already wired) and OnStop() on removal, plugin shutdown or
-// cleanup. Calls are paired 1:1 — every OnStart has exactly one matching
-// OnStop later.
-//
-// Hooks run in a dedicated goroutine so plugin-side work does not block the
-// runtime. Panics are recovered and swallowed so lifecycle errors will NOT
-// break lifecycle bookkeeping; handle errors inside your implementation.
-//
-// Sensors that don't need lifecycle hooks simply omit the methods.
-//
-// Example:
-//
-//	func (s *MySensor) OnStart() {
-//	    s.stop = make(chan struct{})
-//	    go s.poll(s.stop)
-//	}
-//
-//	func (s *MySensor) OnStop() {
-//	    close(s.stop)
-//	}
+// optional on a concrete sensor, OnStart/OnStop are paired 1:1, run in their own
+// goroutine and swallow panics
 type sensorLifecycle interface {
 	OnStart()
 	OnStop()
@@ -142,23 +124,10 @@ type sensorOptions struct {
 	nativeID string
 }
 
-// SensorOption configures a sensor at construction time.
-type SensorOption func(*sensorOptions)
-
-// WithNativeID sets the plugin-supplied durable identity (e.g. an upstream
-// device id). The host reconciles the sensor across restarts by
-// (pluginId, nativeId); without it, identity falls back to (type, name) and a
-// rename creates a new sensor.
-func WithNativeID(nativeID string) SensorOption {
-	return func(o *sensorOptions) {
-		o.nativeID = nativeID
-	}
-}
-
 // BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
 //
 // Sensors are standalone entities: the plugin supplies the durable identity
-// (WithNativeID), everything else belongs to the user — camera assignments,
+// (WithNativeID), everything else belongs to the user: camera assignments,
 // display name and whether the sensor is exported to HomeKit/HA/MQTT. A plugin
 // never decides where its sensor is used and never handles the export itself.
 type BaseSensor struct {
@@ -183,6 +152,15 @@ type BaseSensor struct {
 	requiresFrames       bool
 }
 
+// NewBaseSensor creates the embedded base for a concrete sensor type. The id it
+// assigns is provisional until the host registers the sensor, and Storage stays
+// nil until then.
+//
+// Example:
+//
+//	type MySensor struct{ sdk.BaseSensor }
+//
+//	s := &MySensor{BaseSensor: sdk.NewBaseSensor("Front Door", sdk.WithNativeID("dev-1"))}
 func NewBaseSensor(name string, opts ...SensorOption) BaseSensor {
 	var cfg sensorOptions
 	for _, opt := range opts {
@@ -229,7 +207,6 @@ func (s *BaseSensor) SetDisplayName(name string) {
 	s.displayName = name
 }
 
-// GetNativeID returns the plugin-supplied durable identity, or empty string.
 func (s *BaseSensor) GetNativeID() string {
 	return s.nativeID
 }
@@ -238,7 +215,6 @@ func (s *BaseSensor) GetPluginID() string {
 	return s.pluginID
 }
 
-// GetAssignedCameraIDs returns the cameras this sensor is currently assigned to.
 func (s *BaseSensor) GetAssignedCameraIDs() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -247,7 +223,6 @@ func (s *BaseSensor) GetAssignedCameraIDs() []string {
 	return ids
 }
 
-// Connected reports whether the sensor is registered with the host.
 func (s *BaseSensor) Connected() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -267,6 +242,12 @@ func (s *BaseSensor) GetCapabilities() []string {
 	return caps
 }
 
+// SetCapabilities replaces the advertised feature flags and notifies the
+// backend plus local listeners.
+//
+// Example:
+//
+//	sensor.SetCapabilities([]string{sdk.LightCapabilityBrightness})
 func (s *BaseSensor) SetCapabilities(caps []string) {
 	s.mu.Lock()
 	s.capabilities = caps
@@ -275,11 +256,9 @@ func (s *BaseSensor) SetCapabilities(caps []string) {
 	updateFn := s.capabilitiesUpdateFn
 	s.mu.Unlock()
 
-	// Broadcast to SensorController (for RPC propagation)
 	if updateFn != nil {
 		updateFn(capsCopy)
 	}
-	// Notify local listeners
 	s.capabilitiesChanged.Next(capsCopy)
 }
 
@@ -288,25 +267,23 @@ func (s *BaseSensor) OnCapabilitiesChanged(callback func([]string)) *Disposable 
 	return s.capabilitiesChanged.Subscribe(callback)
 }
 
+// HasCapability reports whether the sensor advertises the given capability.
+//
+// Example:
+//
+//	dimmable := sensor.HasCapability(sdk.LightCapabilityBrightness)
 func (s *BaseSensor) HasCapability(cap string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return slices.Contains(s.capabilities, cap)
 }
 
-// GetValue returns the current value of a sensor property.
 func (s *BaseSensor) GetValue(property string) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.properties[property]
 }
 
-// GetValues returns a snapshot of all property values.
-//
-// Example:
-//
-//	snapshot := sensor.GetValues()
-//	fmt.Println(snapshot)
 func (s *BaseSensor) GetValues() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -315,7 +292,6 @@ func (s *BaseSensor) GetValues() map[string]any {
 	return result
 }
 
-// Storage returns the sensor's persistent storage. Nil until the sensor is added to a camera.
 func (s *BaseSensor) Storage() *DeviceStorage {
 	return s.storage
 }
@@ -331,7 +307,6 @@ func (s *BaseSensor) OnAssignmentChanged(callback func([]string)) *Disposable {
 	return s.assignmentChanged.Subscribe(callback)
 }
 
-// IsAssigned returns whether this sensor is assigned to at least one camera.
 func (s *BaseSensor) IsAssigned() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -356,16 +331,6 @@ func (s *BaseSensor) setAssignedCameras(cameraIDs []string) {
 	s.assignmentChanged.Next(notify)
 }
 
-// writeState performs deep-equal change detection over the partial, writes
-// changed properties to the store, fires a single batched RPC update with the
-// delta, and notifies local listeners per-property.
-//
-// Used by the semantic helper methods on each sensor type (`SetOn`,
-// `ReportDetections`, etc.) — **not for plugin authors**. Plugin code should
-// call the semantic helpers, not write state directly.
-//
-// One `writeState` call → one `updateFn` invocation. The receiver sees an
-// atomic state transition for this sensor.
 func (s *BaseSensor) writeState(partial map[string]any) {
 	type change struct {
 		property string
@@ -424,10 +389,8 @@ func (s *BaseSensor) initCapabilitiesUpdateFn(updateFn func([]string)) {
 	s.capabilitiesUpdateFn = updateFn
 }
 
-// setActive flips the lifecycle state and notifies connectivity subscribers,
-// but does NOT invoke lifecycle hooks — BaseSensor cannot reach the outer
-// concrete type; use setActiveWithLifecycle for those. Returns whether the
-// state actually changed.
+// no lifecycle hooks here, BaseSensor cannot reach the outer concrete type,
+// setActiveWithLifecycle does that
 func (s *BaseSensor) setActive(active bool) bool {
 	s.mu.Lock()
 	if s.active == active {
@@ -461,8 +424,7 @@ func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) 
 	}
 }
 
-// onBackendPropertyChanged updates a property from a backend-initiated change
-// without triggering the updateFn (which would broadcast back to the server).
+// skips updateFn, echoing a backend-initiated change back to the server would loop
 func (s *BaseSensor) onBackendPropertyChanged(property string, value any) {
 	s.mu.Lock()
 	oldValue := s.properties[property]
@@ -511,6 +473,27 @@ func (s *BaseSensor) cleanup() {
 	s.storage = nil
 }
 
+// no connectedChanged emission, teardown pairs OnStop but is not a connectivity signal
+func (s *BaseSensor) deactivateQuiet() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.active {
+		return false
+	}
+	s.active = false
+	return true
+}
+
+// WithNativeID sets the plugin-supplied durable identity (e.g. an upstream
+// device id). The host reconciles the sensor across restarts by
+// (pluginId, nativeId); without it, identity falls back to (type, name) and a
+// rename creates a new sensor.
+func WithNativeID(nativeID string) SensorOption {
+	return func(o *sensorOptions) {
+		o.nativeID = nativeID
+	}
+}
+
 func generateSensorID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -520,13 +503,6 @@ func generateSensorID() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// normalizeReportedDetections is a helper for `ReportDetections(detected, detections)` flows.
-//
-//   - If `detected` is false → returns an empty slice (clear).
-//   - If `detected` is true and `detections` has items → returns them, substituting a full-frame box where missing.
-//   - If `detected` is true and `detections` is empty → returns a single
-//     synthesized full-frame detection with the given fallback label and any
-//     fallback extras applied (used for type-specific properties like `attribute`).
 func normalizeReportedDetections(detected bool, detections []Detection, fallbackLabel string, fallbackAttribute string) []Detection {
 	if !detected {
 		return []Detection{}
@@ -545,10 +521,8 @@ func normalizeReportedDetections(detected bool, detections []Detection, fallback
 	return []Detection{d}
 }
 
-// fillMissingBoxes substitutes a full-frame bounding box for detections
-// reported without one. Smart-camera plugins (Ring, Reolink, ...) report
-// labels without coordinates, while downstream consumers (detection
-// coordinator, zone matching) require a box on every detection.
+// smart-camera plugins report labels without coordinates, downstream zone
+// matching needs a box on every detection
 func fillMissingBoxes(detections []Detection) []Detection {
 	out := make([]Detection, len(detections))
 	for i, d := range detections {
@@ -569,22 +543,6 @@ func isDetectionSensorType(t SensorType) bool {
 	return false
 }
 
-// deactivateQuiet flips active off without emitting on connectedChanged —
-// teardown pairs the OnStop hook but is not a connectivity signal. Returns
-// whether the sensor was still active.
-func (s *BaseSensor) deactivateQuiet() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.active {
-		return false
-	}
-	s.active = false
-	return true
-}
-
-// cleanupSensorWithLifecycle tears a sensor down: pairs OnStop if the sensor
-// is still active (without a connectivity emission, matching removal/shutdown
-// semantics across runtimes), then completes subjects and clears wiring.
 func cleanupSensorWithLifecycle(outer any) {
 	type quietDeactivator interface{ deactivateQuiet() bool }
 	if qd, ok := outer.(quietDeactivator); ok && qd.deactivateQuiet() {
@@ -604,10 +562,7 @@ func cleanupSensorWithLifecycle(outer any) {
 	}
 }
 
-// setActiveWithLifecycle updates the lifecycle state and, if the outer concrete
-// sensor implements sensorLifecycle, dispatches OnStart / OnStop in a separate
-// goroutine. outer must be the concrete sensor value (the BaseSensor embeddor)
-// so the type assertion can see its method set.
+// outer must be the concrete sensor value, the type assertions need its full method set
 func setActiveWithLifecycle(outer any, active bool) {
 	type activatableSensor interface{ setActive(bool) bool }
 	as, ok := outer.(activatableSensor)
@@ -625,7 +580,7 @@ func setActiveWithLifecycle(outer any, active bool) {
 	}
 	go func() {
 		defer func() {
-			// Swallow panics — lifecycle errors must not crash the runtime
+			// swallow, lifecycle errors must not crash the runtime
 			_ = recover()
 		}()
 		if active {

@@ -5,11 +5,16 @@ package sdk
 type OAuthStatus = string
 
 const (
+	// OAuthStatusDisconnected means no grant is stored.
 	OAuthStatusDisconnected OAuthStatus = "disconnected"
+	// OAuthStatusAwaitingUser means the user still has to authorize the flow.
 	OAuthStatusAwaitingUser OAuthStatus = "awaiting_user"
-	OAuthStatusPolling      OAuthStatus = "polling"
-	OAuthStatusConnected    OAuthStatus = "connected"
-	OAuthStatusError        OAuthStatus = "error"
+	// OAuthStatusPolling means the plugin is polling the IdP for the token.
+	OAuthStatusPolling OAuthStatus = "polling"
+	// OAuthStatusConnected means a usable grant is stored.
+	OAuthStatusConnected OAuthStatus = "connected"
+	// OAuthStatusError means the flow failed; see ErrorCode and ErrorMessage.
+	OAuthStatusError OAuthStatus = "error"
 )
 
 // OAuthState is a snapshot of a provider connection's lifecycle. It lives in
@@ -20,33 +25,36 @@ type OAuthState struct {
 	// Status is the current lifecycle phase (see OAuthStatus values).
 	Status OAuthStatus `msgpack:"status" json:"status"`
 
-	// UserCode / VerificationURI / VerificationURIComplete are set while a
-	// Device Flow is awaiting the user. VerificationURIComplete embeds the
-	// user code and is what the host renders as a QR code.
-	UserCode                string `msgpack:"userCode,omitempty" json:"userCode,omitempty"`
-	VerificationURI         string `msgpack:"verificationUri,omitempty" json:"verificationUri,omitempty"`
+	// UserCode is the device-flow user code shown to the user (set while
+	// awaiting_user).
+	UserCode string `msgpack:"userCode,omitempty" json:"userCode,omitempty"`
+	// VerificationURI is the device-flow verification URI the user opens (set
+	// while awaiting_user).
+	VerificationURI string `msgpack:"verificationUri,omitempty" json:"verificationUri,omitempty"`
+	// VerificationURIComplete is the verification URI with the user code
+	// embedded, rendered as a QR code.
 	VerificationURIComplete string `msgpack:"verificationUriComplete,omitempty" json:"verificationUriComplete,omitempty"`
-
-	// AuthURL is set while an Authorization Code Flow is awaiting the user —
-	// the URL the browser must open to authorize.
+	// AuthURL is the authorization-code-flow URL the browser must open (set
+	// while awaiting_user).
 	AuthURL string `msgpack:"authUrl,omitempty" json:"authUrl,omitempty"`
-
-	// UserEmail / ConnectedAt / ScopesGranted describe an established grant
-	// (Status connected). ConnectedAt is a Unix timestamp.
-	UserEmail     string   `msgpack:"userEmail,omitempty" json:"userEmail,omitempty"`
-	ConnectedAt   int64    `msgpack:"connectedAt,omitempty" json:"connectedAt,omitempty"`
+	// UserEmail is the connected account email (set while connected).
+	UserEmail string `msgpack:"userEmail,omitempty" json:"userEmail,omitempty"`
+	// ConnectedAt is the Unix timestamp the grant was established (set while
+	// connected).
+	ConnectedAt int64 `msgpack:"connectedAt,omitempty" json:"connectedAt,omitempty"`
+	// ScopesGranted are the scopes granted by the IdP (set while connected).
 	ScopesGranted []string `msgpack:"scopesGranted,omitempty" json:"scopesGranted,omitempty"`
-
-	// ErrorCode / ErrorMessage are set while Status is error. ErrorCode uses
-	// OAuth spec values ("access_denied", "expired_token", "server_error").
-	ErrorCode    string `msgpack:"errorCode,omitempty" json:"errorCode,omitempty"`
+	// ErrorCode is the OAuth error code (set while error): access_denied,
+	// expired_token, server_error.
+	ErrorCode string `msgpack:"errorCode,omitempty" json:"errorCode,omitempty"`
+	// ErrorMessage is the human-readable error detail (set while error).
 	ErrorMessage string `msgpack:"errorMessage,omitempty" json:"errorMessage,omitempty"`
 }
 
 // OAuthMetadata is informational data the host renders in the connect dialog.
 type OAuthMetadata struct {
 	// IdpDisplayName is the human name of the identity provider, e.g.
-	// "cameraui.com", "Spotify", "GitHub".
+	// "cameraui.com", "Spotify".
 	IdpDisplayName string `msgpack:"idpDisplayName" json:"idpDisplayName"`
 	// ScopeDescriptions maps each scope to a human-readable description.
 	ScopeDescriptions map[string]string `msgpack:"scopeDescriptions" json:"scopeDescriptions"`
@@ -58,15 +66,18 @@ type OAuthMetadata struct {
 // OAuthProviderConfig points the plugin's OAuth manager at an identity
 // provider.
 type OAuthProviderConfig struct {
-	// Preset names a built-in IdP endpoint set. When empty the explicit
-	// endpoint fields are used.
+	// Preset names a built-in IdP endpoint set, e.g. "cameraui.com". When
+	// empty the explicit endpoint fields are used.
 	Preset string `msgpack:"preset,omitempty" json:"preset,omitempty"`
-	// DeviceAuthURL / TokenURL / RevokeURL are the IdP endpoints used when
-	// Preset is empty.
+	// DeviceAuthURL is the device-authorization endpoint (used when Preset is
+	// empty).
 	DeviceAuthURL string `msgpack:"deviceAuthUrl,omitempty" json:"deviceAuthUrl,omitempty"`
-	AuthURL       string `msgpack:"authUrl,omitempty" json:"authUrl,omitempty"`
-	TokenURL      string `msgpack:"tokenUrl,omitempty" json:"tokenUrl,omitempty"`
-	RevokeURL     string `msgpack:"revokeUrl,omitempty" json:"revokeUrl,omitempty"`
+	// AuthURL is the authorization endpoint (used when Preset is empty).
+	AuthURL string `msgpack:"authUrl,omitempty" json:"authUrl,omitempty"`
+	// TokenURL is the token endpoint (used when Preset is empty).
+	TokenURL string `msgpack:"tokenUrl,omitempty" json:"tokenUrl,omitempty"`
+	// RevokeURL is the revocation endpoint (used when Preset is empty).
+	RevokeURL string `msgpack:"revokeUrl,omitempty" json:"revokeUrl,omitempty"`
 }
 
 // OAuthProviderDeclaration is one provider a plugin integrates with. A
@@ -89,11 +100,11 @@ type OAuthProviderDeclaration struct {
 
 // OAuthCapable is the base interface every OAuth-capable plugin implements,
 // alongside at least one flow sub-interface (Device / AuthCode /
-// ClientCredentials). It is IdP-agnostic — the plugin brings its own endpoint
+// ClientCredentials). It is IdP-agnostic: the plugin brings its own endpoint
 // config and knows nothing about the host's internals.
 type OAuthCapable interface {
 	// GetOAuthMetadata returns the IdP display info, scope descriptions and
-	// which flow sub-interfaces the plugin implements. Called on UI mount.
+	// which flow sub-interfaces the plugin implements.
 	GetOAuthMetadata() (*OAuthMetadata, error)
 	// GetOAuthState returns a snapshot of the current lifecycle state; the
 	// host polls this to mirror progress.
@@ -109,24 +120,23 @@ type OAuthCapable interface {
 type OAuthDeviceFlowCapable interface {
 	OAuthCapable
 	// StartDeviceFlow requests a device code for the given scopes and begins
-	// polling the IdP. Returns the awaiting-user state (code + verification
-	// URI) for the UI to render.
+	// polling. Returns the awaiting-user state.
 	StartDeviceFlow(scope []string) (*OAuthState, error)
 	// CancelDeviceFlow aborts an in-progress device flow.
 	CancelDeviceFlow() error
 }
 
-// OAuthAuthCodeFlowCapable is implemented by plugins that use the OAuth 2.0
-// Authorization Code Flow with PKCE. The plugin builds the auth URL (keeping
-// the PKCE verifier internal); the host opens it and, on IdP redirect to
-// /oauth/callback/:pluginId, forwards the code+state to CompleteAuthCodeFlow.
+// OAuthAuthCodeFlowCapable is implemented by plugins that use the
+// Authorization Code Flow with PKCE. The plugin builds the auth URL and keeps
+// the PKCE verifier internal; the host opens the URL and forwards the IdP
+// redirect's code+state to CompleteAuthCodeFlow.
 type OAuthAuthCodeFlowCapable interface {
 	OAuthCapable
 	// StartAuthCodeFlow builds the authorization URL for the given scopes and
 	// returns the awaiting-user state (AuthURL set).
 	StartAuthCodeFlow(scope []string) (*OAuthState, error)
 	// CompleteAuthCodeFlow exchanges the IdP-returned code for tokens after
-	// validating state against the value bound in StartAuthCodeFlow.
+	// validating state.
 	CompleteAuthCodeFlow(code, state string) (*OAuthState, error)
 	// CancelAuthCodeFlow aborts an in-progress authorization-code flow.
 	CancelAuthCodeFlow() error
@@ -138,6 +148,6 @@ type OAuthAuthCodeFlowCapable interface {
 type OAuthClientCredentialsCapable interface {
 	OAuthCapable
 	// ConfigureClientCredentials stores the supplied credentials and fetches
-	// an initial token to validate them, returning the resulting state.
+	// an initial token to validate them.
 	ConfigureClientCredentials(clientID, clientSecret string) (*OAuthState, error)
 }

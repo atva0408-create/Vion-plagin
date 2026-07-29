@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	humidityPropertyCurrent = "current" // Current relative humidity (0-100%)
+	humidityPropertyCurrent = "current"
 )
 
 // HumidityInfo reports current relative humidity (0-100%).
@@ -25,6 +25,10 @@ func (s *HumidityInfo) GetCurrent() float64 {
 }
 
 // SetCurrent sets the current relative humidity (clamped to [0,100]).
+//
+// Example:
+//
+//	humidity.SetCurrent(63)
 func (s *HumidityInfo) SetCurrent(value float64) {
 	if value < 0 {
 		value = 0
@@ -35,7 +39,7 @@ func (s *HumidityInfo) SetCurrent(value float64) {
 	s.writeState(map[string]any{humidityPropertyCurrent: value})
 }
 
-// UpdateValue is a no-op for read-only humidity sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *HumidityInfo) UpdateValue(property string, value any) error {
 	return nil
 }

@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	occupancyPropertyDetected = "detected" // Whether occupancy is detected (true = occupied)
+	occupancyPropertyDetected = "detected"
 )
 
 // OccupancySensor reports occupancy/presence state.
@@ -34,7 +34,7 @@ func (s *OccupancySensor) SetDetected(detected bool) {
 	s.writeState(map[string]any{occupancyPropertyDetected: detected})
 }
 
-// UpdateValue is a no-op for read-only occupancy sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *OccupancySensor) UpdateValue(property string, value any) error {
 	return nil
 }

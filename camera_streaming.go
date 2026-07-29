@@ -1,6 +1,6 @@
 package sdk
 
-// Go2RtcWSSource contains WebSocket streaming URLs from the stream provider.
+// Go2RtcWSSource contains WebSocket streaming URLs from go2rtc.
 type Go2RtcWSSource struct {
 	// WebRTC is the WebRTC signaling endpoint.
 	WebRTC string `msgpack:"webrtc,omitempty" json:"webrtc,omitempty"`
@@ -8,7 +8,7 @@ type Go2RtcWSSource struct {
 	MSE string `msgpack:"mse,omitempty" json:"mse,omitempty"`
 }
 
-// Go2RtcRTSPSource contains RTSP streaming URLs from the stream provider.
+// Go2RtcRTSPSource contains RTSP streaming URLs from go2rtc.
 type Go2RtcRTSPSource struct {
 	// Base is the base RTSP URL.
 	Base string `msgpack:"base,omitempty" json:"base,omitempty"`
@@ -30,7 +30,7 @@ type Go2RtcRTSPSource struct {
 	NoGop string `msgpack:"noGop,omitempty" json:"noGop,omitempty"`
 }
 
-// Go2RtcSnapshotSource contains snapshot/image URLs from the stream provider.
+// Go2RtcSnapshotSource contains snapshot/image URLs from go2rtc.
 type Go2RtcSnapshotSource struct {
 	// MP4 is the MP4 single-frame video URL.
 	MP4 string `msgpack:"mp4,omitempty" json:"mp4,omitempty"`
@@ -82,11 +82,11 @@ type SnapshotUrlOptions struct {
 	GOP bool `msgpack:"gop,omitempty" json:"gop"`
 }
 
-// ProbeConfig selects which tracks a stream probe inspects and returns.
+// ProbeConfig is the configuration for stream probing.
 type ProbeConfig struct {
 	// Video includes video track info.
 	Video *bool `msgpack:"video,omitempty" json:"video,omitempty"`
-	// Audio includes audio track info — a bool, the string "all", or a
+	// Audio includes audio track info: a bool, the string "all", or a
 	// []ProbeAudioCodec listing specific codecs.
 	Audio any `msgpack:"audio,omitempty" json:"audio,omitempty"`
 	// Microphone includes microphone/backchannel info.
@@ -123,7 +123,7 @@ type VideoCodecProperties struct {
 	FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
 }
 
-// ProbeStream is the result of a stream probe — SDP plus track information.
+// ProbeStream is the stream probe result containing SDP and track information.
 type ProbeStream struct {
 	// SDP is the raw SDP string.
 	SDP string `msgpack:"sdp,omitempty" json:"sdp,omitempty"`

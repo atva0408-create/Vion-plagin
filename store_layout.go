@@ -13,11 +13,15 @@ const (
 	storeLocationSensor storeLocationKind = "sensor"
 )
 
+const storeLayoutVersionKey = "__v"
+
+// v2: sensors keyed by persistent sensor id, old camera-keyed trees are unmappable
+const storeLayoutVersion = 2
+
 var canonicalStoreSections = []string{"plugin", "cameras", "sensors"}
 
-// storeLocation addresses one value map inside a plugin's store document:
-// the plugin section, one camera, or one sensor. Every component is a literal
-// map key — never parsed or split, so ids may contain any characters.
+// every component is a literal map key, never parsed or split, so ids may
+// contain any characters
 type storeLocation struct {
 	kind     storeLocationKind
 	cameraID string
@@ -84,19 +88,11 @@ func pruneIfEmpty(parent map[string]any, key string) {
 	}
 }
 
-const storeLayoutVersionKey = "__v"
-
-// v2: sensors keyed by persistent sensor id, old camera-keyed trees are unmappable
-const storeLayoutVersion = 2
-
 func isCanonicalStoreSection(key string) bool {
 	return key == "plugin" || key == "cameras" || key == "sensors"
 }
 
-// remapLegacyGoLayout rewrites the pre-CUI1 Go key shapes ("<pluginID>.plugin",
-// "<pluginID>.camera.<id>", "<pluginID>.sensor.<camId>.<sensorId>") into the
-// canonical plugin/cameras/sensors layout. Idempotent: a document that already
-// contains only canonical sections is returned unchanged (changed == false).
+// idempotent, a document with only canonical sections comes back unchanged
 func remapLegacyGoLayout(doc map[string]any, pluginID string, log *Logger) (map[string]any, bool) {
 	pluginKey := pluginID + ".plugin"
 	cameraPrefix := pluginID + ".camera."
@@ -117,10 +113,10 @@ func remapLegacyGoLayout(doc map[string]any, pluginID string, log *Logger) (map[
 		switch {
 		case isCanonicalStoreSection(key) || key == storeLayoutVersionKey:
 		case key == pluginKey:
-			// In a mixed legacy+canonical document the canonical section is
-			// the newer write — the legacy duplicate is stale and must never win.
+			// in a mixed legacy+canonical document the canonical section is the
+			// newer write, the legacy duplicate is stale and must never win
 			if _, exists := out["plugin"]; exists {
-				log.Warn(fmt.Sprintf("store: legacy key '%s' dropped — canonical 'plugin' already present", key))
+				log.Warn(fmt.Sprintf("store: legacy key '%s' dropped, canonical 'plugin' already present", key))
 			} else {
 				out["plugin"] = values
 			}
@@ -129,7 +125,7 @@ func remapLegacyGoLayout(doc map[string]any, pluginID string, log *Logger) (map[
 			cameraID := key[len(cameraPrefix):]
 			if cameras, ok := out["cameras"].(map[string]any); ok {
 				if _, exists := cameras[cameraID]; exists {
-					log.Warn(fmt.Sprintf("store: legacy key '%s' dropped — canonical 'cameras.%s' already present", key, cameraID))
+					log.Warn(fmt.Sprintf("store: legacy key '%s' dropped, canonical 'cameras.%s' already present", key, cameraID))
 					changed = true
 					continue
 				}

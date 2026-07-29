@@ -10,19 +10,21 @@ import (
 
 // DiscoveredCamera is a camera found during discovery by a discovery provider plugin.
 type DiscoveredCamera struct {
-	// ID is the discovery ID (typically a stable native identifier).
+	// ID is the unique, stable identifier for this discovered camera (used for
+	// deduplication).
 	ID string `msgpack:"id" json:"id"`
-	// Name is the discovered camera display name.
+	// Name is the display name shown in the UI adoption list.
 	Name string `msgpack:"name" json:"name"`
-	// Manufacturer is the manufacturer name (if known).
+	// Manufacturer is the camera manufacturer label (optional).
 	Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
-	// Model is the model name (if known).
+	// Model is the camera model label (optional).
 	Model string `msgpack:"model,omitempty" json:"model,omitempty"`
 	// Address is the network address (IP or hostname) shown in the UI to disambiguate same-model cameras.
 	Address string `msgpack:"address,omitempty" json:"address,omitempty"`
 }
 
-// DeviceManager provides camera lookup and discovery operations via RPC.
+// DeviceManager provides camera operations: push discovered cameras and get
+// camera devices.
 //
 // Use GetCamera to retrieve a camera by ID or name, and PushDiscoveredCameras
 // to surface cameras found during async discovery (e.g. after a cloud login).
@@ -102,10 +104,11 @@ func (dm *DeviceManager) GetCamera(cameraIDOrName string) (*CameraDevice, error)
 	return cameraDevice, nil
 }
 
-// PushDiscoveredCameras pushes discovered cameras to the backend so the
-// user can pick them in the UI without waiting for the next discovery
-// poll. Use this when cameras are discovered asynchronously (e.g. after
-// a cloud login or mDNS event).
+// PushDiscoveredCameras pushes discovered cameras to the backend so the user
+// can pick them in the UI without waiting for the next discovery poll. Use it
+// when cameras are discovered asynchronously (e.g. after a cloud login or mDNS
+// event). Only available for CameraController and CameraAndSensorProvider
+// plugins.
 func (dm *DeviceManager) PushDiscoveredCameras(cameras []DiscoveredCamera) error {
 	ns := getDiscoveryManagerNamespaces()
 	discoveryProxy := dm.client.CreateProxy(ns.DiscoveryManagerRPC)
@@ -139,8 +142,8 @@ func (dm *DeviceManager) init() error {
 
 	cleanup, err := dm.client.OnRequest(ns.PluginDeviceManagerSubject, func(data []byte) (any, error) {
 		var msg deviceManagerEventMessage
-		// Raw wire bytes — may be a CUIB frame when the host request carried
-		// large binaries; DecodeMessageInto handles plain msgpack unchanged.
+		// raw wire bytes, may be a CUIB frame when the host request carried
+		// large binaries; DecodeMessageInto handles plain msgpack unchanged
 		if err := rpc.DecodeMessageInto(data, &msg); err != nil {
 			return nil, err
 		}
@@ -161,15 +164,14 @@ func (dm *DeviceManager) init() error {
 	return nil
 }
 
-// close cascades cleanup to each camera device.
 func (dm *DeviceManager) close() {
 	if dm.closeRequest != nil {
 		dm.closeRequest()
 		dm.closeRequest = nil
 	}
 
-	// Snapshot under the lock, then release it before invoking cleanup — a
-	// device cleanup must never run while the manager mutex is held.
+	// snapshot under the lock, then release it before invoking cleanup: a device
+	// cleanup must never run while the manager mutex is held
 	dm.mu.Lock()
 	devices := make([]*CameraDevice, 0, len(dm.devices))
 	for _, device := range dm.devices {

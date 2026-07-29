@@ -8,9 +8,8 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// Internal wire wrappers: RemotePluginID is stamped by the SDK when the plugin
-// runs remote-hosted, so the master streams the file via the file-serve RPC.
-// It is NOT part of the public options structs (plugin authors never set it).
+// the SDK stamps RemotePluginID for remote-hosted plugins so the master streams
+// the file via the file-serve RPC, deliberately off the public options struct
 type createDownloadWire struct {
 	CreateDownloadOptions
 	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
@@ -21,11 +20,22 @@ type createStreamDownloadWire struct {
 	RemotePluginID string `msgpack:"remotePluginId,omitempty" json:"remotePluginId,omitempty"`
 }
 
-// DownloadManager provides token-based file download registration via RPC.
+// DownloadManager provides token-based file downloads.
 //
-// Allows plugins to register files for HTTP download via a token URL.
-// No JWT authentication is needed — the token itself is the auth.
+// Plugins register a file and get back a token URL. No JWT is involved, the
+// token itself is the auth.
+//
 // Accessed via api.DownloadManager from within a plugin.
+//
+// Example:
+//
+//	tok, err := api.DownloadManager.CreateDownload(sdk.CreateDownloadOptions{
+//	    FilePath: "/tmp/export.mp4",
+//	    Filename: "recording.mp4",
+//	    MimeType: "video/mp4",
+//	    TTLMs:    600000,
+//	    Cleanup:  sdk.DownloadCleanupOnDownload,
+//	})
 type DownloadManager struct {
 	proxy *rpc.Proxy
 }
@@ -94,9 +104,7 @@ func remotePluginID() string {
 	return os.Getenv("PLUGIN_ID")
 }
 
-// decodeDownloadToken pulls the typed fields out of the response map.
-// expiresAt may arrive as int64, float64, or uint64 depending on the encoder
-// path, so it is coerced.
+// expiresAt arrives as int64, float64 or uint64 depending on the encoder path
 func decodeDownloadToken(m map[string]any) DownloadToken {
 	token, _ := m["token"].(string)
 	url, _ := m["url"].(string)

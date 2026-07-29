@@ -38,7 +38,7 @@ from pathlib import Path
 
 # Symbol name -> module page (filename without .md).
 BUCKETS: dict[str, str] = {
-    # plugin.md — lifecycle, contract, optional interfaces, helpers
+    # plugin.md: lifecycle, contract, optional interfaces, helpers
     "Plugin": "plugin",
     "BasePlugin": "plugin",
     "NewBasePlugin": "plugin",
@@ -99,7 +99,7 @@ BUCKETS: dict[str, str] = {
     "OAuthProviderDeclaration": "plugin",
     "ImageMetadata": "plugin",
     "AudioMetadata": "plugin",
-    # camera.md — camera entities, sources, frames, streaming
+    # camera.md: camera entities, sources, frames, streaming
     "Camera": "camera",
     "BaseCamera": "camera",
     "CameraConfig": "camera",
@@ -167,7 +167,7 @@ BUCKETS: dict[str, str] = {
     "PTZCapability": "camera",
     "PTZDirection": "camera",
     "PTZPosition": "camera",
-    # sensor.md — sensors (detection + smart-home)
+    # sensor.md: sensors (detection + smart-home)
     "Sensor": "sensor",
     "BaseSensor": "sensor",
     "NewBaseSensor": "sensor",
@@ -265,7 +265,7 @@ BUCKETS: dict[str, str] = {
     "NewTemperatureInfo": "sensor",
     "SensorTriggerRef": "sensor",
     "SensorTriggerSettings": "sensor",
-    # storage.md — schema-driven config
+    # storage.md: schema-driven config
     "DeviceStorage": "storage",
     "JsonSchema": "storage",
     "JsonSchemaType": "storage",
@@ -279,7 +279,7 @@ BUCKETS: dict[str, str] = {
     "StorageStats": "storage",
     "CameraStorageStats": "storage",
     "StorageController": "storage",
-    # manager.md — system services
+    # manager.md: system services
     "CoreManager": "manager",
     "CoreManagerEvent": "manager",
     "DeviceManager": "manager",
@@ -289,7 +289,7 @@ BUCKETS: dict[str, str] = {
     "CreateDownloadOptions": "manager",
     "NotificationManager": "manager",
     "CreateStreamDownloadOptions": "manager",
-    # observable.md — reactive primitives
+    # observable.md: reactive primitives
     "Observable": "observable",
     "NewObservable": "observable",
     "Subject": "observable",
@@ -309,7 +309,7 @@ BUCKETS: dict[str, str] = {
     "MergeMap": "observable",
     "Pairwise": "observable",
     "Share": "observable",
-    # types.md — shared utilities, helpers
+    # types.md: shared utilities, helpers
     "Logger": "types",
     "Bool": "types",
     "Int": "types",
@@ -339,7 +339,7 @@ PAGE_INTROS: dict[str, str] = {
     "plugin": (
         "Core plugin lifecycle and capability surface: the `Plugin` interface every "
         "plugin implements, the `BasePlugin` boilerplate-saver, the `PluginContract` "
-        "manifest, lifecycle event names (`APIEvent*`), and every optional interface — "
+        "manifest, lifecycle event names (`APIEvent*`), and every optional interface: "
         "`DiscoveryProvider`, `NotifierInterface`, and the seven detection interfaces."
     ),
     "camera": (
@@ -382,7 +382,7 @@ PAGE_INTROS: dict[str, str] = {
 def parse_index(text: str) -> int:
     """Find the line index where the gomarkdoc header (Index) ends."""
     # Index ends at the first heading after `## Index` that's not a sub-bullet.
-    # The simplest landmark is the "## Constants" / "## Variables" line — which
+    # The simplest landmark is the "## Constants" / "## Variables" line, which
     # both come before the first symbol heading.
     for i, line in enumerate(text.splitlines()):
         if (

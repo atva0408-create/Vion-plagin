@@ -8,8 +8,6 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// sensorProxy is the cross-process consumer proxy: caches sensor state from
-// broadcasts, forwards Control writes via RPC to the owning plugin.
 type sensorProxy struct {
 	BaseSensor
 	client     *rpc.Client
@@ -48,7 +46,6 @@ func newSensorProxy(client *rpc.Client, logger *Logger, data *storedSensorData) 
 		s.properties[k] = coercePropertyValue(data.Type, k, v)
 	}
 
-	// RPC directly to owner - for Control sensors
 	ownerNS := getSensorProviderNamespaces(data.PluginID, data.ID)
 	s.proxy = client.CreateProxy(ownerNS.SensorRPC)
 
@@ -70,37 +67,19 @@ func (s *sensorProxy) GetType() SensorType         { return s.sensorType }
 func (s *sensorProxy) GetCategory() SensorCategory { return s.category }
 func (s *sensorProxy) ToJSON() sensorJSON          { return s.toBaseJSON(s.sensorType, s.category) }
 
-// Connected reports whether the owning plugin currently provides this sensor.
 func (s *sensorProxy) Connected() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.connected
 }
 
-// Exposed reports whether the user exports this sensor to bridges.
 func (s *sensorProxy) Exposed() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.exposed
 }
 
-func (s *sensorProxy) setConnected(connected bool) {
-	s.mu.Lock()
-	if s.connected == connected {
-		s.mu.Unlock()
-		return
-	}
-	s.connected = connected
-	s.mu.Unlock()
-	s.connectedChanged.Next(connected)
-}
-
-func (s *sensorProxy) setExposed(exposed bool) {
-	s.mu.Lock()
-	s.exposed = exposed
-	s.mu.Unlock()
-}
-
+// Refresh pulls the current property values from the owning sensor.
 func (s *sensorProxy) Refresh() error {
 	if s.proxy == nil {
 		return nil
@@ -121,8 +100,8 @@ func (s *sensorProxy) Refresh() error {
 	return nil
 }
 
-// Forwards to the owning sensor's UpdateValue via RPC — read-only sensor
-// types no-op on the owning side, so no category gate here.
+// UpdateValue forwards the write to the owning sensor via RPC. Read-only sensor
+// types no-op on the owning side, so there is no category gate here.
 func (s *sensorProxy) UpdateValue(property string, value any) error {
 	if s.proxy == nil {
 		return nil
@@ -132,6 +111,7 @@ func (s *sensorProxy) UpdateValue(property string, value any) error {
 	return err
 }
 
+// ToStoredData returns the cached sensor state in its persisted shape.
 func (s *sensorProxy) ToStoredData() storedSensorData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -154,6 +134,23 @@ func (s *sensorProxy) ToStoredData() storedSensorData {
 		Properties:        props,
 		Capabilities:      caps,
 	}
+}
+
+func (s *sensorProxy) setConnected(connected bool) {
+	s.mu.Lock()
+	if s.connected == connected {
+		s.mu.Unlock()
+		return
+	}
+	s.connected = connected
+	s.mu.Unlock()
+	s.connectedChanged.Next(connected)
+}
+
+func (s *sensorProxy) setExposed(exposed bool) {
+	s.mu.Lock()
+	s.exposed = exposed
+	s.mu.Unlock()
 }
 
 func (s *sensorProxy) handleSensorEvent(msg sensorEventMessage) {
@@ -187,11 +184,8 @@ func (s *sensorProxy) cleanupProxy() {
 	s.cleanup()
 }
 
-// toInt64 converts any Go numeric type to int64. Used for msgpack-decoded
-// values where the concrete numeric width depends on the source encoder
-// (msgpack picks the smallest type that fits — JS `1` may arrive as int8,
-// int16, int32, int64, uint8, uint16, uint32, uint64, float32 or float64).
-// Returns (0, false) if `v` is not a numeric type or overflows int64.
+// msgpack picks the smallest type that fits, so a JS 1 can arrive as anything
+// from int8 to uint64, float32 or float64
 func toInt64(v any) (int64, bool) {
 	switch n := v.(type) {
 	case int:

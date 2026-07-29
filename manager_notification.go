@@ -6,23 +6,21 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// notificationPublishEnvelope is the wire shape the host expects on the
-// notifications.publish subject. Carries the publishing plugin's identity
-// alongside the user-facing notification so the host can run capability +
-// per-source-toggle checks before fan-out.
+// carries the publishing plugin's identity so the host can run capability and
+// per-source-toggle checks before fan-out
 type notificationPublishEnvelope struct {
 	PluginID     string        `msgpack:"pluginId" json:"pluginId"`
 	PluginName   string        `msgpack:"pluginName" json:"pluginName"`
 	Notification *Notification `msgpack:"notification" json:"notification"`
 }
 
-// NotificationManager hands out the plugin's outgoing notification API.
+// NotificationManager publishes notifications into the host.
 //
 // Plugins call Publish to ask the host to fan a Notification out to every
-// installed Notifier-plugin and the in-app
-// UI. The host applies user settings (master toggle, per-source toggle,
-// quiet hours) and the publishing plugin's declared capabilities; calls
-// from plugins without CapabilityPublishNotifications are silently dropped.
+// installed Notifier-plugin and the in-app UI. The host applies user settings
+// (master toggle, per-source toggle, quiet hours) and the publishing plugin's
+// declared capabilities; calls from plugins without
+// CapabilityPublishNotifications are silently dropped.
 //
 // Accessed via api.NotificationManager from within a plugin.
 type NotificationManager struct {

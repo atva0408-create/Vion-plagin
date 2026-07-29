@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	smokePropertyDetected = "detected" // Whether smoke is detected
+	smokePropertyDetected = "detected"
 )
 
 // SmokeSensor reports smoke detection state.
@@ -24,8 +24,7 @@ func (s *SmokeSensor) IsDetected() bool {
 	return v
 }
 
-// SetDetected reports smoke detection state (true when smoke is currently
-// detected).
+// SetDetected reports the smoke detection state.
 //
 // Example:
 //
@@ -34,7 +33,7 @@ func (s *SmokeSensor) SetDetected(detected bool) {
 	s.writeState(map[string]any{smokePropertyDetected: detected})
 }
 
-// UpdateValue is a no-op for read-only smoke sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *SmokeSensor) UpdateValue(property string, value any) error {
 	return nil
 }

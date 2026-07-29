@@ -1,8 +1,9 @@
 package sdk
 
-// PTZCapability defines PTZ capabilities.
+// PTZCapability is an optional capability of a PTZ control.
 type PTZCapability string
 
+// Optional capabilities of a PTZ control.
 const (
 	PTZCapabilityPan              PTZCapability = "pan"              // Camera supports panning (horizontal movement)
 	PTZCapabilityTilt             PTZCapability = "tilt"             // Camera supports tilting (vertical movement)
@@ -12,6 +13,16 @@ const (
 	PTZCapabilityRelativeMove     PTZCapability = "relativeMove"     // Camera executes relative displacement moves
 	PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition" // Camera accepts absolute position writes via `setPosition()`
 	PTZCapabilityVelocityControl  PTZCapability = "velocityControl"  // Camera accepts continuous-move commands via `setVelocity()`
+)
+
+const (
+	ptzPropertyPosition     = "position"
+	ptzPropertyMoving       = "moving"
+	ptzPropertyPresets      = "presets"
+	ptzPropertyVelocity     = "velocity"
+	ptzPropertyTargetPreset = "targetPreset"
+	ptzPropertyRelativeMove = "relativeMove"
+	ptzPropertyHome         = "home"
 )
 
 // PTZDirection represents PTZ movement speed for continuous move commands.
@@ -47,23 +58,13 @@ type PTZRelativeMove struct {
 	ZoomDelta float64 `msgpack:"zoomDelta" json:"zoomDelta"`
 }
 
-const (
-	ptzPropertyPosition     = "position"
-	ptzPropertyMoving       = "moving"
-	ptzPropertyPresets      = "presets"
-	ptzPropertyVelocity     = "velocity"
-	ptzPropertyTargetPreset = "targetPreset"
-	ptzPropertyRelativeMove = "relativeMove"
-	ptzPropertyHome         = "home"
-)
-
 // PTZControl is a pan-tilt-zoom camera control sensor. Override SetPosition /
 // SetVelocity / SetTargetPreset (by embedding PTZControl in your own type and
 // shadowing the methods) to drive hardware, then call the corresponding
 // embedded method after success to sync the SDK state. For hardware-pushed
 // state updates (e.g. PTZ position change events), call the embedded methods
-// directly from your event handler — that bypasses any plugin override and
-// only syncs state.
+// directly from your event handler. That bypasses any plugin override and only
+// syncs state.
 //
 // Set capabilities to advertise supported axes and features. Use SetPresets to
 // publish the discovered preset list and SetMoving to publish movement state.
@@ -111,11 +112,13 @@ func (s *PTZControl) SetPosition(value PTZPosition) {
 	s.writeState(map[string]any{ptzPropertyPosition: value})
 }
 
-// SetVelocity sets the continuous-move velocity.
+// SetVelocity sets the continuous-move velocity. The velocity property is unset
+// until the first continuous move is issued.
 //
 // Example:
 //
 //	ptz.SetVelocity(PTZDirection{PanSpeed: 0.5, TiltSpeed: 0, ZoomSpeed: 0})
+//	ptz.SetVelocity(PTZDirection{}) // stop
 func (s *PTZControl) SetVelocity(value PTZDirection) {
 	s.writeState(map[string]any{ptzPropertyVelocity: value})
 }
@@ -142,7 +145,8 @@ func (s *PTZControl) SetTargetPreset(value string) {
 	s.writeState(map[string]any{ptzPropertyTargetPreset: value})
 }
 
-// SetPresets publishes the discovered preset list.
+// SetPresets publishes the discovered preset list. The preset list stays empty
+// until this runs.
 //
 // Example:
 //
@@ -171,7 +175,7 @@ func (s *PTZControl) GoHome() {
 	s.SetPosition(PTZPosition{Pan: 0, Tilt: 0, Zoom: 0})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
 func (s *PTZControl) UpdateValue(property string, value any) error {
 	switch property {
 	case ptzPropertyPosition:

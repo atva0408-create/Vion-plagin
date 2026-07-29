@@ -1,10 +1,10 @@
 package sdk
 
 const (
-	temperaturePropertyCurrent = "current" // Current temperature in degrees Celsius
+	temperaturePropertyCurrent = "current"
 )
 
-// TemperatureInfo reports current temperature in °C.
+// TemperatureInfo reports the current temperature in degrees Celsius.
 type TemperatureInfo struct{ BaseSensor }
 
 func NewTemperatureInfo(name string, opts ...SensorOption) *TemperatureInfo {
@@ -24,7 +24,11 @@ func (s *TemperatureInfo) GetCurrent() float64 {
 	return v
 }
 
-// SetCurrent sets the current temperature (clamped to [-270,100]).
+// SetCurrent reports a new temperature reading (clamped to [-270,100]).
+//
+// Example:
+//
+//	temperature.SetCurrent(21.5)
 func (s *TemperatureInfo) SetCurrent(value float64) {
 	if value < -270 {
 		value = -270
@@ -35,7 +39,7 @@ func (s *TemperatureInfo) SetCurrent(value float64) {
 	s.writeState(map[string]any{temperaturePropertyCurrent: value})
 }
 
-// UpdateValue is a no-op for read-only temperature sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *TemperatureInfo) UpdateValue(property string, value any) error {
 	return nil
 }

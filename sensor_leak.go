@@ -1,7 +1,7 @@
 package sdk
 
 const (
-	leakPropertyDetected = "detected" // Whether a leak is detected
+	leakPropertyDetected = "detected"
 )
 
 // LeakSensor reports water leak detection state.
@@ -34,7 +34,7 @@ func (s *LeakSensor) SetDetected(detected bool) {
 	s.writeState(map[string]any{leakPropertyDetected: detected})
 }
 
-// UpdateValue is a no-op for read-only leak sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *LeakSensor) UpdateValue(property string, value any) error {
 	return nil
 }

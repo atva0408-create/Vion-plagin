@@ -35,8 +35,8 @@ func (e *eventEmitter) Once(event string, handler eventHandler) {
 	e.listeners[event] = append(e.listeners[event], eventEntry{handler: handler, once: true})
 }
 
-// Because Go function values are not reliably comparable, this removes every
-// listener registered for the event regardless of the handler argument.
+// Off removes every listener registered for event. Go function values are not
+// reliably comparable, so the handler argument is ignored.
 func (e *eventEmitter) Off(event string, handler eventHandler) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -72,7 +72,8 @@ func (e *eventEmitter) Emit(event string, args ...any) {
 	}
 }
 
-// An empty event removes listeners for every event.
+// RemoveAllListeners drops the listeners of event, or of every event when
+// event is empty.
 func (e *eventEmitter) RemoveAllListeners(event string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -83,12 +84,8 @@ func (e *eventEmitter) RemoveAllListeners(event string) {
 	}
 }
 
-// emitAndWait invokes every listener registered for event, each in its own
-// goroutine, and waits until all of them return or timeout elapses. It
-// reports whether every listener finished in time. Panics are recovered and
-// handed to onPanic (may be nil) so one failing listener never propagates or
-// blocks the rest; work a handler spawns in goroutines of its own is not
-// tracked.
+// panics go to onPanic (may be nil) so one failing listener never blocks the
+// rest, work a handler spawns in its own goroutines is not tracked
 func (e *eventEmitter) emitAndWait(event string, timeout time.Duration, onPanic func(recovered any), args ...any) bool {
 	e.mu.Lock()
 	current := e.listeners[event]

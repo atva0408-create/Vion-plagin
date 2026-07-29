@@ -13,8 +13,7 @@ import (
 
 const maxSafeStoreInt = 1<<53 - 1
 
-// maxStoreValueDepth bounds recursion so a circular reference fails with a
-// clear error instead of a stack overflow.
+// bounds recursion so a circular reference errors out instead of overflowing the stack
 const maxStoreValueDepth = 64
 
 // DeviceStorage is the schema-driven configuration store for a plugin,
@@ -35,10 +34,8 @@ const maxStoreValueDepth = 64
 //	}
 type DeviceStorage struct {
 	mu sync.RWMutex
-	// persistMu orders whole-document snapshots: held from taking the values
-	// snapshot until the persistence layer has enqueued it, so a snapshot
-	// taken earlier can never be enqueued after — and thus overwrite — a
-	// newer one. Never held while waiting for the flush itself.
+	// held from taking the values snapshot until it is enqueued, so an older
+	// snapshot can never overwrite a newer one; never held across the flush wait
 	persistMu   sync.Mutex
 	persistence configPersistence
 	location    storeLocation
@@ -46,13 +43,10 @@ type DeviceStorage struct {
 	Values      map[string]any
 	logger      *Logger
 
-	// dirty forces the next write to persist even when the value compares
-	// unchanged: set while the last persist failed (the on-disk state needs
-	// repair) and when a schema change flips a key's storable-ness (the
-	// current value's presence on disk no longer matches its schema).
+	// forces the next write even when the value compares unchanged: the last
+	// persist failed, or a schema change flipped a key's storable-ness
 	dirty bool
-	// persistSeq guards dirty: only the persist holding the newest snapshot
-	// may clear it.
+	// guards dirty, only the persist holding the newest snapshot may clear it
 	persistSeq uint64
 
 	closeHandler rpc.CleanupFunc
@@ -296,7 +290,7 @@ func (ds *DeviceStorage) DefineSchemas(schemas []JsonSchema) {
 }
 
 // AddSchema adds a new schema field. Returns an error if a schema with that
-// key already exists — use ChangeSchema to modify an existing field.
+// key already exists; use ChangeSchema to modify an existing field.
 func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error {
 	ds.mu.Lock()
 
@@ -329,7 +323,7 @@ func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error {
 
 // ChangeSchema replaces an existing key's schema with a full JsonSchema;
 // individual fields are not merged. The passed key always wins. It is a no-op
-// when no schema with that key is registered — use AddSchema to add a new field.
+// when no schema with that key is registered; use AddSchema to add a new field.
 func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error {
 	ds.mu.Lock()
 	newSchema.Key = key
@@ -439,7 +433,7 @@ func (ds *DeviceStorage) SetInternalValue(key string, value any) error {
 	skip := unchanged && !ds.dirty
 	ds.mu.Unlock()
 
-	// An unchanged value is already durable — skip the whole-document write.
+	// an unchanged value is already durable, skip the whole-document write
 	if skip {
 		return nil
 	}
@@ -462,7 +456,7 @@ func (ds *DeviceStorage) Destroy() error {
 	return ds.persist()
 }
 
-// persistedValues collects the keys that belong in the store. Caller must hold ds.mu.
+// caller must hold ds.mu
 func (ds *DeviceStorage) persistedValues() map[string]any {
 	out := make(map[string]any, len(ds.Values))
 	for key, val := range ds.Values {
@@ -474,10 +468,8 @@ func (ds *DeviceStorage) persistedValues() map[string]any {
 	return out
 }
 
-// persist writes the current persistable state and blocks until it is
-// durable. It must not be called with ds.mu or ds.persistMu held: the wait
-// blocks on disk or on the master's acknowledgement, and holding a lock
-// across that would stall every access for the duration of a flush.
+// must not be called holding ds.mu or ds.persistMu, the wait blocks on disk or
+// on the master's acknowledgement
 func (ds *DeviceStorage) persist() error {
 	ds.persistMu.Lock()
 	ds.mu.Lock()
@@ -504,7 +496,7 @@ func (ds *DeviceStorage) hasValueLocked(key string) bool {
 	return ok
 }
 
-// findSchemaByKey looks up a schema by key. Caller must hold ds.mu (read or write).
+// caller must hold ds.mu, read or write
 func (ds *DeviceStorage) findSchemaByKey(key string) *JsonSchema {
 	for i := range ds.Schemas {
 		if ds.Schemas[i].Key == key {
@@ -514,7 +506,6 @@ func (ds *DeviceStorage) findSchemaByKey(key string) *JsonSchema {
 	return nil
 }
 
-// close flushes a final snapshot and unregisters the storage's RPC handler.
 func (ds *DeviceStorage) close() {
 	if err := ds.Save(); err != nil {
 		ds.logger.Error("store: close save failed:", err)
@@ -522,7 +513,6 @@ func (ds *DeviceStorage) close() {
 	ds.unregister()
 }
 
-// unregister removes this storage's RPC handler without flushing.
 func (ds *DeviceStorage) unregister() {
 	if ds.closeHandler != nil {
 		_ = ds.closeHandler()
@@ -530,8 +520,7 @@ func (ds *DeviceStorage) unregister() {
 	}
 }
 
-// resolveOnGet runs each schema's OnGet and bakes the result into Values.
-// onGet may read back into this storage, so it runs without ds.mu held.
+// OnGet may read back into this storage, so it runs without ds.mu held
 func (ds *DeviceStorage) resolveOnGet(schemas []JsonSchema) {
 	for i := range schemas {
 		s := &schemas[i]
@@ -623,7 +612,7 @@ func validateStoreValue(key string, value any) error {
 
 func walkStoreValue(v any, path string, depth int) error {
 	if depth > maxStoreValueDepth {
-		return fmt.Errorf("store: value at '%s' exceeds %d nesting levels — circular reference?", path, maxStoreValueDepth)
+		return fmt.Errorf("store: value at '%s' exceeds %d nesting levels, circular reference?", path, maxStoreValueDepth)
 	}
 	switch val := v.(type) {
 	case nil, string, bool, int8, int16, int32, uint8, uint16, uint32:
@@ -647,7 +636,7 @@ func walkStoreValue(v any, path string, depth int) error {
 		}
 		return checkStoreFloat(f, path)
 	case []byte:
-		return fmt.Errorf("store: value at '%s' is binary — large artifacts belong in files under the plugin storage dir", path)
+		return fmt.Errorf("store: value at '%s' is binary; large artifacts belong in files under the plugin storage dir", path)
 	case []any:
 		for i, item := range val {
 			if err := walkStoreValue(item, fmt.Sprintf("%s[%d]", path, i), depth+1); err != nil {
@@ -675,7 +664,7 @@ func walkStoreValue(v any, path string, depth int) error {
 		return nil
 	case reflect.Map:
 		if rv.Type().Key().Kind() != reflect.String {
-			return fmt.Errorf("store: value at '%s' is a %T — map keys must be strings", path, v)
+			return fmt.Errorf("store: value at '%s' is a %T; map keys must be strings", path, v)
 		}
 		iter := rv.MapRange()
 		for iter.Next() {
@@ -685,13 +674,13 @@ func walkStoreValue(v any, path string, depth int) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("store: value at '%s' is a %T — only strings, bools, float64-domain numbers, arrays and string-keyed maps are storable", path, v)
+		return fmt.Errorf("store: value at '%s' is a %T; only strings, bools, float64-domain numbers, arrays and string-keyed maps are storable", path, v)
 	}
 }
 
 func checkStoreFloat(f float64, path string) error {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return fmt.Errorf("store: value at '%s' is %v — NaN/Infinity are not storable", path, f)
+		return fmt.Errorf("store: value at '%s' is %v; NaN and Infinity are not storable", path, f)
 	}
 	if f == math.Trunc(f) && math.Abs(f) > maxSafeStoreInt {
 		return fmt.Errorf("store: value at '%s' exceeds the float64-safe integer range (±2^53)", path)
@@ -713,10 +702,8 @@ func checkStoreUint(n uint64, path string) error {
 	return nil
 }
 
-// deepEqualLoose compares two values, normalizing numeric types before
-// comparing (values from different serialization paths — JSON float64,
-// msgpack int64/uint64, Go int — may type the same logical value differently)
-// and recursing into maps and slices.
+// numbers are normalized first, serialization paths type the same logical value
+// differently (JSON float64, msgpack int64/uint64, Go int)
 func deepEqualLoose(a, b any) bool {
 	if a == nil && b == nil {
 		return true

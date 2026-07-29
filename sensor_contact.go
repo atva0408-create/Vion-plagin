@@ -1,12 +1,13 @@
 package sdk
 
 const (
-	contactPropertyDetected = "detected" // Whether the contact is open (true = open, false = closed)
+	contactPropertyDetected = "detected"
 )
 
 // ContactSensor reports door/window open-close state.
 type ContactSensor struct{ BaseSensor }
 
+// NewContactSensor creates a contact sensor with the given name and options.
 func NewContactSensor(name string, opts ...SensorOption) *ContactSensor {
 	s := &ContactSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
@@ -33,7 +34,7 @@ func (s *ContactSensor) SetDetected(detected bool) {
 	s.writeState(map[string]any{contactPropertyDetected: detected})
 }
 
-// UpdateValue is a no-op for read-only contact sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *ContactSensor) UpdateValue(property string, value any) error {
 	return nil
 }

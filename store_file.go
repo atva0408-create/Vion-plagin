@@ -21,8 +21,7 @@ import (
 
 const storeFileName = "store.cui"
 
-// storeMagic prefixes every store file. The envelope is magic + standard
-// msgpack payload + little-endian CRC32 (IEEE) of the payload bytes.
+// envelope is magic + msgpack payload + little-endian CRC32 (IEEE) of the payload
 var storeMagic = []byte("CUI1")
 
 var renameRetryDelays = []time.Duration{
@@ -33,8 +32,7 @@ var renameRetryDelays = []time.Duration{
 	300 * time.Millisecond,
 }
 
-// storeCorruptError marks a file that failed the magic/CRC/decode checks, as
-// opposed to an I/O error. Only corruption triggers the backup fallback.
+// only corruption triggers the backup fallback, an I/O error must not
 type storeCorruptError struct{ reason string }
 
 func (e *storeCorruptError) Error() string { return "store envelope: " + e.reason }
@@ -70,10 +68,8 @@ func decodeEnvelope(buf []byte) (map[string]any, error) {
 	return payload, nil
 }
 
-// normalizeStoreValue rewrites decoded msgpack values into the shapes
-// consumers rely on: every map is a map[string]any and every integer is an
-// int64 (uint64 only above the int64 range) — the decoder otherwise returns
-// the narrowest integer type that fits, e.g. int8 for small values.
+// consumers rely on map[string]any and int64 (uint64 only above the int64
+// range), the decoder returns the narrowest type that fits
 func normalizeStoreValue(v any) any {
 	switch val := v.(type) {
 	case map[string]any:
@@ -142,8 +138,6 @@ func renameWithRetry(tmpPath, path string) error {
 	}
 }
 
-// writeStoreBytes atomically replaces path with buf: temp file in the same
-// directory, write, fsync, close, rename.
 func writeStoreBytes(path string, buf []byte, log *Logger) error {
 	tmpPath := path + ".tmp-" + strconv.Itoa(os.Getpid())
 
@@ -183,10 +177,8 @@ func writeStoreFile(path string, payload map[string]any, log *Logger) error {
 	return writeStoreBytes(path, buf, log)
 }
 
-// readStoreFile returns (payload, true, nil) on success and (nil, false, nil)
-// when the file does not exist. A corrupt file falls back to the backup; if
-// that is unusable too, the open fails — a corrupt store must never silently
-// become an empty one, that would discard the plugin's persisted state.
+// a corrupt store must never silently become an empty one, that would discard
+// the plugin's persisted state, so an unusable backup fails the open
 func readStoreFile(path string, log *Logger) (payload map[string]any, found bool, err error) {
 	buf, err := os.ReadFile(path)
 	if err != nil {
@@ -204,7 +196,7 @@ func readStoreFile(path string, log *Logger) (payload map[string]any, found bool
 	if !errors.As(err, &corrupt) {
 		return nil, false, err
 	}
-	log.Error(fmt.Sprintf("store: %s is corrupt (%v) — trying backup", path, err))
+	log.Error(fmt.Sprintf("store: %s is corrupt (%v), trying backup", path, err))
 
 	bakPath := path + ".bak"
 	if bakBuf, bakErr := os.ReadFile(bakPath); bakErr == nil {
@@ -224,10 +216,8 @@ func readStoreFile(path string, log *Logger) (payload map[string]any, found bool
 	return nil, false, &storeCorruptError{path + " unreadable and no usable backup"}
 }
 
-// backupStoreFile copies the store to its .bak sibling; a missing store is
-// not an error. The backup is at most one boot generation old. Copy to a temp
-// sibling first — a crash mid-copy must never leave a truncated .bak, it may
-// be the only recovery generation.
+// temp sibling first, a crash mid-copy must not leave a truncated .bak, it may
+// be the only recovery generation
 func backupStoreFile(path string, log *Logger) {
 	tmpPath := path + ".bak.tmp-" + strconv.Itoa(os.Getpid())
 	err := func() error {
@@ -259,8 +249,6 @@ func backupStoreFile(path string, log *Logger) {
 	}
 }
 
-// removeOrphanedStoreTmpFiles deletes temp siblings (store.cui*.tmp-<pid>)
-// left behind by a crash mid-write; best effort.
 func removeOrphanedStoreTmpFiles(path string) {
 	entries, err := os.ReadDir(filepath.Dir(path))
 	if err != nil {

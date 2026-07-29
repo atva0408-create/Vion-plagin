@@ -18,10 +18,11 @@ type ClipResult struct {
 type ClipDetector interface {
 	// ModelSpec declares the expected input dimensions and trigger labels.
 	ModelSpec() ModelSpec
-	// DetectEmbeddings produces CLIP embeddings for a batch of pre-cropped,
-	// pre-scaled trigger regions. Must return exactly one ClipResult per
-	// input frame, in the same order; use VideoFrameData.Label to tag the
-	// emitted embedding.
+	// DetectEmbeddings produces CLIP embeddings for a batch of frames, each
+	// scaled to ModelSpec().Input: normally a trigger region cropped by the
+	// upstream object detector, but the whole scene when no decoded frame is
+	// available. Must return exactly one ClipResult per input frame, in the
+	// same order; use VideoFrameData.Label to tag the emitted embedding.
 	DetectEmbeddings(frames []VideoFrameData) ([]ClipResult, error)
 }
 
@@ -29,19 +30,18 @@ type ClipDetector interface {
 // from video frames. Pair with a ClipDetector implementation.
 type ClipDetectorSensor struct{ BaseSensor }
 
+// NewClipDetectorSensor creates a CLIP detector sensor with the given name and options.
 func NewClipDetectorSensor(name string, opts ...SensorOption) *ClipDetectorSensor {
 	s := &ClipDetectorSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }
 
-func (s *ClipDetectorSensor) GetType() SensorType { return SensorTypeClip }
-
+func (s *ClipDetectorSensor) GetType() SensorType         { return SensorTypeClip }
 func (s *ClipDetectorSensor) GetCategory() SensorCategory { return SensorCategorySensor }
+func (s *ClipDetectorSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-func (s *ClipDetectorSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
-
-// UpdateValue is a no-op — the clip detector sensor has no externally writable properties.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *ClipDetectorSensor) UpdateValue(property string, value any) error {
 	return nil
 }

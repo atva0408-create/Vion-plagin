@@ -1,10 +1,9 @@
 package sdk
 
-// Property names of a classifier sensor.
 const (
-	classifierPropertyDetected   = "detected"   // Whether any classification result is active
-	classifierPropertyDetections = "detections" // List of classification results with labels and confidence
-	classifierPropertyLabels     = "labels"     // Unique labels of the current detections (auto-derived when reporting detections)
+	classifierPropertyDetected   = "detected"
+	classifierPropertyDetections = "detections"
+	classifierPropertyLabels     = "labels"
 )
 
 // ClassifierDetection is a classifier detection result with an open
@@ -27,18 +26,21 @@ type ClassifierDetector interface {
 	// ModelSpec declares the expected input dimensions and trigger labels. The
 	// runtime scales frames to match.
 	ModelSpec() ModelSpec
-	// DetectClassifications classifies a batch of pre-cropped, pre-scaled
-	// trigger regions and must return exactly one ClassifierResult per input
-	// frame, in the same order.
+	// DetectClassifications classifies a batch of frames, each scaled to
+	// ModelSpec().Input: normally a trigger region cropped by the upstream
+	// object detector, but the whole scene when no decoded frame is available.
+	// Must return exactly one ClassifierResult per input frame, in the same
+	// order.
 	DetectClassifications(frames []VideoFrameData) ([]ClassifierResult, error)
 }
 
 // ClassifierSensor reports classification results from image analysis.
 //
 // Plugin authors call ReportDetections to push classification results. The
-// `detected` flag and `labels` are auto-derived from the detection list.
+// detected flag and labels are auto-derived from the detection list.
 type ClassifierSensor struct{ BaseSensor }
 
+// NewClassifierSensor creates a classifier sensor with the given name and options.
 func NewClassifierSensor(name string, opts ...SensorOption) *ClassifierSensor {
 	s := &ClassifierSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
@@ -49,38 +51,33 @@ func NewClassifierSensor(name string, opts ...SensorOption) *ClassifierSensor {
 	return s
 }
 
-func (s *ClassifierSensor) GetType() SensorType { return SensorTypeClassifier }
-
+func (s *ClassifierSensor) GetType() SensorType         { return SensorTypeClassifier }
 func (s *ClassifierSensor) GetCategory() SensorCategory { return SensorCategorySensor }
+func (s *ClassifierSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-func (s *ClassifierSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
-
-// IsDetected reports whether any classification result is currently active.
 func (s *ClassifierSensor) IsDetected() bool {
 	v, _ := s.GetValue(classifierPropertyDetected).(bool)
 	return v
 }
 
-// GetDetections returns the current classification results.
 func (s *ClassifierSensor) GetDetections() []ClassifierDetection {
 	v, _ := s.GetValue(classifierPropertyDetections).([]ClassifierDetection)
 	return v
 }
 
-// GetLabels returns the unique labels of the current detections.
 func (s *ClassifierSensor) GetLabels() []string {
 	v, _ := s.GetValue(classifierPropertyLabels).([]string)
 	return v
 }
 
-// ReportDetections reports classification results. The `detected` flag and
-// `labels` are auto-derived from the detection list.
+// ReportDetections reports classification results. The detected flag and
+// labels are auto-derived from the detection list.
 //
-//   - ReportDetections(true, nil) — generic classification trigger; the SDK
+//   - ReportDetections(true, nil): generic classification trigger. The SDK
 //     synthesizes a single full-frame detection with empty attribute and
 //     sub-attribute.
-//   - ReportDetections(true, [...]) — explicit classifier detections.
-//   - ReportDetections(false, nil) — clear.
+//   - ReportDetections(true, [...]): explicit classifier detections.
+//   - ReportDetections(false, nil): clear.
 //
 // Example:
 //
@@ -117,7 +114,7 @@ func (s *ClassifierSensor) ClearDetections() {
 	s.ReportDetections(false, nil)
 }
 
-// UpdateValue is a no-op for read-only classifier sensors. State is reported via ReportDetections.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *ClassifierSensor) UpdateValue(property string, value any) error {
 	return nil
 }
@@ -128,6 +125,7 @@ type ClassifierDetectorSensor struct {
 	ClassifierSensor
 }
 
+// NewClassifierDetectorSensor creates a classifier detector sensor with the given name and options.
 func NewClassifierDetectorSensor(name string, opts ...SensorOption) *ClassifierDetectorSensor {
 	s := &ClassifierDetectorSensor{ClassifierSensor: *NewClassifierSensor(name, opts...)}
 	s.requiresFrames = true

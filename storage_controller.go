@@ -6,6 +6,9 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+// StorageController owns every DeviceStorage a plugin uses: the plugin-scoped
+// one plus a storage per adopted camera and per registered sensor. Instances
+// are cached by scope, so repeated lookups return the same storage.
 type StorageController struct {
 	client      *rpc.Client
 	persistence configPersistence
@@ -46,7 +49,6 @@ func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error)
 	return storage, nil
 }
 
-// createCameraStorage creates storage for a specific camera.
 func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorage, error) {
 	key := "camera." + cameraID
 	if existing := sc.storages[key]; existing != nil {
@@ -67,7 +69,7 @@ func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorag
 	return storage, nil
 }
 
-// sensorID is the persistent entity id, stable across restarts.
+// sensorID must be the persistent entity id, stable across restarts
 func (sc *StorageController) createSensorStorage(sensorID string) (*DeviceStorage, error) {
 	key := "sensor." + sensorID
 	if existing := sc.storages[key]; existing != nil {
@@ -102,9 +104,7 @@ func (sc *StorageController) removeCameraStorage(cameraID string) {
 	delete(sc.storages, key)
 }
 
-// close is the runtime-owned teardown, called by the runtime after the plugin's
-// SHUTDOWN listeners. Flushes and unregisters every storage — invoked last so
-// any final writes from device/sensor cleanup have already landed.
+// runs last in teardown so final writes from device and sensor cleanup have landed
 func (sc *StorageController) close() {
 	for _, storage := range sc.storages {
 		storage.close()

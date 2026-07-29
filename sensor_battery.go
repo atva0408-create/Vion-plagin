@@ -10,21 +10,25 @@ const (
 	ChargingStateFull          ChargingState = "FULL"           // Battery is fully charged
 )
 
-const (
-	batteryPropertyLevel    = "level"    // Battery level percentage (0-100)
-	batteryPropertyCharging = "charging" // Current charging state
-	batteryPropertyLow      = "low"      // Whether battery is critically low
-)
-
-// BatteryCapability defines optional capabilities for battery info sensors.
+// Optional capabilities of a battery info sensor.
 const (
 	BatteryCapabilityLowBattery = "lowBattery" // Sensor reports low-battery alerts
 	BatteryCapabilityCharging   = "charging"   // Sensor reports charging state
 )
 
+const (
+	batteryPropertyLevel    = "level"
+	batteryPropertyCharging = "charging"
+	batteryPropertyLow      = "low"
+)
+
 // BatteryInfo reports battery level, charging state, and low-battery alerts.
+//
+// Plugin authors call SetLevel, SetCharging, and SetLow to push updates from
+// the device.
 type BatteryInfo struct{ BaseSensor }
 
+// NewBatteryInfo creates a battery info sensor with the given name and options.
 func NewBatteryInfo(name string, opts ...SensorOption) *BatteryInfo {
 	s := &BatteryInfo{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
@@ -58,7 +62,7 @@ func (s *BatteryInfo) IsLow() bool {
 	return v
 }
 
-// SetLevel sets the battery level (clamped to [0,100]).
+// SetLevel reports a new battery level percentage, clamped to [0,100].
 //
 // Example:
 //
@@ -91,7 +95,7 @@ func (s *BatteryInfo) SetLow(value bool) {
 	s.writeState(map[string]any{batteryPropertyLow: value})
 }
 
-// UpdateValue is a no-op for read-only battery sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *BatteryInfo) UpdateValue(property string, value any) error {
 	return nil
 }

@@ -8,9 +8,8 @@ import (
 
 var localhostPattern = regexp.MustCompile(`127\.0\.0\.1|localhost`)
 
-// rewriteURLForRemote makes a single URL reachable from a worker: swaps the
-// master's 127.0.0.1/localhost for its LAN address and injects the go2rtc RTSP
-// credentials (remote connections are authenticated; local ones are not).
+// go2rtc RTSP credentials are injected because remote connections are
+// authenticated, local ones are not
 func rewriteURLForRemote(url, master, user, password string) string {
 	rewritten := localhostPattern.ReplaceAllString(url, master)
 
@@ -24,8 +23,6 @@ func rewriteURLForRemote(url, master, user, password string) string {
 	return rewritten
 }
 
-// rewriteStreamUrlsForRemote rewrites every URL in a source's StreamUrls in
-// place when this plugin is hosted on a remote worker. No-op locally.
 func rewriteStreamUrlsForRemote(urls *StreamUrls) {
 	master := os.Getenv("CAMERAUI_MASTER_ADDRESS")
 	if os.Getenv("PLUGIN_REMOTE_MODE") == "" || master == "" {

@@ -9,21 +9,8 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// isEqual is a deep equality check for arbitrary values.
-//
-// Recursively compares primitives, slices, maps, and structs. Map
-// comparison ignores key declaration order (only key/value pairs
-// matter); slice comparison is order-sensitive.
-//
-// Typically used for property-change detection on sensors: a property
-// update is only emitted when the new value is not deeply equal to the
-// previous value, which avoids redundant events for unchanged data.
-func isEqual(a, b any) bool {
-	return reflect.DeepEqual(a, b)
-}
-
-// Bool returns a pointer to the given bool value.
-// Use this for optional pointer fields in JsonSchema (e.g., Store: sdk.Bool(true)).
+// Bool returns a pointer to v, for the optional pointer fields of JsonSchema
+// (e.g. Store: sdk.Bool(true)).
 //
 //go:fix inline
 func Bool(v bool) *bool {
@@ -31,44 +18,27 @@ func Bool(v bool) *bool {
 	return &p
 }
 
-// Int returns a pointer to the given int value.
-// Use this for optional pointer fields in JsonSchema (e.g., MinLength: sdk.Int(5)).
+// Int returns a pointer to v, for the optional pointer fields of JsonSchema
+// (e.g. MinLength: sdk.Int(5)).
 func Int(v int) *int {
 	p := v
 	return &p
 }
 
-// Float64 returns a pointer to the given float64 value.
-// Use this for optional pointer fields in JsonSchema (e.g., Minimum: sdk.Float64(0.5)).
+// Float64 returns a pointer to v, for the optional pointer fields of JsonSchema
+// (e.g. Minimum: sdk.Float64(0.5)).
 func Float64(v float64) *float64 {
 	p := v
 	return &p
 }
 
-// decodeMsgpack decodes msgpack data into target and logs any decode errors.
-// Returns true on success, false on error. Use this instead of rpc.Decode
-// in subscribe callbacks to ensure decode errors are never silently swallowed.
-// Uses DecodeMessageInto: subscription payloads arrive as raw wire bytes and
-// may be CUIB frames (publisher extracted ≥16KB binaries out-of-band, e.g.
-// detection events with thumbnails); plain msgpack passes through unchanged.
-// The error includes payload length + leading bytes — a decode failure here
-// means a wire/versioning problem (raw chunk leaked past reassembly, stale
-// peer, corrupted frame) and the head bytes identify which one.
-func decodeMsgpack(logger *Logger, data []byte, target any, context string) bool {
-	if err := rpc.DecodeMessageInto(data, target); err != nil {
-		head := data
-		if len(head) > 16 {
-			head = head[:16]
-		}
-		logger.Error(fmt.Sprintf("msgpack decode error [%s] len=%d head=% x: %v", context, len(data), head, err))
-		return false
-	}
-	return true
-}
-
 // BuildTargetUrl constructs a go2rtc-compatible RTSP target URL from a base
 // RTSP URL and a set of stream selection options (video/audio tracks, GOP,
-// timeout). Returns the URL with all selected query parameters.
+// timeout). Timeout is clamped to 5..30 seconds.
+//
+// Example:
+//
+//	url, err := sdk.BuildTargetUrl(base, &sdk.RTSPUrlOptions{Video: true, GOP: true, Timeout: 15})
 func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error) {
 	u, err := url.Parse(rtspUrl)
 	if err != nil {
@@ -128,6 +98,10 @@ func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error) {
 // BuildSnapshotUrl constructs a go2rtc-compatible snapshot URL for the given
 // camera/source pair. Optional dimensions, rotation, cache and hardware
 // transcode flags are appended as query parameters.
+//
+// Example:
+//
+//	url, err := sdk.BuildSnapshotUrl("Front Door", "main", base, &sdk.SnapshotUrlOptions{Width: 640})
 func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *SnapshotUrlOptions) (string, error) {
 	u, err := url.Parse(snapshotUrl)
 	if err != nil {
@@ -172,6 +146,25 @@ func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *Snapshot
 	}
 
 	return baseUrl + "?" + strings.Join(params, "&"), nil
+}
+
+// map key order is irrelevant, slice order is not
+func isEqual(a, b any) bool {
+	return reflect.DeepEqual(a, b)
+}
+
+// use this instead of rpc.Decode in subscribe callbacks: it logs instead of
+// swallowing, and subscription payloads may be CUIB frames, not plain msgpack
+func decodeMsgpack(logger *Logger, data []byte, target any, context string) bool {
+	if err := rpc.DecodeMessageInto(data, target); err != nil {
+		head := data
+		if len(head) > 16 {
+			head = head[:16]
+		}
+		logger.Error(fmt.Sprintf("msgpack decode error [%s] len=%d head=% x: %v", context, len(data), head, err))
+		return false
+	}
+	return true
 }
 
 func createSourceName(cameraName, sourceName string) string {

@@ -45,45 +45,39 @@ var validCapabilities = []PluginCapability{
 //
 // Example:
 //
-//	errs := GetContractValidationErrors(rawManifest)
+//	errs := GetContractValidationErrors(contract)
 //	if len(errs) > 0 {
 //	    return fmt.Errorf("invalid contract: %s", strings.Join(errs, "; "))
 //	}
 func GetContractValidationErrors(c *PluginContract) []string {
 	var errors []string
 
-	// Check name
 	if c.Name == "" {
 		errors = append(errors, `field "name" cannot be empty`)
 	}
 
-	// Check role
 	if !containsRole(validRoles, c.Role) {
 		errors = append(errors, fmt.Sprintf(`invalid role %q, valid roles: %v`, c.Role, validRoles))
 	}
 
-	// Check provides
 	for _, st := range c.Provides {
 		if !containsSensorType(validSensorTypes, st) {
 			errors = append(errors, fmt.Sprintf(`invalid sensor type in "provides": %q`, st))
 		}
 	}
 
-	// Check consumes
 	for _, st := range c.Consumes {
 		if !containsSensorType(validSensorTypes, st) {
 			errors = append(errors, fmt.Sprintf(`invalid sensor type in "consumes": %q`, st))
 		}
 	}
 
-	// Check interfaces
 	for _, iface := range c.Interfaces {
 		if !containsInterface(validInterfaces, iface) {
 			errors = append(errors, fmt.Sprintf(`invalid interface in "interfaces": %q`, iface))
 		}
 	}
 
-	// Check capabilities
 	for _, cap := range c.Capabilities {
 		if !containsCapability(validCapabilities, cap) {
 			errors = append(errors, fmt.Sprintf(`invalid capability in "capabilities": %q`, cap))
@@ -176,6 +170,18 @@ func HasInterface(c *PluginContract, iface PluginInterface) bool {
 	return slices.Contains(c.Interfaces, iface)
 }
 
+// HasCapability reports whether the plugin requested the given capability
+// (i.e. cap is listed in the contract's Capabilities).
+//
+// Example:
+//
+//	if HasCapability(contract, CapabilityPublishNotifications) {
+//	    allowPublish()
+//	}
+func HasCapability(c *PluginContract, cap PluginCapability) bool {
+	return slices.Contains(c.Capabilities, cap)
+}
+
 func containsSensorType(slice []SensorType, val SensorType) bool {
 	return slices.Contains(slice, val)
 }
@@ -190,16 +196,4 @@ func containsInterface(slice []PluginInterface, val PluginInterface) bool {
 
 func containsCapability(slice []PluginCapability, val PluginCapability) bool {
 	return slices.Contains(slice, val)
-}
-
-// HasCapability reports whether the plugin requested the given capability
-// (i.e. cap is listed in the contract's Capabilities).
-//
-// Example:
-//
-//	if HasCapability(contract, CapabilityPublishNotifications) {
-//	    allowPublish()
-//	}
-func HasCapability(c *PluginContract, cap PluginCapability) bool {
-	return slices.Contains(c.Capabilities, cap)
 }

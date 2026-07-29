@@ -1,15 +1,15 @@
 package sdk
 
 const (
-	sirenPropertyActive = "active" // Whether the siren is currently active
-	sirenPropertyVolume = "volume" // Volume level (0-100)
+	sirenPropertyActive = "active"
+	sirenPropertyVolume = "volume"
 )
 
 // SirenControl is a siren on/off and volume control sensor. Override
 // SetActive / SetInactive (by embedding SirenControl in your own type and
 // shadowing the methods) to drive your hardware, then call the embedded
 // SirenControl's methods to sync the SDK state. For hardware-pushed updates,
-// call the embedded methods directly from your event handler — that bypasses
+// call the embedded methods directly from your event handler. That bypasses
 // any plugin override and only syncs state.
 type SirenControl struct{ BaseSensor }
 
@@ -71,7 +71,7 @@ func (s *SirenControl) SetVolume(value int) {
 	s.writeState(map[string]any{sirenPropertyVolume: value})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
 func (s *SirenControl) UpdateValue(property string, value any) error {
 	switch property {
 	case sirenPropertyActive:

@@ -19,7 +19,7 @@ type CoreManagerEvent struct {
 	Data any
 }
 
-// CoreManager provides system-level functionality via RPC.
+// CoreManager provides system-level operations.
 //
 // Exposes cross-cutting services like the FFmpeg binary path, server
 // addresses, the cloud server id, inter-plugin lookup, and a stream of
@@ -51,8 +51,8 @@ func (cm *CoreManager) OnEvent() *Observable[CoreManagerEvent] {
 
 // GetFFmpegPath returns the path to the FFmpeg binary.
 func (cm *CoreManager) GetFFmpegPath() (string, error) {
-	// Remote-hosted: the master's path points at the wrong machine — the
-	// worker injects its own bundled ffmpeg at spawn time.
+	// remote-hosted: the master's path points at the wrong machine, the worker
+	// injects its own bundled ffmpeg at spawn time
 	if path := os.Getenv("CAMERAUI_FFMPEG_PATH"); path != "" {
 		return path, nil
 	}
@@ -69,7 +69,8 @@ func (cm *CoreManager) GetFFmpegPath() (string, error) {
 	return path, nil
 }
 
-// GetServerAddresses returns the server addresses.
+// GetServerAddresses returns the server addresses (IP addresses the server
+// is listening on).
 func (cm *CoreManager) GetServerAddresses() ([]string, error) {
 	ctx := context.Background()
 	result, err := cm.proxy.Invoke(ctx, "getServerAddresses")
@@ -182,7 +183,6 @@ func (cm *CoreManager) init() error {
 	return nil
 }
 
-// close unsubscribes from core events and completes the event subject.
 func (cm *CoreManager) close() {
 	if cm.closeSub != nil {
 		cm.closeSub()
@@ -219,7 +219,6 @@ func (cm *CoreManager) getPlugin(pluginName string) (*PluginInfo, error) {
 	return info, nil
 }
 
-// pluginProxy is an RPC handle to a remote plugin, returned by ConnectToPlugin.
 type pluginProxy struct {
 	proxy *rpc.Proxy
 }

@@ -70,18 +70,6 @@ type frameWorkerDetectionNamespaces struct {
 	DetectionRPC string
 }
 
-func getDetectionEventNamespaces(cameraID string) detectionEventNamespaces {
-	return detectionEventNamespaces{
-		DetectionEventSubject: fmt.Sprintf("camera.%s.events.subject", cameraID),
-	}
-}
-
-func getFrameWorkerDetectionNamespaces(cameraID string) frameWorkerDetectionNamespaces {
-	return frameWorkerDetectionNamespaces{
-		DetectionRPC: fmt.Sprintf("camera.%s.frameWorker.detection.rpc", cameraID),
-	}
-}
-
 func getCoreManagerNamespaces() coreManagerNamespaces {
 	return coreManagerNamespaces{
 		CoreManagerSubject: "coreManager.subscriber",
@@ -163,5 +151,17 @@ func getSensorEventNamespaces(sensorID string) sensorEventNamespaces {
 func getSensorProviderNamespaces(pluginID, sensorID string) sensorProviderNamespaces {
 	return sensorProviderNamespaces{
 		SensorRPC: fmt.Sprintf("plugin.%s.sensor.%s.rpc", pluginID, sensorID),
+	}
+}
+
+func getDetectionEventNamespaces(cameraID string) detectionEventNamespaces {
+	return detectionEventNamespaces{
+		DetectionEventSubject: fmt.Sprintf("camera.%s.events.subject", cameraID),
+	}
+}
+
+func getFrameWorkerDetectionNamespaces(cameraID string) frameWorkerDetectionNamespaces {
+	return frameWorkerDetectionNamespaces{
+		DetectionRPC: fmt.Sprintf("camera.%s.frameWorker.detection.rpc", cameraID),
 	}
 }

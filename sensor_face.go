@@ -1,9 +1,8 @@
 package sdk
 
-// Property names of a face detection sensor.
 const (
-	facePropertyDetected   = "detected"   // Whether any face is currently detected
-	facePropertyDetections = "detections" // List of detected faces with optional identity, embedding, and thumbnail
+	facePropertyDetected   = "detected"
+	facePropertyDetections = "detections"
 )
 
 // FaceDetection is a face detection result, extending Detection with
@@ -38,9 +37,10 @@ type FaceDetector interface {
 // FaceSensor reports detected faces and optional identity matches.
 //
 // Plugin authors call ReportDetections to push detected faces. The
-// `detected` flag is auto-derived from the detection list.
+// detected flag is auto-derived from the detection list.
 type FaceSensor struct{ BaseSensor }
 
+// NewFaceSensor creates a face sensor with the given name and options.
 func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor {
 	s := &FaceSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
@@ -50,19 +50,15 @@ func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor {
 	return s
 }
 
-func (s *FaceSensor) GetType() SensorType { return SensorTypeFace }
-
+func (s *FaceSensor) GetType() SensorType         { return SensorTypeFace }
 func (s *FaceSensor) GetCategory() SensorCategory { return SensorCategorySensor }
+func (s *FaceSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
-func (s *FaceSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
-
-// IsDetected reports whether any face is currently detected.
 func (s *FaceSensor) IsDetected() bool {
 	v, _ := s.GetValue(facePropertyDetected).(bool)
 	return v
 }
 
-// GetDetections returns the current face detections.
 func (s *FaceSensor) GetDetections() []FaceDetection {
 	v, _ := s.GetValue(facePropertyDetections).([]FaceDetection)
 	return v
@@ -70,11 +66,11 @@ func (s *FaceSensor) GetDetections() []FaceDetection {
 
 // ReportDetections reports detected faces.
 //
-//   - ReportDetections(true, nil) — face detected without specifics; the SDK
+//   - ReportDetections(true, nil): face detected without specifics. The SDK
 //     synthesizes a single full-frame face detection without identity.
-//   - ReportDetections(true, [...]) — explicit face detections with
-//     identity, embedding, and/or thumbnail.
-//   - ReportDetections(false, nil) — clear.
+//   - ReportDetections(true, [...]): explicit face detections with identity,
+//     embedding, and/or thumbnail.
+//   - ReportDetections(false, nil): clear.
 //
 // Example:
 //
@@ -110,7 +106,7 @@ func (s *FaceSensor) ClearDetections() {
 	s.ReportDetections(false, nil)
 }
 
-// UpdateValue is a no-op for read-only face sensors. State is reported via ReportDetections.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *FaceSensor) UpdateValue(property string, value any) error {
 	return nil
 }
@@ -121,6 +117,7 @@ type FaceDetectorSensor struct {
 	FaceSensor
 }
 
+// NewFaceDetectorSensor creates a face detector sensor with the given name and options.
 func NewFaceDetectorSensor(name string, opts ...SensorOption) *FaceDetectorSensor {
 	s := &FaceDetectorSensor{FaceSensor: *NewFaceSensor(name, opts...)}
 	s.requiresFrames = true

@@ -12,28 +12,16 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// configPersistence is the plugin's local store file, or — for remote-hosted
-// plugins — the master's config store via RPC so config survives re-homing.
+const remoteStoreTimeout = 10 * time.Second
+
+// backed by the local store file, or by the master's config store over RPC so
+// remote-hosted plugins keep their config across re-homing
 type configPersistence interface {
 	load(loc storeLocation) map[string]any
 	save(loc storeLocation, values map[string]any) func() error
 }
 
-// coalescingWriter serializes flushes and collapses saves that arrive while
-// one is in flight into a single trailing flush of the newest snapshot.
-// Snapshots are whole-document states of the same source, so the newest one
-// contains every earlier caller's write; each caller blocks until the flush
-// containing its snapshot completes and receives that flush's error. A burst
-// of N saves costs at most 2 flushes.
-type coalescingWriter struct {
-	flush func(snapshot any) error
-	log   *Logger
-
-	mu       sync.Mutex
-	inFlight bool
-	pending  *pendingFlush
-}
-
+// every caller whose write folded into the snapshot waits on this one outcome
 type pendingFlush struct {
 	snapshot any
 	err      error
@@ -46,14 +34,23 @@ func (p *pendingFlush) wait() error {
 	return p.err
 }
 
+// snapshots are whole-document states, so the newest one subsumes every earlier
+// caller's write and a burst of N saves costs at most 2 flushes
+type coalescingWriter struct {
+	flush func(snapshot any) error
+	log   *Logger
+
+	mu       sync.Mutex
+	inFlight bool
+	pending  *pendingFlush
+}
+
 func newCoalescingWriter(flush func(snapshot any) error, log *Logger) *coalescingWriter {
 	return &coalescingWriter{flush: flush, log: log}
 }
 
-// enqueue registers a snapshot for the next flush (latest wins) without
-// blocking. Callers may hold the lock guarding their snapshot across the
-// call: flush order is enqueue order, so enqueueing under that lock makes it
-// impossible for an older snapshot to overtake a newer one.
+// flush order is enqueue order, so enqueueing under the caller's snapshot lock
+// keeps an older snapshot from overtaking a newer one
 func (w *coalescingWriter) enqueue(snapshot any) *pendingFlush {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -74,8 +71,7 @@ func (w *coalescingWriter) write(snapshot any) error {
 	return w.enqueue(snapshot).wait()
 }
 
-// run drains pending flushes until none is left, then exits; enqueue starts
-// a new drainer when needed.
+// exits once the queue drains, enqueue starts a new drainer
 func (w *coalescingWriter) run() {
 	for {
 		w.mu.Lock()
@@ -93,8 +89,7 @@ func (w *coalescingWriter) run() {
 	}
 }
 
-// runFlush converts a panicking flush into an error: waiters block on the
-// flush outcome, so a panic must never skip delivering one.
+// waiters block on the flush outcome, a panic must not skip delivering one
 func (w *coalescingWriter) runFlush(snapshot any) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -104,10 +99,8 @@ func (w *coalescingWriter) runFlush(snapshot any) (err error) {
 	return w.flush(snapshot)
 }
 
-// filePersistence keeps the canonical store document in memory and persists
-// it to the plugin's store file through a coalescing writer. The document and
-// every value map inside it are owned deep copies — callers never hold a
-// reference into it.
+// the doc and every value map in it are owned deep copies, callers never hold
+// a reference into it
 type filePersistence struct {
 	path   string
 	logger *Logger
@@ -187,12 +180,8 @@ func (fp *filePersistence) save(loc storeLocation, values map[string]any) func()
 	return p.wait
 }
 
-const remoteStoreTimeout = 10 * time.Second
-
-// remotePersistence persists through the master's config store. Reads come
-// from an in-process cache of the canonical document — this child is the only
-// writer, so it never goes stale. Writes update the cache and block until the
-// master acknowledges the put.
+// reads come from an in-process cache of the document, this child is the only
+// writer so the cache never goes stale
 type remotePersistence struct {
 	proxy  *rpc.Proxy
 	logger *Logger
@@ -271,10 +260,8 @@ func (rp *remotePersistence) flushSnapshot(snapshot any) error {
 	return nil
 }
 
-// snapshotStoreDoc copies the document's container levels so the wire encoder
-// never reads a map a concurrent save may mutate. Leaf value maps are shared
-// on purpose: they are owned deep copies that later saves replace wholesale,
-// never mutate in place.
+// container levels only, the encoder must not read a map a concurrent save may
+// mutate; leaf value maps are shared on purpose, saves replace them wholesale
 func snapshotStoreDoc(doc map[string]any) map[string]any {
 	out := maps.Clone(doc)
 	if cameras, ok := doc["cameras"].(map[string]any); ok {

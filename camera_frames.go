@@ -1,15 +1,5 @@
 package sdk
 
-// SnapshotSettings is snapshot configuration for a camera.
-type SnapshotSettings struct {
-	// AutoRefresh enables automatic snapshot refresh.
-	AutoRefresh bool `msgpack:"autoRefresh" json:"autoRefresh"`
-	// TTL is the cache TTL in seconds (how long a snapshot is valid).
-	TTL int `msgpack:"ttl" json:"ttl"`
-	// Interval is the auto-refresh interval in seconds (min: 10, max: 60).
-	Interval int `msgpack:"interval" json:"interval"`
-}
-
 // FrameWorkerDecoderHardware is the hardware backend for the detection
 // decoder. "auto" probes the platform order, "cpu" forces software decoding.
 type FrameWorkerDecoderHardware string
@@ -30,6 +20,16 @@ const (
 	FrameWorkerDecoderRKMPP        FrameWorkerDecoderHardware = "rkmpp"
 )
 
+// SnapshotSettings is the snapshot settings for a camera.
+type SnapshotSettings struct {
+	// AutoRefresh enables automatic snapshot refresh.
+	AutoRefresh bool `msgpack:"autoRefresh" json:"autoRefresh"`
+	// TTL is the cache TTL in seconds (how long a snapshot is valid).
+	TTL int `msgpack:"ttl" json:"ttl"`
+	// Interval is the auto-refresh interval in seconds (min: 10, max: 60).
+	Interval int `msgpack:"interval" json:"interval"`
+}
+
 // FrameWorkerDecoderSettings is the decoder hardware selection for the
 // frame worker.
 type FrameWorkerDecoderSettings struct {
@@ -44,7 +44,7 @@ type FrameWorkerDecoderSettings struct {
 type CameraFrameWorkerSettings struct {
 	// FPS is the target frames per second for detection.
 	FPS int `msgpack:"fps" json:"fps"`
-	// Capture event thumbnails from the highest-resolution source.
+	// HQSnapshots captures event thumbnails from the highest-resolution source.
 	HQSnapshots bool `msgpack:"hqSnapshots,omitempty" json:"hqSnapshots,omitempty"`
 	// Decoder is the decoder hardware selection. Applies on the machine that
 	// decodes this camera (master or assigned worker); an unusable selection

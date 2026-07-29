@@ -34,7 +34,7 @@ type DetectionLine struct {
 	Color string `msgpack:"color" json:"color"`
 }
 
-// MotionDetectionSettings is motion detection configuration.
+// MotionDetectionSettings is the motion detection settings.
 type MotionDetectionSettings struct {
 	// Resolution is the detection resolution quality.
 	Resolution MotionResolution `msgpack:"resolution" json:"resolution"`
@@ -42,7 +42,7 @@ type MotionDetectionSettings struct {
 	Timeout int `msgpack:"timeout" json:"timeout"`
 }
 
-// ObjectDetectionSettings is object detection configuration.
+// ObjectDetectionSettings is the object detection settings.
 type ObjectDetectionSettings struct {
 	// Confidence is the minimum confidence threshold (0.3 - 1.0).
 	Confidence float64 `msgpack:"confidence" json:"confidence"`
@@ -50,7 +50,7 @@ type ObjectDetectionSettings struct {
 	SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
 }
 
-// AudioDetectionSettings is audio detection configuration.
+// AudioDetectionSettings is the audio detection settings.
 type AudioDetectionSettings struct {
 	// MinDecibels is the minimum volume threshold in dBFS (-100 to 0). Audio below this level is skipped.
 	MinDecibels float64 `msgpack:"minDecibels" json:"minDecibels"`
@@ -72,7 +72,8 @@ type SensorTriggerRef struct {
 	PluginID string `msgpack:"pluginId" json:"pluginId"`
 }
 
-// SensorTriggerSettings is configuration for sensor cascade triggers (contact, doorbell, switch, light, etc.).
+// SensorTriggerSettings is the sensor trigger settings (contact, doorbell,
+// switch, light, etc.).
 type SensorTriggerSettings struct {
 	// Timeout is the sensor trigger timeout in seconds.
 	Timeout int `msgpack:"timeout" json:"timeout"`
@@ -116,7 +117,8 @@ type CameraDetectionSettings struct {
 	Snooze bool `msgpack:"snooze,omitempty" json:"snooze,omitempty"`
 }
 
-// PtzAutotrackSettings configures automatic PTZ tracking of detected objects.
+// PtzAutotrackSettings is the PTZ autotracking settings: the camera follows
+// detected objects automatically.
 type PtzAutotrackSettings struct {
 	// Enabled toggles PTZ autotracking.
 	Enabled bool `msgpack:"enabled" json:"enabled"`

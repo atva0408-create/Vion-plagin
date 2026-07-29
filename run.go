@@ -15,17 +15,24 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
-// errStopRequested signals that a host STOP arrived mid-startup, so the plugin
-// tears down immediately instead of reporting a startup error and waiting.
+// host STOP arrived mid-startup, tear down instead of reporting a startup error
 var errStopRequested = errors.New("stop requested during startup")
 
 const shutdownListenerTimeout = 1500 * time.Millisecond
+
 const rpcTeardownTimeout = 500 * time.Millisecond
 
 const gracefulShutdownTimeout = 2 * time.Second
 
 // Run is the entry point a Go plugin's main package calls to hand control to
-// the SDK runtime.
+// the SDK runtime. It connects to the host, builds the plugin through the
+// constructor and blocks until the host stops the process.
+//
+// Example:
+//
+//	func main() {
+//	    sdk.Run(NewPlugin)
+//	}
 func Run(constructor pluginConstructor) {
 	processName := "Plugin"
 	if len(os.Args) > 2 {
@@ -105,11 +112,8 @@ func Run(constructor pluginConstructor) {
 				logger.Warn("Shutdown listeners still pending after", shutdownListenerTimeout, ", continuing teardown")
 			}
 
-			// Runtime-owned teardown, ordered and separate from the plugin's
-			// SHUTDOWN listeners above: devices (+ their sensors) -> core manager
-			// -> storages (flushed last so any device/sensor cleanup writes land).
-			// The runtime closes them directly so the shutdown event stays purely
-			// author-facing and the order stays deterministic.
+			// runtime-owned teardown, ordered: devices (+ their sensors) ->
+			// core manager -> storages, flushed last so cleanup writes land
 			if sensorManager != nil {
 				sensorManager.close()
 			}
@@ -158,8 +162,8 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
-	// The watcher only funnels into stopCh so stopPlugin stays owned by the main
-	// goroutine — no data race on the shared handles it tears down.
+	// the watcher only funnels into stopCh so stopPlugin stays owned by the
+	// main goroutine, no data race on the shared handles it tears down
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
@@ -170,8 +174,8 @@ func Run(constructor pluginConstructor) {
 		}
 	}()
 
-	// stopRequested reports a pending stop (host STOP command or signal) so the
-	// startup steps can bail out between them instead of running to completion.
+	// reports a pending stop (host STOP or signal) so startup can bail out
+	// between steps instead of running to completion
 	stopRequested := func() bool {
 		select {
 		case <-stopCh:
@@ -181,8 +185,8 @@ func Run(constructor pluginConstructor) {
 		}
 	}
 
-	// Register the message handler before sending ready so a START/STOP that
-	// races in right after ready is never missed.
+	// register the message handler before sending ready so a START/STOP racing
+	// in right after ready is never missed
 	startCh := make(chan *processLoadMessage, 1)
 
 	channel.OnMessage(func(data any) {
@@ -378,8 +382,7 @@ func Run(constructor pluginConstructor) {
 		stopPlugin()
 		return
 	default:
-		// Startup failed: report ERROR and stay alive so the host decides (send
-		// STOP), matching node/python which never self-terminate here.
+		// report the error and stay alive, the host decides when to send STOP
 		_ = channel.Send(processResponse{Type: string(PluginStatusError), Error: startErr.Error()})
 	}
 

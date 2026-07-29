@@ -4,20 +4,20 @@ package sdk
 type LockState int
 
 const (
-	LockStateSecured   LockState = 0
-	LockStateUnsecured LockState = 1
-	LockStateUnknown   LockState = 2
+	LockStateSecured   LockState = 0 // Locked
+	LockStateUnsecured LockState = 1 // Unlocked
+	LockStateUnknown   LockState = 2 // State cannot be determined, e.g. while a motorized lock is moving
 )
 
 const (
-	lockPropertyCurrentState = "currentState" // The actual current state of the lock
-	lockPropertyTargetState  = "targetState"  // The desired target state (set by user, transitions to currentState)
+	lockPropertyCurrentState = "currentState"
+	lockPropertyTargetState  = "targetState"
 )
 
 // LockControl is a lock/unlock control sensor. Override SetTargetState (by
 // embedding LockControl in your own type and shadowing the method) to drive
 // hardware and call the embedded LockControl's SetTargetState once the
-// hardware confirms — the base implementation updates both targetState and
+// hardware confirms. The base implementation updates both targetState and
 // currentState to the new value.
 //
 // For asymmetric flows (long-running unlock with intermediate state) override
@@ -63,11 +63,11 @@ func (s *LockControl) SetTargetState(value LockState) {
 	})
 }
 
-// SetCurrentState publishes the actual lock state. Use this to drive
-// transitions where the physical state diverges from the user-requested
-// target — e.g. motorized smart locks that take time to rotate (publish
-// LockStateUnknown while moving), or hardware reporting an out-of-band state
-// change. Read-only from cross-process consumers (`UpdateValue` ignores it).
+// SetCurrentState publishes the actual lock state. Use it when the physical
+// state diverges from the requested target: motorized locks that take time to
+// rotate (publish LockStateUnknown while moving), or hardware reporting an
+// out-of-band state change. Read-only from cross-process consumers (UpdateValue
+// ignores it).
 //
 // Example:
 //
@@ -76,7 +76,8 @@ func (s *LockControl) SetCurrentState(value LockState) {
 	s.writeState(map[string]any{lockPropertyCurrentState: int(value)})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
+// Only targetState is externally writable, currentState is observed-only.
 func (s *LockControl) UpdateValue(property string, value any) error {
 	if property == lockPropertyTargetState {
 		if v, ok := toInt64(value); ok {

@@ -27,7 +27,7 @@ type ModelSpec struct {
 }
 
 // ObjectModelSpec describes an object detection model. Only declares input
-// dimensions — the output label set is dynamic and comes from the model itself.
+// dimensions, the output label set is dynamic and comes from the model itself.
 type ObjectModelSpec struct {
 	Input VideoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
 }

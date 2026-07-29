@@ -24,11 +24,11 @@ type SensorConsumer interface {
 	OnSensorAdded(sensor Sensor) error
 	// OnSensorReleased is called when a sensor permanently leaves the
 	// consumable view: it was deleted or unexposed. Plugin connectivity does
-	// NOT fire this — watch OnConnectedChanged on the sensor for that.
+	// NOT fire this; watch OnConnectedChanged on the sensor for that.
 	OnSensorReleased(sensorID string) error
 }
 
-// SensorManager registers standalone sensors — devices that are not part of a
+// SensorManager registers standalone sensors: devices that are not part of a
 // camera's hardware (smart plugs, imported smart-home devices, hubs).
 //
 // The host persists each sensor as its own entity: the user assigns it to
@@ -73,16 +73,17 @@ func newSensorManager(client *rpc.Client, storageCtrl *StorageController, plugin
 	}
 }
 
-func (m *SensorManager) setPlugin(plugin Plugin) {
-	m.plugin = plugin
-}
-
 // AddSensor registers a standalone sensor with the host.
 //
-// The host reconciles it against the persisted entity by (pluginId, nativeId) —
-// or (type, name) when no native id is set — and replaces the sensor's
-// provisional id with the persistent entity id. Camera assignment is the
-// user's decision and happens in the UI.
+// The host reconciles it against the persisted entity by (pluginId, nativeId),
+// or by (type, name) when no native id is set, and replaces the sensor's
+// provisional id with the persistent entity id. Camera assignment is the user's
+// decision and happens in the UI.
+//
+// Example:
+//
+//	lock := sdk.NewLockControl("Front Door", sdk.WithNativeID("lock.front_door"))
+//	err := api.SensorManager.AddSensor(lock)
 func (m *SensorManager) AddSensor(s Sensor) error {
 	si, ok := s.(sensorInternalInit)
 	if !ok {
@@ -215,8 +216,21 @@ func (m *SensorManager) RemoveSensor(s Sensor) error {
 	return nil
 }
 
-// trackCameraSensor keeps a camera-registered sensor's assigned cameras in
-// sync with the global stream.
+// GetSensors returns all sensors this plugin has registered in this session.
+func (m *SensorManager) GetSensors() []Sensor {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]Sensor, 0, len(m.owned))
+	for _, s := range m.owned {
+		result = append(result, s)
+	}
+	return result
+}
+
+func (m *SensorManager) setPlugin(plugin Plugin) {
+	m.plugin = plugin
+}
+
 func (m *SensorManager) trackCameraSensor(s Sensor) error {
 	if err := m.ensureGlobalSubscription(); err != nil {
 		return err
@@ -233,18 +247,6 @@ func (m *SensorManager) untrackCameraSensor(sensorID string) {
 	m.mu.Unlock()
 }
 
-// GetSensors returns all sensors this plugin has registered in this session.
-func (m *SensorManager) GetSensors() []Sensor {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	result := make([]Sensor, 0, len(m.owned))
-	for _, s := range m.owned {
-		result = append(result, s)
-	}
-	return result
-}
-
-// init builds the consumable view and dispatches ConfigureSensors once.
 func (m *SensorManager) init() error {
 	if len(m.info.Contract.Consumes) == 0 {
 		return nil
@@ -283,7 +285,7 @@ func (m *SensorManager) init() error {
 			sensors = append(sensors, p)
 		}
 		m.mu.RUnlock()
-		// a rejection aborts plugin startup, same as node and python
+		// a rejection aborts plugin startup
 		if err := consumer.ConfigureSensors(sensors); err != nil {
 			return fmt.Errorf("ConfigureSensors failed: %w", err)
 		}

@@ -346,8 +346,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 
 	sensorJSON := s.ToJSON()
 
-	// Inject modelSpec for detector sensors: detector interfaces define ModelSpec()
-	// but the base ToJSON() doesn't include it.
+	// detector interfaces define ModelSpec(), the base ToJSON() does not carry it
 	switch v := s.(type) {
 	case ObjectDetector:
 		sensorJSON.ModelSpec = v.ModelSpec()
@@ -391,8 +390,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	d.sensors = append(d.sensors, s)
 	d.mu.Unlock()
 
-	// Register sensor as RPC handler — all exported methods are automatically
-	// exposed as camelCase RPC endpoints.
+	// every exported method of the sensor becomes a camelCase RPC endpoint
 	sensorProviderNS := getSensorProviderNamespaces(d.info.ID, s.GetID())
 	sensorCleanup, err := d.client.RegisterHandler(sensorProviderNS.SensorRPC, s)
 	if err != nil {
@@ -405,19 +403,14 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	}
 	si.setStorage(sensorStorage)
 
-	// Init sensor with property update callback via SensorRegistry RPC.
-	// Detection-sensor writes route directly to the FrameWorker DetectionCoordinator;
-	// non-detection-sensor writes go to the registry batch endpoint.
 	frameWorkerDetectionNS := getFrameWorkerDetectionNamespaces(d.camera.ID)
 	detectionCoordinatorProxy := d.client.CreateProxy(frameWorkerDetectionNS.DetectionRPC)
 	sensor := s
 	si.initUpdateFn(func(properties map[string]any) {
 		ctx := context.Background()
 		if isDetectionSensorType(sensor.GetType()) {
-			// Detection sensors route directly to the FrameWorker
-			// DetectionCoordinator (bypassing the main process). If the
-			// FrameWorker isn't running, drop the write — the detection
-			// pipeline isn't running so there's nowhere for it to go.
+			// detection writes bypass the main process and go straight to the
+			// frame worker, so without one there is nowhere to deliver them
 			if !d.frameWorkerState.Value() {
 				return
 			}
@@ -433,8 +426,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 		_, _ = d.registryProxy.Invoke(ctx, "updateCapabilities", sensor.GetID(), caps)
 	})
 
-	// Subscribe to backend-initiated property changes for owned sensors.
-	// This syncs properties back when backend changes them (e.g., motion dwell timer).
+	// host-side writes (e.g. the motion dwell timer) must land back on the sensor
 	sensorEventNS := getSensorEventNamespaces(s.GetID())
 	unsubBackend, err := d.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
 		var msg sensorEventMessage
@@ -507,12 +499,9 @@ func (d *CameraDevice) RemoveSensor(sensorID string) error {
 }
 
 // OnDetectionEvent registers a callback for detection events (start/update/end and
-// segment-start/segment-update/segment-end).
-// Segments only ship on the segment-* events; the 'end' message carries none.
-// Thumbnails are inline in the segment structures: detection and attribute crops on
-// 'segment-start' and 'segment-end', the scene thumbnail also once on the first
-// 'segment-update' after it becomes available.
-// Returns a Disposable to unsubscribe.
+// segment-start/segment-update/segment-end). Segments ride on the segment-* events
+// only, thumbnails on segment-start and segment-end. Returns a Disposable to
+// unsubscribe.
 func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable {
 	return d.detectionEvent.Subscribe(func(e DetectionEventData) {
 		callback(e.Type, e.Event)
@@ -630,9 +619,7 @@ func (d *CameraDevice) init() error {
 	}
 	d.cleanupFns = append(d.cleanupFns, unsubDetectionEvents)
 
-	// Refresh initial states from server (camera connected, frame worker state).
-	// Without this, cameraState starts as false and misses the initial connected
-	// event that was already emitted before the plugin subscribed.
+	// the connected event may have fired before this subscription existed
 	d.refreshStates()
 
 	return nil
@@ -691,7 +678,6 @@ func (d *CameraDevice) getStreamURL(sourceID string) (string, error) {
 		return s.StreamUrl(sourceID)
 	}
 
-	// Default: return the source's default RTSP URL
 	src := d.GetSourceByID(sourceID)
 	if src != nil {
 		return src.SourceURL(), nil
@@ -928,8 +914,6 @@ func decodeSensorRegistration(result any) (*sensorRegistration, error) {
 	return &registration, nil
 }
 
-// changedCameraProps returns the json names of the camera fields that differ
-// between old and new, recursing into anonymous embedded structs (BaseCamera).
 func changedCameraProps(oldV, newV reflect.Value) []string {
 	var props []string
 	t := oldV.Type()

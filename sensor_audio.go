@@ -1,6 +1,15 @@
 package sdk
 
-// AudioLabel is one of the built-in audio labels or any custom string emitted
+// AudioFormat identifies the sample format of an audio buffer.
+type AudioFormat string
+
+// Supported audio sample formats.
+const (
+	AudioFormatPCM16   AudioFormat = "pcm16"   // 16-bit signed integer PCM
+	AudioFormatFloat32 AudioFormat = "float32" // 32-bit float
+)
+
+// AudioLabel is one of the built-in audio labels, or any custom string emitted
 // by an audio detector.
 type AudioLabel = string
 
@@ -11,19 +20,10 @@ var BaseAudioLabels = []string{
 	"scream", "cat", "car_alarm", "smoke_alarm",
 }
 
-// AudioFormat identifies the sample format of an audio buffer.
-type AudioFormat string
-
-// Supported audio sample formats.
 const (
-	AudioFormatPCM16   AudioFormat = "pcm16"   // 16-bit signed integer PCM
-	AudioFormatFloat32 AudioFormat = "float32" // 32-bit float
-)
-
-const (
-	audioPropertyDetected   = "detected"   // Whether an audio event is currently detected
-	audioPropertyDetections = "detections" // List of detected audio events (e.g. glass break, scream)
-	audioPropertyDecibels   = "decibels"   // Current audio level in decibels
+	audioPropertyDetected   = "detected"
+	audioPropertyDetections = "detections"
+	audioPropertyDecibels   = "decibels"
 )
 
 // AudioFrameData is audio frame data delivered to audio detector sensors by
@@ -57,12 +57,13 @@ type AudioDetector interface {
 // AudioSensor reports audio events and decibel levels.
 //
 // Plugin authors call ReportDetections to push detected audio events (the
-// `detected` flag is auto-derived from the list) and SetDecibels to publish
+// detected flag is auto-derived from the list) and SetDecibels to publish
 // the audio level.
 type AudioSensor struct {
 	BaseSensor
 }
 
+// NewAudioSensor creates an audio sensor with the given name and options.
 func NewAudioSensor(name string, opts ...SensorOption) *AudioSensor {
 	s := &AudioSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
@@ -73,11 +74,9 @@ func NewAudioSensor(name string, opts ...SensorOption) *AudioSensor {
 	return s
 }
 
-func (s *AudioSensor) GetType() SensorType { return SensorTypeAudio }
-
+func (s *AudioSensor) GetType() SensorType         { return SensorTypeAudio }
 func (s *AudioSensor) GetCategory() SensorCategory { return SensorCategorySensor }
-
-func (s *AudioSensor) ToJSON() sensorJSON { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
+func (s *AudioSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
 
 func (s *AudioSensor) IsDetected() bool {
 	v, _ := s.GetValue(audioPropertyDetected).(bool)
@@ -96,10 +95,10 @@ func (s *AudioSensor) GetDecibels() float64 {
 
 // ReportDetections reports detected audio events.
 //
-//   - ReportDetections(true, nil) — audio detected without specifics. The SDK
+//   - ReportDetections(true, nil): audio detected without specifics. The SDK
 //     synthesizes a single full-frame "audio" detection.
-//   - ReportDetections(true, [...]) — audio detected with explicit detections.
-//   - ReportDetections(false, nil) — clear.
+//   - ReportDetections(true, [...]): audio detected with explicit detections.
+//   - ReportDetections(false, nil): clear.
 //
 // Example:
 //
@@ -129,7 +128,7 @@ func (s *AudioSensor) SetDecibels(value float64) {
 	s.writeState(map[string]any{audioPropertyDecibels: value})
 }
 
-// UpdateValue is a no-op for read-only audio sensors.
+// UpdateValue on a read-only sensor: external writes are ignored.
 func (s *AudioSensor) UpdateValue(property string, value any) error {
 	return nil
 }
@@ -140,6 +139,7 @@ type AudioDetectorSensor struct {
 	AudioSensor
 }
 
+// NewAudioDetectorSensor creates an audio detector sensor with the given name and options.
 func NewAudioDetectorSensor(name string, opts ...SensorOption) *AudioDetectorSensor {
 	s := &AudioDetectorSensor{AudioSensor: *NewAudioSensor(name, opts...)}
 	s.requiresFrames = true

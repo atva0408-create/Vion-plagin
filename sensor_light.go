@@ -1,13 +1,13 @@
 package sdk
 
-const (
-	lightPropertyOn         = "on"         // Whether the light is on
-	lightPropertyBrightness = "brightness" // Brightness level (0-100)
-)
-
-// LightCapability defines optional capabilities for light controls.
+// Optional capabilities of a light control.
 const (
 	LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0-100)
+)
+
+const (
+	lightPropertyOn         = "on"
+	lightPropertyBrightness = "brightness"
 )
 
 // LightControl is a light on/off and brightness control sensor. Override
@@ -15,12 +15,12 @@ const (
 // the methods) to drive your hardware, then call the embedded LightControl's
 // methods to sync the SDK state.
 //
-// Plugins that have no hardware-action use case can leave the methods
-// unoverridden — the base implementation just updates the state.
+// Plugins with no hardware-action use case can leave the methods unoverridden,
+// the base implementation just updates the state.
 //
-// For hardware-pushed updates (someone manually flipped the switch), call
-// the embedded LightControl's SetOn / SetOff directly from your event
-// handler — that bypasses any plugin override and only syncs state.
+// For hardware-pushed updates (someone manually flipped the switch), call the
+// embedded LightControl's SetOn / SetOff directly from your event handler.
+// That bypasses any plugin override and only syncs state.
 type LightControl struct{ BaseSensor }
 
 func NewLightControl(name string, opts ...SensorOption) *LightControl {
@@ -85,7 +85,8 @@ func (s *LightControl) SetBrightness(value int) {
 	s.writeState(map[string]any{lightPropertyBrightness: value})
 }
 
-// UpdateValue dispatches generic property writes to semantic methods.
+// UpdateValue routes generic property writes to the semantic setters.
+// Only on and brightness are externally writable.
 func (s *LightControl) UpdateValue(property string, value any) error {
 	switch property {
 	case lightPropertyOn:

@@ -3,17 +3,21 @@ package sdk
 import "time"
 
 const (
-	doorbellPropertyRing = "ring" // Whether the doorbell is currently ringing
+	doorbellPropertyRing = "ring"
 )
 
 const ringAutoResetMs = 2000
 
-// DoorbellTrigger triggers doorbell ring events.
+// DoorbellTrigger fires doorbell ring events.
+//
+// Plugin authors call Trigger to fire an event. The ring property is set to
+// true and automatically reset to false after ringAutoResetMs.
 type DoorbellTrigger struct {
 	BaseSensor
 	ringResetTimer *time.Timer
 }
 
+// NewDoorbellTrigger creates a doorbell trigger with the given name and options.
 func NewDoorbellTrigger(name string, opts ...SensorOption) *DoorbellTrigger {
 	s := &DoorbellTrigger{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{doorbellPropertyRing: false})
@@ -29,7 +33,7 @@ func (s *DoorbellTrigger) IsRinging() bool {
 	return v
 }
 
-// Trigger fires a doorbell ring event. Sets `ring=true` and auto-resets after
+// Trigger fires a doorbell ring event. Sets ring to true and auto-resets after
 // ringAutoResetMs. Re-triggering while ringing resets the timer (extends the
 // ring phase).
 //
@@ -58,11 +62,8 @@ func (s *DoorbellTrigger) Trigger() {
 	s.mu.Unlock()
 }
 
-// UpdateValue is the cross-process consumer entry point. Writing `ring=true`
-// (any truthy value) dispatches to `Trigger()` so a UI test button or external
-// automation can fire the doorbell using the same flow as a real hardware
-// ring (auto-reset included). Writing `ring=false` is ignored — the
-// auto-reset timer owns the off transition.
+// UpdateValue routes generic property writes to the semantic setters.
+// Writing ring=false is ignored, the auto-reset timer owns the off transition.
 func (s *DoorbellTrigger) UpdateValue(property string, value any) error {
 	if property != doorbellPropertyRing {
 		return nil
