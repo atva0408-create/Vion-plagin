@@ -180,8 +180,8 @@ type CameraPluginInfo struct {
 type CameraUiSettings struct {
 	// StreamingMode is the preferred streaming method.
 	StreamingMode VideoStreamingMode `msgpack:"streamingMode" json:"streamingMode"`
-	// StreamingSource is the preferred stream quality (StreamingRole).
-	StreamingSource string `msgpack:"streamingSource" json:"streamingSource"`
+	// StreamingSource is the preferred stream quality.
+	StreamingSource StreamingRole `msgpack:"streamingSource" json:"streamingSource"`
 	// AspectRatio is the display aspect ratio.
 	AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 }

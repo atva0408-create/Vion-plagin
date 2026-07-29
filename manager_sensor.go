@@ -98,18 +98,7 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	}
 
 	sensorJSON := s.ToJSON()
-	switch v := s.(type) {
-	case ObjectDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case FaceDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case LicensePlateDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case AudioDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case ClassifierDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	}
+	sensorJSON.ModelSpec = detectorModelSpec(s)
 
 	ctx := context.Background()
 	registerResult, err := m.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, m.info.ID)
@@ -157,7 +146,7 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	})
 
 	sensorEventNS := getSensorEventNamespaces(s.GetID())
-	unsubBackend, _ := m.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
+	unsubBackend, subErr := m.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
 		var msg sensorEventMessage
 		if !decodeMsgpack(m.logger, data, &msg, "sensorEventMessage") {
 			return
@@ -177,6 +166,10 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 			}
 		}
 	})
+	if subErr != nil {
+		// the sensor stays registered, only host-side writes are lost
+		m.logger.Error(fmt.Sprintf("subscribe sensor events for %s: %v", s.GetID(), subErr))
+	}
 
 	m.mu.Lock()
 	m.owned[s.GetID()] = s

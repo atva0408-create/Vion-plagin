@@ -258,6 +258,7 @@ type ReplaySubject[T any] struct {
 }
 
 // NewReplaySubject returns a ReplaySubject keeping at most bufferSize values.
+// A bufferSize of zero buffers nothing, which makes it behave like a Subject.
 func NewReplaySubject[T any](bufferSize int) *ReplaySubject[T] {
 	return &ReplaySubject[T]{
 		Subject:    *NewSubject[T](),
@@ -266,8 +267,11 @@ func NewReplaySubject[T any](bufferSize int) *ReplaySubject[T] {
 }
 
 // Next appends value to the buffer, dropping the oldest entry once bufferSize
-// is exceeded, then dispatches it.
+// is exceeded, then dispatches it. Values after Complete are ignored.
 func (rs *ReplaySubject[T]) Next(value T) {
+	if rs.isCompleted() {
+		return
+	}
 	rs.mu.Lock()
 	rs.buffer = append(rs.buffer, value)
 	if len(rs.buffer) > rs.bufferSize {

@@ -93,21 +93,7 @@ func (s *ObjectSensor) GetLabels() []string {
 //	})
 //	sensor.ReportDetections(false, nil)
 func (s *ObjectSensor) ReportDetections(detected bool, detections []TrackedDetection) {
-	var list []TrackedDetection
-	switch {
-	case !detected:
-		list = []TrackedDetection{}
-	case len(detections) > 0:
-		list = fillMissingTrackedBoxes(detections)
-	default:
-		list = []TrackedDetection{{
-			Detection: Detection{
-				Label:      "motion",
-				Confidence: 1,
-				Box:        &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1},
-			},
-		}}
-	}
+	list := normalizeReportedDetections(detected, detections, func(d *TrackedDetection) *Detection { return &d.Detection }, "motion", "")
 	labels := dedupLabels(list)
 	s.writeState(map[string]any{
 		objectPropertyDetected:   detected,
@@ -136,17 +122,6 @@ func NewObjectDetectorSensor(name string, opts ...SensorOption) *ObjectDetectorS
 	s := &ObjectDetectorSensor{ObjectSensor: *NewObjectSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
-}
-
-func fillMissingTrackedBoxes(detections []TrackedDetection) []TrackedDetection {
-	out := make([]TrackedDetection, len(detections))
-	for i, d := range detections {
-		if d.Box == nil {
-			d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
-		}
-		out[i] = d
-	}
-	return out
 }
 
 func dedupLabels(detections []TrackedDetection) []string {

@@ -79,3 +79,15 @@ func (s *DoorbellTrigger) UpdateValue(property string, value any) error {
 	}
 	return nil
 }
+
+// a pending reset would otherwise clear a fresh ring after the sensor is re-added
+func (s *DoorbellTrigger) cleanup() {
+	s.mu.Lock()
+	if s.ringResetTimer != nil {
+		s.ringResetTimer.Stop()
+		s.ringResetTimer = nil
+	}
+	s.mu.Unlock()
+
+	s.BaseSensor.cleanup()
+}

@@ -1,5 +1,10 @@
 package sdk
 
+// Optional capabilities of a siren control.
+const (
+	SirenCapabilityVolume = "volume" // Siren supports volume adjustment (0-100)
+)
+
 const (
 	sirenPropertyActive = "active"
 	sirenPropertyVolume = "volume"

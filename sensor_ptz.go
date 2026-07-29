@@ -103,6 +103,16 @@ func (s *PTZControl) GetPresets() []string {
 	return nil
 }
 
+func (s *PTZControl) GetVelocity() (PTZDirection, bool) {
+	v, ok := s.GetValue(ptzPropertyVelocity).(PTZDirection)
+	return v, ok
+}
+
+func (s *PTZControl) GetTargetPreset() (string, bool) {
+	v, ok := s.GetValue(ptzPropertyTargetPreset).(string)
+	return v, ok
+}
+
 // SetPosition sets the absolute PTZ position.
 //
 // Example:
@@ -136,7 +146,8 @@ func (s *PTZControl) SetRelativeMove(value PTZRelativeMove) {
 	s.writeState(map[string]any{ptzPropertyRelativeMove: value})
 }
 
-// SetTargetPreset sets the target preset ID.
+// SetTargetPreset sets the target preset ID. The property is unset until this
+// runs.
 //
 // Example:
 //

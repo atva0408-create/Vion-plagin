@@ -346,7 +346,7 @@ func (s *BaseSensor) writeState(partial map[string]any) {
 			continue
 		}
 		previous := s.properties[key]
-		if isEqual(previous, value) {
+		if isEqual(previous, value, true) {
 			continue
 		}
 		s.properties[key] = value
@@ -428,7 +428,7 @@ func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) 
 func (s *BaseSensor) onBackendPropertyChanged(property string, value any) {
 	s.mu.Lock()
 	oldValue := s.properties[property]
-	if isEqual(oldValue, value) {
+	if isEqual(oldValue, value, false) {
 		s.mu.Unlock()
 		return
 	}
@@ -445,7 +445,7 @@ func (s *BaseSensor) onBackendPropertyChanged(property string, value any) {
 func (s *BaseSensor) setPropertyWithTimestamp(property string, value any, timestamp int64) {
 	s.mu.Lock()
 	oldValue := s.properties[property]
-	if isEqual(oldValue, value) {
+	if isEqual(oldValue, value, false) {
 		s.mu.Unlock()
 		return
 	}
@@ -503,35 +503,34 @@ func generateSensorID() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-func normalizeReportedDetections(detected bool, detections []Detection, fallbackLabel string, fallbackAttribute string) []Detection {
+// base reaches the embedded Detection of a typed detection, so every sensor
+// shares one normalization: smart-camera plugins report labels without
+// coordinates, and downstream zone matching needs a box on every detection
+func normalizeReportedDetections[T any](detected bool, detections []T, base func(*T) *Detection, fallbackLabel string, fallbackAttribute string) []T {
 	if !detected {
-		return []Detection{}
+		return []T{}
 	}
+
 	if len(detections) > 0 {
-		return fillMissingBoxes(detections)
+		out := make([]T, len(detections))
+		copy(out, detections)
+		for i := range out {
+			if d := base(&out[i]); d.Box == nil {
+				d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
+			}
+		}
+		return out
 	}
-	d := Detection{
-		Label:      fallbackLabel,
-		Confidence: 1,
-		Box:        &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1},
-	}
+
+	var fallback T
+	d := base(&fallback)
+	d.Label = fallbackLabel
+	d.Confidence = 1
+	d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
 	if fallbackAttribute != "" {
 		d.Attribute = fallbackAttribute
 	}
-	return []Detection{d}
-}
-
-// smart-camera plugins report labels without coordinates, downstream zone
-// matching needs a box on every detection
-func fillMissingBoxes(detections []Detection) []Detection {
-	out := make([]Detection, len(detections))
-	for i, d := range detections {
-		if d.Box == nil {
-			d.Box = &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1}
-		}
-		out[i] = d
-	}
-	return out
+	return []T{fallback}
 }
 
 func isDetectionSensorType(t SensorType) bool {

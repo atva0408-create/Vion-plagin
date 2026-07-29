@@ -147,12 +147,6 @@ func (s *sensorProxy) setConnected(connected bool) {
 	s.connectedChanged.Next(connected)
 }
 
-func (s *sensorProxy) setExposed(exposed bool) {
-	s.mu.Lock()
-	s.exposed = exposed
-	s.mu.Unlock()
-}
-
 func (s *sensorProxy) handleSensorEvent(msg sensorEventMessage) {
 	switch msg.Type {
 	case "property:changed":
@@ -241,10 +235,6 @@ func toStringSlice(v any) []string {
 		}
 	}
 	return result
-}
-
-func isControlCategory(cat SensorCategory) bool {
-	return cat == SensorCategoryControl || cat == SensorCategoryTrigger
 }
 
 func categoryForSensorType(st SensorType) SensorCategory {

@@ -107,7 +107,7 @@ func (s *AudioSensor) GetDecibels() float64 {
 //	})
 //	sensor.ReportDetections(false, nil)
 func (s *AudioSensor) ReportDetections(detected bool, detections []Detection) {
-	list := normalizeReportedDetections(detected, detections, "audio", "")
+	list := normalizeReportedDetections(detected, detections, func(d *Detection) *Detection { return d }, "audio", "")
 	s.writeState(map[string]any{
 		audioPropertyDetected:   detected,
 		audioPropertyDetections: list,

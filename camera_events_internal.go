@@ -27,8 +27,3 @@ type SensorPropertyChange struct {
 	// Timestamp is when the value was set (Unix ms).
 	Timestamp int64
 }
-
-type sensorEvent struct {
-	SensorID   string
-	SensorType SensorType
-}

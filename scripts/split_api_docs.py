@@ -263,7 +263,6 @@ BUCKETS: dict[str, str] = {
     "NewSwitchControl": "sensor",
     "TemperatureInfo": "sensor",
     "NewTemperatureInfo": "sensor",
-    "SensorTriggerRef": "sensor",
     "SensorTriggerSettings": "sensor",
     # storage.md: schema-driven config
     "DeviceStorage": "storage",

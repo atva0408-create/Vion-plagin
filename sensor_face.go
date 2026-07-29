@@ -79,22 +79,7 @@ func (s *FaceSensor) GetDetections() []FaceDetection {
 //	})
 //	sensor.ReportDetections(false, nil)
 func (s *FaceSensor) ReportDetections(detected bool, detections []FaceDetection) {
-	var list []FaceDetection
-	switch {
-	case !detected:
-		list = []FaceDetection{}
-	case len(detections) > 0:
-		list = detections
-	default:
-		list = []FaceDetection{{
-			Detection: Detection{
-				Label:      "person",
-				Confidence: 1,
-				Box:        &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1},
-				Attribute:  "face",
-			},
-		}}
-	}
+	list := normalizeReportedDetections(detected, detections, func(d *FaceDetection) *Detection { return &d.Detection }, "person", "face")
 	s.writeState(map[string]any{
 		facePropertyDetected:   detected,
 		facePropertyDetections: list,

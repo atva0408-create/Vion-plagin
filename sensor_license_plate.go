@@ -10,7 +10,7 @@ const (
 // is fixed to "license_plate".
 type LicensePlateDetection struct {
 	Detection
-	PlateText     string  `msgpack:"plateText,omitempty" json:"plateText,omitempty"`         // Recognized plate text (e.g. "ABC 1234")
+	PlateText     string  `msgpack:"plateText" json:"plateText"`                             // Recognized plate text (e.g. "ABC 1234")
 	OcrConfidence float64 `msgpack:"ocrConfidence,omitempty" json:"ocrConfidence,omitempty"` // Average text recognition confidence (0-1), separate from the box confidence
 }
 
@@ -78,22 +78,7 @@ func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
 //	})
 //	sensor.ReportDetections(false, nil)
 func (s *LicensePlateSensor) ReportDetections(detected bool, detections []LicensePlateDetection) {
-	var list []LicensePlateDetection
-	switch {
-	case !detected:
-		list = []LicensePlateDetection{}
-	case len(detections) > 0:
-		list = detections
-	default:
-		list = []LicensePlateDetection{{
-			Detection: Detection{
-				Label:      "vehicle",
-				Confidence: 1,
-				Box:        &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1},
-				Attribute:  "license_plate",
-			},
-		}}
-	}
+	list := normalizeReportedDetections(detected, detections, func(d *LicensePlateDetection) *Detection { return &d.Detection }, "vehicle", "license_plate")
 	s.writeState(map[string]any{
 		licensePlatePropertyDetected:   detected,
 		licensePlatePropertyDetections: list,

@@ -346,19 +346,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 
 	sensorJSON := s.ToJSON()
 
-	// detector interfaces define ModelSpec(), the base ToJSON() does not carry it
-	switch v := s.(type) {
-	case ObjectDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case FaceDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case LicensePlateDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case AudioDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	case ClassifierDetector:
-		sensorJSON.ModelSpec = v.ModelSpec()
-	}
+	sensorJSON.ModelSpec = detectorModelSpec(s)
 
 	// derived nativeId keeps per-camera instances of same-named sensors distinct
 	if sensorJSON.NativeID == "" {
@@ -448,6 +436,11 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 			}
 		}
 	})
+	if err != nil {
+		// the sensor stays registered, only host-side writes are lost
+		d.logger.Error(fmt.Sprintf("subscribe sensor events for %s: %v", s.GetID(), err))
+	}
+
 	d.mu.Lock()
 	d.sensorCleanups[s.GetID()] = func() {
 		if unsubBackend != nil {

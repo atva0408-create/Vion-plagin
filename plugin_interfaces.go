@@ -133,6 +133,9 @@ type AudioDetectionInterface interface {
 	// TestAudio runs detection on an audio buffer captured by the UI test
 	// panel; metadata carries the input MIME type.
 	TestAudio(audioData []byte, metadata AudioMetadata, config map[string]any) (*AudioDetectionResponse, error)
+	// DetectAudio runs detection on a pre-decoded audio frame. Called from
+	// automation / benchmark pipelines.
+	DetectAudio(audio AudioFrameData, config map[string]any) (*AudioDetectionResponse, error)
 	// AudioSettings returns the JSON schema used to render the
 	// audio-detection settings form in the UI, or nil for no schema.
 	AudioSettings() ([]JsonSchema, error)

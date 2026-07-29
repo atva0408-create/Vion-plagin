@@ -60,39 +60,27 @@ type AudioDetectionSettings struct {
 	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
 }
 
-// SensorTriggerRef is a stable reference to a sensor for cascade trigger configuration.
-// Uses composite key (sensorType + sensorName + pluginId) instead of UUID
-// so references survive plugin restarts.
-type SensorTriggerRef struct {
-	// SensorType is the sensor type (e.g. "contact", "doorbell").
-	SensorType SensorType `msgpack:"sensorType" json:"sensorType"`
-	// SensorName is the sensor name (stable across restarts).
-	SensorName string `msgpack:"sensorName" json:"sensorName"`
-	// PluginID is the plugin ID that provides this sensor.
-	PluginID string `msgpack:"pluginId" json:"pluginId"`
-}
-
 // SensorTriggerSettings is the sensor trigger settings (contact, doorbell,
 // switch, light, etc.).
 type SensorTriggerSettings struct {
 	// Timeout is the sensor trigger timeout in seconds.
 	Timeout int `msgpack:"timeout" json:"timeout"`
-	// Triggers are sensors that also trigger the detection cascade (in addition to motion/audio).
-	Triggers []SensorTriggerRef `msgpack:"triggers" json:"triggers"`
+	// Triggers are sensor entity ids that also trigger the detection cascade (in addition to motion/audio).
+	Triggers []string `msgpack:"triggers" json:"triggers"`
 }
 
 // FaceDetectionSettings is the face detection settings.
 type FaceDetectionSettings struct {
 	// Confidence is the minimum confidence threshold (0 - 1) for a face to count.
-	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
 }
 
 // LicensePlateDetectionSettings is the license plate detection settings.
 type LicensePlateDetectionSettings struct {
 	// Confidence is the minimum text recognition confidence (0 - 1) for a plate read to count.
-	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
 	// MinLength is the minimum plate text length, shorter reads are dropped as fragments.
-	MinLength int `msgpack:"minLength,omitempty" json:"minLength,omitempty"`
+	MinLength *int `msgpack:"minLength,omitempty" json:"minLength,omitempty"`
 }
 
 // CameraDetectionSettings is the combined detection settings for a camera.
@@ -112,7 +100,7 @@ type CameraDetectionSettings struct {
 	// CascadeDetection enables the detection cascade.
 	CascadeDetection *bool `msgpack:"cascadeDetection,omitempty" json:"cascadeDetection,omitempty"`
 	// CascadeTimeout is the cascade hold-open window in seconds.
-	CascadeTimeout int `msgpack:"cascadeTimeout,omitempty" json:"cascadeTimeout,omitempty"`
+	CascadeTimeout *int `msgpack:"cascadeTimeout,omitempty" json:"cascadeTimeout,omitempty"`
 	// Snooze indicates whether detections are snoozed (paused).
 	Snooze bool `msgpack:"snooze,omitempty" json:"snooze,omitempty"`
 }

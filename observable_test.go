@@ -402,3 +402,39 @@ func TestFirstValueFromErrNoValueOnAsyncComplete(t *testing.T) {
 		t.Fatalf("err=%v, want ErrNoValue", err)
 	}
 }
+
+func TestReplaySubjectIgnoresValuesAfterComplete(t *testing.T) {
+	rs := NewReplaySubject[int](2)
+	rs.Next(1)
+	rs.Complete()
+	rs.Next(2)
+	rs.Next(3)
+
+	var got []int
+	rs.Subscribe(func(v int) { got = append(got, v) })
+
+	if len(got) != 1 || got[0] != 1 {
+		t.Fatalf("late subscriber must replay only pre-completion values, got %v", got)
+	}
+}
+
+func TestReplaySubjectBuffersNothingAtSizeZero(t *testing.T) {
+	rs := NewReplaySubject[int](0)
+	for i := 1; i <= 5; i++ {
+		rs.Next(i)
+	}
+
+	var replayed []int
+	rs.Subscribe(func(v int) { replayed = append(replayed, v) })
+	if len(replayed) != 0 {
+		t.Fatalf("bufferSize 0 must replay nothing, got %v", replayed)
+	}
+
+	// still a live Subject, only the replay is empty
+	var live []int
+	rs.Subscribe(func(v int) { live = append(live, v) })
+	rs.Next(6)
+	if len(live) != 1 || live[0] != 6 {
+		t.Fatalf("live emissions must still reach subscribers, got %v", live)
+	}
+}

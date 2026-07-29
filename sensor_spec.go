@@ -36,3 +36,16 @@ type ObjectModelSpec struct {
 type AudioModelSpec struct {
 	Input AudioInputSpec `msgpack:"input" json:"input"` // Required input audio format
 }
+
+// a detector type left out here registers without a spec and never gets frames
+func detectorModelSpec(s Sensor) any {
+	switch v := s.(type) {
+	case interface{ ModelSpec() ObjectModelSpec }:
+		return v.ModelSpec()
+	case interface{ ModelSpec() AudioModelSpec }:
+		return v.ModelSpec()
+	case interface{ ModelSpec() ModelSpec }:
+		return v.ModelSpec()
+	}
+	return nil
+}

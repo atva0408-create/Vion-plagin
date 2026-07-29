@@ -86,21 +86,7 @@ func (s *ClassifierSensor) GetLabels() []string {
 //	})
 //	sensor.ReportDetections(false, nil)
 func (s *ClassifierSensor) ReportDetections(detected bool, detections []ClassifierDetection) {
-	var list []ClassifierDetection
-	switch {
-	case !detected:
-		list = []ClassifierDetection{}
-	case len(detections) > 0:
-		list = detections
-	default:
-		list = []ClassifierDetection{{
-			Detection: Detection{
-				Label:      "motion",
-				Confidence: 1,
-				Box:        &BoundingBox{X: 0, Y: 0, Width: 1, Height: 1},
-			},
-		}}
-	}
+	list := normalizeReportedDetections(detected, detections, func(d *ClassifierDetection) *Detection { return &d.Detection }, "motion", "")
 	labels := dedupClassifierLabels(list)
 	s.writeState(map[string]any{
 		classifierPropertyDetected:   detected,

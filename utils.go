@@ -148,9 +148,96 @@ func BuildSnapshotUrl(cameraName, sourceName, snapshotUrl string, opts *Snapshot
 	return baseUrl + "?" + strings.Join(params, "&"), nil
 }
 
-// map key order is irrelevant, slice order is not
-func isEqual(a, b any) bool {
+// msgpack round-trips a number into a different width than the plugin wrote, so
+// numbers compare by value; ignoreOrder compares any list as a multiset
+func isEqual(a, b any, ignoreOrder bool) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+
+	if an, aok := asNumber(a); aok {
+		bn, bok := asNumber(b)
+		return bok && an == bn
+	}
+
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+
+	switch va.Kind() {
+	case reflect.Slice, reflect.Array:
+		if vb.Kind() != reflect.Slice && vb.Kind() != reflect.Array {
+			return false
+		}
+		if va.Len() != vb.Len() {
+			return false
+		}
+		if !ignoreOrder {
+			for i := range va.Len() {
+				if !isEqual(va.Index(i).Interface(), vb.Index(i).Interface(), ignoreOrder) {
+					return false
+				}
+			}
+			return true
+		}
+		used := make([]bool, vb.Len())
+		for i := range va.Len() {
+			matched := false
+			for j := range vb.Len() {
+				if used[j] || !isEqual(va.Index(i).Interface(), vb.Index(j).Interface(), ignoreOrder) {
+					continue
+				}
+				used[j], matched = true, true
+				break
+			}
+			if !matched {
+				return false
+			}
+		}
+		return true
+
+	case reflect.Map:
+		if vb.Kind() != reflect.Map || va.Len() != vb.Len() {
+			return false
+		}
+		for _, k := range va.MapKeys() {
+			other := vb.MapIndex(k)
+			if !other.IsValid() || !isEqual(va.MapIndex(k).Interface(), other.Interface(), ignoreOrder) {
+				return false
+			}
+		}
+		return true
+	}
+
 	return reflect.DeepEqual(a, b)
+}
+
+func asNumber(v any) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case float32:
+		return float64(n), true
+	case float64:
+		return n, true
+	}
+	return 0, false
 }
 
 // use this instead of rpc.Decode in subscribe callbacks: it logs instead of

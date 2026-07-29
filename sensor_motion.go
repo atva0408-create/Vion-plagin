@@ -80,7 +80,7 @@ func (s *MotionSensor) ReportDetections(detected bool, detections []Detection) {
 	if s.IsBlocked() {
 		return
 	}
-	list := normalizeReportedDetections(detected, detections, "motion", "")
+	list := normalizeReportedDetections(detected, detections, func(d *Detection) *Detection { return d }, "motion", "")
 	s.writeState(map[string]any{
 		motionPropertyDetected:   detected,
 		motionPropertyDetections: list,
