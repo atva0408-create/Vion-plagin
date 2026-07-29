@@ -29,9 +29,9 @@ AudioDetectorSensor is an audio sensor that consumes audio frames from the backe
 <a name="NewAudioDetectorSensor"></a>
 ### func NewAudioDetectorSensor
 
-	func NewAudioDetectorSensor(name string) *AudioDetectorSensor
+	func NewAudioDetectorSensor(name string, opts ...SensorOption) *AudioDetectorSensor
 
-
+NewAudioDetectorSensor creates an audio detector sensor with the given name and options.
 
 <a name="AudioFFmpegCodec"></a>
 
@@ -68,7 +68,7 @@ AudioFrameData is audio frame data delivered to audio detector sensors by the ba
 
 ## type AudioLabel
 
-AudioLabel is one of the built\-in audio labels or any custom string emitted by an audio detector.
+AudioLabel is one of the built\-in audio labels, or any custom string emitted by an audio detector.
 
 	type AudioLabel = string
 
@@ -100,7 +100,7 @@ AudioResult is the return value of AudioDetector.DetectAudio.
 
 AudioSensor reports audio events and decibel levels.
 
-Plugin authors call ReportDetections to push detected audio events \(the \`detected\` flag is auto\-derived from the list\) and SetDecibels to publish the audio level.
+Plugin authors call ReportDetections to push detected audio events \(the detected flag is auto\-derived from the list\) and SetDecibels to publish the audio level.
 
 	type AudioSensor struct {
 	    BaseSensor
@@ -109,9 +109,9 @@ Plugin authors call ReportDetections to push detected audio events \(the \`detec
 <a name="NewAudioSensor"></a>
 ### func NewAudioSensor
 
-	func NewAudioSensor(name string) *AudioSensor
+	func NewAudioSensor(name string, opts ...SensorOption) *AudioSensor
 
-
+NewAudioSensor creates an audio sensor with the given name and options.
 
 <a name="AudioSensor.ClearDetections"></a>
 ### func \(\*AudioSensor\) ClearDetections
@@ -162,9 +162,9 @@ ClearDetections explicitly clears audio detection state \(detected = false, dete
 
 ReportDetections reports detected audio events.
 
-- ReportDetections\(true, nil\) — audio detected without specifics. The SDK synthesizes a single full\-frame "audio" detection.
-- ReportDetections\(true, \[...\]\) — audio detected with explicit detections.
-- ReportDetections\(false, nil\) — clear.
+- ReportDetections\(true, nil\): audio detected without specifics. The SDK synthesizes a single full\-frame "audio" detection.
+- ReportDetections\(true, \[...\]\): audio detected with explicit detections.
+- ReportDetections\(false, nil\): clear.
 
 Example:
 
@@ -198,13 +198,15 @@ Example:
 
 	func (s *AudioSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only audio sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="AudioStreamInfo"></a>
 
 ## type BaseSensor
 
 BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
+
+Sensors are standalone entities: the plugin supplies the durable identity \(WithNativeID\), everything else belongs to the user: camera assignments, display name and whether the sensor is exported to HomeKit/HA/MQTT. A plugin never decides where its sensor is used and never handles the export itself.
 
 	type BaseSensor struct {
 	    // contains filtered or unexported fields
@@ -213,14 +215,28 @@ BaseSensor is the base struct for all sensors. Embed this in concrete sensor typ
 <a name="NewBaseSensor"></a>
 ### func NewBaseSensor
 
-	func NewBaseSensor(name string) BaseSensor
+	func NewBaseSensor(name string, opts ...SensorOption) BaseSensor
+
+NewBaseSensor creates the embedded base for a concrete sensor type. The id it assigns is provisional until the host registers the sensor, and Storage stays nil until then.
+
+Example:
+
+	type MySensor struct{ sdk.BaseSensor }
+	
+	s := &MySensor{BaseSensor: sdk.NewBaseSensor("Front Door", sdk.WithNativeID("dev-1"))}
+	
+
+<a name="BaseSensor.Connected"></a>
+### func \(\*BaseSensor\) Connected
+
+	func (s *BaseSensor) Connected() bool
 
 
 
-<a name="BaseSensor.GetCameraID"></a>
-### func \(\*BaseSensor\) GetCameraID
+<a name="BaseSensor.GetAssignedCameraIDs"></a>
+### func \(\*BaseSensor\) GetAssignedCameraIDs
 
-	func (s *BaseSensor) GetCameraID() string
+	func (s *BaseSensor) GetAssignedCameraIDs() []string
 
 
 
@@ -252,6 +268,13 @@ BaseSensor is the base struct for all sensors. Embed this in concrete sensor typ
 
 
 
+<a name="BaseSensor.GetNativeID"></a>
+### func \(\*BaseSensor\) GetNativeID
+
+	func (s *BaseSensor) GetNativeID() string
+
+
+
 <a name="BaseSensor.GetPluginID"></a>
 ### func \(\*BaseSensor\) GetPluginID
 
@@ -264,41 +287,40 @@ BaseSensor is the base struct for all sensors. Embed this in concrete sensor typ
 
 	func (s *BaseSensor) GetValue(property string) any
 
-GetValue returns the current value of a sensor property.
+
 
 <a name="BaseSensor.GetValues"></a>
 ### func \(\*BaseSensor\) GetValues
 
 	func (s *BaseSensor) GetValues() map[string]any
 
-GetValues returns a snapshot of all property values.
 
-Example:
-
-	snapshot := sensor.GetValues()
-	fmt.Println(snapshot)
-	
 
 <a name="BaseSensor.HasCapability"></a>
 ### func \(\*BaseSensor\) HasCapability
 
 	func (s *BaseSensor) HasCapability(cap string) bool
 
+HasCapability reports whether the sensor advertises the given capability.
 
+Example:
+
+	dimmable := sensor.HasCapability(sdk.LightCapabilityBrightness)
+	
 
 <a name="BaseSensor.IsAssigned"></a>
 ### func \(\*BaseSensor\) IsAssigned
 
 	func (s *BaseSensor) IsAssigned() bool
 
-IsAssigned returns whether this sensor is currently assigned to a camera.
+
 
 <a name="BaseSensor.OnAssignmentChanged"></a>
 ### func \(\*BaseSensor\) OnAssignmentChanged
 
-	func (s *BaseSensor) OnAssignmentChanged(callback func(bool)) *Disposable
+	func (s *BaseSensor) OnAssignmentChanged(callback func([]string)) *Disposable
 
-OnAssignmentChanged subscribes to assignment state changes \(sensor added/removed from camera\).
+OnAssignmentChanged fires with the current camera id list whenever the user changes this sensor's camera assignments.
 
 <a name="BaseSensor.OnCapabilitiesChanged"></a>
 ### func \(\*BaseSensor\) OnCapabilitiesChanged
@@ -306,6 +328,13 @@ OnAssignmentChanged subscribes to assignment state changes \(sensor added/remove
 	func (s *BaseSensor) OnCapabilitiesChanged(callback func([]string)) *Disposable
 
 OnCapabilitiesChanged returns a Disposable that fires when capabilities change.
+
+<a name="BaseSensor.OnConnectedChanged"></a>
+### func \(\*BaseSensor\) OnConnectedChanged
+
+	func (s *BaseSensor) OnConnectedChanged(callback func(bool)) *Disposable
+
+OnConnectedChanged fires when the sensor's registration state changes.
 
 <a name="BaseSensor.OnPropertyChanged"></a>
 ### func \(\*BaseSensor\) OnPropertyChanged
@@ -319,7 +348,12 @@ OnPropertyChanged subscribes to property changes. Returns a Disposable to unsubs
 
 	func (s *BaseSensor) SetCapabilities(caps []string)
 
+SetCapabilities replaces the advertised feature flags and notifies the backend plus local listeners.
 
+Example:
+
+	sensor.SetCapabilities([]string{sdk.LightCapabilityBrightness})
+	
 
 <a name="BaseSensor.SetDisplayName"></a>
 ### func \(\*BaseSensor\) SetDisplayName
@@ -338,7 +372,7 @@ Example:
 
 	func (s *BaseSensor) Storage() *DeviceStorage
 
-Storage returns the sensor's persistent storage. Nil until the sensor is added to a camera.
+
 
 <a name="BatteryInfo"></a>
 
@@ -346,14 +380,16 @@ Storage returns the sensor's persistent storage. Nil until the sensor is added t
 
 BatteryInfo reports battery level, charging state, and low\-battery alerts.
 
+Plugin authors call SetLevel, SetCharging, and SetLow to push updates from the device.
+
 	type BatteryInfo struct{ BaseSensor }
 
 <a name="NewBatteryInfo"></a>
 ### func NewBatteryInfo
 
-	func NewBatteryInfo(name string) *BatteryInfo
+	func NewBatteryInfo(name string, opts ...SensorOption) *BatteryInfo
 
-
+NewBatteryInfo creates a battery info sensor with the given name and options.
 
 <a name="BatteryInfo.GetCategory"></a>
 ### func \(\*BatteryInfo\) GetCategory
@@ -407,7 +443,7 @@ Example:
 
 	func (s *BatteryInfo) SetLevel(value int)
 
-SetLevel sets the battery level \(clamped to \[0,100\]\).
+SetLevel reports a new battery level percentage, clamped to \[0,100\].
 
 Example:
 
@@ -438,7 +474,7 @@ Example:
 
 	func (s *BatteryInfo) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only battery sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="BehaviorSubject"></a>
 
@@ -491,9 +527,11 @@ ClassifierDetector is implemented by plugins that run image classification model
 	    // ModelSpec declares the expected input dimensions and trigger labels. The
 	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
-	    // DetectClassifications classifies a batch of pre-cropped, pre-scaled
-	    // trigger regions and must return exactly one ClassifierResult per input
-	    // frame, in the same order.
+	    // DetectClassifications classifies a batch of frames, each scaled to
+	    // ModelSpec().Input: normally a trigger region cropped by the upstream
+	    // object detector, but the whole scene when no decoded frame is available.
+	    // Must return exactly one ClassifierResult per input frame, in the same
+	    // order.
 	    DetectClassifications(frames []VideoFrameData) ([]ClassifierResult, error)
 	}
 
@@ -510,9 +548,9 @@ ClassifierDetectorSensor is a classifier sensor that consumes video frames from 
 <a name="NewClassifierDetectorSensor"></a>
 ### func NewClassifierDetectorSensor
 
-	func NewClassifierDetectorSensor(name string) *ClassifierDetectorSensor
+	func NewClassifierDetectorSensor(name string, opts ...SensorOption) *ClassifierDetectorSensor
 
-
+NewClassifierDetectorSensor creates a classifier detector sensor with the given name and options.
 
 <a name="ClassifierResult"></a>
 
@@ -531,16 +569,16 @@ ClassifierResult is the return value of ClassifierDetector.DetectClassifications
 
 ClassifierSensor reports classification results from image analysis.
 
-Plugin authors call ReportDetections to push classification results. The \`detected\` flag and \`labels\` are auto\-derived from the detection list.
+Plugin authors call ReportDetections to push classification results. The detected flag and labels are auto\-derived from the detection list.
 
 	type ClassifierSensor struct{ BaseSensor }
 
 <a name="NewClassifierSensor"></a>
 ### func NewClassifierSensor
 
-	func NewClassifierSensor(name string) *ClassifierSensor
+	func NewClassifierSensor(name string, opts ...SensorOption) *ClassifierSensor
 
-
+NewClassifierSensor creates a classifier sensor with the given name and options.
 
 <a name="ClassifierSensor.ClearDetections"></a>
 ### func \(\*ClassifierSensor\) ClearDetections
@@ -561,14 +599,14 @@ ClearDetections explicitly clears classifier state \(detected = false, detection
 
 	func (s *ClassifierSensor) GetDetections() []ClassifierDetection
 
-GetDetections returns the current classification results.
+
 
 <a name="ClassifierSensor.GetLabels"></a>
 ### func \(\*ClassifierSensor\) GetLabels
 
 	func (s *ClassifierSensor) GetLabels() []string
 
-GetLabels returns the unique labels of the current detections.
+
 
 <a name="ClassifierSensor.GetType"></a>
 ### func \(\*ClassifierSensor\) GetType
@@ -582,18 +620,18 @@ GetLabels returns the unique labels of the current detections.
 
 	func (s *ClassifierSensor) IsDetected() bool
 
-IsDetected reports whether any classification result is currently active.
+
 
 <a name="ClassifierSensor.ReportDetections"></a>
 ### func \(\*ClassifierSensor\) ReportDetections
 
 	func (s *ClassifierSensor) ReportDetections(detected bool, detections []ClassifierDetection)
 
-ReportDetections reports classification results. The \`detected\` flag and \`labels\` are auto\-derived from the detection list.
+ReportDetections reports classification results. The detected flag and labels are auto\-derived from the detection list.
 
-- ReportDetections\(true, nil\) — generic classification trigger; the SDK synthesizes a single full\-frame detection with empty attribute and sub\-attribute.
-- ReportDetections\(true, \[...\]\) — explicit classifier detections.
-- ReportDetections\(false, nil\) — clear.
+- ReportDetections\(true, nil\): generic classification trigger. The SDK synthesizes a single full\-frame detection with empty attribute and sub\-attribute.
+- ReportDetections\(true, \[...\]\): explicit classifier detections.
+- ReportDetections\(false, nil\): clear.
 
 Example:
 
@@ -615,7 +653,7 @@ Example:
 
 	func (s *ClassifierSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only classifier sensors. State is reported via ReportDetections.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="ClipDetectionInterface"></a>
 
@@ -626,10 +664,11 @@ ClipDetector is implemented by plugins that generate CLIP embeddings for downstr
 	type ClipDetector interface {
 	    // ModelSpec declares the expected input dimensions and trigger labels.
 	    ModelSpec() ModelSpec
-	    // DetectEmbeddings produces CLIP embeddings for a batch of pre-cropped,
-	    // pre-scaled trigger regions. Must return exactly one ClipResult per
-	    // input frame, in the same order; use VideoFrameData.Label to tag the
-	    // emitted embedding.
+	    // DetectEmbeddings produces CLIP embeddings for a batch of frames, each
+	    // scaled to ModelSpec().Input: normally a trigger region cropped by the
+	    // upstream object detector, but the whole scene when no decoded frame is
+	    // available. Must return exactly one ClipResult per input frame, in the
+	    // same order; use VideoFrameData.Label to tag the emitted embedding.
 	    DetectEmbeddings(frames []VideoFrameData) ([]ClipResult, error)
 	}
 
@@ -644,9 +683,9 @@ ClipDetectorSensor is a frame\-only sensor that generates CLIP embeddings from v
 <a name="NewClipDetectorSensor"></a>
 ### func NewClipDetectorSensor
 
-	func NewClipDetectorSensor(name string) *ClipDetectorSensor
+	func NewClipDetectorSensor(name string, opts ...SensorOption) *ClipDetectorSensor
 
-
+NewClipDetectorSensor creates a CLIP detector sensor with the given name and options.
 
 <a name="ClipDetectorSensor.GetCategory"></a>
 ### func \(\*ClipDetectorSensor\) GetCategory
@@ -674,7 +713,7 @@ ClipDetectorSensor is a frame\-only sensor that generates CLIP embeddings from v
 
 	func (s *ClipDetectorSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op — the clip detector sensor has no externally writable properties.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="ClipEmbedding"></a>
 
@@ -710,9 +749,9 @@ ContactSensor reports door/window open\-close state.
 <a name="NewContactSensor"></a>
 ### func NewContactSensor
 
-	func NewContactSensor(name string) *ContactSensor
+	func NewContactSensor(name string, opts ...SensorOption) *ContactSensor
 
-
+NewContactSensor creates a contact sensor with the given name and options.
 
 <a name="ContactSensor.GetCategory"></a>
 ### func \(\*ContactSensor\) GetCategory
@@ -759,7 +798,7 @@ Example:
 
 	func (s *ContactSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only contact sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="CoreManager"></a>
 
@@ -794,7 +833,9 @@ DetectionLabel is a label identifying a type of detection.
 
 ## type DoorbellTrigger
 
-DoorbellTrigger triggers doorbell ring events.
+DoorbellTrigger fires doorbell ring events.
+
+Plugin authors call Trigger to fire an event. The ring property is set to true and automatically reset to false after ringAutoResetMs.
 
 	type DoorbellTrigger struct {
 	    BaseSensor
@@ -804,9 +845,9 @@ DoorbellTrigger triggers doorbell ring events.
 <a name="NewDoorbellTrigger"></a>
 ### func NewDoorbellTrigger
 
-	func NewDoorbellTrigger(name string) *DoorbellTrigger
+	func NewDoorbellTrigger(name string, opts ...SensorOption) *DoorbellTrigger
 
-
+NewDoorbellTrigger creates a doorbell trigger with the given name and options.
 
 <a name="DoorbellTrigger.GetCategory"></a>
 ### func \(\*DoorbellTrigger\) GetCategory
@@ -841,7 +882,7 @@ DoorbellTrigger triggers doorbell ring events.
 
 	func (s *DoorbellTrigger) Trigger()
 
-Trigger fires a doorbell ring event. Sets \`ring=true\` and auto\-resets after ringAutoResetMs. Re\-triggering while ringing resets the timer \(extends the ring phase\).
+Trigger fires a doorbell ring event. Sets ring to true and auto\-resets after ringAutoResetMs. Re\-triggering while ringing resets the timer \(extends the ring phase\).
 
 Example:
 
@@ -853,7 +894,7 @@ Example:
 
 	func (s *DoorbellTrigger) UpdateValue(property string, value any) error
 
-UpdateValue is the cross\-process consumer entry point. Writing \`ring=true\` \(any truthy value\) dispatches to \`Trigger\(\)\` so a UI test button or external automation can fire the doorbell using the same flow as a real hardware ring \(auto\-reset included\). Writing \`ring=false\` is ignored — the auto\-reset timer owns the off transition.
+UpdateValue routes generic property writes to the semantic setters. Writing ring=false is ignored, the auto\-reset timer owns the off transition.
 
 <a name="DownloadCleanup"></a>
 
@@ -898,9 +939,9 @@ FaceDetectorSensor is a face sensor that consumes video frames from the backend 
 <a name="NewFaceDetectorSensor"></a>
 ### func NewFaceDetectorSensor
 
-	func NewFaceDetectorSensor(name string) *FaceDetectorSensor
+	func NewFaceDetectorSensor(name string, opts ...SensorOption) *FaceDetectorSensor
 
-
+NewFaceDetectorSensor creates a face detector sensor with the given name and options.
 
 <a name="FaceResult"></a>
 
@@ -919,16 +960,16 @@ FaceResult is the return value of FaceDetector.DetectFaces.
 
 FaceSensor reports detected faces and optional identity matches.
 
-Plugin authors call ReportDetections to push detected faces. The \`detected\` flag is auto\-derived from the detection list.
+Plugin authors call ReportDetections to push detected faces. The detected flag is auto\-derived from the detection list.
 
 	type FaceSensor struct{ BaseSensor }
 
 <a name="NewFaceSensor"></a>
 ### func NewFaceSensor
 
-	func NewFaceSensor(name string) *FaceSensor
+	func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor
 
-
+NewFaceSensor creates a face sensor with the given name and options.
 
 <a name="FaceSensor.ClearDetections"></a>
 ### func \(\*FaceSensor\) ClearDetections
@@ -949,7 +990,7 @@ ClearDetections explicitly clears face detection state \(detected = false, detec
 
 	func (s *FaceSensor) GetDetections() []FaceDetection
 
-GetDetections returns the current face detections.
+
 
 <a name="FaceSensor.GetType"></a>
 ### func \(\*FaceSensor\) GetType
@@ -963,7 +1004,7 @@ GetDetections returns the current face detections.
 
 	func (s *FaceSensor) IsDetected() bool
 
-IsDetected reports whether any face is currently detected.
+
 
 <a name="FaceSensor.ReportDetections"></a>
 ### func \(\*FaceSensor\) ReportDetections
@@ -972,9 +1013,9 @@ IsDetected reports whether any face is currently detected.
 
 ReportDetections reports detected faces.
 
-- ReportDetections\(true, nil\) — face detected without specifics; the SDK synthesizes a single full\-frame face detection without identity.
-- ReportDetections\(true, \[...\]\) — explicit face detections with identity, embedding, and/or thumbnail.
-- ReportDetections\(false, nil\) — clear.
+- ReportDetections\(true, nil\): face detected without specifics. The SDK synthesizes a single full\-frame face detection without identity.
+- ReportDetections\(true, \[...\]\): explicit face detections with identity, embedding, and/or thumbnail.
+- ReportDetections\(false, nil\): clear.
 
 Example:
 
@@ -996,13 +1037,13 @@ Example:
 
 	func (s *FaceSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only face sensors. State is reported via ReportDetections.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="FormSubmitResponse"></a>
 
 ## type GarageControl
 
-GarageControl is a garage door control sensor. Override SetTargetState \(by embedding GarageControl in your own type and shadowing the method\) to drive hardware and call the embedded GarageControl's SetTargetState once the hardware confirms — the base implementation updates both targetState and currentState.
+GarageControl is a garage door control sensor. Override SetTargetState \(by embedding GarageControl in your own type and shadowing the method\) to drive hardware and call the embedded GarageControl's SetTargetState once the hardware confirms: the base implementation updates both targetState and currentState.
 
 For long\-running transitions \(Opening/Closing intermediate states\) override SetTargetState and write currentState separately as the door moves.
 
@@ -1011,9 +1052,9 @@ For long\-running transitions \(Opening/Closing intermediate states\) override S
 <a name="NewGarageControl"></a>
 ### func NewGarageControl
 
-	func NewGarageControl(name string) *GarageControl
+	func NewGarageControl(name string, opts ...SensorOption) *GarageControl
 
-
+NewGarageControl creates a garage door control with the given name and options.
 
 <a name="GarageControl.GetCategory"></a>
 ### func \(\*GarageControl\) GetCategory
@@ -1055,7 +1096,7 @@ For long\-running transitions \(Opening/Closing intermediate states\) override S
 
 	func (s *GarageControl) SetCurrentState(value GarageState)
 
-SetCurrentState publishes the actual door state. Use this to drive long\-running transitions \(e.g. Open → Closing → Closed\) independently of the user\-requested target state. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
+SetCurrentState publishes the actual door state. Use this to drive long\-running transitions \(Open, then Closing, then Closed\) independently of the user\-requested target state. Read\-only from cross\-process consumers, UpdateValue ignores it.
 
 Example:
 
@@ -1067,7 +1108,7 @@ Example:
 
 	func (s *GarageControl) SetObstructionDetected(detected bool)
 
-SetObstructionDetected publishes the obstruction detection state.
+SetObstructionDetected publishes the obstruction\-detected state. Read\-only from cross\-process consumers, UpdateValue ignores it.
 
 Example:
 
@@ -1098,7 +1139,7 @@ Example:
 
 	func (s *GarageControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters. Only targetState is externally writable.
 
 <a name="GarageState"></a>
 
@@ -1111,11 +1152,11 @@ GarageState defines garage door states \(HomeKit\-compatible values\).
 <a name="GarageStateOpen"></a>
 
 	const (
-	    GarageStateOpen    GarageState = 0
-	    GarageStateClosed  GarageState = 1
-	    GarageStateOpening GarageState = 2
-	    GarageStateClosing GarageState = 3
-	    GarageStateStopped GarageState = 4
+	    GarageStateOpen    GarageState = 0 // Door is fully open
+	    GarageStateClosed  GarageState = 1 // Door is fully closed
+	    GarageStateOpening GarageState = 2 // Door is moving towards open
+	    GarageStateClosing GarageState = 3 // Door is moving towards closed
+	    GarageStateStopped GarageState = 4 // Door stopped part-way
 	)
 
 <a name="Go2RtcRTSPSource"></a>
@@ -1129,7 +1170,7 @@ HumidityInfo reports current relative humidity \(0\-100%\).
 <a name="NewHumidityInfo"></a>
 ### func NewHumidityInfo
 
-	func NewHumidityInfo(name string) *HumidityInfo
+	func NewHumidityInfo(name string, opts ...SensorOption) *HumidityInfo
 
 
 
@@ -1161,6 +1202,11 @@ HumidityInfo reports current relative humidity \(0\-100%\).
 
 SetCurrent sets the current relative humidity \(clamped to \[0,100\]\).
 
+Example:
+
+	humidity.SetCurrent(63)
+	
+
 <a name="HumidityInfo.ToJSON"></a>
 ### func \(\*HumidityInfo\) ToJSON
 
@@ -1173,7 +1219,7 @@ SetCurrent sets the current relative humidity \(clamped to \[0,100\]\).
 
 	func (s *HumidityInfo) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only humidity sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="ImageMetadata"></a>
 
@@ -1186,7 +1232,7 @@ LeakSensor reports water leak detection state.
 <a name="NewLeakSensor"></a>
 ### func NewLeakSensor
 
-	func NewLeakSensor(name string) *LeakSensor
+	func NewLeakSensor(name string, opts ...SensorOption) *LeakSensor
 
 
 
@@ -1235,7 +1281,7 @@ Example:
 
 	func (s *LeakSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only leak sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="LicensePlateDetection"></a>
 
@@ -1245,7 +1291,7 @@ LicensePlateDetection is a license plate detection result, extending Detection w
 
 	type LicensePlateDetection struct {
 	    Detection
-	    PlateText     string  `msgpack:"plateText,omitempty" json:"plateText,omitempty"`         // Recognized plate text (e.g. "ABC 1234")
+	    PlateText     string  `msgpack:"plateText" json:"plateText"`                             // Recognized plate text (e.g. "ABC 1234")
 	    OcrConfidence float64 `msgpack:"ocrConfidence,omitempty" json:"ocrConfidence,omitempty"` // Average text recognition confidence (0-1), separate from the box confidence
 	}
 
@@ -1253,15 +1299,16 @@ LicensePlateDetection is a license plate detection result, extending Detection w
 
 ## type LicensePlateDetector
 
-LicensePlateDetector is implemented by plugins that perform license plate detection and OCR on pre\-cropped vehicle regions.
+LicensePlateDetector is implemented by plugins that perform license plate detection and OCR.
 
 	type LicensePlateDetector interface {
 	    // ModelSpec declares the expected input dimensions and trigger labels. The
 	    // runtime scales frames to match.
 	    ModelSpec() ModelSpec
-	    // DetectLicensePlates analyzes a batch of pre-cropped, pre-scaled vehicle
-	    // regions and must return exactly one LicensePlateResult per input frame,
-	    // in the same order.
+	    // DetectLicensePlates analyzes a batch of frames pre-scaled to the ModelSpec
+	    // input: normally a vehicle region cropped by the upstream object detector,
+	    // but the whole scene when no decoded frame is available. Must return exactly
+	    // one result per input frame, in the same order.
 	    DetectLicensePlates(frames []VideoFrameData) ([]LicensePlateResult, error)
 	}
 
@@ -1278,7 +1325,7 @@ LicensePlateDetectorSensor is a license plate sensor that consumes video frames 
 <a name="NewLicensePlateDetectorSensor"></a>
 ### func NewLicensePlateDetectorSensor
 
-	func NewLicensePlateDetectorSensor(name string) *LicensePlateDetectorSensor
+	func NewLicensePlateDetectorSensor(name string, opts ...SensorOption) *LicensePlateDetectorSensor
 
 
 
@@ -1299,14 +1346,14 @@ LicensePlateResult is the return value of LicensePlateDetector.DetectLicensePlat
 
 LicensePlateSensor reports detected license plates and OCR results.
 
-Plugin authors call ReportDetections to push detected plates. The \`detected\` flag is auto\-derived from the detection list.
+Plugin authors call ReportDetections to push detected plates. The detected flag is auto\-derived from the detection list.
 
 	type LicensePlateSensor struct{ BaseSensor }
 
 <a name="NewLicensePlateSensor"></a>
 ### func NewLicensePlateSensor
 
-	func NewLicensePlateSensor(name string) *LicensePlateSensor
+	func NewLicensePlateSensor(name string, opts ...SensorOption) *LicensePlateSensor
 
 
 
@@ -1329,7 +1376,7 @@ ClearDetections explicitly clears license plate state \(detected = false, detect
 
 	func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection
 
-GetDetections returns the current license plate detections.
+
 
 <a name="LicensePlateSensor.GetType"></a>
 ### func \(\*LicensePlateSensor\) GetType
@@ -1343,7 +1390,7 @@ GetDetections returns the current license plate detections.
 
 	func (s *LicensePlateSensor) IsDetected() bool
 
-IsDetected reports whether any license plate is currently detected.
+
 
 <a name="LicensePlateSensor.ReportDetections"></a>
 ### func \(\*LicensePlateSensor\) ReportDetections
@@ -1352,9 +1399,9 @@ IsDetected reports whether any license plate is currently detected.
 
 ReportDetections reports detected license plates.
 
-- ReportDetections\(true, nil\) — plate detected without specifics; the SDK synthesizes a single full\-frame detection with empty plateText.
-- ReportDetections\(true, \[...\]\) — explicit plate detections with OCR text.
-- ReportDetections\(false, nil\) — clear.
+- ReportDetections\(true, nil\): plate detected without specifics, the SDK synthesizes a single full\-frame detection with empty plateText.
+- ReportDetections\(true, \[...\]\): explicit plate detections with OCR text.
+- ReportDetections\(false, nil\): clear.
 
 Example:
 
@@ -1376,7 +1423,7 @@ Example:
 
 	func (s *LicensePlateSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only license plate sensors. State is reported via ReportDetections.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="LightControl"></a>
 
@@ -1384,16 +1431,16 @@ UpdateValue is a no\-op for read\-only license plate sensors. State is reported 
 
 LightControl is a light on/off and brightness control sensor. Override SetOn / SetOff \(by embedding LightControl in your own type and shadowing the methods\) to drive your hardware, then call the embedded LightControl's methods to sync the SDK state.
 
-Plugins that have no hardware\-action use case can leave the methods unoverridden — the base implementation just updates the state.
+Plugins with no hardware\-action use case can leave the methods unoverridden, the base implementation just updates the state.
 
-For hardware\-pushed updates \(someone manually flipped the switch\), call the embedded LightControl's SetOn / SetOff directly from your event handler — that bypasses any plugin override and only syncs state.
+For hardware\-pushed updates \(someone manually flipped the switch\), call the embedded LightControl's SetOn / SetOff directly from your event handler. That bypasses any plugin override and only syncs state.
 
 	type LightControl struct{ BaseSensor }
 
 <a name="NewLightControl"></a>
 ### func NewLightControl
 
-	func NewLightControl(name string) *LightControl
+	func NewLightControl(name string, opts ...SensorOption) *LightControl
 
 
 
@@ -1473,13 +1520,13 @@ Example:
 
 	func (s *LightControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters. Only on and brightness are externally writable.
 
 <a name="LineDirection"></a>
 
 ## type LockControl
 
-LockControl is a lock/unlock control sensor. Override SetTargetState \(by embedding LockControl in your own type and shadowing the method\) to drive hardware and call the embedded LockControl's SetTargetState once the hardware confirms — the base implementation updates both targetState and currentState to the new value.
+LockControl is a lock/unlock control sensor. Override SetTargetState \(by embedding LockControl in your own type and shadowing the method\) to drive hardware and call the embedded LockControl's SetTargetState once the hardware confirms. The base implementation updates both targetState and currentState to the new value.
 
 For asymmetric flows \(long\-running unlock with intermediate state\) override SetTargetState and write currentState separately when transitions complete.
 
@@ -1488,7 +1535,7 @@ For asymmetric flows \(long\-running unlock with intermediate state\) override S
 <a name="NewLockControl"></a>
 ### func NewLockControl
 
-	func NewLockControl(name string) *LockControl
+	func NewLockControl(name string, opts ...SensorOption) *LockControl
 
 
 
@@ -1525,7 +1572,7 @@ For asymmetric flows \(long\-running unlock with intermediate state\) override S
 
 	func (s *LockControl) SetCurrentState(value LockState)
 
-SetCurrentState publishes the actual lock state. Use this to drive transitions where the physical state diverges from the user\-requested target — e.g. motorized smart locks that take time to rotate \(publish LockStateUnknown while moving\), or hardware reporting an out\-of\-band state change. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
+SetCurrentState publishes the actual lock state. Use it when the physical state diverges from the requested target: motorized locks that take time to rotate \(publish LockStateUnknown while moving\), or hardware reporting an out\-of\-band state change. Read\-only from cross\-process consumers \(UpdateValue ignores it\).
 
 Example:
 
@@ -1556,7 +1603,7 @@ Example:
 
 	func (s *LockControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters. Only targetState is externally writable, currentState is observed\-only.
 
 <a name="LockState"></a>
 
@@ -1569,9 +1616,9 @@ LockState defines lock states \(HomeKit\-compatible values\).
 <a name="LockStateSecured"></a>
 
 	const (
-	    LockStateSecured   LockState = 0
-	    LockStateUnsecured LockState = 1
-	    LockStateUnknown   LockState = 2
+	    LockStateSecured   LockState = 0 // Locked
+	    LockStateUnsecured LockState = 1 // Unlocked
+	    LockStateUnknown   LockState = 2 // State cannot be determined, e.g. while a motorized lock is moving
 	)
 
 <a name="Logger"></a>
@@ -1610,7 +1657,7 @@ MotionDetectorSensor is a motion sensor that consumes video frames from the back
 <a name="NewMotionDetectorSensor"></a>
 ### func NewMotionDetectorSensor
 
-	func NewMotionDetectorSensor(name string) *MotionDetectorSensor
+	func NewMotionDetectorSensor(name string, opts ...SensorOption) *MotionDetectorSensor
 
 
 
@@ -1631,7 +1678,7 @@ MotionResult is the return value of MotionDetector.DetectMotion.
 
 MotionSensor reports motion state and detection results.
 
-Plugin authors call ReportDetections to push detection results. The \`detected\` flag is auto\-derived from the detection list. \`blocked\` is read\-only and is set by the backend \(dwell logic\) — ReportDetections becomes a no\-op while the sensor is blocked.
+Plugin authors call ReportDetections to push detection results. The detected flag is auto\-derived from the detection list. The blocked flag is read\-only and set by the backend dwell logic, ReportDetections is a no\-op while it is set.
 
 	type MotionSensor struct {
 	    BaseSensor
@@ -1640,7 +1687,7 @@ Plugin authors call ReportDetections to push detection results. The \`detected\`
 <a name="NewMotionSensor"></a>
 ### func NewMotionSensor
 
-	func NewMotionSensor(name string) *MotionSensor
+	func NewMotionSensor(name string, opts ...SensorOption) *MotionSensor
 
 
 
@@ -1663,7 +1710,7 @@ ClearDetections explicitly clears motion state \(detected = false, detections = 
 
 	func (s *MotionSensor) GetDetections() []Detection
 
-GetDetections returns the current motion detections.
+
 
 <a name="MotionSensor.GetType"></a>
 ### func \(\*MotionSensor\) GetType
@@ -1677,14 +1724,14 @@ GetDetections returns the current motion detections.
 
 	func (s *MotionSensor) IsBlocked() bool
 
-IsBlocked reports whether the sensor is currently blocked by the backend dwell logic.
+
 
 <a name="MotionSensor.IsDetected"></a>
 ### func \(\*MotionSensor\) IsDetected
 
 	func (s *MotionSensor) IsDetected() bool
 
-IsDetected reports whether motion is currently detected.
+
 
 <a name="MotionSensor.ReportDetections"></a>
 ### func \(\*MotionSensor\) ReportDetections
@@ -1693,9 +1740,9 @@ IsDetected reports whether motion is currently detected.
 
 ReportDetections reports a motion detection result.
 
-- ReportDetections\(true, nil\) — motion detected without bounding box. The SDK synthesizes a single full\-frame "motion" detection.
-- ReportDetections\(true, \[...\]\) — motion detected with explicit detections.
-- ReportDetections\(false, nil\) — no motion \(clears detections\).
+- ReportDetections\(true, nil\): motion detected without bounding box. The SDK synthesizes a single full\-frame "motion" detection.
+- ReportDetections\(true, \[...\]\): motion detected with explicit detections.
+- ReportDetections\(false, nil\): no motion \(clears detections\).
 
 No\-op while the sensor is blocked by the backend dwell logic.
 
@@ -1719,7 +1766,7 @@ Example:
 
 	func (s *MotionSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only motion sensors. State is reported via ReportDetections.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="Notification"></a>
 
@@ -1747,7 +1794,7 @@ ObjectDetectorSensor is an object sensor that consumes video frames from the bac
 <a name="NewObjectDetectorSensor"></a>
 ### func NewObjectDetectorSensor
 
-	func NewObjectDetectorSensor(name string) *ObjectDetectorSensor
+	func NewObjectDetectorSensor(name string, opts ...SensorOption) *ObjectDetectorSensor
 
 
 
@@ -1755,7 +1802,7 @@ ObjectDetectorSensor is an object sensor that consumes video frames from the bac
 
 ## type ObjectModelSpec
 
-ObjectModelSpec describes an object detection model. Only declares input dimensions — the output label set is dynamic and comes from the model itself.
+ObjectModelSpec describes an object detection model. Only declares input dimensions, the output label set is dynamic and comes from the model itself.
 
 	type ObjectModelSpec struct {
 	    Input VideoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
@@ -1778,7 +1825,7 @@ ObjectResult is the return value of ObjectDetector.DetectObjects.
 
 ObjectSensor reports detected objects \(person, vehicle, animal, etc.\).
 
-Plugin authors call ReportDetections to push detection results. The \`detected\` flag and \`labels\` are auto\-derived from the detection list.
+Plugin authors call ReportDetections to push detection results. The detected flag and the labels are auto\-derived from the detection list.
 
 	type ObjectSensor struct {
 	    BaseSensor
@@ -1787,7 +1834,7 @@ Plugin authors call ReportDetections to push detection results. The \`detected\`
 <a name="NewObjectSensor"></a>
 ### func NewObjectSensor
 
-	func NewObjectSensor(name string) *ObjectSensor
+	func NewObjectSensor(name string, opts ...SensorOption) *ObjectSensor
 
 
 
@@ -1810,14 +1857,14 @@ ClearDetections explicitly clears detection state \(detected = false, detections
 
 	func (s *ObjectSensor) GetDetections() []TrackedDetection
 
-GetDetections returns the current object detections.
+
 
 <a name="ObjectSensor.GetLabels"></a>
 ### func \(\*ObjectSensor\) GetLabels
 
 	func (s *ObjectSensor) GetLabels() []string
 
-GetLabels returns the unique labels of the current detections.
+
 
 <a name="ObjectSensor.GetType"></a>
 ### func \(\*ObjectSensor\) GetType
@@ -1831,18 +1878,18 @@ GetLabels returns the unique labels of the current detections.
 
 	func (s *ObjectSensor) IsDetected() bool
 
-IsDetected reports whether any object is currently detected.
+
 
 <a name="ObjectSensor.ReportDetections"></a>
 ### func \(\*ObjectSensor\) ReportDetections
 
 	func (s *ObjectSensor) ReportDetections(detected bool, detections []TrackedDetection)
 
-ReportDetections reports detected objects. The \`detected\` flag and \`labels\` are auto\-derived from the detection list.
+ReportDetections reports detected objects. The detected flag and the labels are auto\-derived from the detection list.
 
-- ReportDetections\(true, nil\) — generic trigger; synthesizes a single full\-frame "motion" detection as a fallback.
-- ReportDetections\(true, \[...\]\) — explicit detections.
-- ReportDetections\(false, nil\) — clear.
+- ReportDetections\(true, nil\): generic trigger, synthesizes a single full\-frame "motion" detection as a fallback.
+- ReportDetections\(true, \[...\]\): explicit detections.
+- ReportDetections\(false, nil\): clear.
 
 Example:
 
@@ -1864,7 +1911,7 @@ Example:
 
 	func (s *ObjectSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only object sensors. State is reported via ReportDetections.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="Observable"></a>
 
@@ -1877,7 +1924,7 @@ OccupancySensor reports occupancy/presence state.
 <a name="NewOccupancySensor"></a>
 ### func NewOccupancySensor
 
-	func NewOccupancySensor(name string) *OccupancySensor
+	func NewOccupancySensor(name string, opts ...SensorOption) *OccupancySensor
 
 
 
@@ -1926,13 +1973,13 @@ Example:
 
 	func (s *OccupancySensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only occupancy sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="PTZCapability"></a>
 
 ## type PTZControl
 
-PTZControl is a pan\-tilt\-zoom camera control sensor. Override SetPosition / SetVelocity / SetTargetPreset \(by embedding PTZControl in your own type and shadowing the methods\) to drive hardware, then call the corresponding embedded method after success to sync the SDK state. For hardware\-pushed state updates \(e.g. PTZ position change events\), call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
+PTZControl is a pan\-tilt\-zoom camera control sensor. Override SetPosition / SetVelocity / SetTargetPreset \(by embedding PTZControl in your own type and shadowing the methods\) to drive hardware, then call the corresponding embedded method after success to sync the SDK state. For hardware\-pushed state updates \(e.g. PTZ position change events\), call the embedded methods directly from your event handler. That bypasses any plugin override and only syncs state.
 
 Set capabilities to advertise supported axes and features. Use SetPresets to publish the discovered preset list and SetMoving to publish movement state.
 
@@ -1941,7 +1988,7 @@ Set capabilities to advertise supported axes and features. Use SetPresets to pub
 <a name="NewPTZControl"></a>
 ### func NewPTZControl
 
-	func NewPTZControl(name string) *PTZControl
+	func NewPTZControl(name string, opts ...SensorOption) *PTZControl
 
 
 
@@ -1966,10 +2013,24 @@ Set capabilities to advertise supported axes and features. Use SetPresets to pub
 
 
 
+<a name="PTZControl.GetTargetPreset"></a>
+### func \(\*PTZControl\) GetTargetPreset
+
+	func (s *PTZControl) GetTargetPreset() (string, bool)
+
+
+
 <a name="PTZControl.GetType"></a>
 ### func \(\*PTZControl\) GetType
 
 	func (s *PTZControl) GetType() SensorType
+
+
+
+<a name="PTZControl.GetVelocity"></a>
+### func \(\*PTZControl\) GetVelocity
+
+	func (s *PTZControl) GetVelocity() (PTZDirection, bool)
 
 
 
@@ -2021,7 +2082,7 @@ Example:
 
 	func (s *PTZControl) SetPresets(value []string)
 
-SetPresets publishes the discovered preset list.
+SetPresets publishes the discovered preset list. The preset list stays empty until this runs.
 
 Example:
 
@@ -2046,7 +2107,7 @@ Example:
 
 	func (s *PTZControl) SetTargetPreset(value string)
 
-SetTargetPreset sets the target preset ID.
+SetTargetPreset sets the target preset ID. The property is unset until this runs.
 
 Example:
 
@@ -2058,11 +2119,12 @@ Example:
 
 	func (s *PTZControl) SetVelocity(value PTZDirection)
 
-SetVelocity sets the continuous\-move velocity.
+SetVelocity sets the continuous\-move velocity. The velocity property is unset until the first continuous move is issued.
 
 Example:
 
 	ptz.SetVelocity(PTZDirection{PanSpeed: 0.5, TiltSpeed: 0, ZoomSpeed: 0})
+	ptz.SetVelocity(PTZDirection{}) // stop
 	
 
 <a name="PTZControl.ToJSON"></a>
@@ -2077,7 +2139,7 @@ Example:
 
 	func (s *PTZControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters.
 
 <a name="PTZDirection"></a>
 
@@ -2090,7 +2152,7 @@ SecuritySystem is a security system arm/disarm control sensor.
 <a name="NewSecuritySystem"></a>
 ### func NewSecuritySystem
 
-	func NewSecuritySystem(name string) *SecuritySystem
+	func NewSecuritySystem(name string, opts ...SensorOption) *SecuritySystem
 
 
 
@@ -2127,7 +2189,7 @@ SecuritySystem is a security system arm/disarm control sensor.
 
 	func (s *SecuritySystem) SetCurrentState(value SecuritySystemState)
 
-SetCurrentState publishes the actual security system state. Use this to drive transitions that diverge from the user\-requested target — most notably the AlarmTriggered state when an intruder is detected, or arming\-delay intermediate states. Read\-only from cross\-process consumers \(\`UpdateValue\` ignores it\).
+SetCurrentState publishes the actual security system state. Use this for transitions that diverge from the user\-requested target: AlarmTriggered when an intruder is detected, or arming\-delay intermediate states. Read\-only from cross\-process consumers \(UpdateValue ignores it\).
 
 Example:
 
@@ -2139,7 +2201,7 @@ Example:
 
 	func (s *SecuritySystem) SetTargetState(value SecuritySystemState)
 
-SetTargetState sets the target state. Writes both targetState and currentState.
+SetTargetState sets the target state. Writes both targetState and currentState. The target state is never SecuritySystemStateAlarmTriggered, publish that through SetCurrentState.
 
 Example:
 
@@ -2158,7 +2220,7 @@ Example:
 
 	func (s *SecuritySystem) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters.
 
 <a name="SecuritySystemState"></a>
 
@@ -2184,7 +2246,7 @@ SecuritySystemState defines security system states.
 
 Sensor is the interface all sensors must implement.
 
-Plugin\-author state\-modifying methods \(\`SetOn\`, \`ReportDetections\`, etc.\) live on the concrete sensor types, not on Sensor. Code that holds a Sensor reference can READ state and observe changes, plus invoke \`UpdateValue\` for cross\-process generic property writes \(HomeKit bridge etc.\).
+State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete sensor types, not on Sensor. Code that holds a Sensor reference can read state and observe changes, plus invoke UpdateValue for cross\-process generic property writes such as the HomeKit bridge.
 
 	type Sensor interface {
 	    GetID() string
@@ -2192,25 +2254,34 @@ Plugin\-author state\-modifying methods \(\`SetOn\`, \`ReportDetections\`, etc.\
 	    GetCategory() SensorCategory
 	    GetName() string
 	    GetDisplayName() string
+	    // SetDisplayName sets the label shown in the UI.
 	    SetDisplayName(name string)
+	    GetNativeID() string
 	    GetPluginID() string
-	    GetCameraID() string
+	    GetAssignedCameraIDs() []string
+	    Connected() bool
 	    GetCapabilities() []string
+	    // SetCapabilities replaces the advertised feature flags.
 	    SetCapabilities(caps []string)
+	    // HasCapability reports whether the sensor advertises a capability.
 	    HasCapability(cap string) bool
-	    // GetValue returns the current value of a sensor property.
 	    GetValue(property string) any
-	    // GetValues returns a snapshot of all property values.
 	    GetValues() map[string]any
-	    // UpdateValue is the cross-process consumer entry point. Concrete sensor types
-	    // implement it to dispatch known properties to semantic methods (`SetOn`,
-	    // `SetTargetState`, ...) so plugin-side hardware-action overrides are honored.
-	    // Read-only sensors implement it as a no-op. Plugin authors **must not** call
-	    // this — they should call the semantic methods directly.
+	    // UpdateValue is the generic property write coming from a consumer. Concrete
+	    // sensor types dispatch known properties to semantic methods (SetOn,
+	    // SetTargetState) so plugin-side hardware overrides run. Read-only sensors
+	    // implement it as a no-op. Plugin authors call the semantic methods instead.
 	    UpdateValue(property string, value any) error
+	    // OnPropertyChanged fires on every property change.
 	    OnPropertyChanged(callback func(SensorPropertyChange)) *Disposable
+	    // OnCapabilitiesChanged fires with the full capability list whenever it changes.
 	    OnCapabilitiesChanged(callback func([]string)) *Disposable
-	    OnAssignmentChanged(callback func(bool)) *Disposable
+	    // OnAssignmentChanged fires with the current camera id list whenever the
+	    // user changes this sensor's camera assignments.
+	    OnAssignmentChanged(callback func([]string)) *Disposable
+	    // OnConnectedChanged fires when the owning plugin's connectivity changes.
+	    OnConnectedChanged(callback func(bool)) *Disposable
+	    // ToJSON returns the wire representation used to mirror the sensor across processes.
 	    ToJSON() sensorJSON
 	}
 
@@ -2218,52 +2289,37 @@ Plugin\-author state\-modifying methods \(\`SetOn\`, \`ReportDetections\`, etc.\
 
 ## type SensorCategory
 
-SensorCategory categorizes a sensor's role in the system.
+SensorCategory categorizes a sensor's role in the system. It determines how the backend treats the sensor, read\-only or controllable.
 
 	type SensorCategory string
 
 <a name="SensorCategorySensor"></a>
 
 	const (
-	    SensorCategorySensor  SensorCategory = "sensor"  // Reports detected state (read-only from user perspective)
-	    SensorCategoryControl SensorCategory = "control" // Accepts commands (light, PTZ, siren, etc.)
-	    SensorCategoryTrigger SensorCategory = "trigger" // Fires one-shot events (doorbell ring)
-	    SensorCategoryInfo    SensorCategory = "info"    // Read-only informational data (battery level)
+	    SensorCategorySensor  SensorCategory = "sensor"  // Read-only detection sensor (motion, object, audio, etc.)
+	    SensorCategoryControl SensorCategory = "control" // Controllable sensor with set methods (light, siren, PTZ, etc.)
+	    SensorCategoryTrigger SensorCategory = "trigger" // Event trigger (doorbell ring)
+	    SensorCategoryInfo    SensorCategory = "info"    // Informational read-only state (battery level)
 	)
 
-<a name="SensorPropertyChange"></a>
-
-## type SensorTriggerRef
-
-SensorTriggerRef is a stable reference to a sensor for cascade trigger configuration. Uses composite key \(sensorType \+ sensorName \+ pluginId\) instead of UUID so references survive plugin restarts.
-
-	type SensorTriggerRef struct {
-	    // SensorType is the sensor type (e.g. "contact", "doorbell").
-	    SensorType SensorType `msgpack:"sensorType" json:"sensorType"`
-	    // SensorName is the sensor name (stable across restarts).
-	    SensorName string `msgpack:"sensorName" json:"sensorName"`
-	    // PluginID is the plugin ID that provides this sensor.
-	    PluginID string `msgpack:"pluginId" json:"pluginId"`
-	}
-
-<a name="SensorTriggerSettings"></a>
+<a name="SensorConsumer"></a>
 
 ## type SensorTriggerSettings
 
-SensorTriggerSettings is configuration for sensor cascade triggers \(contact, doorbell, switch, light, etc.\).
+SensorTriggerSettings is the sensor trigger settings \(contact, doorbell, switch, light, etc.\).
 
 	type SensorTriggerSettings struct {
 	    // Timeout is the sensor trigger timeout in seconds.
 	    Timeout int `msgpack:"timeout" json:"timeout"`
-	    // Triggers are sensors that also trigger the detection cascade (in addition to motion/audio).
-	    Triggers []SensorTriggerRef `msgpack:"triggers" json:"triggers"`
+	    // Triggers are sensor entity ids that also trigger the detection cascade (in addition to motion/audio).
+	    Triggers []string `msgpack:"triggers" json:"triggers"`
 	}
 
 <a name="SensorType"></a>
 
 ## type SensorType
 
-SensorType identifies the kind of sensor. Each maps to a smart\-home concept.
+SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella term for the smallest smart\-home unit, like Home Assistant's "entity" or HomeKit's "service": it covers measuring devices and controllable ones alike.
 
 	type SensorType string
 
@@ -2272,13 +2328,13 @@ SensorType identifies the kind of sensor. Each maps to a smart\-home concept.
 	const (
 	    SensorTypeMotion         SensorType = "motion"         // Video-based motion detection
 	    SensorTypeObject         SensorType = "object"         // Object detection (person, vehicle, animal, etc.)
-	    SensorTypeAudio          SensorType = "audio"          // Audio event detection
+	    SensorTypeAudio          SensorType = "audio"          // Audio event detection (glass break, scream, etc.)
 	    SensorTypeFace           SensorType = "face"           // Face detection and recognition
 	    SensorTypeLicensePlate   SensorType = "licensePlate"   // License plate detection and OCR
-	    SensorTypeClassifier     SensorType = "classifier"     // Generic image classification
-	    SensorTypeClip           SensorType = "clip"           // CLIP embedding generation
-	    SensorTypeObjectAssist   SensorType = "objectAssist"   // Object assist that locates objects in a frame so secondaries get real crops from camera-side detections
-	    SensorTypeContact        SensorType = "contact"        // Door/window open-close contact sensor
+	    SensorTypeClassifier     SensorType = "classifier"     // General-purpose image classifier
+	    SensorTypeClip           SensorType = "clip"           // CLIP embedding generation for semantic search
+	    SensorTypeObjectAssist   SensorType = "objectAssist"   // Locates objects in a frame so secondary detectors get real crops from camera-side detections
+	    SensorTypeContact        SensorType = "contact"        // Contact/open-close sensor (door, window)
 	    SensorTypeLight          SensorType = "light"          // Light on/off and brightness control
 	    SensorTypeSiren          SensorType = "siren"          // Siren on/off and volume control
 	    SensorTypeSwitch         SensorType = "switch"         // Generic on/off switch
@@ -2299,14 +2355,14 @@ SensorType identifies the kind of sensor. Each maps to a smart\-home concept.
 
 ## type SirenControl
 
-SirenControl is a siren on/off and volume control sensor. Override SetActive / SetInactive \(by embedding SirenControl in your own type and shadowing the methods\) to drive your hardware, then call the embedded SirenControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
+SirenControl is a siren on/off and volume control sensor. Override SetActive / SetInactive \(by embedding SirenControl in your own type and shadowing the methods\) to drive your hardware, then call the embedded SirenControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler. That bypasses any plugin override and only syncs state.
 
 	type SirenControl struct{ BaseSensor }
 
 <a name="NewSirenControl"></a>
 ### func NewSirenControl
 
-	func NewSirenControl(name string) *SirenControl
+	func NewSirenControl(name string, opts ...SensorOption) *SirenControl
 
 
 
@@ -2386,7 +2442,7 @@ Example:
 
 	func (s *SirenControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters.
 
 <a name="SmokeSensor"></a>
 
@@ -2399,7 +2455,7 @@ SmokeSensor reports smoke detection state.
 <a name="NewSmokeSensor"></a>
 ### func NewSmokeSensor
 
-	func NewSmokeSensor(name string) *SmokeSensor
+	func NewSmokeSensor(name string, opts ...SensorOption) *SmokeSensor
 
 
 
@@ -2429,7 +2485,7 @@ SmokeSensor reports smoke detection state.
 
 	func (s *SmokeSensor) SetDetected(detected bool)
 
-SetDetected reports smoke detection state \(true when smoke is currently detected\).
+SetDetected reports the smoke detection state.
 
 Example:
 
@@ -2448,20 +2504,20 @@ Example:
 
 	func (s *SmokeSensor) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only smoke sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="SnapshotInterface"></a>
 
 ## type SwitchControl
 
-SwitchControl is a generic on/off switch control sensor. Override SetOn / SetOff \(by embedding SwitchControl in your own type and shadowing the methods\) to drive hardware, then call the embedded SwitchControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler — that bypasses any plugin override and only syncs state.
+SwitchControl is a generic on/off switch control sensor. Override SetOn / SetOff \(by embedding SwitchControl in your own type and shadowing the methods\) to drive hardware, then call the embedded SwitchControl's methods to sync the SDK state. For hardware\-pushed updates, call the embedded methods directly from your event handler. That bypasses any plugin override and only syncs state.
 
 	type SwitchControl struct{ BaseSensor }
 
 <a name="NewSwitchControl"></a>
 ### func NewSwitchControl
 
-	func NewSwitchControl(name string) *SwitchControl
+	func NewSwitchControl(name string, opts ...SensorOption) *SwitchControl
 
 
 
@@ -2522,20 +2578,20 @@ Example:
 
 	func (s *SwitchControl) UpdateValue(property string, value any) error
 
-UpdateValue dispatches generic property writes to semantic methods.
+UpdateValue routes generic property writes to the semantic setters.
 
 <a name="TemperatureInfo"></a>
 
 ## type TemperatureInfo
 
-TemperatureInfo reports current temperature in °C.
+TemperatureInfo reports the current temperature in degrees Celsius.
 
 	type TemperatureInfo struct{ BaseSensor }
 
 <a name="NewTemperatureInfo"></a>
 ### func NewTemperatureInfo
 
-	func NewTemperatureInfo(name string) *TemperatureInfo
+	func NewTemperatureInfo(name string, opts ...SensorOption) *TemperatureInfo
 
 
 
@@ -2565,7 +2621,12 @@ TemperatureInfo reports current temperature in °C.
 
 	func (s *TemperatureInfo) SetCurrent(value float64)
 
-SetCurrent sets the current temperature \(clamped to \[\-270,100\]\).
+SetCurrent reports a new temperature reading \(clamped to \[\-270,100\]\).
+
+Example:
+
+	temperature.SetCurrent(21.5)
+	
 
 <a name="TemperatureInfo.ToJSON"></a>
 ### func \(\*TemperatureInfo\) ToJSON
@@ -2579,13 +2640,13 @@ SetCurrent sets the current temperature \(clamped to \[\-270,100\]\).
 
 	func (s *TemperatureInfo) UpdateValue(property string, value any) error
 
-UpdateValue is a no\-op for read\-only temperature sensors.
+UpdateValue on a read\-only sensor: external writes are ignored.
 
 <a name="ToastMessage"></a>
 
 ## type TrackVelocity
 
-TrackVelocity is the signed centroid velocity vector in normalized units per frame. Positive X = moving right, positive Y = moving down. Consumers doing motion prediction \(PTZ autotrack, trajectory estimation\) should use this instead of deriving velocity from frame\-to\-frame position deltas.
+TrackVelocity is the signed centroid velocity in normalized units per frame. Positive X = moving right, positive Y = moving down. Prefer it over deriving velocity from frame\-to\-frame position deltas.
 
 	type TrackVelocity struct {
 	    X   float64 `msgpack:"x" json:"x"`
@@ -2596,14 +2657,14 @@ TrackVelocity is the signed centroid velocity vector in normalized units per fra
 
 ## type TrackedDetection
 
-TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity\). Tracking fields are omitempty — plugins return plain Detection, and the server\-side tracker fills these in.
+TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity\). Tracking fields are omitempty: plugins return plain Detection and the server\-side tracker fills these in.
 
 	type TrackedDetection struct {
 	    Detection
 	    TrackId       *int           `msgpack:"trackId,omitempty" json:"trackId,omitempty"`             // Stable sequential ID for this object across frames
 	    TrackAge      *int           `msgpack:"trackAge,omitempty" json:"trackAge,omitempty"`           // Number of frames this object has been continuously tracked
 	    TrackSpeed    *float64       `msgpack:"trackSpeed,omitempty" json:"trackSpeed,omitempty"`       // Velocity magnitude in normalized units per frame; 0 = stationary
-	    TrackVelocity *TrackVelocity `msgpack:"trackVelocity,omitempty" json:"trackVelocity,omitempty"` // Signed centroid velocity vector in normalized units per frame
+	    TrackVelocity *TrackVelocity `msgpack:"trackVelocity,omitempty" json:"trackVelocity,omitempty"` // Signed centroid velocity in normalized units per frame
 	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
 	}
 

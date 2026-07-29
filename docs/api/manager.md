@@ -7,7 +7,7 @@ System-level services injected onto `PluginAPI`: `CoreManager` for FFmpeg path /
 
 ## type CoreManager
 
-CoreManager provides system\-level functionality via RPC.
+CoreManager provides system\-level operations.
 
 Exposes cross\-cutting services like the FFmpeg binary path, server addresses, the cloud server id, inter\-plugin lookup, and a stream of core system events. Accessed via api.CoreManager from within a plugin.
 
@@ -50,7 +50,7 @@ GetPluginsByInterface returns all installed, enabled plugins that implement a sp
 
 	func (cm *CoreManager) GetServerAddresses() ([]string, error)
 
-GetServerAddresses returns the server addresses.
+GetServerAddresses returns the server addresses \(IP addresses the server is listening on\).
 
 <a name="CoreManager.OnEvent"></a>
 ### func \(\*CoreManager\) OnEvent
@@ -104,11 +104,13 @@ CreateStreamDownloadOptions specifies how to register a file that is still being
 	type CreateStreamDownloadOptions struct {
 	    // FilePath is the absolute path to the file being written.
 	    FilePath string `msgpack:"filePath" json:"filePath"`
-	    // Filename is the value used in the Content-Disposition header.
+	    // Filename is the value used in the Content-Disposition header
+	    // (defaults to the basename of FilePath).
 	    Filename string `msgpack:"filename,omitempty" json:"filename,omitempty"`
-	    // MimeType is the value used in the Content-Type header.
+	    // MimeType is the value used in the Content-Type header
+	    // (defaults to "application/octet-stream").
 	    MimeType string `msgpack:"mimeType,omitempty" json:"mimeType,omitempty"`
-	    // TTLMs is the time-to-live in milliseconds.
+	    // TTLMs is the time-to-live in milliseconds (defaults to 10 minutes).
 	    TTLMs int64 `msgpack:"ttlMs,omitempty" json:"ttlMs,omitempty"`
 	    // Cleanup controls when the file on disk is deleted (see DownloadCleanup).
 	    Cleanup DownloadCleanup `msgpack:"cleanup,omitempty" json:"cleanup,omitempty"`
@@ -122,7 +124,7 @@ CreateStreamDownloadOptions specifies how to register a file that is still being
 
 ## type DeviceManager
 
-DeviceManager provides camera lookup and discovery operations via RPC.
+DeviceManager provides camera operations: push discovered cameras and get camera devices.
 
 Use GetCamera to retrieve a camera by ID or name, and PushDiscoveredCameras to surface cameras found during async discovery \(e.g. after a cloud login\).
 
@@ -144,25 +146,27 @@ GetCamera retrieves a camera by ID or name. Returns nil if no matching camera ex
 
 	func (dm *DeviceManager) PushDiscoveredCameras(cameras []DiscoveredCamera) error
 
-PushDiscoveredCameras pushes discovered cameras to the backend so the user can pick them in the UI without waiting for the next discovery poll. Use this when cameras are discovered asynchronously \(e.g. after a cloud login or mDNS event\).
+PushDiscoveredCameras pushes discovered cameras to the backend so the user can pick them in the UI without waiting for the next discovery poll. Use it when cameras are discovered asynchronously \(e.g. after a cloud login or mDNS event\). Only available for CameraController and CameraAndSensorProvider plugins.
 
 <a name="DeviceStorage"></a>
 
 ## type DownloadCleanup
 
-DownloadCleanup controls when the file on disk is deleted. Registry entry always expires at TTL; this only controls the file itself.
-
-- DownloadCleanupNever: file persists; caller manages it.
-- DownloadCleanupOnExpiry: deleted at TTL. Can be fetched N times during the window — correct mode for notification images that fan out to multiple devices/recipients.
-- DownloadCleanupOnDownload: deleted after first successful download OR on TTL, whichever first. One\-shot mode for things like backup exports.
+DownloadCleanup controls when the file on disk is deleted. The registry entry always expires at TTL; this only controls the file itself.
 
 	type DownloadCleanup string
 
 <a name="DownloadCleanupNever"></a>
 
 	const (
-	    DownloadCleanupNever      DownloadCleanup = "never"
-	    DownloadCleanupOnExpiry   DownloadCleanup = "on-expiry"
+	    // DownloadCleanupNever keeps the file; the caller manages its lifecycle.
+	    DownloadCleanupNever DownloadCleanup = "never"
+	    // DownloadCleanupOnExpiry deletes the file at TTL. It can be fetched N times
+	    // during the window, the right mode for notification images that fan out to
+	    // multiple devices or recipients.
+	    DownloadCleanupOnExpiry DownloadCleanup = "on-expiry"
+	    // DownloadCleanupOnDownload deletes the file after the first successful
+	    // download or at TTL, whichever comes first. One-shot mode for exports.
 	    DownloadCleanupOnDownload DownloadCleanup = "on-download"
 	)
 
@@ -170,9 +174,22 @@ DownloadCleanup controls when the file on disk is deleted. Registry entry always
 
 ## type DownloadManager
 
-DownloadManager provides token\-based file download registration via RPC.
+DownloadManager provides token\-based file downloads.
 
-Allows plugins to register files for HTTP download via a token URL. No JWT authentication is needed — the token itself is the auth. Accessed via api.DownloadManager from within a plugin.
+Plugins register a file and get back a token URL. No JWT is involved, the token itself is the auth.
+
+Accessed via api.DownloadManager from within a plugin.
+
+Example:
+
+	tok, err := api.DownloadManager.CreateDownload(sdk.CreateDownloadOptions{
+	    FilePath: "/tmp/export.mp4",
+	    Filename: "recording.mp4",
+	    MimeType: "video/mp4",
+	    TTLMs:    600000,
+	    Cleanup:  sdk.DownloadCleanupOnDownload,
+	})
+	
 
 	type DownloadManager struct {
 	    // contains filtered or unexported fields
@@ -215,9 +232,9 @@ DownloadToken is returned after registering a download.
 	    // PublicURL is the externally-reachable, session-less URL the server
 	    // publishes for out-of-band fetchers (push-notification image
 	    // attachments, FCM / APNs payloads, share recipients). Shape:
-	    // "<externalUrl>/api/download/<token>" — the token in the URL is the
-	    // auth. Empty string when the server has no external URL configured
-	    // (LAN-only deployments); fall back to URL for in-app callers.
+	    // "<externalUrl>/api/download/<token>", where the token is the auth.
+	    // Empty string when the server has no external URL configured (LAN-only
+	    // deployments); fall back to URL for in-app callers.
 	    PublicURL string `msgpack:"publicUrl" json:"publicUrl"`
 	    // ExpiresAt is the unix timestamp (ms) when the token expires.
 	    ExpiresAt int64 `msgpack:"expiresAt" json:"expiresAt"`
@@ -227,7 +244,7 @@ DownloadToken is returned after registering a download.
 
 ## type NotificationManager
 
-NotificationManager hands out the plugin's outgoing notification API.
+NotificationManager publishes notifications into the host.
 
 Plugins call Publish to ask the host to fan a Notification out to every installed Notifier\-plugin and the in\-app UI. The host applies user settings \(master toggle, per\-source toggle, quiet hours\) and the publishing plugin's declared capabilities; calls from plugins without CapabilityPublishNotifications are silently dropped.
 

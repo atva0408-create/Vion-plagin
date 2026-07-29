@@ -14,10 +14,14 @@ ButtonColor controls the color variant of a button\-type schema.
 <a name="ButtonColorSuccess"></a>
 
 	const (
+	    // ButtonColorSuccess marks a confirming action.
 	    ButtonColorSuccess ButtonColor = "success"
-	    ButtonColorInfo    ButtonColor = "info"
-	    ButtonColorWarn    ButtonColor = "warn"
-	    ButtonColorDanger  ButtonColor = "danger"
+	    // ButtonColorInfo marks a neutral action.
+	    ButtonColorInfo ButtonColor = "info"
+	    // ButtonColorWarn marks an action the user should think about.
+	    ButtonColorWarn ButtonColor = "warn"
+	    // ButtonColorDanger marks a destructive action.
+	    ButtonColorDanger ButtonColor = "danger"
 	)
 
 <a name="Camera"></a>
@@ -50,14 +54,14 @@ Example:
 
 	func (ds *DeviceStorage) AddSchema(schema *JsonSchema) error
 
-AddSchema adds a new schema field. Returns an error if a schema with that key already exists — use ChangeSchema to modify an existing field.
+AddSchema adds a new schema field. Returns an error if a schema with that key already exists; use ChangeSchema to modify an existing field.
 
 <a name="DeviceStorage.ChangeSchema"></a>
 ### func \(\*DeviceStorage\) ChangeSchema
 
 	func (ds *DeviceStorage) ChangeSchema(key string, newSchema *JsonSchema) error
 
-ChangeSchema replaces an existing key's schema with a full JsonSchema; individual fields are not merged. The passed key always wins. It is a no\-op when no schema with that key is registered — use AddSchema to add a new field.
+ChangeSchema replaces an existing key's schema with a full JsonSchema; individual fields are not merged. The passed key always wins. It is a no\-op when no schema with that key is registered; use AddSchema to add a new field.
 
 <a name="DeviceStorage.DefineSchemas"></a>
 ### func \(\*DeviceStorage\) DefineSchemas
@@ -178,7 +182,7 @@ Used to react to a user\-triggered submit \(e.g. "Test connection", "Pair device
 
 JsonSchema represents a single configuration field rendered in the UI.
 
-This is a unified struct that covers every schema variant — Type acts as the discriminator. Only the fields meaningful for the chosen Type are honored; the rest are ignored. Use this struct in the slice you pass to DeviceStorage.DefineSchemas or .AddSchema.
+One struct covers every schema variant, with Type as the discriminator. Only the fields meaningful for the chosen Type are honored; the rest are ignored. Use this struct in the slice you pass to DeviceStorage.DefineSchemas or .AddSchema.
 
 	type JsonSchema struct {
 	    // Type is the field type (string/number/boolean/array/button/submit).
@@ -208,9 +212,9 @@ This is a unified struct that covers every schema variant — Type acts as the d
 	
 	    // Format selects a specialized string control (Type=string only).
 	    Format StringFormat `json:"format,omitempty" msgpack:"format,omitempty"`
-	    // MinLength is the minimum string length (Type=string only).
+	    // MinLength is the minimum string length, inclusive (Type=string only).
 	    MinLength *int `json:"minLength,omitempty" msgpack:"minLength,omitempty"`
-	    // MaxLength is the maximum string length (Type=string only).
+	    // MaxLength is the maximum string length, inclusive (Type=string only).
 	    MaxLength *int `json:"maxLength,omitempty" msgpack:"maxLength,omitempty"`
 	
 	    // Minimum is the minimum numeric value (Type=number only).
@@ -260,12 +264,18 @@ JsonSchemaType is the field type discriminating which UI control renders the val
 <a name="JsonSchemaTypeString"></a>
 
 	const (
-	    JsonSchemaTypeString  JsonSchemaType = "string"
-	    JsonSchemaTypeNumber  JsonSchemaType = "number"
+	    // JsonSchemaTypeString renders a text input, or a select when Enum is set.
+	    JsonSchemaTypeString JsonSchemaType = "string"
+	    // JsonSchemaTypeNumber renders a numeric input honoring Minimum/Maximum/Step.
+	    JsonSchemaTypeNumber JsonSchemaType = "number"
+	    // JsonSchemaTypeBoolean renders a toggle.
 	    JsonSchemaTypeBoolean JsonSchemaType = "boolean"
-	    JsonSchemaTypeArray   JsonSchemaType = "array"
-	    JsonSchemaTypeButton  JsonSchemaType = "button"
-	    JsonSchemaTypeSubmit  JsonSchemaType = "submit"
+	    // JsonSchemaTypeArray renders a repeatable list of Items entries.
+	    JsonSchemaTypeArray JsonSchemaType = "array"
+	    // JsonSchemaTypeButton renders an action button; no value is stored.
+	    JsonSchemaTypeButton JsonSchemaType = "button"
+	    // JsonSchemaTypeSubmit renders a button that submits the form to OnClick.
+	    JsonSchemaTypeSubmit JsonSchemaType = "submit"
 	)
 
 <a name="LeakSensor"></a>
@@ -274,9 +284,9 @@ JsonSchemaType is the field type discriminating which UI control renders the val
 
 SchemaCondition controls conditional field visibility. The field is shown only when the condition evaluates to true against the current form values.
 
-Combine multiple conditions on a field by passing a slice — all must pass \(logical AND\).
+Combine multiple conditions on a field by passing a slice: all must pass \(logical AND\).
 
-Example — show "apiKey" only when "authMode" equals "token":
+Example, show "apiKey" only when "authMode" equals "token":
 
 	JsonSchema{
 	    Type:      JsonSchemaTypeString,
@@ -289,7 +299,7 @@ Example — show "apiKey" only when "authMode" equals "token":
 	type SchemaCondition struct {
 	    // Key of another field whose value drives visibility.
 	    Key string `json:"key" msgpack:"key"`
-	    // Value is the expected value — single value, or array for In / Nin.
+	    // Value is the expected value: a single value, or an array for In / Nin.
 	    Value any `json:"value" msgpack:"value"`
 	    // Operator is the comparison operator (default: SchemaConditionEq).
 	    Operator SchemaConditionOperator `json:"operator,omitempty" msgpack:"operator,omitempty"`
@@ -306,11 +316,17 @@ SchemaConditionOperator defines comparison operators for SchemaCondition.
 <a name="SchemaConditionEq"></a>
 
 	const (
-	    SchemaConditionEq  SchemaConditionOperator = "eq"
+	    // SchemaConditionEq passes when the watched value equals Value.
+	    SchemaConditionEq SchemaConditionOperator = "eq"
+	    // SchemaConditionNeq passes when the watched value differs from Value.
 	    SchemaConditionNeq SchemaConditionOperator = "neq"
-	    SchemaConditionGt  SchemaConditionOperator = "gt"
-	    SchemaConditionLt  SchemaConditionOperator = "lt"
-	    SchemaConditionIn  SchemaConditionOperator = "in"
+	    // SchemaConditionGt passes when the watched value is greater than Value.
+	    SchemaConditionGt SchemaConditionOperator = "gt"
+	    // SchemaConditionLt passes when the watched value is less than Value.
+	    SchemaConditionLt SchemaConditionOperator = "lt"
+	    // SchemaConditionIn passes when the watched value is in the Value array.
+	    SchemaConditionIn SchemaConditionOperator = "in"
+	    // SchemaConditionNin passes when the watched value is not in the Value array.
 	    SchemaConditionNin SchemaConditionOperator = "nin"
 	)
 
@@ -318,7 +334,7 @@ SchemaConditionOperator defines comparison operators for SchemaCondition.
 
 ## type StorageController
 
-
+StorageController owns every DeviceStorage a plugin uses: the plugin\-scoped one plus a storage per adopted camera and per registered sensor. Instances are cached by scope, so repeated lookups return the same storage.
 
 	type StorageController struct {
 	    // contains filtered or unexported fields
@@ -335,16 +351,26 @@ StringFormat selects a specialized UI control for a string field.
 <a name="StringFormatDateTime"></a>
 
 	const (
+	    // StringFormatDateTime renders an ISO 8601 date and time picker.
 	    StringFormatDateTime StringFormat = "date-time"
-	    StringFormatDate     StringFormat = "date"
-	    StringFormatTime     StringFormat = "time"
-	    StringFormatEmail    StringFormat = "email"
-	    StringFormatUUID     StringFormat = "uuid"
-	    StringFormatIPv4     StringFormat = "ipv4"
-	    StringFormatIPv6     StringFormat = "ipv6"
+	    // StringFormatDate renders a date-only picker.
+	    StringFormatDate StringFormat = "date"
+	    // StringFormatTime renders a time-only picker.
+	    StringFormatTime StringFormat = "time"
+	    // StringFormatEmail renders an email input with format validation.
+	    StringFormatEmail StringFormat = "email"
+	    // StringFormatUUID renders a UUID input with format validation.
+	    StringFormatUUID StringFormat = "uuid"
+	    // StringFormatIPv4 renders an IPv4 address input.
+	    StringFormatIPv4 StringFormat = "ipv4"
+	    // StringFormatIPv6 renders an IPv6 address input.
+	    StringFormatIPv6 StringFormat = "ipv6"
+	    // StringFormatPassword renders a masked input that hides the characters.
 	    StringFormatPassword StringFormat = "password"
-	    StringFormatQRCode   StringFormat = "qrCode"
-	    StringFormatImage    StringFormat = "image"
+	    // StringFormatQRCode renders the value as a QR code (read-only display).
+	    StringFormatQRCode StringFormat = "qrCode"
+	    // StringFormatImage renders the value (data URL or path) as a thumbnail.
+	    StringFormatImage StringFormat = "image"
 	)
 
 <a name="Subject"></a>
@@ -353,7 +379,7 @@ StringFormat selects a specialized UI control for a string field.
 
 ToastMessage represents a transient banner to show in the UI.
 
-Returned from a submit handler \(JsonSchema.OnClick\) inside a FormSubmitResponse to surface UI feedback — for example to confirm that a credential check succeeded or failed.
+Returned from a submit handler \(JsonSchema.OnClick\) inside a FormSubmitResponse to surface UI feedback, for example to confirm that a credential check succeeded or failed.
 
 	type ToastMessage struct {
 	    // Type is the severity that controls the icon/color of the banner.
@@ -373,10 +399,14 @@ ToastType is the severity of a toast notification.
 <a name="ToastInfo"></a>
 
 	const (
-	    ToastInfo    ToastType = "info"
+	    // ToastInfo shows a neutral banner.
+	    ToastInfo ToastType = "info"
+	    // ToastSuccess shows a banner confirming the action worked.
 	    ToastSuccess ToastType = "success"
+	    // ToastWarning shows a banner for a problem the user should look at.
 	    ToastWarning ToastType = "warning"
-	    ToastError   ToastType = "error"
+	    // ToastError shows a banner for a failed action.
+	    ToastError ToastType = "error"
 	)
 
 <a name="TrackVelocity"></a>

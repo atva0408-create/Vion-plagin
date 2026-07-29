@@ -7,17 +7,23 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 ## Constants
 
-<a name="BatteryCapabilityLowBattery"></a>BatteryCapability defines optional capabilities for battery info sensors.
+<a name="BatteryCapabilityLowBattery"></a>Optional capabilities of a battery info sensor.
 
 	const (
 	    BatteryCapabilityLowBattery = "lowBattery" // Sensor reports low-battery alerts
 	    BatteryCapabilityCharging   = "charging"   // Sensor reports charging state
 	)
 
-<a name="LightCapabilityBrightness"></a>LightCapability defines optional capabilities for light controls.
+<a name="LightCapabilityBrightness"></a>Optional capabilities of a light control.
 
 	const (
 	    LightCapabilityBrightness = "brightness" // Light supports brightness adjustment (0-100)
+	)
+
+<a name="SirenCapabilityVolume"></a>Optional capabilities of a siren control.
+
+	const (
+	    SirenCapabilityVolume = "volume" // Siren supports volume adjustment (0-100)
 	)
 
 ## Variables
@@ -38,7 +44,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 	var DetectionLabels = append(append([]string{"motion"}, ObjectDetectionLabels...), "audio")
 
-<a name="ErrNoValue"></a>
+<a name="ErrNoValue"></a>ErrNoValue is returned by FirstValueFrom when the source completes before it emits a value.
 
 	var ErrNoValue = errors.New("observable completed without emitting a value")
 
@@ -72,7 +78,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 	func Bool(v bool) *bool
 
-Bool returns a pointer to the given bool value. Use this for optional pointer fields in JsonSchema \(e.g., Store: sdk.Bool\(true\)\).
+Bool returns a pointer to v, for the optional pointer fields of JsonSchema \(e.g. Store: sdk.Bool\(true\)\).
 
 <a name="BuildSnapshotUrl"></a>
 
@@ -80,7 +86,7 @@ Bool returns a pointer to the given bool value. Use this for optional pointer fi
 
 	func Float64(v float64) *float64
 
-Float64 returns a pointer to the given float64 value. Use this for optional pointer fields in JsonSchema \(e.g., Minimum: sdk.Float64\(0.5\)\).
+Float64 returns a pointer to v, for the optional pointer fields of JsonSchema \(e.g. Minimum: sdk.Float64\(0.5\)\).
 
 <a name="GetContractValidationErrors"></a>
 
@@ -88,13 +94,15 @@ Float64 returns a pointer to the given float64 value. Use this for optional poin
 
 	func Int(v int) *int
 
-Int returns a pointer to the given int value. Use this for optional pointer fields in JsonSchema \(e.g., MinLength: sdk.Int\(5\)\).
+Int returns a pointer to v, for the optional pointer fields of JsonSchema \(e.g. MinLength: sdk.Int\(5\)\).
 
 <a name="IsHub"></a>
 
 ## type Logger
 
+Logger writes structured log entries to stdout, where the host picks them up and routes them to its own sinks. Debug and Trace are dropped unless the matching level is enabled for the plugin.
 
+Accessed via the embedded BasePlugin.Logger from within a plugin.
 
 	type Logger struct {
 	    // contains filtered or unexported fields
@@ -105,55 +113,60 @@ Int returns a pointer to the given int value. Use this for optional pointer fiel
 
 	func (l *Logger) Attention(args ...any)
 
-
+Attention writes a highlighted entry that stands out in the log stream.
 
 <a name="Logger.CreateLogger"></a>
 ### func \(\*Logger\) CreateLogger
 
 	func (l *Logger) CreateLogger(opts *loggerOptions) *Logger
 
-
+CreateLogger derives a child logger for a specific target \(camera, sensor\). Prefix, plugin id and the debug/trace levels are inherited.
 
 <a name="Logger.Debug"></a>
 ### func \(\*Logger\) Debug
 
 	func (l *Logger) Debug(args ...any)
 
-
+Debug writes a diagnostic entry, dropped unless debug logging is enabled.
 
 <a name="Logger.Error"></a>
 ### func \(\*Logger\) Error
 
 	func (l *Logger) Error(args ...any)
 
-
+Error writes an entry for a failure or unexpected condition.
 
 <a name="Logger.Log"></a>
 ### func \(\*Logger\) Log
 
 	func (l *Logger) Log(args ...any)
 
+Log writes an informational entry. Arguments are formatted and joined with spaces.
 
+Example:
+
+	p.Logger.Log("connected to", host)
+	
 
 <a name="Logger.Success"></a>
 ### func \(\*Logger\) Success
 
 	func (l *Logger) Success(args ...any)
 
-
+Success writes an entry confirming a completed operation.
 
 <a name="Logger.Trace"></a>
 ### func \(\*Logger\) Trace
 
 	func (l *Logger) Trace(args ...any)
 
-
+Trace writes a fine\-grained diagnostic entry, dropped unless trace logging is enabled.
 
 <a name="Logger.Warn"></a>
 ### func \(\*Logger\) Warn
 
 	func (l *Logger) Warn(args ...any)
 
-
+Warn writes an entry for a problem that does not stop execution.
 
 <a name="ModelSpec"></a>

@@ -11,13 +11,23 @@ Camera entities and runtime device API: `CameraDevice` (the per-camera handle yo
 
 BuildSnapshotUrl constructs a go2rtc\-compatible snapshot URL for the given camera/source pair. Optional dimensions, rotation, cache and hardware transcode flags are appended as query parameters.
 
+Example:
+
+	url, err := sdk.BuildSnapshotUrl("Front Door", "main", base, &sdk.SnapshotUrlOptions{Width: 640})
+	
+
 <a name="BuildTargetUrl"></a>
 
 ## func BuildTargetUrl
 
 	func BuildTargetUrl(rtspUrl string, opts *RTSPUrlOptions) (string, error)
 
-BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP URL and a set of stream selection options \(video/audio tracks, GOP, timeout\). Returns the URL with all selected query parameters.
+BuildTargetUrl constructs a go2rtc\-compatible RTSP target URL from a base RTSP URL and a set of stream selection options \(video/audio tracks, GOP, timeout\). Timeout is clamped to 5..30 seconds.
+
+Example:
+
+	url, err := sdk.BuildTargetUrl(base, &sdk.RTSPUrlOptions{Video: true, GOP: true, Timeout: 15})
+	
 
 <a name="CanCreateCameras"></a>
 
@@ -257,7 +267,7 @@ CameraDetectionSettings is the combined detection settings for a camera.
 	    // CascadeDetection enables the detection cascade.
 	    CascadeDetection *bool `msgpack:"cascadeDetection,omitempty" json:"cascadeDetection,omitempty"`
 	    // CascadeTimeout is the cascade hold-open window in seconds.
-	    CascadeTimeout int `msgpack:"cascadeTimeout,omitempty" json:"cascadeTimeout,omitempty"`
+	    CascadeTimeout *int `msgpack:"cascadeTimeout,omitempty" json:"cascadeTimeout,omitempty"`
 	    // Snooze indicates whether detections are snoozed (paused).
 	    Snooze bool `msgpack:"snooze,omitempty" json:"snooze,omitempty"`
 	}
@@ -277,7 +287,7 @@ CameraDevice represents a camera assigned to this plugin. Plugins receive Camera
 
 	func (d *CameraDevice) AddSensor(s Sensor) error
 
-AddSensor adds a sensor to this camera.
+AddSensor registers a sensor that belongs to this camera's hardware \(spotlight, siren, PTZ, battery, ...\). The host assigns it to this camera and reconciles it across restarts like a standalone sensor.
 
 <a name="CameraDevice.Connect"></a>
 ### func \(\*CameraDevice\) Connect
@@ -341,27 +351,6 @@ FrameWorkerConnected returns whether the frame worker is currently connected.
 	func (d *CameraDevice) FrameWorkerSettings() CameraFrameWorkerSettings
 
 FrameWorkerSettings returns the frame worker settings.
-
-<a name="CameraDevice.GetSensor"></a>
-### func \(\*CameraDevice\) GetSensor
-
-	func (d *CameraDevice) GetSensor(id string) Sensor
-
-GetSensor returns a sensor by its ID \(checks both owned and foreign\).
-
-<a name="CameraDevice.GetSensors"></a>
-### func \(\*CameraDevice\) GetSensors
-
-	func (d *CameraDevice) GetSensors() []Sensor
-
-GetSensors returns all sensors on this camera \(owned \+ foreign\).
-
-<a name="CameraDevice.GetSensorsByType"></a>
-### func \(\*CameraDevice\) GetSensorsByType
-
-	func (d *CameraDevice) GetSensorsByType(sensorType SensorType) []Sensor
-
-GetSensorsByType returns all sensors of the given type \(owned \+ foreign\).
 
 <a name="CameraDevice.GetSourceByID"></a>
 ### func \(\*CameraDevice\) GetSourceByID
@@ -459,7 +448,7 @@ OnConnected returns an Observable that emits distinct connection state changes.
 
 	func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable
 
-OnDetectionEvent registers a callback for detection events \(start/update/end and segment\-start/segment\-update/segment\-end\). Segments only ship on the segment\-\* events; the 'end' message carries none. Thumbnails are inline in the segment structures: detection and attribute crops on 'segment\-start' and 'segment\-end', the scene thumbnail also once on the first 'segment\-update' after it becomes available. Returns a Disposable to unsubscribe.
+OnDetectionEvent registers a callback for detection events \(start/update/end and segment\-start/segment\-update/segment\-end\). Segments ride on the segment\-\* events only, thumbnails on segment\-start and segment\-end. Returns a Disposable to unsubscribe.
 
 <a name="CameraDevice.OnFrameWorkerConnected"></a>
 ### func \(\*CameraDevice\) OnFrameWorkerConnected
@@ -474,27 +463,6 @@ OnFrameWorkerConnected returns an Observable that emits distinct frame worker st
 	func (d *CameraDevice) OnPropertyChange(properties ...string) *Observable[PropertyChangeEvent]
 
 OnPropertyChange returns an Observable that emits when any of the specified camera properties change.
-
-<a name="CameraDevice.OnSensorAdded"></a>
-### func \(\*CameraDevice\) OnSensorAdded
-
-	func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable
-
-OnSensorAdded registers a callback for when a sensor from another plugin is added, and only when its type is listed in contract.consumes. This plugin's own sensors do not fire it. The callback receives \(sensorID, sensorType\). Returns a Disposable to unsubscribe.
-
-<a name="CameraDevice.OnSensorProperty"></a>
-### func \(\*CameraDevice\) OnSensorProperty
-
-	func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, callback func(value any, timestamp int64, sensor Sensor)) *Disposable
-
-OnSensorProperty subscribes to a specific property on a sensor type with full lifecycle management. Automatically subscribes/unsubscribes when sensors of the given type are added/removed.
-
-<a name="CameraDevice.OnSensorRemoved"></a>
-### func \(\*CameraDevice\) OnSensorRemoved
-
-	func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable
-
-OnSensorRemoved registers a callback for when a sensor is removed from this camera. Unlike OnSensorAdded it is not filtered: it fires for this plugin's own sensors and for other plugins' sensors alike. Returns a Disposable to unsubscribe.
 
 <a name="CameraDevice.PTZAutotrack"></a>
 ### func \(\*CameraDevice\) PTZAutotrack
@@ -522,7 +490,7 @@ RecordingSettings returns the recording settings.
 
 	func (d *CameraDevice) RemoveSensor(sensorID string) error
 
-RemoveSensor removes a sensor from this camera.
+RemoveSensor unregisters a sensor this plugin registered on this camera. The persisted entity stays \(shows disconnected\) unless the user deletes it.
 
 <a name="CameraDevice.Room"></a>
 ### func \(\*CameraDevice\) Room
@@ -692,7 +660,7 @@ CameraFrameWorkerSettings is frame worker \(decoder\) settings.
 	type CameraFrameWorkerSettings struct {
 	    // FPS is the target frames per second for detection.
 	    FPS int `msgpack:"fps" json:"fps"`
-	    // Capture event thumbnails from the highest-resolution source.
+	    // HQSnapshots captures event thumbnails from the highest-resolution source.
 	    HQSnapshots bool `msgpack:"hqSnapshots,omitempty" json:"hqSnapshots,omitempty"`
 	    // Decoder is the decoder hardware selection. Applies on the machine that
 	    // decodes this camera (master or assigned worker); an unusable selection
@@ -816,8 +784,8 @@ CameraUiSettings is UI display settings for a camera.
 	type CameraUiSettings struct {
 	    // StreamingMode is the preferred streaming method.
 	    StreamingMode VideoStreamingMode `msgpack:"streamingMode" json:"streamingMode"`
-	    // StreamingSource is the preferred stream quality (StreamingRole).
-	    StreamingSource string `msgpack:"streamingSource" json:"streamingSource"`
+	    // StreamingSource is the preferred stream quality.
+	    StreamingSource StreamingRole `msgpack:"streamingSource" json:"streamingSource"`
 	    // AspectRatio is the display aspect ratio.
 	    AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 	}
@@ -851,7 +819,7 @@ DetectionEvent is an aggregated detection event with lifecycle \(start \-\> upda
 	    Segments []EventSegment `msgpack:"segments" json:"segments"`
 	    // SegmentIndex is the index of the segment in segments[0] for segment-* messages.
 	    SegmentIndex int `msgpack:"segmentIndex,omitempty" json:"segmentIndex,omitempty"`
-	    // ExpectedEndTime is the expected event end time (Unix ms) — the latest dwell expiry across all
+	    // ExpectedEndTime is the expected event end time (Unix ms): the latest dwell expiry across all
 	    // currently-active triggers. Monotonically non-decreasing during the event lifetime.
 	    // Updated on each update / segment-* message.
 	    ExpectedEndTime int64 `msgpack:"expectedEndTime,omitempty" json:"expectedEndTime,omitempty"`
@@ -872,7 +840,9 @@ DetectionEvent is an aggregated detection event with lifecycle \(start \-\> upda
 DetectionEventData wraps a detection event with its lifecycle type.
 
 	type DetectionEventData struct {
-	    Type  DetectionEventType
+	    // Type is the lifecycle phase of the message.
+	    Type DetectionEventType
+	    // Event is the aggregated detection event.
 	    Event DetectionEvent
 	}
 
@@ -1026,7 +996,7 @@ FrameWorkerDecoderSettings is the decoder hardware selection for the frame worke
 
 ## type Go2RtcRTSPSource
 
-Go2RtcRTSPSource contains RTSP streaming URLs from the stream provider.
+Go2RtcRTSPSource contains RTSP streaming URLs from go2rtc.
 
 	type Go2RtcRTSPSource struct {
 	    // Base is the base RTSP URL.
@@ -1053,7 +1023,7 @@ Go2RtcRTSPSource contains RTSP streaming URLs from the stream provider.
 
 ## type Go2RtcSnapshotSource
 
-Go2RtcSnapshotSource contains snapshot/image URLs from the stream provider.
+Go2RtcSnapshotSource contains snapshot/image URLs from go2rtc.
 
 	type Go2RtcSnapshotSource struct {
 	    // MP4 is the MP4 single-frame video URL.
@@ -1068,7 +1038,7 @@ Go2RtcSnapshotSource contains snapshot/image URLs from the stream provider.
 
 ## type Go2RtcWSSource
 
-Go2RtcWSSource contains WebSocket streaming URLs from the stream provider.
+Go2RtcWSSource contains WebSocket streaming URLs from go2rtc.
 
 	type Go2RtcWSSource struct {
 	    // WebRTC is the WebRTC signaling endpoint.
@@ -1117,11 +1087,11 @@ MotionResolution is the motion detection resolution setting. Higher resolution =
 
 ## type PTZCapability
 
-PTZCapability defines PTZ capabilities.
+PTZCapability is an optional capability of a PTZ control.
 
 	type PTZCapability string
 
-<a name="PTZCapabilityPan"></a>
+<a name="PTZCapabilityPan"></a>Optional capabilities of a PTZ control.
 
 	const (
 	    PTZCapabilityPan              PTZCapability = "pan"              // Camera supports panning (horizontal movement)
@@ -1188,12 +1158,12 @@ ProbeAudioCodec is an audio codec supported for stream probing.
 
 ## type ProbeConfig
 
-ProbeConfig selects which tracks a stream probe inspects and returns.
+ProbeConfig is the configuration for stream probing.
 
 	type ProbeConfig struct {
 	    // Video includes video track info.
 	    Video *bool `msgpack:"video,omitempty" json:"video,omitempty"`
-	    // Audio includes audio track info — a bool, the string "all", or a
+	    // Audio includes audio track info: a bool, the string "all", or a
 	    // []ProbeAudioCodec listing specific codecs.
 	    Audio any `msgpack:"audio,omitempty" json:"audio,omitempty"`
 	    // Microphone includes microphone/backchannel info.
@@ -1204,7 +1174,7 @@ ProbeConfig selects which tracks a stream probe inspects and returns.
 
 ## type ProbeStream
 
-ProbeStream is the result of a stream probe — SDP plus track information.
+ProbeStream is the stream probe result containing SDP and track information.
 
 	type ProbeStream struct {
 	    // SDP is the raw SDP string.
@@ -1222,8 +1192,11 @@ ProbeStream is the result of a stream probe — SDP plus track information.
 PropertyChangeEvent is emitted when a camera property changes.
 
 	type PropertyChangeEvent struct {
-	    Property  string
+	    // Property is the json name of the changed camera field.
+	    Property string
+	    // OldCamera is the camera state before the change.
 	    OldCamera Camera
+	    // NewCamera is the camera state after the change.
 	    NewCamera Camera
 	}
 
@@ -1231,7 +1204,7 @@ PropertyChangeEvent is emitted when a camera property changes.
 
 ## type PtzAutotrackSettings
 
-PtzAutotrackSettings configures automatic PTZ tracking of detected objects.
+PtzAutotrackSettings is the PTZ autotracking settings: the camera follows detected objects automatically.
 
 	type PtzAutotrackSettings struct {
 	    // Enabled toggles PTZ autotracking.
@@ -1312,7 +1285,7 @@ SnapshotInterface is optionally implemented to provide snapshots.
 
 ## type SnapshotSettings
 
-SnapshotSettings is snapshot configuration for a camera.
+SnapshotSettings is the snapshot settings for a camera.
 
 	type SnapshotSettings struct {
 	    // AutoRefresh enables automatic snapshot refresh.
@@ -1462,7 +1435,7 @@ VideoFFmpegCodec is an FFmpeg video codec name used for transcoding.
 
 ## type VideoFrameData
 
-VideoFrameData is the video frame payload delivered to detector sensors by the backend pipeline. The backend handles capture, decoding, and scaling — detectors only need to process the pixel buffer.
+VideoFrameData is the video frame payload delivered to detector sensors by the backend pipeline. The backend handles capture, decoding and scaling. Detectors only process the pixel buffer.
 
 	type VideoFrameData struct {
 	    ID        string      `msgpack:"id" json:"id"`                           // Unique frame or crop identifier used to map batch results back to inputs
