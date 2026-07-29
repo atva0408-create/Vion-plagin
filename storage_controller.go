@@ -67,19 +67,18 @@ func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorag
 	return storage, nil
 }
 
-// The store keys sensor data by type and name (stable across restarts);
-// sensorID only scopes the RPC namespace.
-func (sc *StorageController) createSensorStorage(cameraID, sensorID, sensorType, sensorName string) (*DeviceStorage, error) {
+// sensorID is the persistent entity id, stable across restarts.
+func (sc *StorageController) createSensorStorage(sensorID string) (*DeviceStorage, error) {
 	key := "sensor." + sensorID
 	if existing := sc.storages[key]; existing != nil {
 		return existing, nil
 	}
 
-	loc := storeLocation{kind: storeLocationSensor, cameraID: cameraID, sensorType: sensorType, sensorName: sensorName}
+	loc := storeLocation{kind: storeLocationSensor, sensorID: sensorID}
 	storage := newDeviceStorage(sc.persistence, loc, sc.logger)
 	sc.storages[key] = storage
 
-	ns := getPluginSensorNamespaces(sc.pluginInfo.ID, cameraID, sensorID)
+	ns := getPluginSensorNamespaces(sc.pluginInfo.ID, sensorID)
 	cleanup, err := sc.client.RegisterHandler(ns.SensorStorageRPC, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register sensor storage RPC: %w", err)

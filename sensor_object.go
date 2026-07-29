@@ -51,8 +51,8 @@ type ObjectSensor struct {
 	BaseSensor
 }
 
-func NewObjectSensor(name string) *ObjectSensor {
-	s := &ObjectSensor{BaseSensor: NewBaseSensor(name)}
+func NewObjectSensor(name string, opts ...SensorOption) *ObjectSensor {
+	s := &ObjectSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		objectPropertyDetected:   false,
 		objectPropertyDetections: []TrackedDetection{},
@@ -151,8 +151,8 @@ type ObjectDetectorSensor struct {
 	ObjectSensor
 }
 
-func NewObjectDetectorSensor(name string) *ObjectDetectorSensor {
-	s := &ObjectDetectorSensor{ObjectSensor: *NewObjectSensor(name)}
+func NewObjectDetectorSensor(name string, opts ...SensorOption) *ObjectDetectorSensor {
+	s := &ObjectDetectorSensor{ObjectSensor: *NewObjectSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

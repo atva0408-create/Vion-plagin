@@ -27,8 +27,8 @@ const (
 // SetTargetState and write currentState separately as the door moves.
 type GarageControl struct{ BaseSensor }
 
-func NewGarageControl(name string) *GarageControl {
-	s := &GarageControl{BaseSensor: NewBaseSensor(name)}
+func NewGarageControl(name string, opts ...SensorOption) *GarageControl {
+	s := &GarageControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		garagePropertyCurrentState:        int(GarageStateClosed),
 		garagePropertyTargetState:         int(GarageStateClosed),

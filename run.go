@@ -84,6 +84,7 @@ func Run(constructor pluginConstructor) {
 	var (
 		coreManager       *CoreManager
 		deviceManager     *DeviceManager
+		sensorManager     *SensorManager
 		storageController *StorageController
 	)
 
@@ -109,6 +110,9 @@ func Run(constructor pluginConstructor) {
 			// -> storages (flushed last so any device/sensor cleanup writes land).
 			// The runtime closes them directly so the shutdown event stays purely
 			// author-facing and the order stays deterministic.
+			if sensorManager != nil {
+				sensorManager.close()
+			}
 			if deviceManager != nil {
 				deviceManager.close()
 			}
@@ -291,8 +295,9 @@ func Run(constructor pluginConstructor) {
 		}
 		notificationManager := newNotificationManager(client, &pluginInfo, logger)
 		storageController = newStorageController(client, persistence, &pluginInfo, logger)
+		sensorManager = newSensorManager(client, storageController, &pluginInfo, logger)
 
-		api = newPluginAPI(coreManager, deviceManager, downloadManager, notificationManager, storageController, storagePath)
+		api = newPluginAPI(coreManager, deviceManager, sensorManager, downloadManager, notificationManager, storageController, storagePath)
 		deviceManager.setAPI(api, storageController)
 
 		pluginStorage, err := storageController.createStorage("plugin")
@@ -319,6 +324,7 @@ func Run(constructor pluginConstructor) {
 		}
 
 		deviceManager.setPlugin(plugin)
+		sensorManager.setPlugin(plugin)
 		if err := deviceManager.init(); err != nil {
 			return fmt.Errorf("failed to init device manager: %w", err)
 		}
@@ -350,6 +356,10 @@ func Run(constructor pluginConstructor) {
 
 		if err := plugin.ConfigureCameras(cameraDevices); err != nil {
 			return fmt.Errorf("ConfigureCameras failed: %w", err)
+		}
+
+		if err := sensorManager.init(); err != nil {
+			return fmt.Errorf("failed to init sensor manager: %w", err)
 		}
 
 		if stopRequested() {

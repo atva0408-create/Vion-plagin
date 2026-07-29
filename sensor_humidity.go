@@ -7,8 +7,8 @@ const (
 // HumidityInfo reports current relative humidity (0-100%).
 type HumidityInfo struct{ BaseSensor }
 
-func NewHumidityInfo(name string) *HumidityInfo {
-	s := &HumidityInfo{BaseSensor: NewBaseSensor(name)}
+func NewHumidityInfo(name string, opts ...SensorOption) *HumidityInfo {
+	s := &HumidityInfo{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		humidityPropertyCurrent: 50.0,
 	})

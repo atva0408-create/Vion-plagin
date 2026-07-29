@@ -7,8 +7,8 @@ const (
 // OccupancySensor reports occupancy/presence state.
 type OccupancySensor struct{ BaseSensor }
 
-func NewOccupancySensor(name string) *OccupancySensor {
-	s := &OccupancySensor{BaseSensor: NewBaseSensor(name)}
+func NewOccupancySensor(name string, opts ...SensorOption) *OccupancySensor {
+	s := &OccupancySensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		occupancyPropertyDetected: false,
 	})

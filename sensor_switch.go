@@ -12,8 +12,8 @@ const (
 // override and only syncs state.
 type SwitchControl struct{ BaseSensor }
 
-func NewSwitchControl(name string) *SwitchControl {
-	s := &SwitchControl{BaseSensor: NewBaseSensor(name)}
+func NewSwitchControl(name string, opts ...SensorOption) *SwitchControl {
+	s := &SwitchControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		switchPropertyOn: false,
 	})

@@ -61,8 +61,13 @@ type Sensor interface {
 	GetName() string
 	GetDisplayName() string
 	SetDisplayName(name string)
+	GetNativeID() string
 	GetPluginID() string
-	GetCameraID() string
+	// GetAssignedCameraIDs returns the cameras this sensor is currently
+	// assigned to. Empty for unassigned standalone sensors.
+	GetAssignedCameraIDs() []string
+	// Connected reports whether the owning plugin currently provides this sensor.
+	Connected() bool
 	GetCapabilities() []string
 	SetCapabilities(caps []string)
 	HasCapability(cap string) bool
@@ -78,7 +83,11 @@ type Sensor interface {
 	UpdateValue(property string, value any) error
 	OnPropertyChanged(callback func(SensorPropertyChange)) *Disposable
 	OnCapabilitiesChanged(callback func([]string)) *Disposable
-	OnAssignmentChanged(callback func(bool)) *Disposable
+	// OnAssignmentChanged fires with the current camera id list whenever the
+	// user changes this sensor's camera assignments.
+	OnAssignmentChanged(callback func([]string)) *Disposable
+	// OnConnectedChanged fires when the owning plugin's connectivity changes.
+	OnConnectedChanged(callback func(bool)) *Disposable
 	ToJSON() sensorJSON
 }
 
@@ -88,7 +97,7 @@ type sensorJSON struct {
 	Name           string         `msgpack:"name" json:"name"`
 	DisplayName    string         `msgpack:"displayName" json:"displayName"`
 	Category       SensorCategory `msgpack:"category" json:"category"`
-	CameraID       string         `msgpack:"cameraId" json:"cameraId"`
+	NativeID       string         `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
 	PluginID       string         `msgpack:"pluginId,omitempty" json:"pluginId,omitempty"`
 	Properties     map[string]any `msgpack:"properties" json:"properties"`
 	Capabilities   []string       `msgpack:"capabilities" json:"capabilities"`
@@ -98,45 +107,68 @@ type sensorJSON struct {
 
 type propertyUpdateFn func(properties map[string]any)
 
-// assignmentLifecycle is an OPTIONAL interface sensors can satisfy to receive
-// assignment lifecycle notifications. Implement it on your concrete sensor type
-// to run work that should only execute while the sensor is live — polling
-// loops, subscriptions, timers, external connections.
+// sensorLifecycle is an OPTIONAL interface sensors can satisfy to receive
+// lifecycle notifications. Implement it on your concrete sensor type to run
+// work whose lifetime matches the sensor's — polling loops, subscriptions,
+// timers, external connections.
 //
-// The SDK calls OnAssigned() after the sensor transitions to assigned (cameraId,
-// storage, and RPC channels are already wired) and OnDeassigned() after it
-// transitions to deassigned. Calls are paired 1:1 — every OnAssigned has
-// exactly one matching OnDeassigned later.
+// The SDK calls OnStart() after the sensor is registered and live (storage and
+// RPC channels are already wired) and OnStop() on removal, plugin shutdown or
+// cleanup. Calls are paired 1:1 — every OnStart has exactly one matching
+// OnStop later.
 //
 // Hooks run in a dedicated goroutine so plugin-side work does not block the
 // runtime. Panics are recovered and swallowed so lifecycle errors will NOT
-// break assignment bookkeeping; handle errors inside your implementation.
+// break lifecycle bookkeeping; handle errors inside your implementation.
 //
 // Sensors that don't need lifecycle hooks simply omit the methods.
 //
 // Example:
 //
-//	func (s *MySensor) OnAssigned() {
+//	func (s *MySensor) OnStart() {
 //	    s.stop = make(chan struct{})
 //	    go s.poll(s.stop)
 //	}
 //
-//	func (s *MySensor) OnDeassigned() {
+//	func (s *MySensor) OnStop() {
 //	    close(s.stop)
 //	}
-type assignmentLifecycle interface {
-	OnAssigned()
-	OnDeassigned()
+type sensorLifecycle interface {
+	OnStart()
+	OnStop()
+}
+
+type sensorOptions struct {
+	nativeID string
+}
+
+// SensorOption configures a sensor at construction time.
+type SensorOption func(*sensorOptions)
+
+// WithNativeID sets the plugin-supplied durable identity (e.g. an upstream
+// device id). The host reconciles the sensor across restarts by
+// (pluginId, nativeId); without it, identity falls back to (type, name) and a
+// rename creates a new sensor.
+func WithNativeID(nativeID string) SensorOption {
+	return func(o *sensorOptions) {
+		o.nativeID = nativeID
+	}
 }
 
 // BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
+//
+// Sensors are standalone entities: the plugin supplies the durable identity
+// (WithNativeID), everything else belongs to the user — camera assignments,
+// display name and whether the sensor is exported to HomeKit/HA/MQTT. A plugin
+// never decides where its sensor is used and never handles the export itself.
 type BaseSensor struct {
 	mu                   sync.RWMutex
 	id                   string
 	name                 string
 	displayName          string
+	nativeID             string
 	pluginID             string
-	cameraID             string
+	assignedCameraIDs    []string
 	capabilities         []string
 	properties           map[string]any
 	storage              *DeviceStorage
@@ -144,21 +176,30 @@ type BaseSensor struct {
 	capabilitiesUpdateFn func([]string)
 	propertyChanged      *Subject[SensorPropertyChange]
 	capabilitiesChanged  *Subject[[]string]
-	assignmentChanged    *Subject[bool]
-	isAssigned           bool
+	assignmentChanged    *Subject[[]string]
+	connectedChanged     *Subject[bool]
+	registered           bool
+	active               bool
 	requiresFrames       bool
 }
 
-func NewBaseSensor(name string) BaseSensor {
+func NewBaseSensor(name string, opts ...SensorOption) BaseSensor {
+	var cfg sensorOptions
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	return BaseSensor{
+		// provisional id, replaced by the host's persistent id at registration
 		id:                  generateSensorID(),
 		name:                name,
 		displayName:         name,
+		nativeID:            cfg.nativeID,
 		properties:          make(map[string]any),
 		capabilities:        make([]string, 0),
 		propertyChanged:     NewSubject[SensorPropertyChange](),
 		capabilitiesChanged: NewSubject[[]string](),
-		assignmentChanged:   NewSubject[bool](),
+		assignmentChanged:   NewSubject[[]string](),
+		connectedChanged:    NewSubject[bool](),
 	}
 }
 
@@ -188,12 +229,34 @@ func (s *BaseSensor) SetDisplayName(name string) {
 	s.displayName = name
 }
 
+// GetNativeID returns the plugin-supplied durable identity, or empty string.
+func (s *BaseSensor) GetNativeID() string {
+	return s.nativeID
+}
+
 func (s *BaseSensor) GetPluginID() string {
 	return s.pluginID
 }
 
-func (s *BaseSensor) GetCameraID() string {
-	return s.cameraID
+// GetAssignedCameraIDs returns the cameras this sensor is currently assigned to.
+func (s *BaseSensor) GetAssignedCameraIDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := make([]string, len(s.assignedCameraIDs))
+	copy(ids, s.assignedCameraIDs)
+	return ids
+}
+
+// Connected reports whether the sensor is registered with the host.
+func (s *BaseSensor) Connected() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.registered
+}
+
+// OnConnectedChanged fires when the sensor's registration state changes.
+func (s *BaseSensor) OnConnectedChanged(callback func(bool)) *Disposable {
+	return s.connectedChanged.Subscribe(callback)
 }
 
 func (s *BaseSensor) GetCapabilities() []string {
@@ -262,24 +325,35 @@ func (s *BaseSensor) OnPropertyChanged(callback func(SensorPropertyChange)) *Dis
 	return s.propertyChanged.Subscribe(callback)
 }
 
-// OnAssignmentChanged subscribes to assignment state changes (sensor added/removed from camera).
-func (s *BaseSensor) OnAssignmentChanged(callback func(bool)) *Disposable {
+// OnAssignmentChanged fires with the current camera id list whenever the
+// user changes this sensor's camera assignments.
+func (s *BaseSensor) OnAssignmentChanged(callback func([]string)) *Disposable {
 	return s.assignmentChanged.Subscribe(callback)
 }
 
-// IsAssigned returns whether this sensor is currently assigned to a camera.
+// IsAssigned returns whether this sensor is assigned to at least one camera.
 func (s *BaseSensor) IsAssigned() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.isAssigned
+	return len(s.assignedCameraIDs) > 0
 }
 
 func (s *BaseSensor) setPluginID(id string) {
 	s.pluginID = id
 }
 
-func (s *BaseSensor) setCameraID(id string) {
-	s.cameraID = id
+func (s *BaseSensor) setID(id string) {
+	s.id = id
+}
+
+func (s *BaseSensor) setAssignedCameras(cameraIDs []string) {
+	s.mu.Lock()
+	s.assignedCameraIDs = make([]string, len(cameraIDs))
+	copy(s.assignedCameraIDs, cameraIDs)
+	notify := make([]string, len(cameraIDs))
+	copy(notify, cameraIDs)
+	s.mu.Unlock()
+	s.assignmentChanged.Next(notify)
 }
 
 // writeState performs deep-equal change detection over the partial, writes
@@ -340,24 +414,30 @@ func (s *BaseSensor) setStorage(storage *DeviceStorage) {
 }
 
 func (s *BaseSensor) initUpdateFn(updateFn propertyUpdateFn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.updateFn = updateFn
+	s.registered = true
 }
 
 func (s *BaseSensor) initCapabilitiesUpdateFn(updateFn func([]string)) {
 	s.capabilitiesUpdateFn = updateFn
 }
 
-// setAssigned notifies subscribers but does NOT invoke lifecycle hooks — BaseSensor
-// cannot reach the outer concrete type; use setAssignedWithLifecycle for those.
-func (s *BaseSensor) setAssigned(assigned bool) {
+// setActive flips the lifecycle state and notifies connectivity subscribers,
+// but does NOT invoke lifecycle hooks — BaseSensor cannot reach the outer
+// concrete type; use setActiveWithLifecycle for those. Returns whether the
+// state actually changed.
+func (s *BaseSensor) setActive(active bool) bool {
 	s.mu.Lock()
-	if s.isAssigned == assigned {
+	if s.active == active {
 		s.mu.Unlock()
-		return
+		return false
 	}
-	s.isAssigned = assigned
+	s.active = active
 	s.mu.Unlock()
-	s.assignmentChanged.Next(assigned)
+	s.connectedChanged.Next(active)
+	return true
 }
 
 func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) sensorJSON {
@@ -373,7 +453,7 @@ func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) 
 		Name:           s.name,
 		DisplayName:    s.displayName,
 		Category:       category,
-		CameraID:       s.cameraID,
+		NativeID:       s.nativeID,
 		PluginID:       s.pluginID,
 		Properties:     props,
 		Capabilities:   s.capabilities,
@@ -422,9 +502,12 @@ func (s *BaseSensor) cleanup() {
 	defer s.mu.Unlock()
 	s.updateFn = nil
 	s.capabilitiesUpdateFn = nil
+	s.registered = false
+	s.assignedCameraIDs = nil
 	s.propertyChanged.Complete()
 	s.capabilitiesChanged.Complete()
 	s.assignmentChanged.Complete()
+	s.connectedChanged.Complete()
 	s.storage = nil
 }
 
@@ -479,40 +562,64 @@ func fillMissingBoxes(detections []Detection) []Detection {
 
 func isDetectionSensorType(t SensorType) bool {
 	switch t {
-	case SensorTypeMotion, SensorTypeAudio, SensorTypeObject,
-		SensorTypeFace, SensorTypeLicensePlate, SensorTypeClassifier:
+	case SensorTypeMotion, SensorTypeAudio, SensorTypeObject, SensorTypeObjectAssist,
+		SensorTypeFace, SensorTypeLicensePlate, SensorTypeClassifier, SensorTypeClip:
 		return true
 	}
 	return false
 }
 
-// setAssignedWithLifecycle updates assignment state and, if the outer concrete
-// sensor implements assignmentLifecycle, dispatches OnAssigned / OnDeassigned in a
-// separate goroutine. outer must be the concrete sensor value (the BaseSensor
-// embeddor) so the type assertion can see its method set.
-func setAssignedWithLifecycle(outer any, assigned bool) {
-	type assignableSensor interface{ setAssigned(bool) }
-	as, ok := outer.(assignableSensor)
+// deactivateQuiet flips active off without emitting on connectedChanged —
+// teardown pairs the OnStop hook but is not a connectivity signal. Returns
+// whether the sensor was still active.
+func (s *BaseSensor) deactivateQuiet() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.active {
+		return false
+	}
+	s.active = false
+	return true
+}
+
+// cleanupSensorWithLifecycle tears a sensor down: pairs OnStop if the sensor
+// is still active (without a connectivity emission, matching removal/shutdown
+// semantics across runtimes), then completes subjects and clears wiring.
+func cleanupSensorWithLifecycle(outer any) {
+	type quietDeactivator interface{ deactivateQuiet() bool }
+	if qd, ok := outer.(quietDeactivator); ok && qd.deactivateQuiet() {
+		if lc, ok := outer.(sensorLifecycle); ok {
+			go func() {
+				defer func() {
+					_ = recover()
+				}()
+				lc.OnStop()
+			}()
+		}
+	}
+
+	type cleanable interface{ cleanup() }
+	if c, ok := outer.(cleanable); ok {
+		c.cleanup()
+	}
+}
+
+// setActiveWithLifecycle updates the lifecycle state and, if the outer concrete
+// sensor implements sensorLifecycle, dispatches OnStart / OnStop in a separate
+// goroutine. outer must be the concrete sensor value (the BaseSensor embeddor)
+// so the type assertion can see its method set.
+func setActiveWithLifecycle(outer any, active bool) {
+	type activatableSensor interface{ setActive(bool) bool }
+	as, ok := outer.(activatableSensor)
 	if !ok {
 		return
 	}
 
-	// Check "did state change" by reading the base field via a helper. We
-	// can't race-safely read isAssigned from outside, so we rely on
-	// setAssigned being idempotent (it no-ops when unchanged) and we detect
-	// the change by capturing state before/after via the interface.
-	type stateReader interface{ IsAssigned() bool }
-	before := false
-	if sr, ok2 := outer.(stateReader); ok2 {
-		before = sr.IsAssigned()
-	}
-	as.setAssigned(assigned)
-	after := assigned
-	if before == after {
+	if !as.setActive(active) {
 		return
 	}
 
-	lc, ok := outer.(assignmentLifecycle)
+	lc, ok := outer.(sensorLifecycle)
 	if !ok {
 		return
 	}
@@ -521,10 +628,10 @@ func setAssignedWithLifecycle(outer any, assigned bool) {
 			// Swallow panics — lifecycle errors must not crash the runtime
 			_ = recover()
 		}()
-		if assigned {
-			lc.OnAssigned()
+		if active {
+			lc.OnStart()
 		} else {
-			lc.OnDeassigned()
+			lc.OnStop()
 		}
 	}()
 }

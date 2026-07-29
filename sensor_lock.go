@@ -24,8 +24,8 @@ const (
 // SetTargetState and write currentState separately when transitions complete.
 type LockControl struct{ BaseSensor }
 
-func NewLockControl(name string) *LockControl {
-	s := &LockControl{BaseSensor: NewBaseSensor(name)}
+func NewLockControl(name string, opts ...SensorOption) *LockControl {
+	s := &LockControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		lockPropertyCurrentState: int(LockStateSecured),
 		lockPropertyTargetState:  int(LockStateSecured),

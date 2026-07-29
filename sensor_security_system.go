@@ -19,8 +19,8 @@ const (
 // SecuritySystem is a security system arm/disarm control sensor.
 type SecuritySystem struct{ BaseSensor }
 
-func NewSecuritySystem(name string) *SecuritySystem {
-	s := &SecuritySystem{BaseSensor: NewBaseSensor(name)}
+func NewSecuritySystem(name string, opts ...SensorOption) *SecuritySystem {
+	s := &SecuritySystem{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		securitySystemPropertyCurrentState: int(SecuritySystemStateDisarmed),
 		securitySystemPropertyTargetState:  int(SecuritySystemStateDisarmed),

@@ -63,8 +63,8 @@ type AudioSensor struct {
 	BaseSensor
 }
 
-func NewAudioSensor(name string) *AudioSensor {
-	s := &AudioSensor{BaseSensor: NewBaseSensor(name)}
+func NewAudioSensor(name string, opts ...SensorOption) *AudioSensor {
+	s := &AudioSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		audioPropertyDetected:   false,
 		audioPropertyDetections: []Detection{},
@@ -140,8 +140,8 @@ type AudioDetectorSensor struct {
 	AudioSensor
 }
 
-func NewAudioDetectorSensor(name string) *AudioDetectorSensor {
-	s := &AudioDetectorSensor{AudioSensor: *NewAudioSensor(name)}
+func NewAudioDetectorSensor(name string, opts ...SensorOption) *AudioDetectorSensor {
+	s := &AudioDetectorSensor{AudioSensor: *NewAudioSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

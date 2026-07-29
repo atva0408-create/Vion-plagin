@@ -13,8 +13,8 @@ const (
 // any plugin override and only syncs state.
 type SirenControl struct{ BaseSensor }
 
-func NewSirenControl(name string) *SirenControl {
-	s := &SirenControl{BaseSensor: NewBaseSensor(name)}
+func NewSirenControl(name string, opts ...SensorOption) *SirenControl {
+	s := &SirenControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		sirenPropertyActive: false,
 		sirenPropertyVolume: 100,

@@ -69,8 +69,8 @@ const (
 // publish the discovered preset list and SetMoving to publish movement state.
 type PTZControl struct{ BaseSensor }
 
-func NewPTZControl(name string) *PTZControl {
-	s := &PTZControl{BaseSensor: NewBaseSensor(name)}
+func NewPTZControl(name string, opts ...SensorOption) *PTZControl {
+	s := &PTZControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		ptzPropertyPosition: PTZPosition{Pan: 0, Tilt: 0, Zoom: 0},
 		ptzPropertyMoving:   false,

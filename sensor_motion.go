@@ -33,8 +33,8 @@ type MotionSensor struct {
 	BaseSensor
 }
 
-func NewMotionSensor(name string) *MotionSensor {
-	s := &MotionSensor{BaseSensor: NewBaseSensor(name)}
+func NewMotionSensor(name string, opts ...SensorOption) *MotionSensor {
+	s := &MotionSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		motionPropertyDetected:   false,
 		motionPropertyDetections: []Detection{},
@@ -111,8 +111,8 @@ type MotionDetectorSensor struct {
 	MotionSensor
 }
 
-func NewMotionDetectorSensor(name string) *MotionDetectorSensor {
-	s := &MotionDetectorSensor{MotionSensor: *NewMotionSensor(name)}
+func NewMotionDetectorSensor(name string, opts ...SensorOption) *MotionDetectorSensor {
+	s := &MotionDetectorSensor{MotionSensor: *NewMotionSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

@@ -166,7 +166,7 @@ func TestRemapLegacyGoLayout(t *testing.T) {
 
 func TestLocationReadWriteDelete(t *testing.T) {
 	doc := map[string]any{}
-	sensorLoc := storeLocation{kind: storeLocationSensor, cameraID: "cam", sensorType: "motion", sensorName: "front"}
+	sensorLoc := storeLocation{kind: storeLocationSensor, sensorID: "sen-front-motion"}
 
 	writeLocation(doc, storeLocation{kind: storeLocationPlugin}, map[string]any{"p": int64(1)})
 	writeLocation(doc, storeLocation{kind: storeLocationCamera, cameraID: "cam"}, map[string]any{"c": int64(2)})

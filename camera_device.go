@@ -23,16 +23,17 @@ type SnapshotInterface interface {
 }
 
 type sensorInternalInit interface {
-	setCameraID(id string)
+	setID(id string)
 	setPluginID(id string)
+	setAssignedCameras(cameraIDs []string)
 	setStorage(storage *DeviceStorage)
 	initUpdateFn(updateFn propertyUpdateFn)
 	initCapabilitiesUpdateFn(updateFn func([]string))
-	setAssigned(assigned bool)
 }
 
 type backendPropertyReceiver interface {
 	onBackendPropertyChanged(property string, value any)
+	setPropertyWithTimestamp(property string, value any, timestamp int64)
 }
 
 // CameraDevice represents a camera assigned to this plugin.
@@ -46,19 +47,17 @@ type CameraDevice struct {
 	logger *Logger
 
 	controllerProxy *rpc.Proxy
-	sensorCtrlProxy *rpc.Proxy
+	registryProxy   *rpc.Proxy
 	sources         []*CameraDeviceSource
 	sensors         []Sensor
+	sensorCleanups  map[string]func()
 	storageDevice   *DeviceStorage
 	storageCtrl     *StorageController
-	proxySensors    map[string]*sensorProxy
 	initialized     bool
 
 	cameraSubject    *BehaviorSubject[Camera]
 	cameraState      *BehaviorSubject[bool]
 	frameWorkerState *BehaviorSubject[bool]
-	sensorAdded      *Subject[sensorEvent]
-	sensorRemoved    *Subject[sensorEvent]
 	detectionEvent   *Subject[DetectionEventData]
 
 	impl       any
@@ -74,7 +73,7 @@ func newCameraDeviceProxy(
 	logger *Logger,
 ) *CameraDevice {
 	camNS := getCameraNamespaces(cam.ID)
-	sensorCtrlNS := getSensorControllerNamespaces(cam.ID)
+	registryNS := getSensorRegistryNamespaces()
 
 	dev := &CameraDevice{
 		client:           client,
@@ -83,14 +82,12 @@ func newCameraDeviceProxy(
 		info:             *pluginInfo,
 		logger:           logger,
 		controllerProxy:  client.CreateProxy(camNS.CameraControllerRPC),
-		sensorCtrlProxy:  client.CreateProxy(sensorCtrlNS.SensorRPC),
+		registryProxy:    client.CreateProxy(registryNS.SensorsRPC),
 		storageCtrl:      storageCtrl,
-		proxySensors:     make(map[string]*sensorProxy),
+		sensorCleanups:   make(map[string]func()),
 		cameraSubject:    NewBehaviorSubject(*cam),
 		cameraState:      NewBehaviorSubject(false),
 		frameWorkerState: NewBehaviorSubject(false),
-		sensorAdded:      NewSubject[sensorEvent](),
-		sensorRemoved:    NewSubject[sensorEvent](),
 		detectionEvent:   NewSubject[DetectionEventData](),
 	}
 
@@ -337,68 +334,16 @@ func (d *CameraDevice) Disconnect() error {
 	return err
 }
 
-// AddSensor adds a sensor to this camera.
+// AddSensor registers a sensor that belongs to this camera's hardware
+// (spotlight, siren, PTZ, battery, ...). The host assigns it to this camera
+// and reconciles it across restarts like a standalone sensor.
 func (d *CameraDevice) AddSensor(s Sensor) error {
-	// Wire internal state via package-local interface (unexported methods).
-	if si, ok := s.(sensorInternalInit); ok {
-		si.setCameraID(d.camera.ID)
-		si.setPluginID(d.info.ID)
+	si, ok := s.(sensorInternalInit)
+	if !ok {
+		return fmt.Errorf("sensor %s does not embed BaseSensor", s.GetName())
 	}
+	si.setPluginID(d.info.ID)
 
-	d.mu.Lock()
-	d.sensors = append(d.sensors, s)
-	d.mu.Unlock()
-
-	// Register sensor as RPC handler — all exported methods are automatically
-	// exposed as camelCase RPC endpoints.
-	sensorProviderNS := getSensorProviderNamespaces(d.info.ID, d.camera.ID, s.GetID())
-	sensorCleanup, err := d.client.RegisterHandler(sensorProviderNS.SensorRPC, s)
-	if err != nil {
-		return fmt.Errorf("failed to register sensor RPC: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, func() { _ = sensorCleanup() })
-
-	sensorStorage, err := d.storageCtrl.createSensorStorage(d.camera.ID, s.GetID(), string(s.GetType()), s.GetName())
-	if err != nil {
-		return fmt.Errorf("failed to create sensor storage: %w", err)
-	}
-	if si, ok := s.(sensorInternalInit); ok {
-		si.setStorage(sensorStorage)
-	}
-
-	// Init sensor with property update callback via SensorController RPC.
-	// Detection-sensor writes route directly to the FrameWorker DetectionCoordinator;
-	// non-detection-sensor writes go to the SensorController batch endpoint.
-	sensorCtrlNS := getSensorControllerNamespaces(d.camera.ID)
-	sensorCtrlProxy := d.client.CreateProxy(sensorCtrlNS.SensorRPC)
-	frameWorkerDetectionNS := getFrameWorkerDetectionNamespaces(d.camera.ID)
-	detectionCoordinatorProxy := d.client.CreateProxy(frameWorkerDetectionNS.DetectionRPC)
-	if si, ok := s.(sensorInternalInit); ok {
-		sensor := s
-		si.initUpdateFn(func(properties map[string]any) {
-			ctx := context.Background()
-			if isDetectionSensorType(sensor.GetType()) {
-				// Detection sensors route directly to the FrameWorker
-				// DetectionCoordinator (bypassing the main process). If the
-				// FrameWorker isn't running, drop the write — the detection
-				// pipeline isn't running so there's nowhere for it to go.
-				if !d.frameWorkerState.Value() {
-					return
-				}
-				if _, err := detectionCoordinatorProxy.Invoke(ctx, "reportSensorWrite", sensor.GetID(), sensor.GetType(), properties); err != nil {
-					d.logger.Warn(fmt.Sprintf("Failed to forward sensor write to coordinator for %s: %v", sensor.GetID(), err))
-				}
-				return
-			}
-			_, _ = sensorCtrlProxy.Invoke(ctx, "updatePropertyValues", sensor.GetID(), properties)
-		})
-		si.initCapabilitiesUpdateFn(func(caps []string) {
-			ctx := context.Background()
-			_, _ = sensorCtrlProxy.Invoke(ctx, "updateCapabilities", s.GetID(), caps)
-		})
-	}
-
-	ctx := context.Background()
 	sensorJSON := s.ToJSON()
 
 	// Inject modelSpec for detector sensors: detector interfaces define ModelSpec()
@@ -416,26 +361,81 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 		sensorJSON.ModelSpec = v.ModelSpec()
 	}
 
-	// registerSensor returns a boolean indicating whether the user has
-	// activated this sensor type from this plugin in the camera drawer.
-	// `true` → sensor is live for this camera (fire OnAssigned).
-	// `false` → sensor is just known to the server but not picked yet;
-	//           a later `sensor:assignment:changed` event will flip it on
-	//           if the user activates it in the UI.
-	registerResult, err := d.controllerProxy.Invoke(ctx, "registerSensor", sensorJSON, d.info.ID)
+	// derived nativeId keeps per-camera instances of same-named sensors distinct
+	if sensorJSON.NativeID == "" {
+		sensorJSON.NativeID = fmt.Sprintf("%s:%s:%s", d.camera.ID, s.GetType(), s.GetName())
+	}
+
+	// register first: the host reconciles against the persisted entity and
+	// hands back the durable id every namespace binds to
+	ctx := context.Background()
+	registerResult, err := d.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, d.info.ID, map[string]any{"assignCameraId": d.camera.ID})
 	if err != nil {
 		return fmt.Errorf("failed to register sensor: %w", err)
 	}
-	isAssigned, _ := registerResult.(bool)
+	registration, err := decodeSensorRegistration(registerResult)
+	if err != nil {
+		return fmt.Errorf("failed to decode sensor registration: %w", err)
+	}
+	si.setID(registration.ID)
+	si.setAssignedCameras(registration.AssignedCameraIDs)
 
-	// Mirror the server's assignment verdict into the sensor (updates the
-	// isAssigned flag + OnAssignmentChanged observable + assignmentLifecycle
-	// hook). If the user hasn't activated this sensor yet, this is a no-op.
-	setAssignedWithLifecycle(s, isAssigned)
+	// assignment changes arrive on the global stream the sensor manager owns
+	if d.api != nil && d.api.SensorManager != nil {
+		if err := d.api.SensorManager.trackCameraSensor(s); err != nil {
+			return err
+		}
+	}
+
+	d.mu.Lock()
+	d.sensors = append(d.sensors, s)
+	d.mu.Unlock()
+
+	// Register sensor as RPC handler — all exported methods are automatically
+	// exposed as camelCase RPC endpoints.
+	sensorProviderNS := getSensorProviderNamespaces(d.info.ID, s.GetID())
+	sensorCleanup, err := d.client.RegisterHandler(sensorProviderNS.SensorRPC, s)
+	if err != nil {
+		return fmt.Errorf("failed to register sensor RPC: %w", err)
+	}
+
+	sensorStorage, err := d.storageCtrl.createSensorStorage(s.GetID())
+	if err != nil {
+		return fmt.Errorf("failed to create sensor storage: %w", err)
+	}
+	si.setStorage(sensorStorage)
+
+	// Init sensor with property update callback via SensorRegistry RPC.
+	// Detection-sensor writes route directly to the FrameWorker DetectionCoordinator;
+	// non-detection-sensor writes go to the registry batch endpoint.
+	frameWorkerDetectionNS := getFrameWorkerDetectionNamespaces(d.camera.ID)
+	detectionCoordinatorProxy := d.client.CreateProxy(frameWorkerDetectionNS.DetectionRPC)
+	sensor := s
+	si.initUpdateFn(func(properties map[string]any) {
+		ctx := context.Background()
+		if isDetectionSensorType(sensor.GetType()) {
+			// Detection sensors route directly to the FrameWorker
+			// DetectionCoordinator (bypassing the main process). If the
+			// FrameWorker isn't running, drop the write — the detection
+			// pipeline isn't running so there's nowhere for it to go.
+			if !d.frameWorkerState.Value() {
+				return
+			}
+			if _, err := detectionCoordinatorProxy.Invoke(ctx, "reportSensorWrite", sensor.GetID(), sensor.GetType(), properties); err != nil {
+				d.logger.Warn(fmt.Sprintf("Failed to forward sensor write to coordinator for %s: %v", sensor.GetID(), err))
+			}
+			return
+		}
+		_, _ = d.registryProxy.Invoke(ctx, "updatePropertyValues", sensor.GetID(), properties)
+	})
+	si.initCapabilitiesUpdateFn(func(caps []string) {
+		ctx := context.Background()
+		_, _ = d.registryProxy.Invoke(ctx, "updateCapabilities", sensor.GetID(), caps)
+	})
 
 	// Subscribe to backend-initiated property changes for owned sensors.
 	// This syncs properties back when backend changes them (e.g., motion dwell timer).
-	sensorEventNS := getSensorEventNamespaces(d.camera.ID, s.GetID())
+	sensorEventNS := getSensorEventNamespaces(s.GetID())
 	unsubBackend, err := d.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
 		var msg sensorEventMessage
 		if !decodeMsgpack(d.logger, data, &msg, "sensorEventMessage") {
@@ -445,103 +445,65 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 			property, _ := msg.Data["property"].(string)
 			if property != "" {
 				if bpr, ok := s.(backendPropertyReceiver); ok {
-					bpr.onBackendPropertyChanged(property, coercePropertyValue(s.GetType(), property, msg.Data["value"]))
+					value := coercePropertyValue(s.GetType(), property, msg.Data["value"])
+					// honor the server-side timestamp, like the consumer proxies
+					if ts, ok := toInt64(msg.Data["timestamp"]); ok && ts > 0 {
+						bpr.setPropertyWithTimestamp(property, value, ts)
+					} else {
+						bpr.onBackendPropertyChanged(property, value)
+					}
 				}
 			}
 		}
 	})
-	if err == nil && unsubBackend != nil {
-		d.cleanupFns = append(d.cleanupFns, unsubBackend)
+	d.mu.Lock()
+	d.sensorCleanups[s.GetID()] = func() {
+		if unsubBackend != nil {
+			unsubBackend()
+		}
+		_ = sensorCleanup()
 	}
+	d.mu.Unlock()
+
+	setActiveWithLifecycle(s, true)
 
 	return nil
 }
 
-// RemoveSensor removes a sensor from this camera.
+// RemoveSensor unregisters a sensor this plugin registered on this camera.
+// The persisted entity stays (shows disconnected) unless the user deletes it.
 func (d *CameraDevice) RemoveSensor(sensorID string) error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-
+	var removed Sensor
 	for i, s := range d.sensors {
 		if s.GetID() == sensorID {
+			removed = s
 			d.sensors = append(d.sensors[:i], d.sensors[i+1:]...)
-
-			// Notify the sensor it is no longer assigned, plus dispatch
-			// the assignmentLifecycle.OnDeassigned hook if implemented.
-			setAssignedWithLifecycle(s, false)
-
-			ctx := context.Background()
-			_, _ = d.controllerProxy.Invoke(ctx, "unregisterSensor", sensorID)
-
-			return nil
+			break
 		}
 	}
-	return fmt.Errorf("sensor not found: %s", sensorID)
-}
+	cleanup := d.sensorCleanups[sensorID]
+	delete(d.sensorCleanups, sensorID)
+	d.mu.Unlock()
 
-// GetSensors returns all sensors on this camera (owned + foreign).
-func (d *CameraDevice) GetSensors() []Sensor {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	result := make([]Sensor, 0, len(d.sensors)+len(d.proxySensors))
-	result = append(result, d.sensors...)
-	for _, p := range d.proxySensors {
-		result = append(result, p)
+	if removed == nil {
+		return fmt.Errorf("sensor not found: %s", sensorID)
 	}
-	return result
-}
 
-// GetSensor returns a sensor by its ID (checks both owned and foreign).
-func (d *CameraDevice) GetSensor(id string) Sensor {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	for _, s := range d.sensors {
-		if s.GetID() == id {
-			return s
-		}
+	if d.api != nil && d.api.SensorManager != nil {
+		d.api.SensorManager.untrackCameraSensor(sensorID)
 	}
-	if p, ok := d.proxySensors[id]; ok {
-		return p
+
+	ctx := context.Background()
+	_, _ = d.registryProxy.Invoke(ctx, "unregisterSensor", sensorID)
+
+	if cleanup != nil {
+		cleanup()
 	}
+
+	cleanupSensorWithLifecycle(removed)
+
 	return nil
-}
-
-// GetSensorsByType returns all sensors of the given type (owned + foreign).
-func (d *CameraDevice) GetSensorsByType(sensorType SensorType) []Sensor {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	var result []Sensor
-	for _, s := range d.sensors {
-		if s.GetType() == sensorType {
-			result = append(result, s)
-		}
-	}
-	for _, p := range d.proxySensors {
-		if p.GetType() == sensorType {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// OnSensorAdded registers a callback for when a sensor from another plugin is added,
-// and only when its type is listed in contract.consumes. This plugin's own sensors do
-// not fire it.
-// The callback receives (sensorID, sensorType). Returns a Disposable to unsubscribe.
-func (d *CameraDevice) OnSensorAdded(callback func(sensorID string, sensorType SensorType)) *Disposable {
-	return d.sensorAdded.Subscribe(func(e sensorEvent) {
-		callback(e.SensorID, e.SensorType)
-	})
-}
-
-// OnSensorRemoved registers a callback for when a sensor is removed from this camera.
-// Unlike OnSensorAdded it is not filtered: it fires for this plugin's own sensors and
-// for other plugins' sensors alike.
-// Returns a Disposable to unsubscribe.
-func (d *CameraDevice) OnSensorRemoved(callback func(string, SensorType)) *Disposable {
-	return d.sensorRemoved.Subscribe(func(e sensorEvent) {
-		callback(e.SensorID, e.SensorType)
-	})
 }
 
 // OnDetectionEvent registers a callback for detection events (start/update/end and
@@ -612,57 +574,6 @@ func (d *CameraDevice) OnFrameWorkerConnected() *Observable[bool] {
 	return Share(DistinctUntilChanged(d.frameWorkerState.AsObservable()), nil)
 }
 
-// OnSensorProperty subscribes to a specific property on a sensor type with full lifecycle management.
-// Automatically subscribes/unsubscribes when sensors of the given type are added/removed.
-func (d *CameraDevice) OnSensorProperty(sensorType SensorType, property string, callback func(value any, timestamp int64, sensor Sensor)) *Disposable {
-	var propertySub *Disposable
-
-	subscribeTo := func(sensor Sensor) {
-		if propertySub != nil {
-			propertySub.Dispose()
-		}
-		propertySub = sensor.OnPropertyChanged(func(e SensorPropertyChange) {
-			if e.Property == property {
-				callback(e.Value, e.Timestamp, sensor)
-			}
-		})
-	}
-
-	// Subscribe to existing sensor
-	sensors := d.GetSensorsByType(sensorType)
-	if len(sensors) > 0 {
-		subscribeTo(sensors[0])
-	}
-
-	// Auto-subscribe when sensor is added
-	addedSub := d.OnSensorAdded(func(sensorID string, st SensorType) {
-		if st == sensorType {
-			sensors := d.GetSensorsByType(sensorType)
-			if len(sensors) > 0 {
-				subscribeTo(sensors[0])
-			}
-		}
-	})
-
-	// Auto-unsubscribe when sensor is removed
-	removedSub := d.OnSensorRemoved(func(_ string, st SensorType) {
-		if st == sensorType {
-			if propertySub != nil {
-				propertySub.Dispose()
-				propertySub = nil
-			}
-		}
-	})
-
-	return NewDisposable(func() {
-		if propertySub != nil {
-			propertySub.Dispose()
-		}
-		addedSub.Dispose()
-		removedSub.Dispose()
-	})
-}
-
 func (d *CameraDevice) init() error {
 	d.mu.Lock()
 	if d.initialized {
@@ -673,7 +584,6 @@ func (d *CameraDevice) init() error {
 	d.mu.Unlock()
 
 	pluginCamNS := getPluginCameraNamespaces(d.info.ID, d.camera.ID)
-	sensorCtrlNS := getSensorControllerNamespaces(d.camera.ID)
 
 	st, err := d.storageCtrl.createCameraStorage(d.camera.ID)
 	if err != nil {
@@ -707,18 +617,6 @@ func (d *CameraDevice) init() error {
 	}
 	d.cleanupFns = append(d.cleanupFns, unsub)
 
-	unsubSensors, err := d.client.Subscribe(sensorCtrlNS.SensorSubject, func(data []byte) {
-		var msg sensorControllerEventMessage
-		if !decodeMsgpack(d.logger, data, &msg, "sensorControllerEventMessage") {
-			return
-		}
-		d.handleSensorControllerEvent(msg)
-	})
-	if err != nil {
-		return fmt.Errorf("subscribe sensor events: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, unsubSensors)
-
 	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
 	unsubDetectionEvents, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
 		var msg detectionEventMessage
@@ -736,10 +634,6 @@ func (d *CameraDevice) init() error {
 	// Without this, cameraState starts as false and misses the initial connected
 	// event that was already emitted before the plugin subscribed.
 	d.refreshStates()
-
-	// Auto-initialize foreign sensors; init failures are ignored so a sensor that
-	// can't initialize doesn't abort the attach.
-	d.initSensors()
 
 	return nil
 }
@@ -883,227 +777,6 @@ func (d *CameraDevice) handleDetectionEvent(msg *detectionEventMessage) {
 	})
 }
 
-func (d *CameraDevice) initSensors() {
-	ctx := context.Background()
-	result, err := d.sensorCtrlProxy.Invoke(ctx, "getSensors", d.info.ID)
-	if err != nil {
-		d.logger.Debug("getSensors RPC failed:", err)
-		return
-	}
-
-	sensorsRaw, ok := result.([]any)
-	if !ok {
-		d.logger.Debug("getSensors: unexpected result type", fmt.Sprintf("%T", result))
-		return
-	}
-
-	var newProxies []*sensorProxy
-	for _, raw := range sensorsRaw {
-		encoded, err := rpc.Encode(raw)
-		if err != nil {
-			continue
-		}
-		var sensorData storedSensorData
-		if !decodeMsgpack(d.logger, encoded, &sensorData, "storedSensorData") {
-			continue
-		}
-		proxy := d.addProxySensor(&sensorData)
-		if proxy != nil {
-			newProxies = append(newProxies, proxy)
-		}
-	}
-
-	if len(newProxies) > 0 {
-		d.getSensorStates(newProxies)
-	}
-
-}
-
-func (d *CameraDevice) getSensorStates(proxies []*sensorProxy) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	result, err := d.sensorCtrlProxy.Invoke(ctx, "getSensorStates")
-	if err != nil {
-		d.logger.Debug("getSensorStates RPC failed:", err)
-		return
-	}
-
-	statesMap, ok := result.(map[string]any)
-	if !ok {
-		d.logger.Debug("getSensorStates: unexpected result type", fmt.Sprintf("%T", result))
-		return
-	}
-
-	for _, proxy := range proxies {
-		stateRaw, exists := statesMap[proxy.GetID()]
-		if !exists {
-			continue
-		}
-
-		encoded, err := rpc.Encode(stateRaw)
-		if err != nil {
-			continue
-		}
-
-		var state sensorRefreshedState
-		if !decodeMsgpack(d.logger, encoded, &state, "sensorRefreshedState") {
-			continue
-		}
-
-		if state.Capabilities != nil {
-			proxy.SetCapabilities(state.Capabilities)
-		}
-
-		if state.DisplayName != "" {
-			proxy.SetDisplayName(state.DisplayName)
-		}
-
-		// Apply properties (coerce msgpack-deserialized values to correct Go types).
-		// This is a backend → SDK push, so it must NOT trigger updateFn (which
-		// would loop back to the server).
-		for k, v := range state.Properties {
-			proxy.onBackendPropertyChanged(k, coercePropertyValue(proxy.sensorType, k, v))
-		}
-	}
-}
-
-func (d *CameraDevice) handleSensorControllerEvent(msg sensorControllerEventMessage) {
-	if msg.Data == nil {
-		return
-	}
-
-	d.mu.RLock()
-	init := d.initialized
-	d.mu.RUnlock()
-	if !init {
-		return
-	}
-
-	switch msg.Type {
-	case "sensor:added":
-		encoded, err := rpc.Encode(msg.Data)
-		if err != nil {
-			return
-		}
-		var addedData sensorAddedEventData
-		if !decodeMsgpack(d.logger, encoded, &addedData, "sensorAddedEventData") {
-			return
-		}
-
-		sensor := addedData.Sensor
-		if sensor.Properties == nil {
-			sensor.Properties = make(map[string]any)
-		}
-		for k, v := range addedData.State.Properties {
-			if _, exists := sensor.Properties[k]; !exists {
-				sensor.Properties[k] = v
-			}
-		}
-
-		d.addProxySensor(&sensor)
-
-	case "sensor:removed":
-		encoded, err := rpc.Encode(msg.Data)
-		if err != nil {
-			return
-		}
-		var removedData sensorRemovedEventData
-		if !decodeMsgpack(d.logger, encoded, &removedData, "sensorRemovedEventData") {
-			return
-		}
-
-		if removedData.SensorID == "" {
-			return
-		}
-
-		d.mu.Lock()
-		proxy, exists := d.proxySensors[removedData.SensorID]
-		if exists {
-			delete(d.proxySensors, removedData.SensorID)
-		}
-		d.mu.Unlock()
-
-		if proxy != nil {
-			proxy.cleanupProxy()
-		}
-
-		d.sensorRemoved.Next(sensorEvent(removedData))
-
-	case "sensor:assignment:changed":
-		encoded, err := rpc.Encode(msg.Data)
-		if err != nil {
-			return
-		}
-		var assignmentData sensorAssignmentChangedData
-		if !decodeMsgpack(d.logger, encoded, &assignmentData, "sensorAssignmentChangedData") {
-			return
-		}
-
-		// Only process assignments for our own sensors
-		if assignmentData.PluginID != d.info.ID {
-			return
-		}
-
-		d.mu.RLock()
-		for _, s := range d.sensors {
-			if s.GetType() == assignmentData.SensorType {
-				setAssignedWithLifecycle(s, assignmentData.Assigned)
-			}
-		}
-		d.mu.RUnlock()
-	}
-}
-
-func (d *CameraDevice) canAccessSensor(data *storedSensorData) bool {
-	if data.PluginID == d.info.ID {
-		return true
-	}
-	return containsSensorType(d.info.Contract.Consumes, data.Type)
-}
-
-func (d *CameraDevice) addProxySensor(data *storedSensorData) *sensorProxy {
-	if data.ID == "" || data.Type == "" {
-		return nil
-	}
-
-	// Skip our own sensors
-	if data.PluginID == d.info.ID {
-		return nil
-	}
-
-	// Check contract.consumes access control
-	if !d.canAccessSensor(data) {
-		return nil
-	}
-
-	category := categoryForSensorType(data.Type)
-
-	d.mu.Lock()
-	if _, exists := d.proxySensors[data.ID]; exists {
-		d.mu.Unlock()
-		return nil
-	}
-
-	proxy := newSensorProxy(d.client, d.logger, d.camera.ID, data.ID, data.Name, data.Type, category, data.Properties)
-	proxy.setPluginID(data.PluginID)
-	if data.DisplayName != "" {
-		proxy.SetDisplayName(data.DisplayName)
-	}
-	if data.Capabilities != nil {
-		proxy.SetCapabilities(data.Capabilities)
-	}
-	d.proxySensors[data.ID] = proxy
-	d.mu.Unlock()
-
-	d.sensorAdded.Next(sensorEvent{
-		SensorID:   data.ID,
-		SensorType: data.Type,
-	})
-
-	return proxy
-}
-
 func (d *CameraDevice) cleanup() {
 	d.mu.Lock()
 	d.initialized = false
@@ -1117,22 +790,25 @@ func (d *CameraDevice) cleanup() {
 	d.cameraSubject.Complete()
 	d.cameraState.Complete()
 	d.frameWorkerState.Complete()
-	d.sensorAdded.Complete()
-	d.sensorRemoved.Complete()
 	d.detectionEvent.Complete()
 
 	d.mu.Lock()
 	sensors := d.sensors
 	d.sensors = nil
-	for _, proxy := range d.proxySensors {
-		proxy.cleanupProxy()
-	}
-	d.proxySensors = nil
+	sensorCleanups := d.sensorCleanups
+	d.sensorCleanups = make(map[string]func())
 	d.mu.Unlock()
+
+	for _, cleanup := range sensorCleanups {
+		cleanup()
+	}
 
 	// dispatch outside d.mu, a plugin hook may call back into the device
 	for _, s := range sensors {
-		setAssignedWithLifecycle(s, false)
+		if d.api != nil && d.api.SensorManager != nil {
+			d.api.SensorManager.untrackCameraSensor(s.GetID())
+		}
+		cleanupSensorWithLifecycle(s)
 	}
 }
 
@@ -1238,6 +914,18 @@ func (s *CameraDeviceSource) GenerateRTSPUrl(options *RTSPUrlOptions) (string, e
 // GenerateSnapshotUrl generates a snapshot URL for this source with the given options.
 func (s *CameraDeviceSource) GenerateSnapshotUrl(options *SnapshotUrlOptions) (string, error) {
 	return BuildSnapshotUrl(s.device.Name(), s.Name(), s.Urls().Snapshot.JPEG, options)
+}
+
+func decodeSensorRegistration(result any) (*sensorRegistration, error) {
+	encoded, err := rpc.Encode(result)
+	if err != nil {
+		return nil, err
+	}
+	var registration sensorRegistration
+	if err := rpc.Decode(encoded, &registration); err != nil {
+		return nil, err
+	}
+	return &registration, nil
 }
 
 // changedCameraProps returns the json names of the camera fields that differ

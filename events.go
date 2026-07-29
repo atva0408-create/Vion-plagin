@@ -5,19 +5,31 @@ type cameraEventMessage struct {
 	Data any    `msgpack:"data,omitempty"`
 }
 
-type sensorControllerEventMessage struct {
+type sensorRegistryEventMessage struct {
 	Type string `msgpack:"type"`
 	Data any    `msgpack:"data,omitempty"`
 }
 
 type sensorAddedEventData struct {
-	Sensor storedSensorData   `msgpack:"sensor"`
-	State  sensorInitialState `msgpack:"state"`
+	Sensor storedSensorData     `msgpack:"sensor"`
+	State  sensorRefreshedState `msgpack:"state"`
 }
 
-type sensorRemovedEventData struct {
+type sensorDeletedEventData struct {
 	SensorID   string     `msgpack:"sensorId"`
 	SensorType SensorType `msgpack:"sensorType"`
+}
+
+type sensorConnectedChangedData struct {
+	SensorID   string     `msgpack:"sensorId"`
+	SensorType SensorType `msgpack:"sensorType"`
+	Connected  bool       `msgpack:"connected"`
+}
+
+type sensorExposedChangedData struct {
+	SensorID   string     `msgpack:"sensorId"`
+	SensorType SensorType `msgpack:"sensorType"`
+	Exposed    bool       `msgpack:"exposed"`
 }
 
 type sensorRefreshedState struct {
@@ -28,27 +40,31 @@ type sensorRefreshedState struct {
 }
 
 type sensorAssignmentChangedData struct {
-	CameraID   string     `msgpack:"cameraId"`
-	PluginID   string     `msgpack:"pluginId"`
+	SensorID   string     `msgpack:"sensorId"`
 	SensorType SensorType `msgpack:"sensorType"`
+	CameraID   string     `msgpack:"cameraId"`
 	Assigned   bool       `msgpack:"assigned"`
 }
 
-type sensorInitialState struct {
-	Online       bool           `msgpack:"online"`
-	Properties   map[string]any `msgpack:"properties,omitempty"`
-	Capabilities []string       `msgpack:"capabilities,omitempty"`
+type sensorRegistration struct {
+	ID                string   `msgpack:"id"`
+	AssignedCameraIDs []string `msgpack:"assignedCameraIds"`
+	Active            bool     `msgpack:"active"`
 }
 
 type storedSensorData struct {
-	ID             string         `msgpack:"id"`
-	Type           SensorType     `msgpack:"type"`
-	Name           string         `msgpack:"name"`
-	DisplayName    string         `msgpack:"displayName"`
-	PluginID       string         `msgpack:"pluginId"`
-	Properties     map[string]any `msgpack:"properties,omitempty"`
-	Capabilities   []string       `msgpack:"capabilities,omitempty"`
-	RequiresFrames bool           `msgpack:"requiresFrames,omitempty"`
+	ID                string         `msgpack:"id"`
+	Type              SensorType     `msgpack:"type"`
+	Name              string         `msgpack:"name"`
+	DisplayName       string         `msgpack:"displayName"`
+	NativeID          string         `msgpack:"nativeId,omitempty"`
+	PluginID          string         `msgpack:"pluginId"`
+	AssignedCameraIDs []string       `msgpack:"assignedCameraIds"`
+	Exposed           bool           `msgpack:"exposed"`
+	Connected         bool           `msgpack:"connected"`
+	Properties        map[string]any `msgpack:"properties,omitempty"`
+	Capabilities      []string       `msgpack:"capabilities,omitempty"`
+	RequiresFrames    bool           `msgpack:"requiresFrames,omitempty"`
 }
 
 // Data is decoded as map[string]any to avoid msgpack reflection panics when the

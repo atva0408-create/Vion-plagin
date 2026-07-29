@@ -14,8 +14,8 @@ type DoorbellTrigger struct {
 	ringResetTimer *time.Timer
 }
 
-func NewDoorbellTrigger(name string) *DoorbellTrigger {
-	s := &DoorbellTrigger{BaseSensor: NewBaseSensor(name)}
+func NewDoorbellTrigger(name string, opts ...SensorOption) *DoorbellTrigger {
+	s := &DoorbellTrigger{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{doorbellPropertyRing: false})
 	return s
 }

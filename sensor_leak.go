@@ -7,8 +7,8 @@ const (
 // LeakSensor reports water leak detection state.
 type LeakSensor struct{ BaseSensor }
 
-func NewLeakSensor(name string) *LeakSensor {
-	s := &LeakSensor{BaseSensor: NewBaseSensor(name)}
+func NewLeakSensor(name string, opts ...SensorOption) *LeakSensor {
+	s := &LeakSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		leakPropertyDetected: false,
 	})

@@ -7,8 +7,8 @@ const (
 // TemperatureInfo reports current temperature in °C.
 type TemperatureInfo struct{ BaseSensor }
 
-func NewTemperatureInfo(name string) *TemperatureInfo {
-	s := &TemperatureInfo{BaseSensor: NewBaseSensor(name)}
+func NewTemperatureInfo(name string, opts ...SensorOption) *TemperatureInfo {
+	s := &TemperatureInfo{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		temperaturePropertyCurrent: 20.0,
 	})

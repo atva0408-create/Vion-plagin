@@ -16,6 +16,9 @@ type PluginAPI struct {
 	// DeviceManager owns the camera devices assigned to this plugin and
 	// publishes camera-state changes.
 	DeviceManager *DeviceManager
+	// SensorManager registers standalone sensors (devices without a camera)
+	// and holds the sensors this plugin provides in this session.
+	SensorManager *SensorManager
 	// DownloadManager mints token-protected download URLs for files the
 	// plugin wants to expose to the UI.
 	DownloadManager *DownloadManager
@@ -33,6 +36,7 @@ type PluginAPI struct {
 func newPluginAPI(
 	coreManager *CoreManager,
 	deviceManager *DeviceManager,
+	sensorManager *SensorManager,
 	downloadManager *DownloadManager,
 	notificationManager *NotificationManager,
 	storageController *StorageController,
@@ -42,6 +46,7 @@ func newPluginAPI(
 		eventEmitter:        newEventEmitter(),
 		CoreManager:         coreManager,
 		DeviceManager:       deviceManager,
+		SensorManager:       sensorManager,
 		DownloadManager:     downloadManager,
 		NotificationManager: notificationManager,
 		storageController:   storageController,

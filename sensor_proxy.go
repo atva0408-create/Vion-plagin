@@ -8,35 +8,54 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+// sensorProxy is the cross-process consumer proxy: caches sensor state from
+// broadcasts, forwards Control writes via RPC to the owning plugin.
 type sensorProxy struct {
 	BaseSensor
 	client     *rpc.Client
 	logger     *Logger
 	sensorType SensorType
 	category   SensorCategory
+	exposed    bool
+	connected  bool
 	proxy      *rpc.Proxy
 	unsubEvent func()
 }
 
-func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sensorName string, sensorType SensorType, category SensorCategory, initialProps map[string]any) *sensorProxy {
+func newSensorProxy(client *rpc.Client, logger *Logger, data *storedSensorData) *sensorProxy {
+	category := categoryForSensorType(data.Type)
 	s := &sensorProxy{
-		BaseSensor: NewBaseSensor(sensorName),
+		BaseSensor: NewBaseSensor(data.Name),
 		client:     client,
 		logger:     logger,
-		sensorType: sensorType,
+		sensorType: data.Type,
 		category:   category,
+		exposed:    data.Exposed,
+		connected:  data.Connected,
 	}
-	s.id = sensorID
-	s.cameraID = cameraID
-
-	for k, v := range initialProps {
-		s.properties[k] = coercePropertyValue(sensorType, k, v)
+	s.id = data.ID
+	s.nativeID = data.NativeID
+	s.pluginID = data.PluginID
+	s.assignedCameraIDs = append([]string(nil), data.AssignedCameraIDs...)
+	if data.DisplayName != "" {
+		s.displayName = data.DisplayName
+	}
+	if data.Capabilities != nil {
+		s.capabilities = append([]string(nil), data.Capabilities...)
 	}
 
-	eventNS := getSensorEventNamespaces(cameraID, sensorID)
-	unsub, _ := client.Subscribe(eventNS.SensorSubject, func(data []byte) {
+	for k, v := range data.Properties {
+		s.properties[k] = coercePropertyValue(data.Type, k, v)
+	}
+
+	// RPC directly to owner - for Control sensors
+	ownerNS := getSensorProviderNamespaces(data.PluginID, data.ID)
+	s.proxy = client.CreateProxy(ownerNS.SensorRPC)
+
+	eventNS := getSensorEventNamespaces(data.ID)
+	unsub, _ := client.Subscribe(eventNS.SensorSubject, func(payload []byte) {
 		var msg sensorEventMessage
-		if !decodeMsgpack(logger, data, &msg, "sensorEventMessage") {
+		if !decodeMsgpack(logger, payload, &msg, "sensorEventMessage") {
 			return
 		}
 
@@ -50,6 +69,37 @@ func newSensorProxy(client *rpc.Client, logger *Logger, cameraID, sensorID, sens
 func (s *sensorProxy) GetType() SensorType         { return s.sensorType }
 func (s *sensorProxy) GetCategory() SensorCategory { return s.category }
 func (s *sensorProxy) ToJSON() sensorJSON          { return s.toBaseJSON(s.sensorType, s.category) }
+
+// Connected reports whether the owning plugin currently provides this sensor.
+func (s *sensorProxy) Connected() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.connected
+}
+
+// Exposed reports whether the user exports this sensor to bridges.
+func (s *sensorProxy) Exposed() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.exposed
+}
+
+func (s *sensorProxy) setConnected(connected bool) {
+	s.mu.Lock()
+	if s.connected == connected {
+		s.mu.Unlock()
+		return
+	}
+	s.connected = connected
+	s.mu.Unlock()
+	s.connectedChanged.Next(connected)
+}
+
+func (s *sensorProxy) setExposed(exposed bool) {
+	s.mu.Lock()
+	s.exposed = exposed
+	s.mu.Unlock()
+}
 
 func (s *sensorProxy) Refresh() error {
 	if s.proxy == nil {
@@ -71,8 +121,10 @@ func (s *sensorProxy) Refresh() error {
 	return nil
 }
 
+// Forwards to the owning sensor's UpdateValue via RPC — read-only sensor
+// types no-op on the owning side, so no category gate here.
 func (s *sensorProxy) UpdateValue(property string, value any) error {
-	if s.proxy == nil || !isControlCategory(s.category) {
+	if s.proxy == nil {
 		return nil
 	}
 	ctx := context.Background()
@@ -87,14 +139,20 @@ func (s *sensorProxy) ToStoredData() storedSensorData {
 	maps.Copy(props, s.properties)
 	caps := make([]string, len(s.capabilities))
 	copy(caps, s.capabilities)
+	ids := make([]string, len(s.assignedCameraIDs))
+	copy(ids, s.assignedCameraIDs)
 	return storedSensorData{
-		ID:           s.id,
-		Type:         s.sensorType,
-		Name:         s.name,
-		DisplayName:  s.displayName,
-		PluginID:     s.pluginID,
-		Properties:   props,
-		Capabilities: caps,
+		ID:                s.id,
+		Type:              s.sensorType,
+		Name:              s.name,
+		DisplayName:       s.displayName,
+		NativeID:          s.nativeID,
+		PluginID:          s.pluginID,
+		AssignedCameraIDs: ids,
+		Exposed:           s.exposed,
+		Connected:         s.connected,
+		Properties:        props,
+		Capabilities:      caps,
 	}
 }
 

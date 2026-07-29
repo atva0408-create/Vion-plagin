@@ -19,10 +19,9 @@ var canonicalStoreSections = []string{"plugin", "cameras", "sensors"}
 // the plugin section, one camera, or one sensor. Every component is a literal
 // map key — never parsed or split, so ids may contain any characters.
 type storeLocation struct {
-	kind       storeLocationKind
-	cameraID   string
-	sensorType string
-	sensorName string
+	kind     storeLocationKind
+	cameraID string
+	sensorID string
 }
 
 func readLocation(doc map[string]any, loc storeLocation) map[string]any {
@@ -36,9 +35,7 @@ func readLocation(doc map[string]any, loc storeLocation) map[string]any {
 		return m
 	case storeLocationSensor:
 		sensors, _ := doc["sensors"].(map[string]any)
-		byType, _ := sensors[loc.cameraID].(map[string]any)
-		byName, _ := byType[loc.sensorType].(map[string]any)
-		m, _ := byName[loc.sensorName].(map[string]any)
+		m, _ := sensors[loc.sensorID].(map[string]any)
 		return m
 	}
 	return nil
@@ -51,10 +48,7 @@ func writeLocation(doc map[string]any, loc storeLocation, values map[string]any)
 	case storeLocationCamera:
 		ensureChildMap(doc, "cameras")[loc.cameraID] = values
 	case storeLocationSensor:
-		byCamera := ensureChildMap(doc, "sensors")
-		byType := ensureChildMap(byCamera, loc.cameraID)
-		byName := ensureChildMap(byType, loc.sensorType)
-		byName[loc.sensorName] = values
+		ensureChildMap(doc, "sensors")[loc.sensorID] = values
 	}
 }
 
@@ -68,22 +62,10 @@ func deleteLocation(doc map[string]any, loc storeLocation) {
 			pruneIfEmpty(doc, "cameras")
 		}
 	case storeLocationSensor:
-		sensors, ok := doc["sensors"].(map[string]any)
-		if !ok {
-			return
+		if sensors, ok := doc["sensors"].(map[string]any); ok {
+			delete(sensors, loc.sensorID)
+			pruneIfEmpty(doc, "sensors")
 		}
-		byType, ok := sensors[loc.cameraID].(map[string]any)
-		if !ok {
-			return
-		}
-		byName, ok := byType[loc.sensorType].(map[string]any)
-		if !ok {
-			return
-		}
-		delete(byName, loc.sensorName)
-		pruneIfEmpty(byType, loc.sensorType)
-		pruneIfEmpty(sensors, loc.cameraID)
-		pruneIfEmpty(doc, "sensors")
 	}
 }
 
@@ -101,6 +83,11 @@ func pruneIfEmpty(parent map[string]any, key string) {
 		delete(parent, key)
 	}
 }
+
+const storeLayoutVersionKey = "__v"
+
+// v2: sensors keyed by persistent sensor id, old camera-keyed trees are unmappable
+const storeLayoutVersion = 2
 
 func isCanonicalStoreSection(key string) bool {
 	return key == "plugin" || key == "cameras" || key == "sensors"
@@ -121,11 +108,14 @@ func remapLegacyGoLayout(doc map[string]any, pluginID string, log *Logger) (map[
 			out[section] = v
 		}
 	}
+	if v, ok := doc[storeLayoutVersionKey]; ok {
+		out[storeLayoutVersionKey] = v
+	}
 
 	changed := false
 	for key, values := range doc {
 		switch {
-		case isCanonicalStoreSection(key):
+		case isCanonicalStoreSection(key) || key == storeLayoutVersionKey:
 		case key == pluginKey:
 			// In a mixed legacy+canonical document the canonical section is
 			// the newer write — the legacy duplicate is stale and must never win.
@@ -155,6 +145,13 @@ func remapLegacyGoLayout(doc map[string]any, pluginID string, log *Logger) (map[
 			log.Warn(fmt.Sprintf("store: unrecognized store key '%s' kept as-is", key))
 			out[key] = values
 		}
+	}
+
+	if v, _ := toInt64(out[storeLayoutVersionKey]); v != storeLayoutVersion {
+		// camera-keyed sensor storage cannot be mapped to persistent sensor ids
+		delete(out, "sensors")
+		out[storeLayoutVersionKey] = storeLayoutVersion
+		changed = true
 	}
 
 	if !changed {

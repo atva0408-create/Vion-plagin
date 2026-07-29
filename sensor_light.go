@@ -23,8 +23,8 @@ const (
 // handler — that bypasses any plugin override and only syncs state.
 type LightControl struct{ BaseSensor }
 
-func NewLightControl(name string) *LightControl {
-	s := &LightControl{BaseSensor: NewBaseSensor(name)}
+func NewLightControl(name string, opts ...SensorOption) *LightControl {
+	s := &LightControl{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		lightPropertyOn:         false,
 		lightPropertyBrightness: 100,

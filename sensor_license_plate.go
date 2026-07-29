@@ -39,8 +39,8 @@ type LicensePlateDetector interface {
 // `detected` flag is auto-derived from the detection list.
 type LicensePlateSensor struct{ BaseSensor }
 
-func NewLicensePlateSensor(name string) *LicensePlateSensor {
-	s := &LicensePlateSensor{BaseSensor: NewBaseSensor(name)}
+func NewLicensePlateSensor(name string, opts ...SensorOption) *LicensePlateSensor {
+	s := &LicensePlateSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		licensePlatePropertyDetected:   false,
 		licensePlatePropertyDetections: []LicensePlateDetection{},
@@ -121,8 +121,8 @@ type LicensePlateDetectorSensor struct {
 	LicensePlateSensor
 }
 
-func NewLicensePlateDetectorSensor(name string) *LicensePlateDetectorSensor {
-	s := &LicensePlateDetectorSensor{LicensePlateSensor: *NewLicensePlateSensor(name)}
+func NewLicensePlateDetectorSensor(name string, opts ...SensorOption) *LicensePlateDetectorSensor {
+	s := &LicensePlateDetectorSensor{LicensePlateSensor: *NewLicensePlateSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

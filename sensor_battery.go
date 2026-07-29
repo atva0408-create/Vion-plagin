@@ -25,8 +25,8 @@ const (
 // BatteryInfo reports battery level, charging state, and low-battery alerts.
 type BatteryInfo struct{ BaseSensor }
 
-func NewBatteryInfo(name string) *BatteryInfo {
-	s := &BatteryInfo{BaseSensor: NewBaseSensor(name)}
+func NewBatteryInfo(name string, opts ...SensorOption) *BatteryInfo {
+	s := &BatteryInfo{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		batteryPropertyLevel:    100,
 		batteryPropertyCharging: string(ChargingStateNotCharging),

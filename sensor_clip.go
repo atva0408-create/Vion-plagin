@@ -29,8 +29,8 @@ type ClipDetector interface {
 // from video frames. Pair with a ClipDetector implementation.
 type ClipDetectorSensor struct{ BaseSensor }
 
-func NewClipDetectorSensor(name string) *ClipDetectorSensor {
-	s := &ClipDetectorSensor{BaseSensor: NewBaseSensor(name)}
+func NewClipDetectorSensor(name string, opts ...SensorOption) *ClipDetectorSensor {
+	s := &ClipDetectorSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

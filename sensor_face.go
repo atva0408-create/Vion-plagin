@@ -41,8 +41,8 @@ type FaceDetector interface {
 // `detected` flag is auto-derived from the detection list.
 type FaceSensor struct{ BaseSensor }
 
-func NewFaceSensor(name string) *FaceSensor {
-	s := &FaceSensor{BaseSensor: NewBaseSensor(name)}
+func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor {
+	s := &FaceSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		facePropertyDetected:   false,
 		facePropertyDetections: []FaceDetection{},
@@ -121,8 +121,8 @@ type FaceDetectorSensor struct {
 	FaceSensor
 }
 
-func NewFaceDetectorSensor(name string) *FaceDetectorSensor {
-	s := &FaceDetectorSensor{FaceSensor: *NewFaceSensor(name)}
+func NewFaceDetectorSensor(name string, opts ...SensorOption) *FaceDetectorSensor {
+	s := &FaceDetectorSensor{FaceSensor: *NewFaceSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

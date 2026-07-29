@@ -49,9 +49,9 @@ type pluginSensorNamespaces struct {
 	SensorStorageRPC string
 }
 
-type sensorControllerNamespaces struct {
-	SensorSubject string
-	SensorRPC     string
+type sensorRegistryNamespaces struct {
+	SensorsSubject string
+	SensorsRPC     string
 }
 
 type sensorEventNamespaces struct {
@@ -141,27 +141,27 @@ func getPluginCameraNamespaces(pluginID, cameraID string) pluginCameraNamespaces
 	}
 }
 
-func getPluginSensorNamespaces(pluginID, cameraID, sensorID string) pluginSensorNamespaces {
+func getPluginSensorNamespaces(pluginID, sensorID string) pluginSensorNamespaces {
 	return pluginSensorNamespaces{
-		SensorStorageRPC: fmt.Sprintf("plugin.%s.camera.%s.sensor.%s.storage.rpc", pluginID, cameraID, sensorID),
+		SensorStorageRPC: fmt.Sprintf("plugin.%s.sensor.%s.storage.rpc", pluginID, sensorID),
 	}
 }
 
-func getSensorControllerNamespaces(cameraID string) sensorControllerNamespaces {
-	return sensorControllerNamespaces{
-		SensorSubject: fmt.Sprintf("camera.%s.sensors.subject", cameraID),
-		SensorRPC:     fmt.Sprintf("camera.%s.sensors.rpc", cameraID),
+func getSensorRegistryNamespaces() sensorRegistryNamespaces {
+	return sensorRegistryNamespaces{
+		SensorsSubject: "sensors.subject",
+		SensorsRPC:     "sensors.rpc",
 	}
 }
 
-func getSensorEventNamespaces(cameraID, sensorID string) sensorEventNamespaces {
+func getSensorEventNamespaces(sensorID string) sensorEventNamespaces {
 	return sensorEventNamespaces{
-		SensorSubject: fmt.Sprintf("camera.%s.sensor.%s.subject", cameraID, sensorID),
+		SensorSubject: fmt.Sprintf("sensor.%s.subject", sensorID),
 	}
 }
 
-func getSensorProviderNamespaces(pluginID, cameraID, sensorID string) sensorProviderNamespaces {
+func getSensorProviderNamespaces(pluginID, sensorID string) sensorProviderNamespaces {
 	return sensorProviderNamespaces{
-		SensorRPC: fmt.Sprintf("plugin.%s.camera.%s.sensor.%s.rpc", pluginID, cameraID, sensorID),
+		SensorRPC: fmt.Sprintf("plugin.%s.sensor.%s.rpc", pluginID, sensorID),
 	}
 }

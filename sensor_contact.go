@@ -7,8 +7,8 @@ const (
 // ContactSensor reports door/window open-close state.
 type ContactSensor struct{ BaseSensor }
 
-func NewContactSensor(name string) *ContactSensor {
-	s := &ContactSensor{BaseSensor: NewBaseSensor(name)}
+func NewContactSensor(name string, opts ...SensorOption) *ContactSensor {
+	s := &ContactSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		contactPropertyDetected: false,
 	})

@@ -39,8 +39,8 @@ type ClassifierDetector interface {
 // `detected` flag and `labels` are auto-derived from the detection list.
 type ClassifierSensor struct{ BaseSensor }
 
-func NewClassifierSensor(name string) *ClassifierSensor {
-	s := &ClassifierSensor{BaseSensor: NewBaseSensor(name)}
+func NewClassifierSensor(name string, opts ...SensorOption) *ClassifierSensor {
+	s := &ClassifierSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		classifierPropertyDetected:   false,
 		classifierPropertyDetections: []ClassifierDetection{},
@@ -128,8 +128,8 @@ type ClassifierDetectorSensor struct {
 	ClassifierSensor
 }
 
-func NewClassifierDetectorSensor(name string) *ClassifierDetectorSensor {
-	s := &ClassifierDetectorSensor{ClassifierSensor: *NewClassifierSensor(name)}
+func NewClassifierDetectorSensor(name string, opts ...SensorOption) *ClassifierDetectorSensor {
+	s := &ClassifierDetectorSensor{ClassifierSensor: *NewClassifierSensor(name, opts...)}
 	s.requiresFrames = true
 	return s
 }

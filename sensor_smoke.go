@@ -7,8 +7,8 @@ const (
 // SmokeSensor reports smoke detection state.
 type SmokeSensor struct{ BaseSensor }
 
-func NewSmokeSensor(name string) *SmokeSensor {
-	s := &SmokeSensor{BaseSensor: NewBaseSensor(name)}
+func NewSmokeSensor(name string, opts ...SensorOption) *SmokeSensor {
+	s := &SmokeSensor{BaseSensor: NewBaseSensor(name, opts...)}
 	s.writeState(map[string]any{
 		smokePropertyDetected: false,
 	})
