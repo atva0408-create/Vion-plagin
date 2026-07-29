@@ -1,6 +1,6 @@
 package sdk
 
-// LockState defines lock states (HomeKit-compatible values).
+// LockState defines lock states.
 type LockState int
 
 const (

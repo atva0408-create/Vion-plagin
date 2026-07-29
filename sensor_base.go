@@ -10,8 +10,7 @@ import (
 )
 
 // SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella
-// term for the smallest smart-home unit, like Home Assistant's "entity" or
-// HomeKit's "service": it covers measuring devices and controllable ones alike.
+// term for the smallest smart-home unit. It covers measuring devices and controllable ones alike.
 type SensorType string
 
 const (
@@ -55,15 +54,13 @@ const (
 //
 // State-modifying methods (SetOn, ReportDetections, etc.) live on the concrete
 // sensor types, not on Sensor. Code that holds a Sensor reference can read state
-// and observe changes, plus invoke UpdateValue for cross-process generic
-// property writes such as the HomeKit bridge.
+// and observe changes, plus invoke UpdateValue for cross-process generic property writes.
 type Sensor interface {
 	GetID() string
 	GetType() SensorType
 	GetCategory() SensorCategory
 	GetName() string
 	GetDisplayName() string
-	// SetDisplayName sets the label shown in the UI.
 	SetDisplayName(name string)
 	GetNativeID() string
 	GetPluginID() string
@@ -74,7 +71,9 @@ type Sensor interface {
 	SetCapabilities(caps []string)
 	// HasCapability reports whether the sensor advertises a capability.
 	HasCapability(cap string) bool
+	// GetValue returns the current value of a sensor property.
 	GetValue(property string) any
+	// GetValues returns a snapshot copy of all property values.
 	GetValues() map[string]any
 	// UpdateValue is the generic property write coming from a consumer. Concrete
 	// sensor types dispatch known properties to semantic methods (SetOn,
@@ -128,7 +127,7 @@ type sensorOptions struct {
 //
 // Sensors are standalone entities: the plugin supplies the durable identity
 // (WithNativeID), everything else belongs to the user: camera assignments,
-// display name and whether the sensor is exported to HomeKit/HA/MQTT. A plugin
+// display name and whether the sensor is exported or not. A plugin
 // never decides where its sensor is used and never handles the export itself.
 type BaseSensor struct {
 	mu                   sync.RWMutex

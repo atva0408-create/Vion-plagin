@@ -1,6 +1,6 @@
 package sdk
 
-// GarageState defines garage door states (HomeKit-compatible values).
+// GarageState defines garage door states.
 type GarageState int
 
 const (

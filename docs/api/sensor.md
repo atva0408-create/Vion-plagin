@@ -206,7 +206,7 @@ UpdateValue on a read\-only sensor: external writes are ignored.
 
 BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
 
-Sensors are standalone entities: the plugin supplies the durable identity \(WithNativeID\), everything else belongs to the user: camera assignments, display name and whether the sensor is exported to HomeKit/HA/MQTT. A plugin never decides where its sensor is used and never handles the export itself.
+Sensors are standalone entities: the plugin supplies the durable identity \(WithNativeID\), everything else belongs to the user: camera assignments, display name and whether the sensor is exported or not. A plugin never decides where its sensor is used and never handles the export itself.
 
 	type BaseSensor struct {
 	    // contains filtered or unexported fields
@@ -1145,7 +1145,7 @@ UpdateValue routes generic property writes to the semantic setters. Only targetS
 
 ## type GarageState
 
-GarageState defines garage door states \(HomeKit\-compatible values\).
+GarageState defines garage door states.
 
 	type GarageState int
 
@@ -1609,7 +1609,7 @@ UpdateValue routes generic property writes to the semantic setters. Only targetS
 
 ## type LockState
 
-LockState defines lock states \(HomeKit\-compatible values\).
+LockState defines lock states.
 
 	type LockState int
 
@@ -2246,7 +2246,7 @@ SecuritySystemState defines security system states.
 
 Sensor is the interface all sensors must implement.
 
-State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete sensor types, not on Sensor. Code that holds a Sensor reference can read state and observe changes, plus invoke UpdateValue for cross\-process generic property writes such as the HomeKit bridge.
+State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete sensor types, not on Sensor. Code that holds a Sensor reference can read state and observe changes, plus invoke UpdateValue for cross\-process generic property writes.
 
 	type Sensor interface {
 	    GetID() string
@@ -2254,7 +2254,6 @@ State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete 
 	    GetCategory() SensorCategory
 	    GetName() string
 	    GetDisplayName() string
-	    // SetDisplayName sets the label shown in the UI.
 	    SetDisplayName(name string)
 	    GetNativeID() string
 	    GetPluginID() string
@@ -2265,7 +2264,9 @@ State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete 
 	    SetCapabilities(caps []string)
 	    // HasCapability reports whether the sensor advertises a capability.
 	    HasCapability(cap string) bool
+	    // GetValue returns the current value of a sensor property.
 	    GetValue(property string) any
+	    // GetValues returns a snapshot copy of all property values.
 	    GetValues() map[string]any
 	    // UpdateValue is the generic property write coming from a consumer. Concrete
 	    // sensor types dispatch known properties to semantic methods (SetOn,
@@ -2319,7 +2320,7 @@ SensorTriggerSettings is the sensor trigger settings \(contact, doorbell, switch
 
 ## type SensorType
 
-SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella term for the smallest smart\-home unit, like Home Assistant's "entity" or HomeKit's "service": it covers measuring devices and controllable ones alike.
+SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella term for the smallest smart\-home unit. It covers measuring devices and controllable ones alike.
 
 	type SensorType string
 

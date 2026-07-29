@@ -32,7 +32,7 @@ type SensorConsumer interface {
 // camera's hardware (smart plugs, imported smart-home devices, hubs).
 //
 // The host persists each sensor as its own entity: the user assigns it to
-// cameras, renames it and decides whether it is exported to HomeKit/HA/MQTT.
+// cameras, renames it and decides whether it is exported or not.
 // Sensors that belong to a camera's hardware are registered via
 // CameraDevice.AddSensor instead.
 //
