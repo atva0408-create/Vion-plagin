@@ -114,6 +114,12 @@ type sensorLifecycle interface {
 	OnStop()
 }
 
+// deprecated pre-standalone hook names, stub window: still fired alongside
+// OnStart/OnStop, remove in the first minor after the standalone-sensors release
+type sensorLifecycleAssigned interface{ OnAssigned() }
+
+type sensorLifecycleDeassigned interface{ OnDeassigned() }
+
 type sensorOptions struct {
 	nativeID string
 }
@@ -552,14 +558,7 @@ func isDetectionSensorType(t SensorType) bool {
 func cleanupSensorWithLifecycle(outer any) {
 	type quietDeactivator interface{ deactivateQuiet() bool }
 	if qd, ok := outer.(quietDeactivator); ok && qd.deactivateQuiet() {
-		if lc, ok := outer.(sensorLifecycle); ok {
-			go func() {
-				defer func() {
-					_ = recover()
-				}()
-				lc.OnStop()
-			}()
-		}
+		fireSensorLifecycle(outer, false)
 	}
 
 	type cleanable interface{ cleanup() }
@@ -580,19 +579,32 @@ func setActiveWithLifecycle(outer any, active bool) {
 		return
 	}
 
-	lc, ok := outer.(sensorLifecycle)
-	if !ok {
-		return
-	}
-	go func() {
+	fireSensorLifecycle(outer, active)
+}
+
+func fireSensorLifecycle(outer any, active bool) {
+	// swallow, lifecycle errors must not crash the runtime
+	run := func(fn func()) {
 		defer func() {
-			// swallow, lifecycle errors must not crash the runtime
 			_ = recover()
 		}()
+		fn()
+	}
+	go func() {
 		if active {
-			lc.OnStart()
+			if lc, ok := outer.(sensorLifecycle); ok {
+				run(lc.OnStart)
+			}
+			if la, ok := outer.(sensorLifecycleAssigned); ok {
+				run(la.OnAssigned)
+			}
 		} else {
-			lc.OnStop()
+			if lc, ok := outer.(sensorLifecycle); ok {
+				run(lc.OnStop)
+			}
+			if ld, ok := outer.(sensorLifecycleDeassigned); ok {
+				run(ld.OnDeassigned)
+			}
 		}
 	}()
 }
