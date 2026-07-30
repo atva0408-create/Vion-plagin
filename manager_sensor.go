@@ -98,9 +98,29 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	}
 
 	sensorJSON := si.ToJSON()
+
+	// resolve the durable id first and wire storage with it, so registration
+	// data (modelSpec) can read sensor storage
+	ctx := context.Background()
+	resolveResult, err := m.registryProxy.Invoke(ctx, "resolveSensor", sensorJSON, m.info.ID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve sensor: %w", err)
+	}
+	sensorID, ok := resolveResult.(string)
+	if !ok || sensorID == "" {
+		return fmt.Errorf("failed to decode resolved sensor id")
+	}
+	si.setID(sensorID)
+	sensorJSON.ID = sensorID
+
+	sensorStorage, err := m.storageCtrl.createSensorStorage(s.GetID())
+	if err != nil {
+		return fmt.Errorf("failed to create sensor storage: %w", err)
+	}
+	si.setStorage(sensorStorage)
+
 	sensorJSON.ModelSpec = detectorModelSpec(s)
 
-	ctx := context.Background()
 	registerResult, err := m.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, m.info.ID)
 	if err != nil {
 		return fmt.Errorf("failed to register sensor: %w", err)
@@ -109,7 +129,6 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode sensor registration: %w", err)
 	}
-	si.setID(registration.ID)
 	si.setAssignedCameras(registration.AssignedCameraIDs)
 
 	sensorProviderNS := getSensorProviderNamespaces(m.info.ID, s.GetID())
@@ -117,13 +136,6 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	if err != nil {
 		return fmt.Errorf("failed to register sensor RPC: %w", err)
 	}
-
-	sensorStorage, err := m.storageCtrl.createSensorStorage(s.GetID())
-	if err != nil {
-		_ = rpcCleanup()
-		return fmt.Errorf("failed to create sensor storage: %w", err)
-	}
-	si.setStorage(sensorStorage)
 
 	sensor := s
 	si.initUpdateFn(func(properties map[string]any) {

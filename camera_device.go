@@ -356,16 +356,33 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 
 	sensorJSON := si.ToJSON()
 
-	sensorJSON.ModelSpec = detectorModelSpec(s)
-
 	// derived nativeId keeps per-camera instances of same-named sensors distinct
 	if sensorJSON.NativeID == "" {
 		sensorJSON.NativeID = fmt.Sprintf("%s:%s:%s", d.camera.ID, s.GetType(), s.GetName())
 	}
 
-	// register first: the host reconciles against the persisted entity and
-	// hands back the durable id every namespace binds to
+	// resolve the durable id first and wire storage with it, so registration
+	// data (modelSpec) can read sensor storage
 	ctx := context.Background()
+	resolveResult, err := d.registryProxy.Invoke(ctx, "resolveSensor", sensorJSON, d.info.ID, map[string]any{"assignCameraId": d.camera.ID})
+	if err != nil {
+		return fmt.Errorf("failed to resolve sensor: %w", err)
+	}
+	sensorID, ok := resolveResult.(string)
+	if !ok || sensorID == "" {
+		return fmt.Errorf("failed to decode resolved sensor id")
+	}
+	si.setID(sensorID)
+	sensorJSON.ID = sensorID
+
+	sensorStorage, err := d.storageCtrl.createSensorStorage(s.GetID())
+	if err != nil {
+		return fmt.Errorf("failed to create sensor storage: %w", err)
+	}
+	si.setStorage(sensorStorage)
+
+	sensorJSON.ModelSpec = detectorModelSpec(s)
+
 	registerResult, err := d.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, d.info.ID, map[string]any{"assignCameraId": d.camera.ID})
 	if err != nil {
 		return fmt.Errorf("failed to register sensor: %w", err)
@@ -374,7 +391,6 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode sensor registration: %w", err)
 	}
-	si.setID(registration.ID)
 	si.setAssignedCameras(registration.AssignedCameraIDs)
 	si.setAssignmentLocked()
 
@@ -395,12 +411,6 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	if err != nil {
 		return fmt.Errorf("failed to register sensor RPC: %w", err)
 	}
-
-	sensorStorage, err := d.storageCtrl.createSensorStorage(s.GetID())
-	if err != nil {
-		return fmt.Errorf("failed to create sensor storage: %w", err)
-	}
-	si.setStorage(sensorStorage)
 
 	frameWorkerDetectionNS := getFrameWorkerDetectionNamespaces(d.camera.ID)
 	detectionCoordinatorProxy := d.client.CreateProxy(frameWorkerDetectionNS.DetectionRPC)
