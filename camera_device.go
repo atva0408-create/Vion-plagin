@@ -26,6 +26,7 @@ type sensorInternalInit interface {
 	setID(id string)
 	setPluginID(id string)
 	setAssignedCameras(cameraIDs []string)
+	setAssignmentLocked()
 	setStorage(storage *DeviceStorage)
 	initUpdateFn(updateFn propertyUpdateFn)
 	initCapabilitiesUpdateFn(updateFn func([]string))
@@ -375,6 +376,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	}
 	si.setID(registration.ID)
 	si.setAssignedCameras(registration.AssignedCameraIDs)
+	si.setAssignmentLocked()
 
 	// assignment changes arrive on the global stream the sensor manager owns
 	if d.api != nil && d.api.SensorManager != nil {

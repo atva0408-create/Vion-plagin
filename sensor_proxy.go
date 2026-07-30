@@ -35,6 +35,7 @@ func newSensorProxy(client *rpc.Client, logger *Logger, data *storedSensorData) 
 	s.nativeID = data.NativeID
 	s.pluginID = data.PluginID
 	s.assignedCameraIDs = append([]string(nil), data.AssignedCameraIDs...)
+	s.assignmentLocked = data.BoundCameraID != ""
 	if data.DisplayName != "" {
 		s.displayName = data.DisplayName
 	}

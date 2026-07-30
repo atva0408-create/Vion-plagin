@@ -65,6 +65,7 @@ type Sensor interface {
 	GetAssignedCameraIDs() []string
 	Connected() bool
 	GetCapabilities() []string
+	AssignmentLocked() bool
 	// HasCapability reports whether the sensor advertises a capability.
 	HasCapability(cap string) bool
 	// GetValue returns the current value of a sensor property.
@@ -142,6 +143,7 @@ type BaseSensor struct {
 	connectedChanged     *Subject[bool]
 	registered           bool
 	active               bool
+	assignmentLocked     bool
 	requiresFrames       bool
 }
 
@@ -214,6 +216,12 @@ func (s *BaseSensor) GetAssignedCameraIDs() []string {
 	ids := make([]string, len(s.assignedCameraIDs))
 	copy(ids, s.assignedCameraIDs)
 	return ids
+}
+
+func (s *BaseSensor) AssignmentLocked() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.assignmentLocked
 }
 
 func (s *BaseSensor) Connected() bool {
@@ -312,6 +320,12 @@ func (s *BaseSensor) setPluginID(id string) {
 
 func (s *BaseSensor) setID(id string) {
 	s.id = id
+}
+
+func (s *BaseSensor) setAssignmentLocked() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.assignmentLocked = true
 }
 
 func (s *BaseSensor) setAssignedCameras(cameraIDs []string) {

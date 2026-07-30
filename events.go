@@ -60,6 +60,7 @@ type storedSensorData struct {
 	NativeID          string         `msgpack:"nativeId,omitempty"`
 	PluginID          string         `msgpack:"pluginId"`
 	AssignedCameraIDs []string       `msgpack:"assignedCameraIds"`
+	BoundCameraID     string         `msgpack:"boundCameraId,omitempty"`
 	Exposed           bool           `msgpack:"exposed"`
 	Connected         bool           `msgpack:"connected"`
 	Properties        map[string]any `msgpack:"properties,omitempty"`
