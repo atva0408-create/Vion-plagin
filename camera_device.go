@@ -61,6 +61,10 @@ type CameraDevice struct {
 	frameWorkerState *BehaviorSubject[bool]
 	detectionEvent   *Subject[DetectionEventData]
 
+	detectionWireMu   sync.Mutex
+	detectionWireSubs int
+	detectionWireStop func()
+
 	impl       any
 	cleanupFns []func()
 }
@@ -501,8 +505,14 @@ func (d *CameraDevice) RemoveSensor(sensorID string) error {
 // only, thumbnails on segment-start and segment-end. Returns a Disposable to
 // unsubscribe.
 func (d *CameraDevice) OnDetectionEvent(callback func(eventType DetectionEventType, event DetectionEvent)) *Disposable {
-	return d.detectionEvent.Subscribe(func(e DetectionEventData) {
+	sub := d.detectionEvent.Subscribe(func(e DetectionEventData) {
 		callback(e.Type, e.Event)
+	})
+	d.acquireDetectionWire()
+
+	return NewDisposable(func() {
+		sub.Dispose()
+		d.releaseDetectionWire()
 	})
 }
 
@@ -603,19 +613,6 @@ func (d *CameraDevice) init() error {
 		return fmt.Errorf("subscribe camera events: %w", err)
 	}
 	d.cleanupFns = append(d.cleanupFns, unsub)
-
-	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
-	unsubDetectionEvents, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
-		var msg detectionEventMessage
-		if !decodeMsgpack(d.logger, data, &msg, "detectionEventMessage") {
-			return
-		}
-		d.handleDetectionEvent(&msg)
-	})
-	if err != nil {
-		return fmt.Errorf("subscribe detection events: %w", err)
-	}
-	d.cleanupFns = append(d.cleanupFns, unsubDetectionEvents)
 
 	// the connected event may have fired before this subscription existed
 	d.refreshStates()
@@ -778,6 +775,44 @@ func (d *CameraDevice) handleDetectionEvent(msg *detectionEventMessage) {
 	})
 }
 
+func (d *CameraDevice) acquireDetectionWire() {
+	d.detectionWireMu.Lock()
+	defer d.detectionWireMu.Unlock()
+
+	d.detectionWireSubs++
+	if d.detectionWireStop != nil {
+		return
+	}
+
+	detectionEventNS := getDetectionEventNamespaces(d.camera.ID)
+	unsub, err := d.client.Subscribe(detectionEventNS.DetectionEventSubject, func(data []byte) {
+		var msg detectionEventMessage
+		if !decodeMsgpack(d.logger, data, &msg, "detectionEventMessage") {
+			return
+		}
+		d.handleDetectionEvent(&msg)
+	})
+	if err != nil {
+		d.logger.Error("subscribe detection events:", err)
+		return
+	}
+
+	d.detectionWireStop = unsub
+}
+
+func (d *CameraDevice) releaseDetectionWire() {
+	d.detectionWireMu.Lock()
+	defer d.detectionWireMu.Unlock()
+
+	if d.detectionWireSubs > 0 {
+		d.detectionWireSubs--
+	}
+	if d.detectionWireSubs == 0 && d.detectionWireStop != nil {
+		d.detectionWireStop()
+		d.detectionWireStop = nil
+	}
+}
+
 func (d *CameraDevice) cleanup() {
 	d.mu.Lock()
 	d.initialized = false
@@ -787,6 +822,14 @@ func (d *CameraDevice) cleanup() {
 		fn()
 	}
 	d.cleanupFns = nil
+
+	d.detectionWireMu.Lock()
+	if d.detectionWireStop != nil {
+		d.detectionWireStop()
+		d.detectionWireStop = nil
+	}
+	d.detectionWireSubs = 0
+	d.detectionWireMu.Unlock()
 
 	d.cameraSubject.Complete()
 	d.cameraState.Complete()
