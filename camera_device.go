@@ -29,6 +29,7 @@ type sensorInternalInit interface {
 	setStorage(storage *DeviceStorage)
 	initUpdateFn(updateFn propertyUpdateFn)
 	initCapabilitiesUpdateFn(updateFn func([]string))
+	ToJSON() sensorJSON
 }
 
 type backendPropertyReceiver interface {
@@ -344,7 +345,7 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	}
 	si.setPluginID(d.info.ID)
 
-	sensorJSON := s.ToJSON()
+	sensorJSON := si.ToJSON()
 
 	sensorJSON.ModelSpec = detectorModelSpec(s)
 
@@ -614,6 +615,7 @@ func (d *CameraDevice) init() error {
 
 	// the connected event may have fired before this subscription existed
 	d.refreshStates()
+	d.cleanupFns = append(d.cleanupFns, d.client.OnReconnect(d.refreshStates))
 
 	return nil
 }
@@ -639,16 +641,45 @@ func (d *CameraDevice) refreshStates() {
 	}
 
 	var states struct {
-		CameraState      bool `msgpack:"cameraState"`
-		FrameWorkerState bool `msgpack:"frameWorkerState"`
+		Camera           Camera `msgpack:"camera"`
+		CameraState      bool   `msgpack:"cameraState"`
+		FrameWorkerState bool   `msgpack:"frameWorkerState"`
 	}
 	if err := rpc.Decode(encoded, &states); err != nil {
 		d.logger.Error("Failed to decode refreshStates result:", err)
 		return
 	}
 
-	d.cameraState.Next(states.CameraState)
-	d.frameWorkerState.Next(states.FrameWorkerState)
+	// a resync must not wake subscribers for state they already hold
+	d.mu.RLock()
+	sameCamera := isEqual(d.camera, states.Camera, false)
+	d.mu.RUnlock()
+	if !sameCamera {
+		d.applyCamera(&states.Camera)
+	}
+	if d.cameraState.Value() != states.CameraState {
+		d.cameraState.Next(states.CameraState)
+	}
+	if d.frameWorkerState.Value() != states.FrameWorkerState {
+		d.frameWorkerState.Next(states.FrameWorkerState)
+	}
+}
+
+func (d *CameraDevice) applyCamera(cam *Camera) {
+	d.mu.Lock()
+	d.camera = *cam
+	d.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
+	for i := range cam.Sources {
+		src := cam.Sources[i]
+		rewriteStreamUrlsForRemote(&src.Urls)
+		d.sources = append(d.sources, &CameraDeviceSource{
+			input:  src,
+			device: d,
+		})
+	}
+	d.mu.Unlock()
+
+	d.cameraSubject.Next(*cam)
 }
 
 func (d *CameraDevice) getSourceByRole(role CameraRole) *CameraDeviceSource {
@@ -712,20 +743,7 @@ func (d *CameraDevice) handleCameraEvent(msg cameraEventMessage) {
 			return
 		}
 
-		d.mu.Lock()
-		d.camera = cam
-		d.sources = make([]*CameraDeviceSource, 0, len(cam.Sources))
-		for i := range cam.Sources {
-			src := cam.Sources[i]
-			rewriteStreamUrlsForRemote(&src.Urls)
-			d.sources = append(d.sources, &CameraDeviceSource{
-				input:  src,
-				device: d,
-			})
-		}
-		d.mu.Unlock()
-
-		d.cameraSubject.Next(cam)
+		d.applyCamera(&cam)
 
 	case "cameraState":
 		if msg.Data == nil {

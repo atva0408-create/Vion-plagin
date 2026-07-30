@@ -79,25 +79,23 @@ func (s *sensorProxy) Exposed() bool {
 	return s.exposed
 }
 
-// Refresh pulls the current property values from the owning sensor.
-func (s *sensorProxy) Refresh() error {
-	if s.proxy == nil {
-		return nil
-	}
-	ctx := context.Background()
-	result, err := s.proxy.Invoke(ctx, "getValues")
-	if err != nil {
-		return err
+// events published while the link was down are gone for good, so a resync
+// replaces the cached view wholesale and emits only what actually differs
+func (s *sensorProxy) applyRefreshedState(state sensorRefreshedState) {
+	if state.DisplayName != "" {
+		s.SetDisplayName(state.DisplayName)
 	}
 
-	if props, ok := result.(map[string]any); ok {
-		s.mu.Lock()
-		for k, v := range props {
-			s.properties[k] = coercePropertyValue(s.sensorType, k, v)
-		}
-		s.mu.Unlock()
+	s.mu.RLock()
+	stale := !isEqual(s.capabilities, state.Capabilities, true)
+	s.mu.RUnlock()
+	if stale {
+		s.SetCapabilities(state.Capabilities)
 	}
-	return nil
+
+	for property, value := range state.Properties {
+		s.onBackendPropertyChanged(property, coercePropertyValue(s.sensorType, property, value))
+	}
 }
 
 // UpdateValue forwards the write to the owning sensor via RPC. Read-only sensor

@@ -14,9 +14,8 @@ import (
 // exposed. Only bridge plugins implement this.
 type SensorConsumer interface {
 	// ConfigureSensors is called once on startup with every sensor this
-	// plugin may consume. Each sensor carries type, assigned cameras,
-	// exposed and connected state, so consumers decide rendering purely
-	// from that data.
+	// plugin may consume. Each sensor carries type, assigned cameras and
+	// connected state, so consumers decide rendering purely from that data.
 	ConfigureSensors(sensors []Sensor) error
 	// OnSensorAdded is called when a sensor enters this plugin's consumable
 	// view at runtime: it was created, became exposed, or its type became
@@ -54,8 +53,9 @@ type SensorManager struct {
 	external map[string]Sensor
 
 	// consumable view: exposed foreign sensors of consumed types
-	consumed    map[string]*sensorProxy
-	unsubGlobal func()
+	consumed       map[string]*sensorProxy
+	unsubGlobal    func()
+	unsubReconnect func()
 }
 
 func newSensorManager(client *rpc.Client, storageCtrl *StorageController, pluginInfo *PluginInfo, logger *Logger) *SensorManager {
@@ -97,7 +97,7 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 		return err
 	}
 
-	sensorJSON := s.ToJSON()
+	sensorJSON := si.ToJSON()
 	sensorJSON.ModelSpec = detectorModelSpec(s)
 
 	ctx := context.Background()
@@ -292,6 +292,10 @@ func (m *SensorManager) close() {
 		m.unsubGlobal()
 		m.unsubGlobal = nil
 	}
+	if m.unsubReconnect != nil {
+		m.unsubReconnect()
+		m.unsubReconnect = nil
+	}
 
 	m.mu.Lock()
 	consumed := m.consumed
@@ -322,6 +326,7 @@ func (m *SensorManager) ensureGlobalSubscription() error {
 	}
 
 	registryNS := getSensorRegistryNamespaces()
+	m.unsubReconnect = m.client.OnReconnect(m.resyncAllConsumed)
 	unsub, err := m.client.Subscribe(registryNS.SensorsSubject, func(data []byte) {
 		var msg sensorRegistryEventMessage
 		if !decodeMsgpack(m.logger, data, &msg, "sensorRegistryEventMessage") {
@@ -361,6 +366,45 @@ func (m *SensorManager) addConsumed(data *storedSensorData) *sensorProxy {
 	return proxy
 }
 
+// a dropped link loses every event published while it was down, so the whole
+// consumed view is refetched rather than trusted
+func (m *SensorManager) resyncAllConsumed() {
+	m.mu.RLock()
+	ids := make([]string, 0, len(m.consumed))
+	for id := range m.consumed {
+		ids = append(ids, id)
+	}
+	m.mu.RUnlock()
+
+	for _, id := range ids {
+		m.resyncConsumed(id)
+	}
+}
+
+func (m *SensorManager) resyncConsumed(sensorID string) {
+	m.mu.RLock()
+	proxy := m.consumed[sensorID]
+	m.mu.RUnlock()
+	if proxy == nil {
+		return
+	}
+
+	result, err := m.registryProxy.Invoke(context.Background(), "getSensorState", sensorID)
+	if err != nil || result == nil {
+		return
+	}
+	encoded, err := rpc.Encode(result)
+	if err != nil {
+		return
+	}
+	var state sensorRefreshedState
+	if !decodeMsgpack(m.logger, encoded, &state, "sensorRefreshedState") {
+		return
+	}
+
+	proxy.applyRefreshedState(state)
+}
+
 func (m *SensorManager) releaseConsumed(sensorID string) {
 	m.mu.Lock()
 	proxy, ok := m.consumed[sensorID]
@@ -396,8 +440,9 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 		m.mu.RLock()
 		owned := m.owned[added.Sensor.ID]
 		external := m.external[added.Sensor.ID]
-		alreadyConsumed := m.consumed[added.Sensor.ID] != nil
+		consumed := m.consumed[added.Sensor.ID]
 		m.mu.RUnlock()
+		alreadyConsumed := consumed != nil
 
 		for _, target := range []Sensor{owned, external} {
 			if target == nil {
@@ -407,7 +452,13 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 				si.setAssignedCameras(added.Sensor.AssignedCameraIDs)
 			}
 		}
-		if alreadyConsumed || !m.isConsumable(&added.Sensor) {
+		if alreadyConsumed {
+			// re-announced while we already hold it: the payload carries the
+			// authoritative state, so take it instead of keeping a stale view
+			consumed.applyRefreshedState(added.State)
+			return
+		}
+		if !m.isConsumable(&added.Sensor) {
 			return
 		}
 		proxy := m.addConsumed(&added.Sensor)
@@ -442,6 +493,10 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 		m.mu.RUnlock()
 		if proxy != nil {
 			proxy.setConnected(connected.Connected)
+			if connected.Connected {
+				// the owner was away, whatever it published in the meantime never reached us
+				go m.resyncConsumed(connected.SensorID)
+			}
 		}
 
 	case "sensor:exposed:changed":
