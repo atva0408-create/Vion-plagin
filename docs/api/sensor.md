@@ -226,6 +226,13 @@ Example:
 	s := &MySensor{BaseSensor: sdk.NewBaseSensor("Front Door", sdk.WithNativeID("dev-1"))}
 	
 
+<a name="BaseSensor.AssignmentLocked"></a>
+### func \(\*BaseSensor\) AssignmentLocked
+
+	func (s *BaseSensor) AssignmentLocked() bool
+
+
+
 <a name="BaseSensor.Connected"></a>
 ### func \(\*BaseSensor\) Connected
 
@@ -2258,6 +2265,7 @@ State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete 
 	    GetAssignedCameraIDs() []string
 	    Connected() bool
 	    GetCapabilities() []string
+	    AssignmentLocked() bool
 	    // HasCapability reports whether the sensor advertises a capability.
 	    HasCapability(cap string) bool
 	    // GetValue returns the current value of a sensor property.

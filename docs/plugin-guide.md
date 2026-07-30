@@ -170,9 +170,16 @@ Things to internalize:
 - A `map[string]*cameraState` keyed by `cam.ID()` is the conventional pattern for per-camera state — cheap to look up, trivial to clean up. Guard it with a `sync.Mutex`; lifecycle hooks may run concurrently with detection callbacks.
 - `cameraui.APIEventShutdown` fires when the host tears the plugin down (reload, server stop). Listeners must release everything synchronously enough for the host to stop the process. There is also `cameraui.APIEventFinishLaunching`, fired once after `ConfigureCameras` returns — useful for kicking off background work that should wait until the camera set is stable.
 
-## 4. Adding sensors to cameras
+## 4. Sensors
 
-A sensor is the unit of state the host (and other plugins) sees on a camera. Detection sensors push results from analyzing video; control sensors expose user-toggleable hardware (lights, sirens, locks); event sensors fire one-shot triggers (doorbell).
+A sensor is the smallest smart-home unit in camera.ui. Detection sensors push results from analyzing video; control sensors expose user-toggleable hardware (lights, sirens, locks); event sensors fire one-shot triggers (doorbell).
+
+Every sensor is a persisted entity of its own. The plugin supplies the durable identity, everything else belongs to the user: camera assignments, display name and whether the sensor is exported to consumers. There are two ways to register one:
+
+- **`cam.AddSensor(sensor)`** — the sensor belongs to this camera's hardware (spotlight, siren, battery, PTZ). The host locks the assignment to the camera; users cannot re-assign it.
+- **`p.API.SensorManager.AddSensor(sensor)`** — standalone device (smart plug, hub, imported smart-home device). The user assigns it to zero or more cameras in the UI.
+
+Either way, pass `cameraui.WithNativeID("...")` (e.g. the upstream device id) to the constructor so the host can reconcile the sensor across restarts by `(pluginId, nativeId)`. Without it, identity falls back to `(type, name)` and a rename creates a new sensor.
 
 For detection, construct the matching `*DetectorSensor`, wire up an implementation of the matching `*Detector` interface (the host calls it once per frame at the configured rate), then attach the sensor to the camera with `AddSensor`. The same struct can implement both — it's the typical pattern:
 
@@ -211,13 +218,9 @@ The other detector base types follow the same shape — but note the input cardi
 
 The frame-based detectors with a batch shape (face, license plate, classifier, clip) also expose a `ModelSpec()` method on the detector interface — return the input dimensions and (for classifier) the trigger labels. Every frame in a batch is scaled to that input. Normally it is a region the upstream object detector cropped around a matching detection, but when the pipeline has no decoded loop frame, the whole scene is scaled instead and you get a single full-frame entry.
 
-Smart-home sensors expose semantic methods instead. You construct one, call `cam.AddSensor`, and then call those methods when your hardware reports a change:
+Smart-home sensors expose semantic methods instead. You construct one, register it, and then call those methods when your hardware reports a change:
 
 ```go
-contact := cameraui.NewContactSensor("Front Door")
-_ = cam.AddSensor(contact)
-contact.SetDetected(true)            // door opens
-
 bell := cameraui.NewDoorbellTrigger("Doorbell")
 _ = cam.AddSensor(bell)
 bell.Trigger()                        // ring (auto-resets after 2 s)
@@ -228,7 +231,34 @@ light.SetOn()                         // turn on
 light.SetBrightness(80)               // 0-100
 ```
 
-The host removes sensors automatically when a camera is released. Your `OnCameraReleased` hook just needs to drop your reference to the sensor.
+A standalone sensor works exactly the same, it just goes through the sensor manager instead of a camera:
+
+```go
+lock := cameraui.NewLockControl("Front Door", cameraui.WithNativeID("lock.front_door"))
+if err := p.API.SensorManager.AddSensor(lock); err != nil {
+    return err
+}
+```
+
+Every sensor also has an optional lifecycle pair. Implement `OnStart()` on your sensor type to run code once the sensor is registered and its storage is ready — start pollers, subscriptions, timers there. `OnStop()` is the counterpart and runs on removal, plugin shutdown and cleanup:
+
+```go
+type pollingContact struct {
+    *cameraui.ContactSensor
+    stop chan struct{}
+}
+
+func (s *pollingContact) OnStart() {
+    s.stop = make(chan struct{})
+    go s.pollLoop(s.stop)
+}
+
+func (s *pollingContact) OnStop() {
+    close(s.stop)
+}
+```
+
+`RemoveSensor` only unregisters the runtime instance — the persisted entity stays and shows as disconnected until the user deletes it in the UI. The host removes camera-bound sensors automatically when a camera is released; your `OnCameraReleased` hook just needs to drop your reference.
 
 ## 5. Storage and configuration schema
 
@@ -653,11 +683,17 @@ func (p *MyPlugin) OnCameraAdded(cam *cameraui.CameraDevice) error {
 }
 ```
 
-## 8. Inter-plugin communication
+## 8. Consuming sensors from other plugins
 
-The cleanest way for one plugin to react to another's sensors is `cam.OnSensorProperty(sensorType, property, callback)`. It auto-subscribes when a sensor of the requested type appears (now or later), unsubscribes when it goes away, and tears down everything when you dispose the returned handle. The callback receives `(value any, timestampMs int64, sensor cameraui.Sensor)`. This is the pattern Hub plugins (HomeKit, automations) use.
+Bridge plugins (HomeKit, MQTT, automations) don't look at cameras to find sensors — they receive a **consumable view**: every sensor whose type is listed in the contract's `Consumes` and that the user exported. Implement the optional `cameraui.SensorConsumer` interface to receive it:
 
-A complete Hub consumer that listens to motion AND doorbell on every assigned camera:
+- `ConfigureSensors(sensors)` — once at startup with the view known at that point.
+- `OnSensorAdded(sensor)` — a sensor entered the view at runtime: it was created, became exposed, or its type became consumable.
+- `OnSensorReleased(sensorID)` — a sensor permanently left the view: deleted or unexposed. Plugin connectivity does NOT fire this; watch `OnConnectedChanged` on the sensor for that.
+
+Each sensor arrives as a read-only `cameraui.Sensor` with `GetType()`, `GetDisplayName()`, `Connected()`, `GetAssignedCameraIDs()`, `AssignmentLocked()`, plus `GetValue()` / `GetValues()` and the callbacks `OnPropertyChanged`, `OnConnectedChanged`, `OnAssignmentChanged`. Consumers decide rendering purely from that data — e.g. a light with `AssignmentLocked()` is camera hardware, an unassigned contact sensor is a standalone device.
+
+A complete Hub consumer that reacts to motion state and connectivity:
 
 ```go
 type HubConsumer struct {
@@ -666,6 +702,8 @@ type HubConsumer struct {
     mu   sync.Mutex
     subs map[string][]*cameraui.Disposable
 }
+
+var _ cameraui.SensorConsumer = (*HubConsumer)(nil)
 
 func NewHubConsumer(logger *cameraui.Logger, api *cameraui.PluginAPI, storage *cameraui.DeviceStorage) cameraui.Plugin {
     p := &HubConsumer{
@@ -676,22 +714,26 @@ func NewHubConsumer(logger *cameraui.Logger, api *cameraui.PluginAPI, storage *c
     return p
 }
 
-func (p *HubConsumer) ConfigureCameras(cams []*cameraui.CameraDevice) error {
-    for _, c := range cams {
-        p.bind(c)
+func (p *HubConsumer) ConfigureCameras(_ []*cameraui.CameraDevice) error { return nil }
+func (p *HubConsumer) OnCameraAdded(_ *cameraui.CameraDevice) error      { return nil }
+func (p *HubConsumer) OnCameraReleased(_ string) error                    { return nil }
+
+func (p *HubConsumer) ConfigureSensors(sensors []cameraui.Sensor) error {
+    for _, s := range sensors {
+        p.bind(s)
     }
     return nil
 }
 
-func (p *HubConsumer) OnCameraAdded(cam *cameraui.CameraDevice) error {
-    p.bind(cam)
+func (p *HubConsumer) OnSensorAdded(sensor cameraui.Sensor) error {
+    p.bind(sensor)
     return nil
 }
 
-func (p *HubConsumer) OnCameraReleased(cameraID string) error {
+func (p *HubConsumer) OnSensorReleased(sensorID string) error {
     p.mu.Lock()
-    subs := p.subs[cameraID]
-    delete(p.subs, cameraID)
+    subs := p.subs[sensorID]
+    delete(p.subs, sensorID)
     p.mu.Unlock()
     for _, s := range subs {
         s.Dispose()
@@ -699,23 +741,25 @@ func (p *HubConsumer) OnCameraReleased(cameraID string) error {
     return nil
 }
 
-func (p *HubConsumer) bind(cam *cameraui.CameraDevice) {
-    onMotion := cam.OnSensorProperty(cameraui.SensorTypeMotion, "detected",
-        func(value any, _ int64, _ cameraui.Sensor) {
-            if v, ok := value.(bool); ok && v {
-                cam.Logger().Log("motion started")
+func (p *HubConsumer) bind(sensor cameraui.Sensor) {
+    props := sensor.OnPropertyChanged(func(change cameraui.SensorPropertyChange) {
+        if sensor.GetType() == cameraui.SensorTypeMotion && change.Property == "detected" {
+            if v, ok := change.Value.(bool); ok && v {
+                p.Logger.Log(sensor.GetDisplayName() + ": motion started")
             }
-        })
+        }
+    })
 
-    onDoorbell := cam.OnSensorProperty(cameraui.SensorTypeDoorbell, "ring",
-        func(value any, _ int64, _ cameraui.Sensor) {
-            if v, ok := value.(bool); ok && v {
-                cam.Logger().Log("doorbell rang")
-            }
-        })
+    conn := sensor.OnConnectedChanged(func(connected bool) {
+        state := "offline"
+        if connected {
+            state = "online"
+        }
+        p.Logger.Log(sensor.GetDisplayName() + ": " + state)
+    })
 
     p.mu.Lock()
-    p.subs[cam.ID()] = append(p.subs[cam.ID()], onMotion, onDoorbell)
+    p.subs[sensor.GetID()] = append(p.subs[sensor.GetID()], props, conn)
     p.mu.Unlock()
 }
 
@@ -733,8 +777,8 @@ func (p *HubConsumer) disposeAll() {
 
 Two things to notice:
 
-- The bridge keeps one `[]*cameraui.Disposable` per camera and disposes it in `OnCameraReleased`. This is critical — `OnSensorProperty` keeps an internal subscription alive until you call `Dispose()`.
-- The bind happens in both `ConfigureCameras` AND `OnCameraAdded` for cameras that show up after startup. Same shape as for sensor-providing plugins.
+- The bridge keeps one `[]*cameraui.Disposable` per sensor and disposes it in `OnSensorReleased`. The callbacks keep an internal subscription alive until you call `Dispose()`.
+- The bind happens in both `ConfigureSensors` AND `OnSensorAdded` for sensors that show up after startup. Same shape as the camera lifecycle.
 
 For direct plugin-to-plugin RPC (e.g. asking a face plugin to compute embeddings on demand), use `p.API.CoreManager.ConnectToPlugin(name)`. It returns a proxy you can `Invoke(ctx, "MethodName", args...)` against:
 
@@ -753,7 +797,7 @@ Use `p.API.CoreManager.GetPluginsByInterface(cameraui.PluginInterfaceFaceDetecti
 
 ## 9. Common pitfalls
 
-- **Always release per-camera state in `OnCameraReleased`.** Tickers, vendor sessions, RTP sockets, `*Disposable`s from `OnSensorProperty` — drop them all. Leaking them keeps the camera object alive forever and prevents reassignment from working.
+- **Always release per-camera state in `OnCameraReleased`.** Tickers, vendor sessions, RTP sockets, `*Disposable`s from sensor callbacks — drop them all. Leaking them keeps the camera object alive forever and prevents reassignment from working.
 - **Don't block in `ConfigureCameras`.** It runs on the host's startup path; a slow vendor handshake delays every other plugin. Do the network work in `cameraui.APIEventFinishLaunching` instead.
 - **Don't construct sensors in `NewPlugin`.** The host hasn't finished wiring up `api` / `storage` until your constructor returns and `ConfigureCameras` is called. Construct sensors inside the lifecycle hooks where you also receive the matching `*CameraDevice`.
 - **Don't log frame data.** Detection paths run dozens of times per second per camera. Use `Logger.Debug` / `Logger.Trace` (host-gated) for anything per-frame, and prefer aggregated counters over per-event logs.
