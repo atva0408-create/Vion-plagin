@@ -2251,17 +2251,13 @@ State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete 
 	type Sensor interface {
 	    GetID() string
 	    GetType() SensorType
-	    GetCategory() SensorCategory
 	    GetName() string
 	    GetDisplayName() string
-	    SetDisplayName(name string)
 	    GetNativeID() string
 	    GetPluginID() string
 	    GetAssignedCameraIDs() []string
 	    Connected() bool
 	    GetCapabilities() []string
-	    // SetCapabilities replaces the advertised feature flags.
-	    SetCapabilities(caps []string)
 	    // HasCapability reports whether the sensor advertises a capability.
 	    HasCapability(cap string) bool
 	    // GetValue returns the current value of a sensor property.
@@ -2282,8 +2278,6 @@ State\-modifying methods \(SetOn, ReportDetections, etc.\) live on the concrete 
 	    OnAssignmentChanged(callback func([]string)) *Disposable
 	    // OnConnectedChanged fires when the owning plugin's connectivity changes.
 	    OnConnectedChanged(callback func(bool)) *Disposable
-	    // ToJSON returns the wire representation used to mirror the sensor across processes.
-	    ToJSON() sensorJSON
 	}
 
 <a name="SensorCategory"></a>

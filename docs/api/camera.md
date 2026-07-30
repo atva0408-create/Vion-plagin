@@ -289,6 +289,8 @@ CameraDevice represents a camera assigned to this plugin. Plugins receive Camera
 
 AddSensor registers a sensor that belongs to this camera's hardware \(spotlight, siren, PTZ, battery, ...\). The host assigns it to this camera and reconciles it across restarts like a standalone sensor.
 
+Registering here declares "this sensor belongs to this camera and no other": the assignment is locked, users cannot re\-assign it. For sensors the user should assign freely, register via SensorManager.AddSensor instead.
+
 <a name="CameraDevice.Connect"></a>
 ### func \(\*CameraDevice\) Connect
 
