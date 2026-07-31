@@ -273,6 +273,6 @@ func (dm *DeviceManager) handleCameraReleased(msg deviceManagerEventMessage) {
 	}
 
 	if dm.storageController != nil {
-		dm.storageController.removeCameraStorage(cameraID)
+		dm.storageController.releaseCameraStorage(cameraID)
 	}
 }

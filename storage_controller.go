@@ -51,20 +51,22 @@ func (sc *StorageController) createStorage(scope string) (*DeviceStorage, error)
 
 func (sc *StorageController) createCameraStorage(cameraID string) (*DeviceStorage, error) {
 	key := "camera." + cameraID
-	if existing := sc.storages[key]; existing != nil {
-		return existing, nil
+	storage := sc.storages[key]
+	if storage == nil {
+		loc := storeLocation{kind: storeLocationCamera, cameraID: cameraID}
+		storage = newDeviceStorage(sc.persistence, loc, sc.logger)
+		sc.storages[key] = storage
 	}
 
-	loc := storeLocation{kind: storeLocationCamera, cameraID: cameraID}
-	storage := newDeviceStorage(sc.persistence, loc, sc.logger)
-	sc.storages[key] = storage
-
-	ns := getPluginCameraNamespaces(sc.pluginInfo.ID, cameraID)
-	cleanup, err := sc.client.RegisterHandler(ns.CameraStorageRPC, storage)
-	if err != nil {
-		return nil, fmt.Errorf("failed to register camera storage RPC: %w", err)
+	// a re-added camera reuses the released storage, only the handler needs to come back
+	if storage.closeHandler == nil {
+		ns := getPluginCameraNamespaces(sc.pluginInfo.ID, cameraID)
+		cleanup, err := sc.client.RegisterHandler(ns.CameraStorageRPC, storage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to register camera storage RPC: %w", err)
+		}
+		storage.closeHandler = cleanup
 	}
-	storage.closeHandler = cleanup
 
 	return storage, nil
 }
@@ -90,18 +92,11 @@ func (sc *StorageController) createSensorStorage(sensorID string) (*DeviceStorag
 	return storage, nil
 }
 
-func (sc *StorageController) removeCameraStorage(cameraID string) {
-	key := "camera." + cameraID
-	storage := sc.storages[key]
-	if storage == nil {
-		return
+// a released camera can come back via toggle, keep schemas and persisted values, only the handler goes away
+func (sc *StorageController) releaseCameraStorage(cameraID string) {
+	if storage := sc.storages["camera."+cameraID]; storage != nil {
+		storage.unregister()
 	}
-
-	if err := storage.Destroy(); err != nil {
-		sc.logger.Error("store: destroy camera storage failed:", err)
-	}
-	storage.unregister()
-	delete(sc.storages, key)
 }
 
 // runs last in teardown so final writes from device and sensor cleanup have landed
