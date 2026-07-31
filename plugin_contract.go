@@ -97,6 +97,14 @@ const (
 	PythonVersion312 PythonVersion = "3.12"
 )
 
+// ProtocolLevel is the compatibility level of the plugin surface: the
+// plugin-facing API and the plugin wire protocol. Bumped only on breaking
+// changes, never for additive features. The CLI stamps the level a plugin was
+// built against into its bundle (`cameraui.protocolLevel` in the bundle
+// package.json); the server compares that stamp with its own level and
+// refuses to start plugins outside its supported range.
+const ProtocolLevel = 1
+
 // PluginContract is the manifest contract a plugin declares so the host knows
 // what it does and what it needs at load time. Validated before the plugin is
 // started.
