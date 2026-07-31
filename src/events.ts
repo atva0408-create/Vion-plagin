@@ -58,10 +58,20 @@ const MIN_RECONNECT_MS = 1000
 const MAX_RECONNECT_MS = 2 * 60 * 1000
 
 /** Default termination time for subscriptions */
-const DEFAULT_TERMINATION_TIME = 'PT2M'
+// long window so the loop rarely needs a renew round trip between pulls;
+// devices are free to grant less, the granted time drives the renew logic
+const DEFAULT_TERMINATION_TIME = 'PT10M'
 
-/** Default pull timeout */
-const DEFAULT_PULL_TIMEOUT = 'PT1M'
+// retry window for devices that reject a long InitialTerminationTime outright
+const FALLBACK_TERMINATION_TIME = 'PT2M'
+
+// short enough to answer before aggressive idle cutoffs (tapo kills the socket
+// after ~20s and every longer poll dies with "other side closed"); events still
+// arrive instantly, the timeout only caps the idle wait
+const DEFAULT_PULL_TIMEOUT = 'PT15S'
+
+// must exceed the pull timeout, otherwise the subscription can expire mid-poll
+const RENEW_MARGIN_MS = 90_000
 
 /** Default message limit per pull */
 const DEFAULT_MESSAGE_LIMIT = 10
@@ -112,6 +122,7 @@ export class Events extends EventEmitter {
   private shouldPoll = false
   private reconnectMs = 10
   private messageLimit = DEFAULT_MESSAGE_LIMIT
+  private subscribeTerminationTime = DEFAULT_TERMINATION_TIME
   private eventProperties: EventProperties | undefined
 
   /** Set of observed event categories during event loop */
@@ -286,7 +297,7 @@ export class Events extends EventEmitter {
 
     const body = this.buildSubscriptionBody(urlAddress, subscriptionId, `
       <Renew xmlns="http://docs.oasis-open.org/wsn/b-2">
-        <TerminationTime>${DEFAULT_TERMINATION_TIME}</TerminationTime>
+        <TerminationTime>${this.subscribeTerminationTime}</TerminationTime>
       </Renew>
     `)
 
@@ -430,7 +441,16 @@ export class Events extends EventEmitter {
       try {
         // Check if we need to create/renew subscription
         if (!this.subscription || !this.terminationTime || Date.now() > this.terminationTime.getTime()) {
-          await this.createPullPointSubscription()
+          try {
+            await this.createPullPointSubscription({ initialTerminationTime: this.subscribeTerminationTime })
+          } catch (error) {
+            if (this.subscribeTerminationTime !== FALLBACK_TERMINATION_TIME) {
+              this.subscribeTerminationTime = FALLBACK_TERMINATION_TIME
+              await this.createPullPointSubscription({ initialTerminationTime: this.subscribeTerminationTime })
+            } else {
+              throw error
+            }
+          }
           this.reconnectMs = 10
           // a healthy loop resubscribes once at start and then never again;
           // consumers can watch this to spot subscription churn (each new
@@ -462,15 +482,21 @@ export class Events extends EventEmitter {
         // Update termination time
         this.terminationTime = this.calculateTerminationTime(result)
 
-        // Try to renew subscription
-        try {
-          const renewResult = await this.renew()
-          this.terminationTime = this.calculateTerminationTime(renewResult)
-        } catch (renewError) {
-          // renew failure is not fatal (subscription may still be valid) but
-          // consumers need to see it: some cameras tear the subscription down
-          // on a failed renew and every later pull dies silently
-          this.emit('renewfailed', renewError)
+        // renew only when the window runs short: state-based cameras (thingino)
+        // collapse an on/off pulse that falls between two pulls into a single
+        // stale state, and a renew round trip after every pull is exactly such
+        // a gap. During event bursts the pulls return fast, termination stays
+        // far out and the loop goes straight back to pulling.
+        if (this.terminationTime.getTime() - Date.now() < RENEW_MARGIN_MS) {
+          try {
+            const renewResult = await this.renew()
+            this.terminationTime = this.calculateTerminationTime(renewResult)
+          } catch (renewError) {
+            // renew failure is not fatal (subscription may still be valid) but
+            // consumers need to see it: some cameras tear the subscription down
+            // on a failed renew and every later pull dies silently
+            this.emit('renewfailed', renewError)
+          }
         }
       } catch (error) {
         this.emit('error', error)
