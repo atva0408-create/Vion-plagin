@@ -106,7 +106,8 @@ func (ds *DeviceStorage) GetValue(key string, defaultValue ...any) any {
 	return nil
 }
 
-// SetValue sets a configuration value. A nil value deletes the key. Only
+// SetValue sets a configuration value. A nil value resets the key to its
+// schema default, or deletes it when the schema has none. Only
 // processes if a schema exists for the key. When the schema has Store=true
 // the call blocks until the write is durable and returns its error; values
 // outside the storable domain are rejected and the previous value kept.
@@ -125,6 +126,11 @@ func (ds *DeviceStorage) SetValue(key string, value any) error {
 	if schema == nil {
 		ds.mu.Unlock()
 		return nil
+	}
+
+	// clearing means back to default, direct Values reads must never see a hole
+	if value == nil && schema.DefaultValue != nil {
+		value = normalizeStoreValue(deepCopyValue(schema.DefaultValue))
 	}
 
 	oldValue, existed := ds.Values[key]
