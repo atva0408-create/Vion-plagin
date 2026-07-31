@@ -100,6 +100,8 @@ contractHomeKit := cameraui.PluginContract{
 
 These struct literals are illustrative — the contract is delivered to your plugin from the host via the SDK runtime, so you don't construct one yourself in `main`. Use `cameraui.GetContractValidationErrors` and `cameraui.ValidateContractConsistency` if you need to validate one programmatically.
 
+The SDK also carries a plugin protocol level (`sdk.ProtocolLevel`). The CLI stamps the level your plugin was built against into the bundle, and the server refuses to start a plugin whose level it does not support, telling the user whether the plugin or the server needs an update. You never set it yourself: rebuilding against the current SDK is all it takes.
+
 ## 3. The plugin struct
 
 Your plugin is a struct with three host-injected dependencies. The cleanest pattern is to embed `cameraui.BasePlugin` and add per-camera state next to it:

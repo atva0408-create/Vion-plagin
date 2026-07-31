@@ -114,12 +114,6 @@ type sensorLifecycle interface {
 	OnStop()
 }
 
-// deprecated pre-standalone hook names, stub window: still fired alongside
-// OnStart/OnStop, remove in the first minor after the standalone-sensors release
-type sensorLifecycleAssigned interface{ OnAssigned() }
-
-type sensorLifecycleDeassigned interface{ OnDeassigned() }
-
 type sensorOptions struct {
 	nativeID string
 }
@@ -591,19 +585,11 @@ func fireSensorLifecycle(outer any, active bool) {
 		fn()
 	}
 	go func() {
-		if active {
-			if lc, ok := outer.(sensorLifecycle); ok {
+		if lc, ok := outer.(sensorLifecycle); ok {
+			if active {
 				run(lc.OnStart)
-			}
-			if la, ok := outer.(sensorLifecycleAssigned); ok {
-				run(la.OnAssigned)
-			}
-		} else {
-			if lc, ok := outer.(sensorLifecycle); ok {
+			} else {
 				run(lc.OnStop)
-			}
-			if ld, ok := outer.(sensorLifecycleDeassigned); ok {
-				run(ld.OnDeassigned)
 			}
 		}
 	}()
