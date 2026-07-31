@@ -65,10 +65,15 @@ const DEFAULT_TERMINATION_TIME = 'PT10M'
 // retry window for devices that reject a long InitialTerminationTime outright
 const FALLBACK_TERMINATION_TIME = 'PT2M'
 
-// short enough to answer before aggressive idle cutoffs (tapo kills the socket
-// after ~20s and every longer poll dies with "other side closed"); events still
-// arrive instantly, the timeout only caps the idle wait
+// short enough to answer before aggressive idle cutoffs; events still arrive
+// instantly, the timeout only caps the idle wait
 const DEFAULT_PULL_TIMEOUT = 'PT15S'
+
+// retry timeout for devices whose http server kills any request it hasn't
+// answered yet: tapo drops the connection ~10s after the request no matter the
+// pull timeout, so only a sub-10s poll ever gets a response (C210: PT5S answers
+// after ~6s, PT15S dies with "other side closed")
+const FALLBACK_PULL_TIMEOUT = 'PT5S'
 
 // must exceed the pull timeout, otherwise the subscription can expire mid-poll
 const RENEW_MARGIN_MS = 90_000
@@ -123,6 +128,7 @@ export class Events extends EventEmitter {
   private reconnectMs = 10
   private messageLimit = DEFAULT_MESSAGE_LIMIT
   private subscribeTerminationTime = DEFAULT_TERMINATION_TIME
+  private pullTimeout = DEFAULT_PULL_TIMEOUT
   private eventProperties: EventProperties | undefined
 
   /** Set of observed event categories during event loop */
@@ -228,7 +234,7 @@ export class Events extends EventEmitter {
       throw new Error('No active subscription. Call createPullPointSubscription first.')
     }
 
-    const timeout = options.timeout ?? DEFAULT_PULL_TIMEOUT
+    const timeout = options.timeout ?? this.pullTimeout
     const messageLimit = options.messageLimit ?? this.messageLimit
 
     const subscriptionId = this.subscription.subscriptionReference.referenceParameters?.subscriptionId
@@ -459,7 +465,19 @@ export class Events extends EventEmitter {
         }
 
         // Pull messages
-        const result = await this.pullMessages({ messageLimit: this.messageLimit })
+        let result: PullMessagesResult
+        try {
+          result = await this.pullMessages({ messageLimit: this.messageLimit })
+        } catch (error) {
+          // the http client already retried once, so a surfaced socket error
+          // means two dead polls in a row: assume the device kills unanswered
+          // requests early and poll shorter from now on
+          if (this.pullTimeout !== FALLBACK_PULL_TIMEOUT && this.isRetryableError(error)) {
+            this.pullTimeout = FALLBACK_PULL_TIMEOUT
+            this.emit('pulltimeoutfallback', FALLBACK_PULL_TIMEOUT)
+          }
+          throw error
+        }
         this.reconnectMs = 10
         this.emit('pull', result.notificationMessage?.length ?? 0)
 
