@@ -50,4 +50,8 @@ type CameraFrameWorkerSettings struct {
 	// decodes this camera (master or assigned worker); an unusable selection
 	// falls back to auto.
 	Decoder *FrameWorkerDecoderSettings `msgpack:"decoder,omitempty" json:"decoder,omitempty"`
+	// WorkerDecoder is the decoder hardware selection used instead of Decoder
+	// while this camera decodes on its assigned worker. Falls back to Decoder
+	// when nil.
+	WorkerDecoder *FrameWorkerDecoderSettings `msgpack:"workerDecoder,omitempty" json:"workerDecoder,omitempty"`
 }
