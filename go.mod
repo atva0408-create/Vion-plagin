@@ -3,7 +3,7 @@ module github.com/cameraui/sdk/go
 go 1.25.0
 
 require (
-	github.com/cameraui/rpc/go v1.0.7
+	github.com/cameraui/rpc/go v1.0.8
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
