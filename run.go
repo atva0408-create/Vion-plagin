@@ -44,9 +44,10 @@ func Run(constructor pluginConstructor) {
 	pluginID := os.Getenv("PLUGIN_ID")
 
 	namespaces := getPluginNamespaces(pluginID)
+	endpoints := strings.Split(os.Getenv("PROXY_ENDPOINTS"), ",")
 	client := rpc.NewClient(rpc.ClientOptions{
 		Name:    namespaces.PluginChild,
-		Servers: strings.Split(os.Getenv("PROXY_ENDPOINTS"), ","),
+		Servers: endpoints,
 		Auth: &rpc.AuthOptions{
 			User:     os.Getenv("PROXY_USER"),
 			Password: os.Getenv("PROXY_PASSWORD"),
@@ -69,7 +70,7 @@ func Run(constructor pluginConstructor) {
 
 	ctx := context.Background()
 	if err := client.Connect(ctx); err != nil {
-		logger.Error("Failed to connect to proxy server:", err)
+		logger.Error(fmt.Sprintf("camera.ui not reachable on %s: %v", strings.Join(endpoints, ", "), err))
 		os.Exit(1)
 	}
 
