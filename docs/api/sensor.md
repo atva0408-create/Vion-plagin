@@ -1166,7 +1166,7 @@ GarageState defines garage door states.
 	    GarageStateStopped GarageState = 4 // Door stopped part-way
 	)
 
-<a name="Go2RtcRTSPSource"></a>
+<a name="GasSensor"></a>
 
 ## type HumidityInfo
 
@@ -1228,7 +1228,7 @@ Example:
 
 UpdateValue on a read\-only sensor: external writes are ignored.
 
-<a name="ImageMetadata"></a>
+<a name="IlluminanceInfo"></a>
 
 ## type LeakSensor
 
@@ -2350,6 +2350,16 @@ SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella term 
 	    SensorTypeOccupancy      SensorType = "occupancy"      // Occupancy/presence sensor
 	    SensorTypeSmoke          SensorType = "smoke"          // Smoke detector
 	    SensorTypeLeak           SensorType = "leak"           // Water leak detector
+	    SensorTypeGas            SensorType = "gas"            // Gas detector
+	    SensorTypeCarbonMonoxide SensorType = "carbonMonoxide" // Carbon monoxide detector
+	    SensorTypeHeat           SensorType = "heat"           // Heat alarm
+	    SensorTypeCold           SensorType = "cold"           // Cold alarm
+	    SensorTypeVibration      SensorType = "vibration"      // Vibration sensor
+	    SensorTypeTamper         SensorType = "tamper"         // Tamper sensor
+	    SensorTypeProblem        SensorType = "problem"        // Generic problem/fault sensor
+	    SensorTypePower          SensorType = "power"          // Power detection sensor
+	    SensorTypeIlluminance    SensorType = "illuminance"    // Illuminance sensor (lx)
+	    SensorTypeCarbonDioxide  SensorType = "carbonDioxide"  // Carbon dioxide sensor (ppm)
 	    SensorTypeGarage         SensorType = "garage"         // Garage door opener
 	    SensorTypeBattery        SensorType = "battery"        // Battery level and charging state
 	)
@@ -2583,7 +2593,7 @@ Example:
 
 UpdateValue routes generic property writes to the semantic setters.
 
-<a name="TemperatureInfo"></a>
+<a name="TamperSensor"></a>
 
 ## type TemperatureInfo
 
@@ -2671,4 +2681,4 @@ TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity
 	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
 	}
 
-<a name="VideoCodec"></a>
+<a name="VibrationSensor"></a>

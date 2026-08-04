@@ -796,7 +796,7 @@ CameraUiSettings is UI display settings for a camera.
 	    AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 	}
 
-<a name="ChargingState"></a>
+<a name="CarbonDioxideInfo"></a>
 
 ## type DetectionEvent
 
@@ -1053,7 +1053,7 @@ Go2RtcWSSource contains WebSocket streaming URLs from go2rtc.
 	    MSE string `msgpack:"mse,omitempty" json:"mse,omitempty"`
 	}
 
-<a name="HumidityInfo"></a>
+<a name="HeatSensor"></a>
 
 ## type LineDirection
 
@@ -1144,7 +1144,7 @@ Point is a zone polygon coordinate as \[x, y\] \(0\-100 percentage\).
 
 	type Point [2]float64
 
-<a name="ProbeAudioCodec"></a>
+<a name="PowerSensor"></a>
 
 ## type ProbeAudioCodec
 
@@ -1191,7 +1191,7 @@ ProbeStream is the stream probe result containing SDP and track information.
 	    Video []VideoStreamInfo `msgpack:"video,omitempty" json:"video,omitempty"`
 	}
 
-<a name="PropertyChangeEvent"></a>
+<a name="ProblemSensor"></a>
 
 ## type PropertyChangeEvent
 

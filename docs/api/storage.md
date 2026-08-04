@@ -152,7 +152,7 @@ SetInternalValue sets a system\-internal value \(e.g. \_displayName\) without re
 
 	func (ds *DeviceStorage) SetValue(key string, value any) error
 
-SetValue sets a configuration value. A nil value deletes the key. Only processes if a schema exists for the key. When the schema has Store=true the call blocks until the write is durable and returns its error; values outside the storable domain are rejected and the previous value kept. OnSet\(newValue, oldValue\) fires detached after the persist.
+SetValue sets a configuration value. A nil value resets the key to its schema default, or deletes it when the schema has none. Only processes if a schema exists for the key. When the schema has Store=true the call blocks until the write is durable and returns its error; values outside the storable domain are rejected and the previous value kept. OnSet\(newValue, oldValue\) fires detached after the persist.
 
 <a name="DeviceStorage.SubmitValue"></a>
 ### func \(\*DeviceStorage\) SubmitValue
