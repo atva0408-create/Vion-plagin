@@ -108,6 +108,9 @@ type sensorJSON struct {
 	DisplayName    string         `msgpack:"displayName" json:"displayName"`
 	Category       SensorCategory `msgpack:"category" json:"category"`
 	NativeID       string         `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	Origin         string         `msgpack:"origin,omitempty" json:"origin,omitempty"`
+	Exposed        *bool          `msgpack:"exposed,omitempty" json:"exposed,omitempty"`
+	Hidden         *bool          `msgpack:"hidden,omitempty" json:"hidden,omitempty"`
 	PluginID       string         `msgpack:"pluginId,omitempty" json:"pluginId,omitempty"`
 	Properties     map[string]any `msgpack:"properties" json:"properties"`
 	Capabilities   []string       `msgpack:"capabilities" json:"capabilities"`
@@ -126,6 +129,9 @@ type sensorLifecycle interface {
 
 type sensorOptions struct {
 	nativeID string
+	origin   string
+	exposed  *bool
+	hidden   *bool
 }
 
 // BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
@@ -140,6 +146,9 @@ type BaseSensor struct {
 	name                 string
 	displayName          string
 	nativeID             string
+	origin               string
+	initialExposed       *bool
+	initialHidden        *bool
 	pluginID             string
 	assignedCameraIDs    []string
 	capabilities         []string
@@ -177,6 +186,9 @@ func NewBaseSensor(name string, opts ...SensorOption) BaseSensor {
 		name:                name,
 		displayName:         name,
 		nativeID:            cfg.nativeID,
+		origin:              cfg.origin,
+		initialExposed:      cfg.exposed,
+		initialHidden:       cfg.hidden,
 		properties:          make(map[string]any),
 		capabilities:        make([]string, 0),
 		propertyChanged:     NewSubject[SensorPropertyChange](),
@@ -434,6 +446,9 @@ func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) 
 		DisplayName:    s.displayName,
 		Category:       category,
 		NativeID:       s.nativeID,
+		Origin:         s.origin,
+		Exposed:        s.initialExposed,
+		Hidden:         s.initialHidden,
 		PluginID:       s.pluginID,
 		Properties:     props,
 		Capabilities:   s.capabilities,
@@ -508,6 +523,30 @@ func (s *BaseSensor) deactivateQuiet() bool {
 func WithNativeID(nativeID string) SensorOption {
 	return func(o *sensorOptions) {
 		o.nativeID = nativeID
+	}
+}
+
+// WithOrigin marks the source system the sensor was imported from (e.g.
+// "homeassistant"). Export bridges targeting that system skip the sensor.
+func WithOrigin(origin string) SensorOption {
+	return func(o *sensorOptions) {
+		o.origin = origin
+	}
+}
+
+// WithExposed sets the initial export state on first creation; the user's
+// later choice wins.
+func WithExposed(exposed bool) SensorOption {
+	return func(o *sensorOptions) {
+		o.exposed = &exposed
+	}
+}
+
+// WithHidden sets the initial hidden state on first creation; the user's
+// later choice wins.
+func WithHidden(hidden bool) SensorOption {
+	return func(o *sensorOptions) {
+		o.hidden = &hidden
 	}
 }
 
