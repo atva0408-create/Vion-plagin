@@ -108,10 +108,30 @@ type PluginAssignments struct {
 	Smoke []AssignedPlugin `msgpack:"smoke,omitempty" json:"smoke,omitempty"`
 	// Leak are the assigned leak sensor plugins.
 	Leak []AssignedPlugin `msgpack:"leak,omitempty" json:"leak,omitempty"`
+	// Gas are the assigned gas sensor plugins.
+	Gas []AssignedPlugin `msgpack:"gas,omitempty" json:"gas,omitempty"`
+	// CarbonMonoxide are the assigned carbon monoxide sensor plugins.
+	CarbonMonoxide []AssignedPlugin `msgpack:"carbonMonoxide,omitempty" json:"carbonMonoxide,omitempty"`
+	// Heat are the assigned heat sensor plugins.
+	Heat []AssignedPlugin `msgpack:"heat,omitempty" json:"heat,omitempty"`
+	// Cold are the assigned cold sensor plugins.
+	Cold []AssignedPlugin `msgpack:"cold,omitempty" json:"cold,omitempty"`
+	// Vibration are the assigned vibration sensor plugins.
+	Vibration []AssignedPlugin `msgpack:"vibration,omitempty" json:"vibration,omitempty"`
+	// Tamper are the assigned tamper sensor plugins.
+	Tamper []AssignedPlugin `msgpack:"tamper,omitempty" json:"tamper,omitempty"`
+	// Problem are the assigned problem sensor plugins.
+	Problem []AssignedPlugin `msgpack:"problem,omitempty" json:"problem,omitempty"`
+	// Power are the assigned power sensor plugins.
+	Power []AssignedPlugin `msgpack:"power,omitempty" json:"power,omitempty"`
 	// Temperature are the assigned temperature info plugins.
 	Temperature []AssignedPlugin `msgpack:"temperature,omitempty" json:"temperature,omitempty"`
 	// Humidity are the assigned humidity info plugins.
 	Humidity []AssignedPlugin `msgpack:"humidity,omitempty" json:"humidity,omitempty"`
+	// Illuminance are the assigned illuminance info plugins.
+	Illuminance []AssignedPlugin `msgpack:"illuminance,omitempty" json:"illuminance,omitempty"`
+	// CarbonDioxide are the assigned carbon dioxide info plugins.
+	CarbonDioxide []AssignedPlugin `msgpack:"carbonDioxide,omitempty" json:"carbonDioxide,omitempty"`
 	// Classifier are the assigned image classifier plugins.
 	Classifier []AssignedPlugin `msgpack:"classifier,omitempty" json:"classifier,omitempty"`
 	// Hub are the assigned hub/bridge plugins.

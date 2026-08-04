@@ -35,6 +35,16 @@ const (
 	SensorTypeOccupancy      SensorType = "occupancy"      // Occupancy/presence sensor
 	SensorTypeSmoke          SensorType = "smoke"          // Smoke detector
 	SensorTypeLeak           SensorType = "leak"           // Water leak detector
+	SensorTypeGas            SensorType = "gas"            // Gas detector
+	SensorTypeCarbonMonoxide SensorType = "carbonMonoxide" // Carbon monoxide detector
+	SensorTypeHeat           SensorType = "heat"           // Heat alarm
+	SensorTypeCold           SensorType = "cold"           // Cold alarm
+	SensorTypeVibration      SensorType = "vibration"      // Vibration sensor
+	SensorTypeTamper         SensorType = "tamper"         // Tamper sensor
+	SensorTypeProblem        SensorType = "problem"        // Generic problem/fault sensor
+	SensorTypePower          SensorType = "power"          // Power detection sensor
+	SensorTypeIlluminance    SensorType = "illuminance"    // Illuminance sensor (lx)
+	SensorTypeCarbonDioxide  SensorType = "carbonDioxide"  // Carbon dioxide sensor (ppm)
 	SensorTypeGarage         SensorType = "garage"         // Garage door opener
 	SensorTypeBattery        SensorType = "battery"        // Battery level and charging state
 )
