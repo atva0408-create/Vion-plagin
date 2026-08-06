@@ -81,6 +81,9 @@ type EventSegment struct {
 	FirstSeen int64 `msgpack:"firstSeen" json:"firstSeen"`
 	// LastSeen is the segment end time (Unix ms).
 	LastSeen int64 `msgpack:"lastSeen" json:"lastSeen"`
+	// ThumbnailAt is the Unix ms of the moment this segment's thumbnail shows, so
+	// clients can place it on a timeline.
+	ThumbnailAt int64 `msgpack:"thumbnailAt,omitempty" json:"thumbnailAt,omitempty"`
 	// Thumbnail is the best-selected JPEG scene thumbnail for this segment. Present on
 	// 'segment-start' and 'segment-end', and on the first 'segment-update' that has a candidate.
 	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
