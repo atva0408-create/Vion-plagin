@@ -143,6 +143,14 @@ func writeStoreBytes(path string, buf []byte, log *Logger) error {
 
 	err := func() error {
 		f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if errors.Is(err, fs.ErrNotExist) {
+			// the volume can be pulled away under a running plugin (backup
+			// restore, manual cleanup), writing again must recreate it
+			if mkErr := os.MkdirAll(filepath.Dir(path), 0o755); mkErr != nil {
+				return err
+			}
+			f, err = os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		}
 		if err != nil {
 			return err
 		}

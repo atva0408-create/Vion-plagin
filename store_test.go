@@ -95,6 +95,34 @@ func TestReadStoreFileMissing(t *testing.T) {
 	}
 }
 
+func TestWriteStoreFileRecreatesMissingDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "volume")
+	path := filepath.Join(dir, "store.cui")
+	log := testLogger()
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeStoreFile(path, map[string]any{"plugin": map[string]any{"a": int64(1)}}, log); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeStoreFile(path, map[string]any{"plugin": map[string]any{"a": int64(2)}}, log); err != nil {
+		t.Fatalf("write after dir removal: %v", err)
+	}
+
+	payload, found, err := readStoreFile(path, log)
+	if err != nil || !found {
+		t.Fatalf("reread failed: found=%v err=%v", found, err)
+	}
+	if payload["plugin"].(map[string]any)["a"] != int64(2) {
+		t.Errorf("payload mismatch: %v", payload)
+	}
+}
+
 func TestReadStoreFileBackupFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "store.cui")
