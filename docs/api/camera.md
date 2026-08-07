@@ -660,10 +660,9 @@ UseForSnapshot returns whether this source is used for snapshots.
 CameraFrameWorkerSettings is frame worker \(decoder\) settings.
 
 	type CameraFrameWorkerSettings struct {
-	    // FPS is the target frames per second for detection.
-	    FPS int `msgpack:"fps" json:"fps"`
-	    // HQSnapshots captures event thumbnails from the highest-resolution source.
-	    HQSnapshots bool `msgpack:"hqSnapshots,omitempty" json:"hqSnapshots,omitempty"`
+	    // MainStreamAnalysis analyses the main stream while something is detected,
+	    // instead of the detection stream.
+	    MainStreamAnalysis bool `msgpack:"mainStreamAnalysis,omitempty" json:"mainStreamAnalysis,omitempty"`
 	    // Decoder is the decoder hardware selection. Applies on the machine that
 	    // decodes this camera (master or assigned worker); an unusable selection
 	    // falls back to auto.
