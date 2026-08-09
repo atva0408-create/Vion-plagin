@@ -13,6 +13,8 @@ const (
 	JsonSchemaTypeBoolean JsonSchemaType = "boolean"
 	// JsonSchemaTypeArray renders a repeatable list of Items entries.
 	JsonSchemaTypeArray JsonSchemaType = "array"
+	// JsonSchemaTypeObject renders the keyed Properties sub-fields as one value.
+	JsonSchemaTypeObject JsonSchemaType = "object"
 	// JsonSchemaTypeButton renders an action button; no value is stored.
 	JsonSchemaTypeButton JsonSchemaType = "button"
 	// JsonSchemaTypeSubmit renders a button that submits the form to OnClick.
@@ -186,13 +188,19 @@ type JsonSchema struct {
 
 	// Enum lists allowed string values; renders as a select control.
 	Enum []string `json:"enum,omitempty" msgpack:"enum,omitempty"`
+	// EnumLabels maps enum values to display labels; unmapped values show raw.
+	EnumLabels map[string]string `json:"enumLabels,omitempty" msgpack:"enumLabels,omitempty"`
 	// Multiple allows selecting more than one enum value.
 	Multiple bool `json:"multiple,omitempty" msgpack:"multiple,omitempty"`
+	// MinItems is the minimum number of entries (array) or selections (multi-enum).
+	MinItems *int `json:"minItems,omitempty" msgpack:"minItems,omitempty"`
 
 	// Opened expands array items by default (Type=array only).
 	Opened bool `json:"opened,omitempty" msgpack:"opened,omitempty"`
 	// Items defines the schema for each entry of an array field.
 	Items *JsonSchema `json:"items,omitempty" msgpack:"items,omitempty"`
+	// Properties defines the keyed sub-fields of an object field (Type=object only).
+	Properties []JsonSchema `json:"properties,omitempty" msgpack:"properties,omitempty"`
 
 	// Color is the button color variant (Type=button or Type=submit only).
 	Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
@@ -257,14 +265,27 @@ func (s *JsonSchema) ToMap() map[string]any {
 	if len(s.Enum) > 0 {
 		m["enum"] = s.Enum
 	}
+	if len(s.EnumLabels) > 0 {
+		m["enumLabels"] = s.EnumLabels
+	}
 	if s.Multiple {
 		m["multiple"] = true
+	}
+	if s.MinItems != nil {
+		m["minItems"] = *s.MinItems
 	}
 	if s.Opened {
 		m["opened"] = true
 	}
 	if s.Items != nil {
 		m["items"] = s.Items.ToMap()
+	}
+	if len(s.Properties) > 0 {
+		properties := make([]map[string]any, len(s.Properties))
+		for i := range s.Properties {
+			properties[i] = s.Properties[i].ToMap()
+		}
+		m["properties"] = properties
 	}
 	if s.Color != "" {
 		m["color"] = string(s.Color)

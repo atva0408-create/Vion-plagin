@@ -828,18 +828,6 @@ DetectionEvent is an aggregated detection event with lifecycle \(start \-\> upda
 	    // currently-active triggers. Monotonically non-decreasing during the event lifetime.
 	    // Updated on each update / segment-* message.
 	    ExpectedEndTime int64 `msgpack:"expectedEndTime,omitempty" json:"expectedEndTime,omitempty"`
-	    // Thumbnail is a full-frame downscaled JPEG captured at event start. Inline only
-	    // on the first message that delivers it (start or the first update); the NVR
-	    // plugin persists it and clients fetch it on demand via GetEventThumbnails.
-	    Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
-	    // ThumbnailAt is the Unix ms of the moment the current event thumbnail shows
-	    // (best-shot capture time, or scene capture time for the fallback). Lets clients
-	    // label the card with the image's time and anchor playback at the span containing it.
-	    ThumbnailAt int64 `msgpack:"thumbnailAt,omitempty" json:"thumbnailAt,omitempty"`
-	    // HasRecording reports whether recorded footage overlaps this event's time window.
-	    // Populated only when the events query explicitly requests it (e.g. the recordings
-	    // browser); the zero value otherwise carries no meaning.
-	    HasRecording bool `msgpack:"hasRecording,omitempty" json:"hasRecording,omitempty"`
 	}
 
 <a name="DetectionEventData"></a>

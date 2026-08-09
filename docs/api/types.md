@@ -22,7 +22,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 <a name="ProtocolLevel"></a>ProtocolLevel is the compatibility level of the plugin surface: the plugin\-facing API and the plugin wire protocol. Bumped only on breaking changes, never for additive features. The CLI stamps the level a plugin was built against into its bundle \(\`cameraui.protocolLevel\` in the bundle package.json\); the server compares that stamp with its own level and refuses to start plugins outside its supported range.
 
-	const ProtocolLevel = 1
+	const ProtocolLevel = 2
 
 <a name="SirenCapabilityVolume"></a>Optional capabilities of a siren control.
 

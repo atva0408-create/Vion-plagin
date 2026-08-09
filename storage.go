@@ -581,6 +581,16 @@ func generateDefaultValue(s *JsonSchema) any {
 		return false
 	case JsonSchemaTypeArray:
 		return []any{}
+	case JsonSchemaTypeObject:
+		obj := make(map[string]any, len(s.Properties))
+		for i := range s.Properties {
+			p := &s.Properties[i]
+			if p.Type == JsonSchemaTypeButton || p.Type == JsonSchemaTypeSubmit {
+				continue
+			}
+			obj[p.Key] = generateDefaultValue(p)
+		}
+		return obj
 	default:
 		return nil
 	}

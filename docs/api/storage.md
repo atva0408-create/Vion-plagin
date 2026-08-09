@@ -226,13 +226,19 @@ One struct covers every schema variant, with Type as the discriminator. Only the
 	
 	    // Enum lists allowed string values; renders as a select control.
 	    Enum []string `json:"enum,omitempty" msgpack:"enum,omitempty"`
+	    // EnumLabels maps enum values to display labels; unmapped values show raw.
+	    EnumLabels map[string]string `json:"enumLabels,omitempty" msgpack:"enumLabels,omitempty"`
 	    // Multiple allows selecting more than one enum value.
 	    Multiple bool `json:"multiple,omitempty" msgpack:"multiple,omitempty"`
+	    // MinItems is the minimum number of entries (array) or selections (multi-enum).
+	    MinItems *int `json:"minItems,omitempty" msgpack:"minItems,omitempty"`
 	
 	    // Opened expands array items by default (Type=array only).
 	    Opened bool `json:"opened,omitempty" msgpack:"opened,omitempty"`
 	    // Items defines the schema for each entry of an array field.
 	    Items *JsonSchema `json:"items,omitempty" msgpack:"items,omitempty"`
+	    // Properties defines the keyed sub-fields of an object field (Type=object only).
+	    Properties []JsonSchema `json:"properties,omitempty" msgpack:"properties,omitempty"`
 	
 	    // Color is the button color variant (Type=button or Type=submit only).
 	    Color ButtonColor `json:"color,omitempty" msgpack:"color,omitempty"`
@@ -272,6 +278,8 @@ JsonSchemaType is the field type discriminating which UI control renders the val
 	    JsonSchemaTypeBoolean JsonSchemaType = "boolean"
 	    // JsonSchemaTypeArray renders a repeatable list of Items entries.
 	    JsonSchemaTypeArray JsonSchemaType = "array"
+	    // JsonSchemaTypeObject renders the keyed Properties sub-fields as one value.
+	    JsonSchemaTypeObject JsonSchemaType = "object"
 	    // JsonSchemaTypeButton renders an action button; no value is stored.
 	    JsonSchemaTypeButton JsonSchemaType = "button"
 	    // JsonSchemaTypeSubmit renders a button that submits the form to OnClick.
