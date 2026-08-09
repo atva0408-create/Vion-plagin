@@ -1,17 +1,5 @@
 package sdk
 
-// EventDescription is an AI-generated description of a detection event.
-type EventDescription struct {
-	// Title is a brief title of what occurred.
-	Title string `msgpack:"title" json:"title"`
-	// Description is a chronological narrative of the scene.
-	Description string `msgpack:"description" json:"description"`
-	// Summary is a two-sentence notification-friendly summary.
-	Summary string `msgpack:"summary" json:"summary"`
-	// ThreatLevel is the threat level: 0 = normal, 1 = suspicious, 2 = threat.
-	ThreatLevel int `msgpack:"threatLevel" json:"threatLevel"`
-}
-
 // DetectionEvent is an aggregated detection event with lifecycle (start -> update -> end).
 // Groups individual sensor detections into structured events.
 type DetectionEvent struct {
@@ -41,18 +29,6 @@ type DetectionEvent struct {
 	// currently-active triggers. Monotonically non-decreasing during the event lifetime.
 	// Updated on each update / segment-* message.
 	ExpectedEndTime int64 `msgpack:"expectedEndTime,omitempty" json:"expectedEndTime,omitempty"`
-	// Thumbnail is a full-frame downscaled JPEG captured at event start. Inline only
-	// on the first message that delivers it (start or the first update); the NVR
-	// plugin persists it and clients fetch it on demand via GetEventThumbnails.
-	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
-	// ThumbnailAt is the Unix ms of the moment the current event thumbnail shows
-	// (best-shot capture time, or scene capture time for the fallback). Lets clients
-	// label the card with the image's time and anchor playback at the span containing it.
-	ThumbnailAt int64 `msgpack:"thumbnailAt,omitempty" json:"thumbnailAt,omitempty"`
-	// HasRecording reports whether recorded footage overlaps this event's time window.
-	// Populated only when the events query explicitly requests it (e.g. the recordings
-	// browser); the zero value otherwise carries no meaning.
-	HasRecording bool `msgpack:"hasRecording,omitempty" json:"hasRecording,omitempty"`
 }
 
 // EventTrigger is an event trigger (motion, audio, sensor, or line-crossing).
@@ -81,20 +57,12 @@ type EventSegment struct {
 	FirstSeen int64 `msgpack:"firstSeen" json:"firstSeen"`
 	// LastSeen is the segment end time (Unix ms).
 	LastSeen int64 `msgpack:"lastSeen" json:"lastSeen"`
-	// ThumbnailAt is the Unix ms of the moment this segment's thumbnail shows, so
-	// clients can place it on a timeline.
-	ThumbnailAt int64 `msgpack:"thumbnailAt,omitempty" json:"thumbnailAt,omitempty"`
-	// Thumbnail is the best-selected JPEG scene thumbnail for this segment. Present on
-	// 'segment-start' and 'segment-end', and on the first 'segment-update' that has a candidate.
-	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
 	// Detections are the object detections in this segment.
 	Detections []EventDetection `msgpack:"detections" json:"detections"`
 	// Attributes are unified attributes (faces, plates, classifications).
 	Attributes []EventAttribute `msgpack:"attributes" json:"attributes"`
 	// Zones lists the names of detection zones any detection in this segment overlapped (deduplicated).
 	Zones []string `msgpack:"zones,omitempty" json:"zones,omitempty"`
-	// Description is an AI-generated description for this segment.
-	Description *EventDescription `msgpack:"description,omitempty" json:"description,omitempty"`
 }
 
 // EventDetection is an aggregated object detection within a segment.
@@ -105,13 +73,6 @@ type EventDetection struct {
 	Score float64 `msgpack:"score" json:"score"`
 	// MaxCount is the maximum simultaneous count in a single frame.
 	MaxCount int `msgpack:"maxCount" json:"maxCount"`
-	// Box is the bounding box of the highest-confidence detection (normalized 0-1).
-	Box *BoundingBox `msgpack:"box,omitempty" json:"box,omitempty"`
-	// Thumbnail is the best-selected JPEG thumbnail crop. Present on 'segment-start' and
-	// 'segment-end', omitted when it matches the segment thumbnail.
-	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
-	// TrackID is the object tracker ID (links this detection across frames).
-	TrackID int `msgpack:"trackId,omitempty" json:"trackId,omitempty"`
 	// Moving indicates whether the object was moving (true) or stationary (false).
 	Moving *bool `msgpack:"moving,omitempty" json:"moving,omitempty"`
 }
@@ -124,17 +85,4 @@ type EventAttribute struct {
 	Label string `msgpack:"label" json:"label"`
 	// Confidence is the detection confidence (0-1).
 	Confidence float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
-	// Thumbnail is the best-selected JPEG thumbnail crop. Present on 'segment-start' and
-	// 'segment-end', and on 'segment-update' for unknown faces.
-	Thumbnail []byte `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"`
-	// Embedding is the face embedding vector for unknown face persistence. Only present for face attributes.
-	Embedding []float64 `msgpack:"embedding,omitempty" json:"embedding,omitempty"`
-	// EmbeddingModel is the embedding model identifier. Only present for face attributes with embedding.
-	EmbeddingModel string `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
-	// ClipEmbedding is the CLIP embedding vector for semantic search. Only present for clip attributes.
-	ClipEmbedding []float64 `msgpack:"clipEmbedding,omitempty" json:"clipEmbedding,omitempty"`
-	// ClipEmbeddingModel is the CLIP embedding model identifier. Only present for clip attributes with embedding.
-	ClipEmbeddingModel string `msgpack:"clipEmbeddingModel,omitempty" json:"clipEmbeddingModel,omitempty"`
-	// ParentTrackID is the parent object's tracker ID (links this attribute to its parent detection).
-	ParentTrackID int `msgpack:"parentTrackId,omitempty" json:"parentTrackId,omitempty"`
 }

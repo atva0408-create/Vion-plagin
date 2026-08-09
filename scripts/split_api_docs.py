@@ -317,7 +317,6 @@ BUCKETS: dict[str, str] = {
 
 DROP: set[str] = {
     "EventAttribute",
-    "EventDescription",
     "EventDetection",
     "EventSegment",
     "EventTrigger",
