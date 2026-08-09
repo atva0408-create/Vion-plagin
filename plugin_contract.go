@@ -103,7 +103,7 @@ const (
 // built against into its bundle (`cameraui.protocolLevel` in the bundle
 // package.json); the server compares that stamp with its own level and
 // refuses to start plugins outside its supported range.
-const ProtocolLevel = 1
+const ProtocolLevel = 2
 
 // PluginContract is the manifest contract a plugin declares so the host knows
 // what it does and what it needs at load time. Validated before the plugin is
