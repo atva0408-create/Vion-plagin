@@ -136,4 +136,3 @@ func NewClassifierDetectorSensor(name string, opts ...SensorOption) *ClassifierD
 	s.requiresFrames = true
 	return s
 }
-
