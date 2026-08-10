@@ -87,12 +87,31 @@ func (s *ClassifierSensor) GetLabels() []string {
 //	sensor.ReportDetections(false, nil)
 func (s *ClassifierSensor) ReportDetections(detected bool, detections []ClassifierDetection) {
 	list := normalizeReportedDetections(detected, detections, func(d *ClassifierDetection) *Detection { return &d.Detection }, "motion", "")
-	labels := dedupClassifierLabels(list)
-	s.writeState(map[string]any{
+	state := map[string]any{
 		classifierPropertyDetected:   detected,
 		classifierPropertyDetections: list,
-		classifierPropertyLabels:     labels,
-	})
+	}
+	// the specific answer wins (subAttribute, e.g. the bird species), and labels
+	// accumulate while the classifier keeps firing, so automations don't flap
+	recognized := make([]string, 0, len(list))
+	for _, d := range list {
+		label := d.SubAttribute
+		if label == "" {
+			label = d.Attribute
+		}
+		if label == "" {
+			label = d.Label
+		}
+		if label != "" {
+			recognized = append(recognized, label)
+		}
+	}
+	if !detected {
+		state[classifierPropertyLabels] = []string{}
+	} else if len(recognized) > 0 {
+		state[classifierPropertyLabels] = mergeSortedUnique(s.GetLabels(), recognized)
+	}
+	s.writeState(state)
 }
 
 // ClearDetections explicitly clears classifier state (detected = false, detections = [], labels = []).
@@ -118,18 +137,3 @@ func NewClassifierDetectorSensor(name string, opts ...SensorOption) *ClassifierD
 	return s
 }
 
-func dedupClassifierLabels(detections []ClassifierDetection) []string {
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(detections))
-	for _, d := range detections {
-		if d.Label == "" {
-			continue
-		}
-		if _, ok := seen[d.Label]; ok {
-			continue
-		}
-		seen[d.Label] = struct{}{}
-		result = append(result, d.Label)
-	}
-	return result
-}

@@ -3,6 +3,7 @@ package sdk
 const (
 	licensePlatePropertyDetected   = "detected"
 	licensePlatePropertyDetections = "detections"
+	licensePlatePropertyPlates     = "plates"
 )
 
 // LicensePlateDetection is a license plate detection result, extending
@@ -44,6 +45,7 @@ func NewLicensePlateSensor(name string, opts ...SensorOption) *LicensePlateSenso
 	s.writeState(map[string]any{
 		licensePlatePropertyDetected:   false,
 		licensePlatePropertyDetections: []LicensePlateDetection{},
+		licensePlatePropertyPlates:     []string{},
 	})
 	return s
 }
@@ -64,6 +66,13 @@ func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
 	return v
 }
 
+// GetPlates returns the plate texts recognized during the active detection
+// phase.
+func (s *LicensePlateSensor) GetPlates() []string {
+	v, _ := s.GetValue(licensePlatePropertyPlates).([]string)
+	return v
+}
+
 // ReportDetections reports detected license plates.
 //
 //   - ReportDetections(true, nil): plate detected without specifics, the SDK
@@ -79,10 +88,24 @@ func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection {
 //	sensor.ReportDetections(false, nil)
 func (s *LicensePlateSensor) ReportDetections(detected bool, detections []LicensePlateDetection) {
 	list := normalizeReportedDetections(detected, detections, func(d *LicensePlateDetection) *Detection { return &d.Detection }, "vehicle", "license_plate")
-	s.writeState(map[string]any{
+	state := map[string]any{
 		licensePlatePropertyDetected:   detected,
 		licensePlatePropertyDetections: list,
-	})
+	}
+	// recognized plates accumulate while plates stay visible, so automations
+	// don't flap when the OCR misses a frame mid-presence
+	recognized := make([]string, 0, len(list))
+	for _, d := range list {
+		if d.PlateText != "" {
+			recognized = append(recognized, d.PlateText)
+		}
+	}
+	if !detected {
+		state[licensePlatePropertyPlates] = []string{}
+	} else if len(recognized) > 0 {
+		state[licensePlatePropertyPlates] = mergeSortedUnique(s.GetPlates(), recognized)
+	}
+	s.writeState(state)
 }
 
 // ClearDetections explicitly clears license plate state (detected = false, detections = []).

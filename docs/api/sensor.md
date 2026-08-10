@@ -999,6 +999,13 @@ ClearDetections explicitly clears face detection state \(detected = false, detec
 
 
 
+<a name="FaceSensor.GetIdentities"></a>
+### func \(\*FaceSensor\) GetIdentities
+
+	func (s *FaceSensor) GetIdentities() []string
+
+GetIdentities returns the names of the faces recognized during the active detection phase.
+
 <a name="FaceSensor.GetType"></a>
 ### func \(\*FaceSensor\) GetType
 
@@ -1384,6 +1391,13 @@ ClearDetections explicitly clears license plate state \(detected = false, detect
 	func (s *LicensePlateSensor) GetDetections() []LicensePlateDetection
 
 
+
+<a name="LicensePlateSensor.GetPlates"></a>
+### func \(\*LicensePlateSensor\) GetPlates
+
+	func (s *LicensePlateSensor) GetPlates() []string
+
+GetPlates returns the plate texts recognized during the active detection phase.
 
 <a name="LicensePlateSensor.GetType"></a>
 ### func \(\*LicensePlateSensor\) GetType

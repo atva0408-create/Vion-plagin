@@ -3,6 +3,7 @@ package sdk
 const (
 	facePropertyDetected   = "detected"
 	facePropertyDetections = "detections"
+	facePropertyIdentities = "identities"
 )
 
 // FaceDetection is a face detection result, extending Detection with
@@ -46,6 +47,7 @@ func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor {
 	s.writeState(map[string]any{
 		facePropertyDetected:   false,
 		facePropertyDetections: []FaceDetection{},
+		facePropertyIdentities: []string{},
 	})
 	return s
 }
@@ -61,6 +63,13 @@ func (s *FaceSensor) IsDetected() bool {
 
 func (s *FaceSensor) GetDetections() []FaceDetection {
 	v, _ := s.GetValue(facePropertyDetections).([]FaceDetection)
+	return v
+}
+
+// GetIdentities returns the names of the faces recognized during the active
+// detection phase.
+func (s *FaceSensor) GetIdentities() []string {
+	v, _ := s.GetValue(facePropertyIdentities).([]string)
 	return v
 }
 
@@ -80,10 +89,24 @@ func (s *FaceSensor) GetDetections() []FaceDetection {
 //	sensor.ReportDetections(false, nil)
 func (s *FaceSensor) ReportDetections(detected bool, detections []FaceDetection) {
 	list := normalizeReportedDetections(detected, detections, func(d *FaceDetection) *Detection { return &d.Detection }, "person", "face")
-	s.writeState(map[string]any{
+	state := map[string]any{
 		facePropertyDetected:   detected,
 		facePropertyDetections: list,
-	})
+	}
+	// recognized names accumulate while faces stay visible, so automations
+	// don't flap when a face is momentarily unrecognized mid-presence
+	recognized := make([]string, 0, len(list))
+	for _, d := range list {
+		if d.Identity != "" {
+			recognized = append(recognized, d.Identity)
+		}
+	}
+	if !detected {
+		state[facePropertyIdentities] = []string{}
+	} else if len(recognized) > 0 {
+		state[facePropertyIdentities] = mergeSortedUnique(s.GetIdentities(), recognized)
+	}
+	s.writeState(state)
 }
 
 // ClearDetections explicitly clears face detection state (detected = false, detections = []).

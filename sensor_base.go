@@ -589,6 +589,16 @@ func normalizeReportedDetections[T any](detected bool, detections []T, base func
 	return []T{fallback}
 }
 
+// mergeSortedUnique unions two string lists into a sorted, duplicate-free
+// result, the stable shape writeState needs for change detection
+func mergeSortedUnique(previous, next []string) []string {
+	merged := make([]string, 0, len(previous)+len(next))
+	merged = append(merged, previous...)
+	merged = append(merged, next...)
+	slices.Sort(merged)
+	return slices.Compact(merged)
+}
+
 func isDetectionSensorType(t SensorType) bool {
 	switch t {
 	case SensorTypeMotion, SensorTypeAudio, SensorTypeObject, SensorTypeObjectAssist,
