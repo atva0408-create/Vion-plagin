@@ -75,6 +75,17 @@ type EventDetection struct {
 	MaxCount int `msgpack:"maxCount" json:"maxCount"`
 	// Moving indicates whether the object was moving (true) or stationary (false).
 	Moving *bool `msgpack:"moving,omitempty" json:"moving,omitempty"`
+	// Path is where the tracked object entered and left the frame within this segment.
+	Path *DetectionPath `msgpack:"path,omitempty" json:"path,omitempty"`
+}
+
+// DetectionPath holds the normalized box centers (0-1) of a tracked object's
+// first and last sighting in a segment.
+type DetectionPath struct {
+	EnterX float64 `msgpack:"enterX" json:"enterX"`
+	EnterY float64 `msgpack:"enterY" json:"enterY"`
+	ExitX  float64 `msgpack:"exitX" json:"exitX"`
+	ExitY  float64 `msgpack:"exitY" json:"exitY"`
 }
 
 // EventAttribute is a unified attribute within a segment (face identity, license plate, classifier result).
