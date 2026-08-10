@@ -73,6 +73,12 @@ type Notification struct {
 	// failures) so they don't reach guests the instance is merely shared
 	// with. Defaults to false.
 	AdminOnly bool `msgpack:"adminOnly,omitempty" json:"adminOnly,omitempty"`
+	// Silent delivers without sound, vibration or badge increment: meant for
+	// publishes that replace an earlier notification with the same Tag
+	// (e.g. a richer description superseding the initial alert). The banner
+	// still updates. Ignored when Severity is SeverityCritical. Defaults to
+	// false.
+	Silent bool `msgpack:"silent,omitempty" json:"silent,omitempty"`
 }
 
 // NotifierInterface is implemented by plugins that deliver notifications.
