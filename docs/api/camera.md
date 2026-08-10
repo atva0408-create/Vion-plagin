@@ -896,7 +896,7 @@ DetectionLine is a virtual tripwire for line crossing detection. The two points 
 	    Color string `msgpack:"color" json:"color"`
 	}
 
-<a name="DetectionZone"></a>
+<a name="DetectionPath"></a>
 
 ## type DetectionZone
 

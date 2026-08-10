@@ -375,6 +375,8 @@ StringFormat selects a specialized UI control for a string field.
 	    StringFormatIPv6 StringFormat = "ipv6"
 	    // StringFormatPassword renders a masked input that hides the characters.
 	    StringFormatPassword StringFormat = "password"
+	    // StringFormatTextarea renders a multi-line text area for longer free text.
+	    StringFormatTextarea StringFormat = "textarea"
 	    // StringFormatQRCode renders the value as a QR code (read-only display).
 	    StringFormatQRCode StringFormat = "qrCode"
 	    // StringFormatImage renders the value (data URL or path) as a thumbnail.
