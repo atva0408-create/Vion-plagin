@@ -804,7 +804,7 @@ ObjectDetectionSettings is the object detection settings.
 	    // SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
 	    SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
 	    // Timeout is the object dwell time in seconds for camera-based object sensors that
-	    // report a detection without a matching end report. Frame-based detection ignores this. Defaults to 30.
+	    // report a detection without a matching end report. Frame-based detection ignores this. Defaults to 15.
 	    Timeout *int `msgpack:"timeout,omitempty" json:"timeout,omitempty"`
 	}
 
