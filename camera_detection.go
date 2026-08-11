@@ -48,6 +48,9 @@ type ObjectDetectionSettings struct {
 	Confidence float64 `msgpack:"confidence" json:"confidence"`
 	// SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
 	SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
+	// Timeout is the object dwell time in seconds for camera-based object sensors that
+	// report a detection without a matching end report. Frame-based detection ignores this. Defaults to 30.
+	Timeout *int `msgpack:"timeout,omitempty" json:"timeout,omitempty"`
 }
 
 // AudioDetectionSettings is the audio detection settings.
