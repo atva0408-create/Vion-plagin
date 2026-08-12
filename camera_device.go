@@ -194,6 +194,15 @@ func (d *CameraDevice) DetectionZones() []DetectionZone {
 	return zones
 }
 
+// AlertZones returns the alert zone configurations (notification gating only, never filter detections).
+func (d *CameraDevice) AlertZones() []AlertZone {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	zones := make([]AlertZone, len(d.camera.AlertZones))
+	copy(zones, d.camera.AlertZones)
+	return zones
+}
+
 // DetectionLines returns the detection line configurations (virtual tripwires).
 func (d *CameraDevice) DetectionLines() []DetectionLine {
 	d.mu.RLock()

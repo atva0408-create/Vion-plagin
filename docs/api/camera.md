@@ -142,6 +142,8 @@ BaseCamera is the stored camera data structure \(database row\) without resolved
 	    SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
 	    // DetectionZones are the detection zone configurations.
 	    DetectionZones []DetectionZone `msgpack:"detectionZones,omitempty" json:"detectionZones,omitempty"`
+	    // AlertZones are the alert zone configurations (notification gating only, never filter detections).
+	    AlertZones []AlertZone `msgpack:"alertZones,omitempty" json:"alertZones,omitempty"`
 	    // DetectionLines are the detection line configurations (virtual tripwires).
 	    DetectionLines []DetectionLine `msgpack:"detectionLines,omitempty" json:"detectionLines,omitempty"`
 	    // DetectionSettings are the detection settings.
@@ -290,6 +292,13 @@ CameraDevice represents a camera assigned to this plugin. Plugins receive Camera
 AddSensor registers a sensor that belongs to this camera's hardware \(spotlight, siren, PTZ, battery, ...\). The host assigns it to this camera and reconciles it across restarts like a standalone sensor.
 
 Registering here declares "this sensor belongs to this camera and no other": the assignment is locked, users cannot re\-assign it. For sensors the user should assign freely, register via SensorManager.AddSensor instead.
+
+<a name="CameraDevice.AlertZones"></a>
+### func \(\*CameraDevice\) AlertZones
+
+	func (d *CameraDevice) AlertZones() []AlertZone
+
+AlertZones returns the alert zone configurations \(notification gating only, never filter detections\).
 
 <a name="CameraDevice.Connect"></a>
 ### func \(\*CameraDevice\) Connect

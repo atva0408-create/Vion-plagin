@@ -18,6 +18,32 @@ type DetectionZone struct {
 	Color string `msgpack:"color" json:"color"`
 }
 
+// AlertZoneMatch decides when an object counts as inside an alert zone.
+type AlertZoneMatch = string
+
+// Supported alert zone match modes.
+const (
+	AlertZoneMatchAnchor    AlertZoneMatch = "anchor"    // where the object stands (bottom center of its box)
+	AlertZoneMatchIntersect AlertZoneMatch = "intersect" // its box touches the zone
+	AlertZoneMatchContain   AlertZoneMatch = "contain"   // its box lies fully inside the zone
+)
+
+// AlertZone is a polygon zone that never filters detections: a label
+// selected here only sends push notifications while an object of that
+// label is inside the zone.
+type AlertZone struct {
+	// Name is the zone display name.
+	Name string `msgpack:"name" json:"name"`
+	// Points are the polygon points (0-100 percentage coordinates).
+	Points []Point `msgpack:"points" json:"points"`
+	// Labels are the labels that alert from inside this zone (empty = zone is inert).
+	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
+	// Match decides when an object counts as inside. Default: anchor.
+	Match AlertZoneMatch `msgpack:"match" json:"match"`
+	// Color is the zone display color (hex).
+	Color string `msgpack:"color" json:"color"`
+}
+
 // DetectionLine is a virtual tripwire for line crossing detection.
 // The two points define grab-handle positions; the actual crossing line
 // is perpendicular through their midpoint.

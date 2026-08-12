@@ -165,6 +165,8 @@ type BaseCamera struct {
 	SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
 	// DetectionZones are the detection zone configurations.
 	DetectionZones []DetectionZone `msgpack:"detectionZones,omitempty" json:"detectionZones,omitempty"`
+	// AlertZones are the alert zone configurations (notification gating only, never filter detections).
+	AlertZones []AlertZone `msgpack:"alertZones,omitempty" json:"alertZones,omitempty"`
 	// DetectionLines are the detection line configurations (virtual tripwires).
 	DetectionLines []DetectionLine `msgpack:"detectionLines,omitempty" json:"detectionLines,omitempty"`
 	// DetectionSettings are the detection settings.

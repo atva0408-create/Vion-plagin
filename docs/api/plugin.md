@@ -143,7 +143,7 @@ APIEvent identifies a lifecycle event emitted on the PluginAPI eventEmitter. Plu
 	    APIEventShutdown APIEvent = "shutdown"
 	)
 
-<a name="AssignedPlugin"></a>
+<a name="AlertZone"></a>
 
 ## type AssignedPlugin
 
