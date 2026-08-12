@@ -806,6 +806,8 @@ ObjectDetectionSettings is the object detection settings.
 	type ObjectDetectionSettings struct {
 	    // Confidence is the minimum confidence threshold (0.3 - 1.0).
 	    Confidence float64 `msgpack:"confidence" json:"confidence"`
+	    // Labels are the object labels to detect (empty = all). Detections with other labels are dropped.
+	    Labels []DetectionLabel `msgpack:"labels,omitempty" json:"labels,omitempty"`
 	    // SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
 	    SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
 	    // Timeout is the object dwell time in seconds for camera-based object sensors that
