@@ -1,7 +1,23 @@
 package sdk
 
-// DetectionZone is a polygon zone that restricts or drops detections.
-type DetectionZone struct {
+// MotionZone is a polygon zone that says where frame motion counts. Motion
+// carries no labels, so a motion zone has none. No motion zone at all means
+// motion counts everywhere.
+type MotionZone struct {
+	// Name is the zone display name.
+	Name string `msgpack:"name" json:"name"`
+	// Points are the polygon points (0-100 percentage coordinates).
+	Points []Point `msgpack:"points" json:"points"`
+	// Filter is the include/exclude filter mode.
+	Filter ZoneFilter `msgpack:"filter" json:"filter"`
+	// Color is the zone display color (hex).
+	Color string `msgpack:"color" json:"color"`
+}
+
+// ObjectZone is a polygon zone that says which object types count where. With
+// at least one include object zone, an object counts only inside such a zone
+// and only when its label is listed there.
+type ObjectZone struct {
 	// Name is the zone display name.
 	Name string `msgpack:"name" json:"name"`
 	// Points are the polygon points (0-100 percentage coordinates).
@@ -10,12 +26,31 @@ type DetectionZone struct {
 	Type ZoneType `msgpack:"type" json:"type"`
 	// Filter is the include/exclude filter mode.
 	Filter ZoneFilter `msgpack:"filter" json:"filter"`
-	// Labels are the labels to filter (empty = all labels).
+	// Labels are the labels that count in this zone.
 	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
-	// IsPrivacyMask indicates an ignore zone: detections fully inside it are dropped.
-	IsPrivacyMask bool `msgpack:"isPrivacyMask" json:"isPrivacyMask"`
 	// Color is the zone display color (hex).
 	Color string `msgpack:"color" json:"color"`
+}
+
+// PrivacyZone is a polygon zone where nothing is detected, motion and objects
+// alike, and which camera.ui covers in live view, playback and its pictures.
+type PrivacyZone struct {
+	// Name is the zone display name.
+	Name string `msgpack:"name" json:"name"`
+	// Points are the polygon points (0-100 percentage coordinates).
+	Points []Point `msgpack:"points" json:"points"`
+}
+
+// CameraZones holds everything the zone editor draws, one list per purpose.
+// Motion decides where frame motion counts, Object which types count where,
+// Privacy where nothing is looked at, Alert which types notify from where,
+// and Lines reports objects crossing them.
+type CameraZones struct {
+	Motion  []MotionZone    `msgpack:"motion" json:"motion"`
+	Object  []ObjectZone    `msgpack:"object" json:"object"`
+	Privacy []PrivacyZone   `msgpack:"privacy" json:"privacy"`
+	Alert   []AlertZone     `msgpack:"alert" json:"alert"`
+	Lines   []DetectionLine `msgpack:"lines" json:"lines"`
 }
 
 // AlertZoneMatch decides when an object counts as inside an alert zone.

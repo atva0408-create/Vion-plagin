@@ -140,12 +140,8 @@ BaseCamera is the stored camera data structure \(database row\) without resolved
 	    Assignments PluginAssignments `msgpack:"assignments,omitempty" json:"assignments"`
 	    // SnapshotSettings are the snapshot settings.
 	    SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
-	    // DetectionZones are the detection zone configurations.
-	    DetectionZones []DetectionZone `msgpack:"detectionZones,omitempty" json:"detectionZones,omitempty"`
-	    // AlertZones are the alert zone configurations (notification gating only, never filter detections).
-	    AlertZones []AlertZone `msgpack:"alertZones,omitempty" json:"alertZones,omitempty"`
-	    // DetectionLines are the detection line configurations (virtual tripwires).
-	    DetectionLines []DetectionLine `msgpack:"detectionLines,omitempty" json:"detectionLines,omitempty"`
+	    // Zones are the zone configurations, one list per purpose.
+	    Zones CameraZones `msgpack:"zones,omitempty" json:"zones,omitempty"`
 	    // DetectionSettings are the detection settings.
 	    DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
 	    // PtzAutotrack is the PTZ autotracking configuration.
@@ -293,13 +289,6 @@ AddSensor registers a sensor that belongs to this camera's hardware \(spotlight,
 
 Registering here declares "this sensor belongs to this camera and no other": the assignment is locked, users cannot re\-assign it. For sensors the user should assign freely, register via SensorManager.AddSensor instead.
 
-<a name="CameraDevice.AlertZones"></a>
-### func \(\*CameraDevice\) AlertZones
-
-	func (d *CameraDevice) AlertZones() []AlertZone
-
-AlertZones returns the alert zone configurations \(notification gating only, never filter detections\).
-
 <a name="CameraDevice.Connect"></a>
 ### func \(\*CameraDevice\) Connect
 
@@ -314,26 +303,12 @@ Connect tells the server this camera is online. Only the plugin that owns this c
 
 Connected returns whether the camera is currently connected.
 
-<a name="CameraDevice.DetectionLines"></a>
-### func \(\*CameraDevice\) DetectionLines
-
-	func (d *CameraDevice) DetectionLines() []DetectionLine
-
-DetectionLines returns the detection line configurations \(virtual tripwires\).
-
 <a name="CameraDevice.DetectionSettings"></a>
 ### func \(\*CameraDevice\) DetectionSettings
 
 	func (d *CameraDevice) DetectionSettings() CameraDetectionSettings
 
 DetectionSettings returns the detection settings.
-
-<a name="CameraDevice.DetectionZones"></a>
-### func \(\*CameraDevice\) DetectionZones
-
-	func (d *CameraDevice) DetectionZones() []DetectionZone
-
-DetectionZones returns the detection zone configurations.
 
 <a name="CameraDevice.Disabled"></a>
 ### func \(\*CameraDevice\) Disabled
@@ -558,6 +533,13 @@ StreamSource returns the primary streaming source \(first high\-resolution, or f
 	func (d *CameraDevice) Type() CameraType
 
 Type returns the camera type \(camera/doorbell\).
+
+<a name="CameraDevice.Zones"></a>
+### func \(\*CameraDevice\) Zones
+
+	func (d *CameraDevice) Zones() CameraZones
+
+Zones returns the camera's zone configurations, one list per purpose.
 
 <a name="CameraDeviceSource"></a>
 
@@ -804,7 +786,7 @@ CameraUiSettings is UI display settings for a camera.
 	    AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 	}
 
-<a name="CarbonDioxideInfo"></a>
+<a name="CameraZones"></a>
 
 ## type DetectionEvent
 
@@ -906,29 +888,6 @@ DetectionLine is a virtual tripwire for line crossing detection. The two points 
 	}
 
 <a name="DetectionPath"></a>
-
-## type DetectionZone
-
-DetectionZone is a polygon zone that restricts or drops detections.
-
-	type DetectionZone struct {
-	    // Name is the zone display name.
-	    Name string `msgpack:"name" json:"name"`
-	    // Points are the polygon points (0-100 percentage coordinates).
-	    Points []Point `msgpack:"points" json:"points"`
-	    // Type is the intersection detection type.
-	    Type ZoneType `msgpack:"type" json:"type"`
-	    // Filter is the include/exclude filter mode.
-	    Filter ZoneFilter `msgpack:"filter" json:"filter"`
-	    // Labels are the labels to filter (empty = all labels).
-	    Labels []DetectionLabel `msgpack:"labels" json:"labels"`
-	    // IsPrivacyMask indicates an ignore zone: detections fully inside it are dropped.
-	    IsPrivacyMask bool `msgpack:"isPrivacyMask" json:"isPrivacyMask"`
-	    // Color is the zone display color (hex).
-	    Color string `msgpack:"color" json:"color"`
-	}
-
-<a name="DeviceManager"></a>
 
 ## type FMTPInfo
 

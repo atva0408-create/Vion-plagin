@@ -1789,7 +1789,7 @@ Example:
 
 UpdateValue on a read\-only sensor: external writes are ignored.
 
-<a name="Notification"></a>
+<a name="MotionZone"></a>
 
 ## type ObjectDetector
 
@@ -1934,7 +1934,7 @@ Example:
 
 UpdateValue on a read\-only sensor: external writes are ignored.
 
-<a name="Observable"></a>
+<a name="ObjectZone"></a>
 
 ## type OccupancySensor
 

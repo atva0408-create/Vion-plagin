@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -185,31 +186,17 @@ func (d *CameraDevice) IsCloud() bool {
 	return d.camera.IsCloud
 }
 
-// DetectionZones returns the detection zone configurations.
-func (d *CameraDevice) DetectionZones() []DetectionZone {
+// Zones returns the camera's zone configurations, one list per purpose.
+func (d *CameraDevice) Zones() CameraZones {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	zones := make([]DetectionZone, len(d.camera.DetectionZones))
-	copy(zones, d.camera.DetectionZones)
+	zones := d.camera.Zones
+	zones.Motion = slices.Clone(zones.Motion)
+	zones.Object = slices.Clone(zones.Object)
+	zones.Privacy = slices.Clone(zones.Privacy)
+	zones.Alert = slices.Clone(zones.Alert)
+	zones.Lines = slices.Clone(zones.Lines)
 	return zones
-}
-
-// AlertZones returns the alert zone configurations (notification gating only, never filter detections).
-func (d *CameraDevice) AlertZones() []AlertZone {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	zones := make([]AlertZone, len(d.camera.AlertZones))
-	copy(zones, d.camera.AlertZones)
-	return zones
-}
-
-// DetectionLines returns the detection line configurations (virtual tripwires).
-func (d *CameraDevice) DetectionLines() []DetectionLine {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	lines := make([]DetectionLine, len(d.camera.DetectionLines))
-	copy(lines, d.camera.DetectionLines)
-	return lines
 }
 
 // DetectionSettings returns the detection settings.

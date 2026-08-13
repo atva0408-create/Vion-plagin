@@ -163,12 +163,8 @@ type BaseCamera struct {
 	Assignments PluginAssignments `msgpack:"assignments,omitempty" json:"assignments"`
 	// SnapshotSettings are the snapshot settings.
 	SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
-	// DetectionZones are the detection zone configurations.
-	DetectionZones []DetectionZone `msgpack:"detectionZones,omitempty" json:"detectionZones,omitempty"`
-	// AlertZones are the alert zone configurations (notification gating only, never filter detections).
-	AlertZones []AlertZone `msgpack:"alertZones,omitempty" json:"alertZones,omitempty"`
-	// DetectionLines are the detection line configurations (virtual tripwires).
-	DetectionLines []DetectionLine `msgpack:"detectionLines,omitempty" json:"detectionLines,omitempty"`
+	// Zones are the zone configurations, one list per purpose.
+	Zones CameraZones `msgpack:"zones,omitempty" json:"zones,omitempty"`
 	// DetectionSettings are the detection settings.
 	DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
 	// PtzAutotrack is the PTZ autotracking configuration.
