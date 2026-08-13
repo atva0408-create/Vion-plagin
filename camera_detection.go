@@ -32,21 +32,36 @@ type ObjectZone struct {
 	Color string `msgpack:"color" json:"color"`
 }
 
-// PrivacyZone is a polygon zone where nothing is detected, motion and objects
-// alike, and which camera.ui covers in live view, playback and its pictures.
+// PrivacyZone is a polygon zone camera.ui covers in live view, playback and
+// its pictures. DropDetections decides whether detections inside are dropped
+// too or whether the camera keeps watching an area it does not show.
 type PrivacyZone struct {
 	// Name is the zone display name.
 	Name string `msgpack:"name" json:"name"`
 	// Points are the polygon points (0-100 percentage coordinates).
 	Points []Point `msgpack:"points" json:"points"`
+	// DropDetections drops detections inside the zone. Default: true.
+	DropDetections bool `msgpack:"dropDetections" json:"dropDetections"`
 }
+
+// PrivacyFallback decides what happens to a picture whose privacy zones could
+// not be applied, for example on a pixel format we cannot write.
+type PrivacyFallback = string
+
+// Supported privacy fallbacks.
+const (
+	PrivacyFallbackSend PrivacyFallback = "send" // ship it unmasked, the user can delete it
+	PrivacyFallbackDrop PrivacyFallback = "drop" // no picture at all rather than an unmasked one
+)
 
 // CameraZones holds everything the zone editor draws, one list per purpose.
 // Motion decides where frame motion counts, Object which types count where,
 // Privacy where nothing is looked at, Alert which types notify from where,
 // and Lines reports objects crossing them.
 type CameraZones struct {
-	Motion  []MotionZone    `msgpack:"motion" json:"motion"`
+	// PrivacyFallback decides what happens to a picture the privacy zones could not be applied to.
+	PrivacyFallback PrivacyFallback `msgpack:"privacyFallback" json:"privacyFallback"`
+	Motion          []MotionZone    `msgpack:"motion" json:"motion"`
 	Object  []ObjectZone    `msgpack:"object" json:"object"`
 	Privacy []PrivacyZone   `msgpack:"privacy" json:"privacy"`
 	Alert   []AlertZone     `msgpack:"alert" json:"alert"`
