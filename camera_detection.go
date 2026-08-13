@@ -62,10 +62,10 @@ type CameraZones struct {
 	// PrivacyFallback decides what happens to a picture the privacy zones could not be applied to.
 	PrivacyFallback PrivacyFallback `msgpack:"privacyFallback" json:"privacyFallback"`
 	Motion          []MotionZone    `msgpack:"motion" json:"motion"`
-	Object  []ObjectZone    `msgpack:"object" json:"object"`
-	Privacy []PrivacyZone   `msgpack:"privacy" json:"privacy"`
-	Alert   []AlertZone     `msgpack:"alert" json:"alert"`
-	Lines   []DetectionLine `msgpack:"lines" json:"lines"`
+	Object          []ObjectZone    `msgpack:"object" json:"object"`
+	Privacy         []PrivacyZone   `msgpack:"privacy" json:"privacy"`
+	Alert           []AlertZone     `msgpack:"alert" json:"alert"`
+	Lines           []DetectionLine `msgpack:"lines" json:"lines"`
 }
 
 // AlertZoneMatch decides when an object counts as inside an alert zone.
@@ -86,7 +86,7 @@ type AlertZone struct {
 	Name string `msgpack:"name" json:"name"`
 	// Points are the polygon points (0-100 percentage coordinates).
 	Points []Point `msgpack:"points" json:"points"`
-	// Labels are the labels that alert from inside this zone (empty = zone is inert).
+	// Labels are the labels that alert from inside this zone (empty = every label alerts here).
 	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
 	// Match decides when an object counts as inside. Default: anchor.
 	Match AlertZoneMatch `msgpack:"match" json:"match"`
@@ -122,8 +122,6 @@ type MotionDetectionSettings struct {
 type ObjectDetectionSettings struct {
 	// Confidence is the minimum confidence threshold (0.3 - 1.0).
 	Confidence float64 `msgpack:"confidence" json:"confidence"`
-	// Labels are the object labels to detect (empty = all). Detections with other labels are dropped.
-	Labels []DetectionLabel `msgpack:"labels,omitempty" json:"labels,omitempty"`
 	// SuppressStatic suppresses events from objects that stay stationary across events (e.g. parked cars). Defaults to true.
 	SuppressStatic *bool `msgpack:"suppressStatic,omitempty" json:"suppressStatic,omitempty"`
 	// Timeout is the object dwell time in seconds for camera-based object sensors that

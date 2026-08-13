@@ -79,6 +79,9 @@ type EventDetection struct {
 	Path *DetectionPath `msgpack:"path,omitempty" json:"path,omitempty"`
 	// Zones lists the names of detection/alert zones any object of this label overlapped during the segment.
 	Zones []string `msgpack:"zones,omitempty" json:"zones,omitempty"`
+	// Alert reports whether this detection may raise a notification. Alert zones
+	// decide it, the camera's own reports pass.
+	Alert *bool `msgpack:"alert,omitempty" json:"alert,omitempty"`
 }
 
 // DetectionPath holds the normalized box centers (0-1) of a tracked object's
