@@ -164,7 +164,7 @@ type BaseCamera struct {
 	// SnapshotSettings are the snapshot settings.
 	SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
 	// Zones are the zone configurations, one list per purpose.
-	Zones CameraZones `msgpack:"zones,omitempty" json:"zones,omitempty"`
+	Zones CameraZones `msgpack:"zones,omitempty" json:"zones"`
 	// DetectionSettings are the detection settings.
 	DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
 	// PtzAutotrack is the PTZ autotracking configuration.

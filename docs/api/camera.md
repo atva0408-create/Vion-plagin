@@ -1196,6 +1196,15 @@ PtzAutotrackSettings is the PTZ autotracking settings: the camera follows detect
 	    ReturnToHome bool `msgpack:"returnToHome" json:"returnToHome"`
 	    // HomeWaitMs is how long to wait (ms) without a target before returning home.
 	    HomeWaitMs int `msgpack:"homeWaitMs" json:"homeWaitMs"`
+	    // MinTargetSize is the smallest target to start following, as a fraction of
+	    // the frame height (0 - 0.5). 0 disables the limit.
+	    MinTargetSize *float64 `msgpack:"minTargetSize,omitempty" json:"minTargetSize,omitempty"`
+	    // MaxTargetSize is the largest target to keep following, as a fraction of the
+	    // frame height (0 - 1). Above it the camera holds its position. 0 disables the limit.
+	    MaxTargetSize *float64 `msgpack:"maxTargetSize,omitempty" json:"maxTargetSize,omitempty"`
+	    // ActiveHours are the hours the camera is allowed to follow. Outside them
+	    // autotracking rests.
+	    ActiveHours *TimeWindow `msgpack:"activeHours,omitempty" json:"activeHours,omitempty"`
 	}
 
 <a name="PythonVersion"></a>

@@ -211,4 +211,23 @@ type PtzAutotrackSettings struct {
 	ReturnToHome bool `msgpack:"returnToHome" json:"returnToHome"`
 	// HomeWaitMs is how long to wait (ms) without a target before returning home.
 	HomeWaitMs int `msgpack:"homeWaitMs" json:"homeWaitMs"`
+	// MinTargetSize is the smallest target to start following, as a fraction of
+	// the frame height (0 - 0.5). 0 disables the limit.
+	MinTargetSize *float64 `msgpack:"minTargetSize,omitempty" json:"minTargetSize,omitempty"`
+	// MaxTargetSize is the largest target to keep following, as a fraction of the
+	// frame height (0 - 1). Above it the camera holds its position. 0 disables the limit.
+	MaxTargetSize *float64 `msgpack:"maxTargetSize,omitempty" json:"maxTargetSize,omitempty"`
+	// ActiveHours are the hours the camera is allowed to follow. Outside them
+	// autotracking rests.
+	ActiveHours *TimeWindow `msgpack:"activeHours,omitempty" json:"activeHours,omitempty"`
+}
+
+// TimeWindow is a daily time window, given in the timezone it was configured in.
+type TimeWindow struct {
+	// From is the start time as "HH:mm".
+	From string `msgpack:"from" json:"from"`
+	// To is the end time as "HH:mm". A time before From wraps around midnight.
+	To string `msgpack:"to" json:"to"`
+	// Timezone is the IANA timezone the times are read in, e.g. "Europe/Berlin".
+	Timezone string `msgpack:"timezone" json:"timezone"`
 }
