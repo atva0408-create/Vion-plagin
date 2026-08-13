@@ -88,7 +88,7 @@ type AlertZone struct {
 	Points []Point `msgpack:"points" json:"points"`
 	// Labels are the labels that alert from inside this zone (empty = every label alerts here).
 	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
-	// Match decides when an object counts as inside. Default: anchor.
+	// Match decides when an object counts as inside. Default: contain.
 	Match AlertZoneMatch `msgpack:"match" json:"match"`
 	// Color is the zone display color (hex).
 	Color string `msgpack:"color" json:"color"`
