@@ -166,8 +166,10 @@ type FaceDetectionSettings struct {
 
 // LicensePlateDetectionSettings is the license plate detection settings.
 type LicensePlateDetectionSettings struct {
-	// Confidence is the minimum text recognition confidence (0 - 1) for a plate read to count.
+	// Confidence is the minimum confidence threshold (0 - 1) for a plate to be found in the picture.
 	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+	// OcrConfidence is the minimum text recognition confidence (0 - 1) for a plate read to count.
+	OcrConfidence *float64 `msgpack:"ocrConfidence,omitempty" json:"ocrConfidence,omitempty"`
 	// MinLength is the minimum plate text length, shorter reads are dropped as fragments.
 	MinLength *int `msgpack:"minLength,omitempty" json:"minLength,omitempty"`
 }
