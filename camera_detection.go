@@ -14,6 +14,10 @@ type MotionZone struct {
 	Color string `msgpack:"color" json:"color"`
 }
 
+// ZoneLabel is what an object zone can list: a detection label, or an attribute
+// that gates identification.
+type ZoneLabel = string
+
 // ObjectZone is a polygon zone that says which object types count where. With
 // at least one include object zone, an object counts only inside such a zone
 // and only when its label is listed there.
@@ -26,8 +30,10 @@ type ObjectZone struct {
 	Type ZoneType `msgpack:"type" json:"type"`
 	// Filter is the include/exclude filter mode.
 	Filter ZoneFilter `msgpack:"filter" json:"filter"`
-	// Labels are the labels that count in this zone.
-	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
+	// Labels are the labels that count in this zone. Besides the detection labels,
+	// "face" and "license_plate" decide whether an object here is identified at
+	// all, so a zone can watch a street without recognizing anyone on it.
+	Labels []ZoneLabel `msgpack:"labels" json:"labels"`
 	// Color is the zone display color (hex).
 	Color string `msgpack:"color" json:"color"`
 }

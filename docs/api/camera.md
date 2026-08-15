@@ -1488,7 +1488,7 @@ ZoneFilter is the detection zone filter mode.
 	    ZoneFilterExclude ZoneFilter = "exclude"
 	)
 
-<a name="ZoneType"></a>
+<a name="ZoneLabel"></a>
 
 ## type ZoneType
 
