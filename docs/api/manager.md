@@ -274,4 +274,4 @@ Example:
 	})
 	
 
-<a name="NotifierDevice"></a>
+<a name="NotificationSpeed"></a>

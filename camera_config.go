@@ -171,6 +171,8 @@ type BaseCamera struct {
 	PtzAutotrack PtzAutotrackSettings `msgpack:"ptzAutotrack,omitempty" json:"ptzAutotrack"`
 	// RecordingSettings is the recording configuration.
 	RecordingSettings CameraRecordingSettings `msgpack:"recordingSettings,omitempty" json:"recordingSettings"`
+	// NotificationSettings is the push notification configuration.
+	NotificationSettings CameraNotificationSettings `msgpack:"notificationSettings,omitempty" json:"notificationSettings"`
 	// FrameWorkerSettings is the frame worker configuration.
 	FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
 	// InterfaceSettings is the UI display settings.

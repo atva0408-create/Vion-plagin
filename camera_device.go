@@ -220,6 +220,13 @@ func (d *CameraDevice) RecordingSettings() CameraRecordingSettings {
 	return d.camera.RecordingSettings
 }
 
+// NotificationSettings returns the push notification settings.
+func (d *CameraDevice) NotificationSettings() CameraNotificationSettings {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.camera.NotificationSettings
+}
+
 // FrameWorkerSettings returns the frame worker settings.
 func (d *CameraDevice) FrameWorkerSettings() CameraFrameWorkerSettings {
 	d.mu.RLock()

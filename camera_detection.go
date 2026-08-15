@@ -88,6 +88,14 @@ type AlertZone struct {
 	Points []Point `msgpack:"points" json:"points"`
 	// Labels are the labels that alert from inside this zone (empty = every label alerts here).
 	Labels []DetectionLabel `msgpack:"labels" json:"labels"`
+	// Faces are the faces that may push from inside this zone. Nil leaves faces out
+	// of the decision, an empty list lets every recognized face push, otherwise only
+	// the listed identities do. "unknown" covers everyone the recognition could not
+	// name, including people whose face was never captured.
+	Faces *[]string `msgpack:"faces,omitempty" json:"faces,omitempty"`
+	// Plates are the plates that may push from inside this zone, same rules as Faces.
+	// Plates are OCR text, so the list is free-form rather than picked from a roster.
+	Plates *[]string `msgpack:"plates,omitempty" json:"plates,omitempty"`
 	// Match decides when an object counts as inside. Default: contain.
 	Match AlertZoneMatch `msgpack:"match" json:"match"`
 	// Color is the zone display color (hex).

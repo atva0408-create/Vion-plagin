@@ -141,13 +141,15 @@ BaseCamera is the stored camera data structure \(database row\) without resolved
 	    // SnapshotSettings are the snapshot settings.
 	    SnapshotSettings SnapshotSettings `msgpack:"snapshotSettings,omitempty" json:"snapshotSettings"`
 	    // Zones are the zone configurations, one list per purpose.
-	    Zones CameraZones `msgpack:"zones,omitempty" json:"zones,omitempty"`
+	    Zones CameraZones `msgpack:"zones,omitempty" json:"zones"`
 	    // DetectionSettings are the detection settings.
 	    DetectionSettings CameraDetectionSettings `msgpack:"detectionSettings,omitempty" json:"detectionSettings"`
 	    // PtzAutotrack is the PTZ autotracking configuration.
 	    PtzAutotrack PtzAutotrackSettings `msgpack:"ptzAutotrack,omitempty" json:"ptzAutotrack"`
 	    // RecordingSettings is the recording configuration.
 	    RecordingSettings CameraRecordingSettings `msgpack:"recordingSettings,omitempty" json:"recordingSettings"`
+	    // NotificationSettings is the push notification configuration.
+	    NotificationSettings CameraNotificationSettings `msgpack:"notificationSettings,omitempty" json:"notificationSettings"`
 	    // FrameWorkerSettings is the frame worker configuration.
 	    FrameWorkerSettings CameraFrameWorkerSettings `msgpack:"frameWorkerSettings,omitempty" json:"frameWorkerSettings"`
 	    // InterfaceSettings is the UI display settings.
@@ -421,6 +423,13 @@ Name returns the camera name.
 	func (d *CameraDevice) NativeID() string
 
 NativeID returns the native device ID from the plugin, or empty string if not set.
+
+<a name="CameraDevice.NotificationSettings"></a>
+### func \(\*CameraDevice\) NotificationSettings
+
+	func (d *CameraDevice) NotificationSettings() CameraNotificationSettings
+
+NotificationSettings returns the push notification settings.
 
 <a name="CameraDevice.OnConnected"></a>
 ### func \(\*CameraDevice\) OnConnected
@@ -723,7 +732,7 @@ CameraInput is a camera video input/source with resolved URLs.
 	    ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 	}
 
-<a name="CameraPluginInfo"></a>
+<a name="CameraNotificationSettings"></a>
 
 ## type CameraPluginInfo
 
