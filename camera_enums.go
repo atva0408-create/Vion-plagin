@@ -76,16 +76,6 @@ const (
 	ZoneTypeContain   ZoneType = "contain"
 )
 
-// ZoneFilter is the detection zone filter mode.
-//   - include: Only consider detections inside this zone
-//   - exclude: Only consider detections outside this zone
-type ZoneFilter string
-
-const (
-	ZoneFilterInclude ZoneFilter = "include"
-	ZoneFilterExclude ZoneFilter = "exclude"
-)
-
 // StreamDirection is the direction of a media stream (from SDP).
 type StreamDirection string
 

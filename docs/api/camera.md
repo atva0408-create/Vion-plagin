@@ -1470,24 +1470,6 @@ VideoStreamingMode is the video streaming mode for UI playback.
 	    VideoStreamingModeWebRTCTCP VideoStreamingMode = "webrtc/tcp"
 	)
 
-<a name="ZoneFilter"></a>
-
-## type ZoneFilter
-
-ZoneFilter is the detection zone filter mode.
-
-- include: Only consider detections inside this zone
-- exclude: Only consider detections outside this zone
-
-	type ZoneFilter string
-
-<a name="ZoneFilterInclude"></a>
-
-	const (
-	    ZoneFilterInclude ZoneFilter = "include"
-	    ZoneFilterExclude ZoneFilter = "exclude"
-	)
-
 <a name="ZoneLabel"></a>
 
 ## type ZoneType

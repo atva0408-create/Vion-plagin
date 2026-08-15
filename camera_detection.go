@@ -8,8 +8,6 @@ type MotionZone struct {
 	Name string `msgpack:"name" json:"name"`
 	// Points are the polygon points (0-100 percentage coordinates).
 	Points []Point `msgpack:"points" json:"points"`
-	// Filter is the include/exclude filter mode.
-	Filter ZoneFilter `msgpack:"filter" json:"filter"`
 	// Color is the zone display color (hex).
 	Color string `msgpack:"color" json:"color"`
 }
@@ -28,8 +26,6 @@ type ObjectZone struct {
 	Points []Point `msgpack:"points" json:"points"`
 	// Type is the intersection detection type.
 	Type ZoneType `msgpack:"type" json:"type"`
-	// Filter is the include/exclude filter mode.
-	Filter ZoneFilter `msgpack:"filter" json:"filter"`
 	// Labels are the labels that count in this zone. Besides the detection labels,
 	// "face" and "license_plate" decide whether an object here is identified at
 	// all, so a zone can watch a street without recognizing anyone on it.
