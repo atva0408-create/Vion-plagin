@@ -1041,7 +1041,7 @@ LineDirection is the line crossing direction filter.
 	    LineDirectionBToA LineDirection = "b-to-a"
 	)
 
-<a name="LockControl"></a>
+<a name="LoadedModel"></a>
 
 ## type MotionResolution
 

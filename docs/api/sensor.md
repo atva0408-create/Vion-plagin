@@ -79,7 +79,8 @@ AudioLabel is one of the built\-in audio labels, or any custom string emitted by
 AudioModelSpec describes an audio detection model.
 
 	type AudioModelSpec struct {
-	    Input AudioInputSpec `msgpack:"input" json:"input"` // Required input audio format
+	    ModelRuntime `msgpack:",inline"`
+	    Input        AudioInputSpec `msgpack:"input" json:"input"` // Required input audio format
 	}
 
 <a name="AudioResult"></a>
@@ -1649,6 +1650,7 @@ LockState defines lock states.
 ModelSpec describes a detection model with fixed output labels \(face, classifier, license plate\). It declares the input shape the backend should produce and the trigger labels that should activate this detector.
 
 	type ModelSpec struct {
+	    ModelRuntime   `msgpack:",inline"`
 	    Input          VideoInputSpec `msgpack:"input" json:"input"`                                       // Required input frame dimensions and pixel format
 	    TriggerLabels  []string       `msgpack:"triggerLabels" json:"triggerLabels"`                       // Labels emitted by an upstream object detector that activate this detector
 	    EmbeddingModel string         `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"` // Embedding model identifier, required for face recognition and CLIP: embeddings are stored and matched under this id
@@ -1826,7 +1828,8 @@ ObjectDetectorSensor is an object sensor that consumes video frames from the bac
 ObjectModelSpec describes an object detection model. Only declares input dimensions, the output label set is dynamic and comes from the model itself.
 
 	type ObjectModelSpec struct {
-	    Input VideoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
+	    ModelRuntime `msgpack:",inline"`
+	    Input        VideoInputSpec `msgpack:"input" json:"input"` // Required input frame dimensions and pixel format
 	}
 
 <a name="ObjectResult"></a>
