@@ -141,6 +141,15 @@ func (m *SensorManager) AddSensor(s Sensor) error {
 	si.initUpdateFn(func(properties map[string]any) {
 		ctx := context.Background()
 		if isDetectionSensorType(sensor.GetType()) {
+			// the spec belongs to the registry, it reaches the coordinators from there
+			if spec, ok := properties["modelSpec"]; ok {
+				_, _ = m.registryProxy.Invoke(ctx, "updateModelSpec", sensor.GetID(), spec)
+				properties = withoutModelSpec(properties)
+				if len(properties) == 0 {
+					return
+				}
+			}
+
 			// external detection provider: fan the write into every assigned
 			// camera's coordinator
 			for _, cameraID := range sensor.GetAssignedCameraIDs() {

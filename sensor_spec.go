@@ -72,6 +72,16 @@ func UpdateModelSpec(sensor Sensor) {
 	}
 }
 
+func withoutModelSpec(properties map[string]any) map[string]any {
+	rest := make(map[string]any, len(properties))
+	for key, value := range properties {
+		if key != "modelSpec" {
+			rest[key] = value
+		}
+	}
+	return rest
+}
+
 // a detector type left out here registers without a spec and never gets frames
 func detectorModelSpec(s Sensor) any {
 	switch v := s.(type) {

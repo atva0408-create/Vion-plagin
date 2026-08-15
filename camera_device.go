@@ -421,6 +421,16 @@ func (d *CameraDevice) AddSensor(s Sensor) error {
 	si.initUpdateFn(func(properties map[string]any) {
 		ctx := context.Background()
 		if isDetectionSensorType(sensor.GetType()) {
+			// the spec belongs to the registry: it survives a frame worker that
+			// is not up yet, the coordinator receives it with the next push
+			if spec, ok := properties["modelSpec"]; ok {
+				_, _ = d.registryProxy.Invoke(ctx, "updateModelSpec", sensor.GetID(), spec)
+				properties = withoutModelSpec(properties)
+				if len(properties) == 0 {
+					return
+				}
+			}
+
 			// detection writes bypass the main process and go straight to the
 			// frame worker, so without one there is nowhere to deliver them
 			if !d.frameWorkerState.Value() {
