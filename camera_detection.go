@@ -162,6 +162,9 @@ type SensorTriggerSettings struct {
 type FaceDetectionSettings struct {
 	// Confidence is the minimum confidence threshold (0 - 1) for a face to count.
 	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
+	// MatchThreshold is the minimum similarity (0 - 1) for a face to be recognized
+	// as an enrolled person. Higher means fewer false matches, lower means more.
+	MatchThreshold *float64 `msgpack:"matchThreshold,omitempty" json:"matchThreshold,omitempty"`
 }
 
 // LicensePlateDetectionSettings is the license plate detection settings.
