@@ -109,7 +109,7 @@ Example:
 	}
 	
 
-<a name="ValidateContractConsistency"></a>
+<a name="UpdateModelSpec"></a>
 
 ## func ValidateContractConsistency
 

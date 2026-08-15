@@ -57,6 +57,21 @@ type AudioModelSpec struct {
 	Input        AudioInputSpec `msgpack:"input" json:"input"` // Required input audio format
 }
 
+// UpdateModelSpec re-announces a detector's model spec, e.g. once its models
+// finished loading: what a detector reports at registration is only what it
+// knew then, models loading in the background are missing from it. sensor must
+// be the concrete sensor value.
+func UpdateModelSpec(sensor Sensor) {
+	spec := detectorModelSpec(sensor)
+	if spec == nil {
+		return
+	}
+
+	if base, ok := sensor.(interface{ writeState(map[string]any) }); ok {
+		base.writeState(map[string]any{"modelSpec": spec})
+	}
+}
+
 // a detector type left out here registers without a spec and never gets frames
 func detectorModelSpec(s Sensor) any {
 	switch v := s.(type) {
