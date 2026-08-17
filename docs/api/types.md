@@ -74,7 +74,7 @@ Shared utility types: the `Logger` interface every plugin and camera exposes, an
 
 <a name="ObjectDetectionLabels"></a>ObjectDetectionLabels lists the object\-detection labels the detector groups its classes into.
 
-	var ObjectDetectionLabels = []string{"person", "vehicle", "animal", "package"}
+	var ObjectDetectionLabels = []string{"person", "vehicle", "animal"}
 
 <a name="Bool"></a>
 

@@ -15,7 +15,7 @@ const (
 type DetectionLabel = string
 
 // ObjectDetectionLabels lists the object-detection labels the detector groups its classes into.
-var ObjectDetectionLabels = []string{"person", "vehicle", "animal", "package"}
+var ObjectDetectionLabels = []string{"person", "vehicle", "animal"}
 
 // DetectionLabels lists the built-in detection label types recognized across the system.
 var DetectionLabels = append(append([]string{"motion"}, ObjectDetectionLabels...), "audio")
