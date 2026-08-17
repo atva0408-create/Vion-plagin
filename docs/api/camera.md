@@ -189,7 +189,7 @@ Camera is BaseCamera with its video sources resolved into streaming URLs.
 	    Sources []CameraInput `msgpack:"sources,omitempty" json:"sources,omitempty"`
 	}
 
-<a name="CameraAspectRatio"></a>
+<a name="CameraActivityMode"></a>
 
 ## type CameraAspectRatio
 
@@ -791,6 +791,12 @@ CameraUiSettings is UI display settings for a camera.
 	    StreamingMode VideoStreamingMode `msgpack:"streamingMode" json:"streamingMode"`
 	    // StreamingSource is the preferred stream quality.
 	    StreamingSource StreamingRole `msgpack:"streamingSource" json:"streamingSource"`
+	    // PlaybackSource is the recorded playback quality. Auto picks the best
+	    // tier with footage and may switch at coverage edges.
+	    PlaybackSource PlaybackSource `msgpack:"playbackSource" json:"playbackSource"`
+	    // ActivityMode is when the live stream runs: continuously, only during
+	    // activity, or on demand.
+	    ActivityMode CameraActivityMode `msgpack:"activityMode" json:"activityMode"`
 	    // AspectRatio is the display aspect ratio.
 	    AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 	}

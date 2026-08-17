@@ -30,6 +30,27 @@ const (
 	StreamingRoleLowRes  StreamingRole = "low-resolution"
 )
 
+// PlaybackSource is the recorded playback quality selection: a fixed tier,
+// or automatic tier choice from the recorded coverage.
+type PlaybackSource string
+
+// CameraActivityMode is when the live stream runs: continuously, only
+// during activity, or on demand.
+type CameraActivityMode string
+
+const (
+	CameraActivityModeAlwaysOn CameraActivityMode = "always-on"
+	CameraActivityModeActivity CameraActivityMode = "activity"
+	CameraActivityModeStandby  CameraActivityMode = "standby"
+)
+
+const (
+	PlaybackSourceAuto PlaybackSource = "auto"
+	PlaybackSourceHigh PlaybackSource = "high"
+	PlaybackSourceMid  PlaybackSource = "mid"
+	PlaybackSourceLow  PlaybackSource = "low"
+)
+
 // VideoStreamingMode is the video streaming mode for UI playback.
 //   - auto: Automatically select best method
 //   - webrtc: WebRTC with UDP (lowest latency)

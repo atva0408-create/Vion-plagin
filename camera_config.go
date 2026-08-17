@@ -202,6 +202,12 @@ type CameraUiSettings struct {
 	StreamingMode VideoStreamingMode `msgpack:"streamingMode" json:"streamingMode"`
 	// StreamingSource is the preferred stream quality.
 	StreamingSource StreamingRole `msgpack:"streamingSource" json:"streamingSource"`
+	// PlaybackSource is the recorded playback quality. Auto picks the best
+	// tier with footage and may switch at coverage edges.
+	PlaybackSource PlaybackSource `msgpack:"playbackSource" json:"playbackSource"`
+	// ActivityMode is when the live stream runs: continuously, only during
+	// activity, or on demand.
+	ActivityMode CameraActivityMode `msgpack:"activityMode" json:"activityMode"`
 	// AspectRatio is the display aspect ratio.
 	AspectRatio CameraAspectRatio `msgpack:"aspectRatio" json:"aspectRatio"`
 }
