@@ -2691,11 +2691,12 @@ TrackedDetection extends Detection with tracking metadata \(stable IDs, velocity
 
 	type TrackedDetection struct {
 	    Detection
-	    TrackId       *int           `msgpack:"trackId,omitempty" json:"trackId,omitempty"`             // Stable sequential ID for this object across frames
-	    TrackAge      *int           `msgpack:"trackAge,omitempty" json:"trackAge,omitempty"`           // Number of frames this object has been continuously tracked
-	    TrackSpeed    *float64       `msgpack:"trackSpeed,omitempty" json:"trackSpeed,omitempty"`       // Velocity magnitude in normalized units per frame; 0 = stationary
-	    TrackVelocity *TrackVelocity `msgpack:"trackVelocity,omitempty" json:"trackVelocity,omitempty"` // Signed centroid velocity in normalized units per frame
-	    TrackLost     *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`         // True if the object was not matched in the current frame
+	    TrackId         *int           `msgpack:"trackId,omitempty" json:"trackId,omitempty"`                 // Stable sequential ID for this object across frames
+	    TrackAge        *int           `msgpack:"trackAge,omitempty" json:"trackAge,omitempty"`               // Number of frames this object has been continuously tracked
+	    TrackSpeed      *float64       `msgpack:"trackSpeed,omitempty" json:"trackSpeed,omitempty"`           // Velocity magnitude in normalized units per frame; 0 = stationary
+	    TrackVelocity   *TrackVelocity `msgpack:"trackVelocity,omitempty" json:"trackVelocity,omitempty"`     // Signed centroid velocity in normalized units per frame
+	    TrackLost       *bool          `msgpack:"trackLost,omitempty" json:"trackLost,omitempty"`             // True if the object was not matched in the current frame
+	    StationarySince *float64       `msgpack:"stationarySince,omitempty" json:"stationarySince,omitempty"` // Epoch ms since the object has been still; only present while it is settled
 	}
 
 <a name="VibrationSensor"></a>
