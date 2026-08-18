@@ -191,9 +191,19 @@ type ClipDetectionInterface interface {
 	// DetectClipEmbedding runs the CLIP image branch on a pre-decoded
 	// video frame.
 	DetectClipEmbedding(frame VideoFrameData, config map[string]any) (*ClipResult, error)
+	// EmbedImages runs the CLIP image branch over a batch of encoded images
+	// (JPEG/PNG): one result per input in the same order, nil where decoding
+	// or embedding failed. Meant for re-indexing stored images after an
+	// embedding-model change.
+	EmbedImages(images [][]byte, config map[string]any) ([]*ClipResult, error)
 	// GetTextEmbedding runs the CLIP text branch and returns a vector usable
 	// for semantic-search queries against stored image embeddings.
 	GetTextEmbedding(text string) (*ClipTextEmbeddingResult, error)
+	// GetTextEmbeddings runs the CLIP text branch once per embedding space
+	// the plugin can currently serve, the configured search model first.
+	// Lets semantic search also cover embeddings produced by an older model
+	// during a transition.
+	GetTextEmbeddings(text string) ([]*ClipTextEmbeddingResult, error)
 	// ClipSettings returns the JSON schema for the CLIP settings form in
 	// the UI, or nil for no schema.
 	ClipSettings() ([]JsonSchema, error)
