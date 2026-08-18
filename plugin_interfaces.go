@@ -78,6 +78,10 @@ type ClipTextEmbeddingResult struct {
 	// EmbeddingModel is the model that produced the embedding; consumers must
 	// not mix models.
 	EmbeddingModel string `msgpack:"embeddingModel" json:"embeddingModel"`
+	// ScoreBand is the [floor, ceiling] of raw text-image cosine scores for
+	// this model; consumers map scores to a 0..1 relevance scale and treat a
+	// missing band as score 0.
+	ScoreBand []float64 `msgpack:"scoreBand" json:"scoreBand"`
 }
 
 // DiscoveryProvider is implemented by plugins that can scan the network for
@@ -182,20 +186,33 @@ type ClassifierDetectionInterface interface {
 	ClassifierSettings() ([]JsonSchema, error)
 }
 
+// ClipDetectionPluginResponse is the result of a CLIP image embedding run.
+type ClipDetectionPluginResponse struct {
+	// Embeddings are the embedding vectors generated for the input.
+	Embeddings []ClipEmbedding `msgpack:"embeddings" json:"embeddings"`
+	// EmbeddingModel is the model that produced the embeddings; consumers
+	// must not mix models.
+	EmbeddingModel string `msgpack:"embeddingModel" json:"embeddingModel"`
+	// ScoreBand is the [floor, ceiling] of raw text-image cosine scores for
+	// this model; consumers map scores to a 0..1 relevance scale and treat a
+	// missing band as score 0.
+	ScoreBand []float64 `msgpack:"scoreBand" json:"scoreBand"`
+}
+
 // ClipDetectionInterface is implemented by plugins that generate CLIP
 // image and text embeddings used for semantic search over recorded events.
 type ClipDetectionInterface interface {
 	// TestClipEmbedding runs the CLIP image branch on a single image
 	// captured by the UI test panel.
-	TestClipEmbedding(imageData []byte, metadata ImageMetadata, config map[string]any) (*ClipResult, error)
+	TestClipEmbedding(imageData []byte, metadata ImageMetadata, config map[string]any) (*ClipDetectionPluginResponse, error)
 	// DetectClipEmbedding runs the CLIP image branch on a pre-decoded
 	// video frame.
-	DetectClipEmbedding(frame VideoFrameData, config map[string]any) (*ClipResult, error)
+	DetectClipEmbedding(frame VideoFrameData, config map[string]any) (*ClipDetectionPluginResponse, error)
 	// EmbedImages runs the CLIP image branch over a batch of encoded images
 	// (JPEG/PNG): one result per input in the same order, nil where decoding
 	// or embedding failed. Meant for re-indexing stored images after an
 	// embedding-model change.
-	EmbedImages(images [][]byte, config map[string]any) ([]*ClipResult, error)
+	EmbedImages(images [][]byte, config map[string]any) ([]*ClipDetectionPluginResponse, error)
 	// GetTextEmbedding runs the CLIP text branch and returns a vector usable
 	// for semantic-search queries against stored image embeddings.
 	GetTextEmbedding(text string) (*ClipTextEmbeddingResult, error)
