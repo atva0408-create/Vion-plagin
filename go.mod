@@ -1,9 +1,9 @@
 module github.com/cameraui/sdk/go
 
-go 1.25.0
+go 1.27.0
 
 require (
-	github.com/cameraui/rpc/go v1.0.11
+	github.com/cameraui/rpc/go v1.0.12
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
