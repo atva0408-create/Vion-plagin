@@ -52,6 +52,15 @@ GetPluginsByInterface returns all installed, enabled plugins that implement a sp
 
 GetServerAddresses returns the server addresses \(IP addresses the server is listening on\).
 
+<a name="CoreManager.InvokeInto"></a>
+### func \(\*CoreManager\) InvokeInto
+
+	func (cm *CoreManager) InvokeInto(ctx context.Context, out any, method string, args ...any) error
+
+InvokeInto calls a host method by name and decodes the result into out.
+
+It is the escape hatch for host methods that have no typed wrapper here, which are the ones camera.ui's own plugins use and nothing else. They carry no compatibility promise: names and shapes may change with any server release. Pass nil for out to ignore the result.
+
 <a name="CoreManager.OnEvent"></a>
 ### func \(\*CoreManager\) OnEvent
 
@@ -275,3 +284,16 @@ Example:
 	
 
 <a name="NotificationSpeed"></a>
+
+## type SensorHistoryEntry
+
+SensorHistoryEntry is one recorded change of one sensor property.
+
+	type SensorHistoryEntry struct {
+	    SensorID  string `msgpack:"sensorId" json:"sensorId"`
+	    Property  string `msgpack:"property" json:"property"`
+	    Value     any    `msgpack:"value" json:"value"`
+	    Timestamp int64  `msgpack:"timestamp" json:"timestamp"`
+	}
+
+<a name="SensorManager"></a>

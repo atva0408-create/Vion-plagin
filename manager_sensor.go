@@ -241,6 +241,86 @@ func (m *SensorManager) GetSensors() []Sensor {
 	return result
 }
 
+// GetSensorHistory returns what a set of sensors did during a window of time.
+//
+// It returns every recorded change between from and to, and for each property
+// also the value it already had when the window opened, because a door that was
+// open the whole time says as much as one that opened halfway through. Entries
+// come back oldest first.
+//
+// The history is a short tail, not an archive: it is coalesced to one entry per
+// second and capped per sensor, so a window far in the past may be gone.
+func (m *SensorManager) GetSensorHistory(sensorIDs []string, from, to int64) ([]SensorHistoryEntry, error) {
+	ctx := context.Background()
+	result, err := m.registryProxy.Invoke(ctx, "getSensorHistory", sensorIDs, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("getSensorHistory: %w", err)
+	}
+	if result == nil {
+		return nil, nil
+	}
+
+	list, ok := result.([]any)
+	if !ok {
+		return nil, fmt.Errorf("getSensorHistory: unexpected result %T", result)
+	}
+
+	return sensorHistoryFromWire(list), nil
+}
+
+// sensorHistoryFromWire reads the entries straight off the decoded result
+// instead of re-encoding them into the struct: a history value is `any`, and
+// decoding msgpack into a struct with an interface field goes through whatever
+// the field already holds, which panics on a retry.
+func sensorHistoryFromWire(list []any) []SensorHistoryEntry {
+	entries := make([]SensorHistoryEntry, 0, len(list))
+	for _, item := range list {
+		fields, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		entry := SensorHistoryEntry{Value: rpc.NormalizeUndefined(fields["value"])}
+		entry.SensorID, _ = fields["sensorId"].(string)
+		entry.Property, _ = fields["property"].(string)
+		entry.Timestamp = wireInt64(fields["timestamp"])
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// a number crossing msgpack arrives as whichever type the encoder found
+// smallest, and as a float when it came from JavaScript
+func wireInt64(value any) int64 {
+	switch number := value.(type) {
+	case int64:
+		return number
+	case int32:
+		return int64(number)
+	case int16:
+		return int64(number)
+	case int8:
+		return int64(number)
+	case int:
+		return int64(number)
+	case uint64:
+		return int64(number)
+	case uint32:
+		return int64(number)
+	case uint16:
+		return int64(number)
+	case uint8:
+		return int64(number)
+	case uint:
+		return int64(number)
+	case float64:
+		return int64(number)
+	case float32:
+		return int64(number)
+	default:
+		return 0
+	}
+}
+
 func (m *SensorManager) setPlugin(plugin Plugin) {
 	m.plugin = plugin
 }

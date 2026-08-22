@@ -281,6 +281,7 @@ BUCKETS: dict[str, str] = {
     # manager.md: system services
     "CoreManager": "manager",
     "CoreManagerEvent": "manager",
+    "SensorHistoryEntry": "manager",
     "DeviceManager": "manager",
     "DownloadManager": "manager",
     "DownloadToken": "manager",

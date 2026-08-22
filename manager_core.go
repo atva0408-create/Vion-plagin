@@ -8,6 +8,14 @@ import (
 	rpc "github.com/cameraui/rpc/go"
 )
 
+// SensorHistoryEntry is one recorded change of one sensor property.
+type SensorHistoryEntry struct {
+	SensorID  string `msgpack:"sensorId" json:"sensorId"`
+	Property  string `msgpack:"property" json:"property"`
+	Value     any    `msgpack:"value" json:"value"`
+	Timestamp int64  `msgpack:"timestamp" json:"timestamp"`
+}
+
 // CoreManagerEvent is the payload emitted by CoreManager.OnEvent.
 //
 // The host currently publishes one event type, "cloudAccountChanged".
@@ -142,6 +150,32 @@ func (cm *CoreManager) GetPluginsByInterface(interfaceName PluginInterface) ([]P
 	}
 
 	return plugins, nil
+}
+
+// InvokeInto calls a host method by name and decodes the result into out.
+//
+// It is the escape hatch for host methods that have no typed wrapper here,
+// which are the ones camera.ui's own plugins use and nothing else. They carry
+// no compatibility promise: names and shapes may change with any server
+// release. Pass nil for out to ignore the result.
+func (cm *CoreManager) InvokeInto(ctx context.Context, out any, method string, args ...any) error {
+	result, err := cm.proxy.Invoke(ctx, method, args...)
+	if err != nil {
+		return fmt.Errorf("%s: %w", method, err)
+	}
+	if out == nil || result == nil {
+		return nil
+	}
+
+	encoded, err := rpc.Encode(result)
+	if err != nil {
+		return fmt.Errorf("%s: %w", method, err)
+	}
+	if err := rpc.Decode(encoded, out); err != nil {
+		return fmt.Errorf("%s: %w", method, err)
+	}
+
+	return nil
 }
 
 // ConnectToPlugin connects to a plugin by name and returns a proxy for RPC calls.
