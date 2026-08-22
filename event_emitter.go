@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -61,8 +62,8 @@ func (e *eventEmitter) Emit(event string, args ...any) {
 		e.mu.Lock()
 		current := e.listeners[event]
 		// Iterate in reverse so earlier removals don't shift the pending indices.
-		for j := len(toRemove) - 1; j >= 0; j-- {
-			idx := toRemove[j]
+		for _, idx := range slices.Backward(toRemove) {
+
 			if idx < len(current) {
 				current = append(current[:idx], current[idx+1:]...)
 			}

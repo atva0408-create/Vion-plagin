@@ -14,7 +14,7 @@ func rewriteURLForRemote(url, master, user, password string) string {
 	rewritten := localhostPattern.ReplaceAllString(url, master)
 
 	if user != "" && strings.HasPrefix(rewritten, "rtsp://") {
-		hostPart := strings.SplitN(strings.TrimPrefix(rewritten, "rtsp://"), "/", 2)[0]
+		hostPart, _, _ := strings.Cut(strings.TrimPrefix(rewritten, "rtsp://"), "/")
 		if !strings.Contains(hostPart, "@") {
 			rewritten = strings.Replace(rewritten, "rtsp://", "rtsp://"+user+":"+password+"@", 1)
 		}
