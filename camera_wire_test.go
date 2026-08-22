@@ -16,8 +16,8 @@ func keysOf(m map[string]any) []string {
 
 func TestCameraEmbeddedRoundTrip(t *testing.T) {
 	cam := Camera{
-		BaseCamera: BaseCamera{ID: "cam1", Name: "Front", Room: "Hall"},
-		Sources:    []CameraInput{{ID: "src1", Name: "main"}},
+		ID: "cam1", Name: "Front", Room: "Hall",
+		Sources: []CameraInput{{ID: "src1", Name: "main"}},
 	}
 	enc, err := rpc.Encode(cam)
 	if err != nil {
@@ -48,8 +48,8 @@ func TestCameraEmbeddedRoundTrip(t *testing.T) {
 
 func TestCameraConfigEmbeddedRoundTrip(t *testing.T) {
 	cfg := CameraConfig{
-		BaseCameraConfig: BaseCameraConfig{Name: "New Cam", NativeID: "n1"},
-		Sources:          []CameraConfigInputSettings{{Name: "main", Role: CameraRoleHighRes}},
+		Name: "New Cam", NativeID: "n1",
+		Sources: []CameraConfigInputSettings{{Name: "main", Role: CameraRoleHighRes}},
 	}
 	enc, err := rpc.Encode(cfg)
 	if err != nil {

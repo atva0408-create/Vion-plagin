@@ -200,8 +200,7 @@ func readStoreFile(path string, log *Logger) (payload map[string]any, found bool
 	if err == nil {
 		return payload, true, nil
 	}
-	var corrupt *storeCorruptError
-	if !errors.As(err, &corrupt) {
+	if _, ok := errors.AsType[*storeCorruptError](err); !ok {
 		return nil, false, err
 	}
 	log.Error(fmt.Sprintf("store: %s is corrupt (%v), trying backup", path, err))

@@ -81,9 +81,8 @@ func TestDecodeEnvelopeRejectsCorruption(t *testing.T) {
 		t.Error("bad CRC accepted")
 	}
 
-	var corrupt *storeCorruptError
 	_, err = decodeEnvelope(badCRC)
-	if !errors.As(err, &corrupt) {
+	if _, ok := errors.AsType[*storeCorruptError](err); !ok {
 		t.Errorf("corruption error has type %T", err)
 	}
 }
