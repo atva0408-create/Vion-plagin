@@ -29,6 +29,7 @@ var validInterfaces = []PluginInterface{
 	PluginInterfaceLicensePlateDetection, PluginInterfaceClassifierDetection,
 	PluginInterfaceClipDetection,
 	PluginInterfaceDiscoveryProvider,
+	PluginInterfaceSensorDiscovery,
 	PluginInterfaceNotifier,
 	PluginInterfaceNVR,
 	PluginInterfaceOAuthCapable, PluginInterfaceOAuthDeviceFlow,

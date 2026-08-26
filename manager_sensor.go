@@ -84,7 +84,53 @@ func newSensorManager(client *rpc.Client, storageCtrl *StorageController, plugin
 //
 //	lock := sdk.NewLockControl("Front Door", sdk.WithNativeID("lock.front_door"))
 //	err := api.SensorManager.AddSensor(lock)
+//
+// DiscoveredSensor is a sensor a plugin can offer for adoption (see
+// SensorDiscoveryProvider).
+type DiscoveredSensor struct {
+	// ID is the stable identifier within the plugin (e.g. the source
+	// system's entity id). Used for deduplication and adoption.
+	ID string `msgpack:"id" json:"id"`
+	// Name is the display name shown in the UI adoption list.
+	Name string `msgpack:"name" json:"name"`
+	// Type is the sensor type the plugin would register the sensor as.
+	Type SensorType `msgpack:"type" json:"type"`
+	// Room is the room or area label from the source system (optional).
+	Room string `msgpack:"room,omitempty" json:"room,omitempty"`
+	// Manufacturer is the manufacturer label (optional).
+	Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
+	// Model is the model label (optional).
+	Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+}
+
+// RegisteredSensorInfo is the persisted registry record of a sensor this
+// plugin registered, see SensorManager.GetRegisteredSensors.
+type RegisteredSensorInfo struct {
+	// ID is the persistent registry id.
+	ID string `msgpack:"id" json:"id"`
+	// NativeID is the nativeId the sensor was registered with, when it had one.
+	NativeID string `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	// Type is the sensor type.
+	Type SensorType `msgpack:"type" json:"type"`
+	// Name is the sensor name at registration.
+	Name string `msgpack:"name" json:"name"`
+	// Connected is true while a live sensor instance backs the record.
+	Connected bool `msgpack:"connected" json:"connected"`
+}
+
+// registerSlots bounds concurrent sensor registrations per plugin process: a
+// plugin importing hundreds of sensors at once would put every RPC in flight
+// together and let the queue outrun the call timeout on a host that is still
+// starting up. Shared with CameraDevice.AddSensor.
+var registerSlots = make(chan struct{}, 8)
+
 func (m *SensorManager) AddSensor(s Sensor) error {
+	registerSlots <- struct{}{}
+	defer func() { <-registerSlots }()
+	return m.addSensor(s)
+}
+
+func (m *SensorManager) addSensor(s Sensor) error {
 	si, ok := s.(sensorInternalInit)
 	if !ok {
 		return fmt.Errorf("sensor %s does not embed BaseSensor", s.GetName())
@@ -239,6 +285,38 @@ func (m *SensorManager) GetSensors() []Sensor {
 		result = append(result, s)
 	}
 	return result
+}
+
+// GetRegisteredSensors returns the sensors of this plugin the host has
+// persisted, including ones from earlier runs that are not registered in
+// this session. Lets a provider reconcile an external inventory against
+// what already exists.
+func (m *SensorManager) GetRegisteredSensors() ([]RegisteredSensorInfo, error) {
+	ctx := context.Background()
+	result, err := m.registryProxy.Invoke(ctx, "getSensors", m.info.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch registered sensors: %w", err)
+	}
+	sensorsRaw, ok := result.([]any)
+	if !ok {
+		return nil, fmt.Errorf("failed to decode registered sensors")
+	}
+	infos := make([]RegisteredSensorInfo, 0, len(sensorsRaw))
+	for _, raw := range sensorsRaw {
+		encoded, err := rpc.Encode(raw)
+		if err != nil {
+			continue
+		}
+		var data storedSensorData
+		if !decodeMsgpack(m.logger, encoded, &data, "storedSensorData") {
+			continue
+		}
+		if data.PluginID != m.info.ID {
+			continue
+		}
+		infos = append(infos, RegisteredSensorInfo{ID: data.ID, NativeID: data.NativeID, Type: data.Type, Name: data.Name, Connected: data.Connected})
+	}
+	return infos, nil
 }
 
 // GetSensorHistory returns what a set of sensors did during a window of time.

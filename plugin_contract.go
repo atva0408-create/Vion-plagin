@@ -54,6 +54,10 @@ const (
 	// DiscoveryProvider (network scan + adoption). Only valid for
 	// camera-controlling roles.
 	PluginInterfaceDiscoveryProvider PluginInterface = "DiscoveryProvider"
+	// PluginInterfaceSensorDiscovery marks a plugin implementing
+	// SensorDiscoveryProvider (external sensor inventory the user adopts
+	// from).
+	PluginInterfaceSensorDiscovery PluginInterface = "SensorDiscovery"
 	// PluginInterfaceNVR marks a plugin implementing NVRInterface (events and
 	// recordings). Exactly one plugin per host fills this role at runtime.
 	PluginInterfaceNVR PluginInterface = "NVR"

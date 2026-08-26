@@ -351,6 +351,12 @@ func (d *CameraDevice) Disconnect() error {
 // other": the assignment is locked, users cannot re-assign it. For sensors
 // the user should assign freely, register via SensorManager.AddSensor instead.
 func (d *CameraDevice) AddSensor(s Sensor) error {
+	registerSlots <- struct{}{}
+	defer func() { <-registerSlots }()
+	return d.addSensor(s)
+}
+
+func (d *CameraDevice) addSensor(s Sensor) error {
 	si, ok := s.(sensorInternalInit)
 	if !ok {
 		return fmt.Errorf("sensor %s does not embed BaseSensor", s.GetName())
