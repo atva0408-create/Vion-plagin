@@ -351,7 +351,7 @@ DiscoveredCamera is a camera found during discovery by a discovery provider plug
 	    Address string `msgpack:"address,omitempty" json:"address,omitempty"`
 	}
 
-<a name="DiscoveryProvider"></a>
+<a name="DiscoveredSensor"></a>
 
 ## type DiscoveryProvider
 
@@ -1067,6 +1067,10 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 	    // DiscoveryProvider (network scan + adoption). Only valid for
 	    // camera-controlling roles.
 	    PluginInterfaceDiscoveryProvider PluginInterface = "DiscoveryProvider"
+	    // PluginInterfaceSensorDiscovery marks a plugin implementing
+	    // SensorDiscoveryProvider (external sensor inventory the user adopts
+	    // from).
+	    PluginInterfaceSensorDiscovery PluginInterface = "SensorDiscovery"
 	    // PluginInterfaceNVR marks a plugin implementing NVRInterface (events and
 	    // recordings). Exactly one plugin per host fills this role at runtime.
 	    PluginInterfaceNVR PluginInterface = "NVR"
