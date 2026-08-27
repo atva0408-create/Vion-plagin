@@ -239,6 +239,8 @@ CameraConfigInputSettings is a camera input/source definition supplied when crea
 	    Preload bool `msgpack:"preload" json:"preload"`
 	    // Muted strips the audio track from this source.
 	    Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
+	    // BackchannelDisabled drops the talk channel of this source, so clients get no microphone.
+	    BackchannelDisabled bool `msgpack:"backchannelDisabled,omitempty" json:"backchannelDisabled,omitempty"`
 	    // ChildSourceId is the child source ID (for snapshot fallback).
 	    ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 	    // Urls are the raw source URLs (resolved into streaming URLs by the host).
@@ -716,6 +718,8 @@ CameraInput is a camera video input/source with resolved URLs.
 	    Preload bool `msgpack:"preload,omitempty" json:"preload,omitempty"`
 	    // Muted strips the audio track from this source.
 	    Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
+	    // BackchannelDisabled drops the talk channel of this source, so clients get no microphone.
+	    BackchannelDisabled bool `msgpack:"backchannelDisabled,omitempty" json:"backchannelDisabled,omitempty"`
 	    // Urls are the generated streaming URLs.
 	    Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
 	    // VideoCodec is the probed video codec of this source. Filled by the
