@@ -366,6 +366,7 @@ func Run(constructor pluginConstructor) {
 		if err := sensorManager.init(); err != nil {
 			return fmt.Errorf("failed to init sensor manager: %w", err)
 		}
+		sensorManager.configureAdoptedSensors()
 
 		if stopRequested() {
 			return errStopRequested

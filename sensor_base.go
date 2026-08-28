@@ -49,6 +49,19 @@ const (
 	SensorTypeBattery        SensorType = "battery"        // Battery level and charging state
 )
 
+// SensorSourceState is the plugin's view of the source behind an adopted
+// sensor. Unavailable means wait (source unreachable, entity temporarily
+// unavailable), Removed means the source reported the entity gone while it
+// was reachable. Neither deletes the sensor: an adopted sensor is deleted by
+// the user only.
+type SensorSourceState string
+
+const (
+	SensorSourceStateConnected   SensorSourceState = "connected"
+	SensorSourceStateUnavailable SensorSourceState = "unavailable"
+	SensorSourceStateRemoved     SensorSourceState = "removed"
+)
+
 // SensorCategory categorizes a sensor's role in the system. It determines how
 // the backend treats the sensor, read-only or controllable.
 type SensorCategory string
@@ -102,23 +115,30 @@ type Sensor interface {
 type SensorOption func(*sensorOptions)
 
 type sensorJSON struct {
-	ID             string         `msgpack:"id" json:"id"`
-	Type           SensorType     `msgpack:"type" json:"type"`
-	Name           string         `msgpack:"name" json:"name"`
-	DisplayName    string         `msgpack:"displayName" json:"displayName"`
-	Category       SensorCategory `msgpack:"category" json:"category"`
-	NativeID       string         `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
-	Origin         string         `msgpack:"origin,omitempty" json:"origin,omitempty"`
-	Exposed        *bool          `msgpack:"exposed,omitempty" json:"exposed,omitempty"`
-	Hidden         *bool          `msgpack:"hidden,omitempty" json:"hidden,omitempty"`
-	PluginID       string         `msgpack:"pluginId,omitempty" json:"pluginId,omitempty"`
-	Properties     map[string]any `msgpack:"properties" json:"properties"`
-	Capabilities   []string       `msgpack:"capabilities" json:"capabilities"`
-	RequiresFrames bool           `msgpack:"requiresFrames" json:"requiresFrames"`
-	ModelSpec      any            `msgpack:"modelSpec,omitempty" json:"modelSpec,omitempty"`
+	ID             string            `msgpack:"id" json:"id"`
+	Type           SensorType        `msgpack:"type" json:"type"`
+	Name           string            `msgpack:"name" json:"name"`
+	DisplayName    string            `msgpack:"displayName" json:"displayName"`
+	Category       SensorCategory    `msgpack:"category" json:"category"`
+	NativeID       string            `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
+	Origin         string            `msgpack:"origin,omitempty" json:"origin,omitempty"`
+	PluginID       string            `msgpack:"pluginId,omitempty" json:"pluginId,omitempty"`
+	Properties     map[string]any    `msgpack:"properties" json:"properties"`
+	Capabilities   []string          `msgpack:"capabilities" json:"capabilities"`
+	RequiresFrames bool              `msgpack:"requiresFrames" json:"requiresFrames"`
+	ModelSpec      any               `msgpack:"modelSpec,omitempty" json:"modelSpec,omitempty"`
+	SourceState    SensorSourceState `msgpack:"sourceState,omitempty" json:"sourceState,omitempty"`
+	Address        string            `msgpack:"address,omitempty" json:"address,omitempty"`
+}
+
+type sensorSourcePatch struct {
+	SourceState SensorSourceState `msgpack:"sourceState,omitempty" json:"sourceState,omitempty"`
+	Address     string            `msgpack:"address,omitempty" json:"address,omitempty"`
 }
 
 type propertyUpdateFn func(properties map[string]any)
+
+type sourceUpdateFn func(patch sensorSourcePatch)
 
 // optional on a concrete sensor, OnStart/OnStop are paired 1:1, run in their own
 // goroutine and swallow panics
@@ -130,8 +150,7 @@ type sensorLifecycle interface {
 type sensorOptions struct {
 	nativeID string
 	origin   string
-	exposed  *bool
-	hidden   *bool
+	address  string
 }
 
 // BaseSensor is the base struct for all sensors. Embed this in concrete sensor types.
@@ -147,8 +166,8 @@ type BaseSensor struct {
 	displayName          string
 	nativeID             string
 	origin               string
-	initialExposed       *bool
-	initialHidden        *bool
+	address              string
+	sourceState          SensorSourceState
 	pluginID             string
 	assignedCameraIDs    []string
 	capabilities         []string
@@ -156,6 +175,7 @@ type BaseSensor struct {
 	storage              *DeviceStorage
 	updateFn             propertyUpdateFn
 	capabilitiesUpdateFn func([]string)
+	sourceUpdateFn       sourceUpdateFn
 	propertyChanged      *Subject[SensorPropertyChange]
 	capabilitiesChanged  *Subject[[]string]
 	assignmentChanged    *Subject[[]string]
@@ -187,8 +207,7 @@ func NewBaseSensor(name string, opts ...SensorOption) BaseSensor {
 		displayName:         name,
 		nativeID:            cfg.nativeID,
 		origin:              cfg.origin,
-		initialExposed:      cfg.exposed,
-		initialHidden:       cfg.hidden,
+		address:             cfg.address,
 		properties:          make(map[string]any),
 		capabilities:        make([]string, 0),
 		propertyChanged:     NewSubject[SensorPropertyChange](),
@@ -230,6 +249,61 @@ func (s *BaseSensor) GetNativeID() string {
 
 func (s *BaseSensor) GetPluginID() string {
 	return s.pluginID
+}
+
+func (s *BaseSensor) GetSourceState() SensorSourceState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sourceState
+}
+
+// SetSourceState reports what the source behind this sensor looks like right
+// now. The host shows the state with its reason on the sensors page and never
+// deletes on it. Only meaningful for adopted sensors.
+//
+// Example:
+//
+//	sensor.SetSourceState(sdk.SensorSourceStateRemoved)
+func (s *BaseSensor) SetSourceState(state SensorSourceState) {
+	s.mu.Lock()
+	if s.sourceState == state {
+		s.mu.Unlock()
+		return
+	}
+	s.sourceState = state
+	updateFn := s.sourceUpdateFn
+	s.mu.Unlock()
+
+	if updateFn != nil {
+		updateFn(sensorSourcePatch{SourceState: state})
+	}
+}
+
+func (s *BaseSensor) GetAddress() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.address
+}
+
+// SetAddress reports the sensor's current address at the source, e.g. after a
+// Home Assistant entity was renamed. The identity (nativeId) stays.
+//
+// Example:
+//
+//	sensor.SetAddress(entry.EntityID)
+func (s *BaseSensor) SetAddress(address string) {
+	s.mu.Lock()
+	if s.address == address {
+		s.mu.Unlock()
+		return
+	}
+	s.address = address
+	updateFn := s.sourceUpdateFn
+	s.mu.Unlock()
+
+	if updateFn != nil {
+		updateFn(sensorSourcePatch{Address: address})
+	}
 }
 
 func (s *BaseSensor) GetAssignedCameraIDs() []string {
@@ -418,6 +492,12 @@ func (s *BaseSensor) initCapabilitiesUpdateFn(updateFn func([]string)) {
 	s.capabilitiesUpdateFn = updateFn
 }
 
+func (s *BaseSensor) initSourceUpdateFn(updateFn sourceUpdateFn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sourceUpdateFn = updateFn
+}
+
 // no lifecycle hooks here, BaseSensor cannot reach the outer concrete type,
 // setActiveWithLifecycle does that
 func (s *BaseSensor) setActive(active bool) bool {
@@ -447,12 +527,12 @@ func (s *BaseSensor) toBaseJSON(sensorType SensorType, category SensorCategory) 
 		Category:       category,
 		NativeID:       s.nativeID,
 		Origin:         s.origin,
-		Exposed:        s.initialExposed,
-		Hidden:         s.initialHidden,
 		PluginID:       s.pluginID,
 		Properties:     props,
 		Capabilities:   s.capabilities,
 		RequiresFrames: s.requiresFrames,
+		SourceState:    s.sourceState,
+		Address:        s.address,
 	}
 }
 
@@ -496,6 +576,7 @@ func (s *BaseSensor) cleanup() {
 	defer s.mu.Unlock()
 	s.updateFn = nil
 	s.capabilitiesUpdateFn = nil
+	s.sourceUpdateFn = nil
 	s.registered = false
 	s.assignedCameraIDs = nil
 	s.propertyChanged.Complete()
@@ -534,19 +615,12 @@ func WithOrigin(origin string) SensorOption {
 	}
 }
 
-// WithExposed sets the initial export state on first creation; the user's
-// later choice wins.
-func WithExposed(exposed bool) SensorOption {
+// WithAddress sets the sensor's current address at the source, e.g. a Home
+// Assistant entity id. Display only, may change over time; identity is the
+// native id.
+func WithAddress(address string) SensorOption {
 	return func(o *sensorOptions) {
-		o.exposed = &exposed
-	}
-}
-
-// WithHidden sets the initial hidden state on first creation; the user's
-// later choice wins.
-func WithHidden(hidden bool) SensorOption {
-	return func(o *sensorOptions) {
-		o.hidden = &hidden
+		o.address = address
 	}
 }
 

@@ -176,12 +176,12 @@ Things to internalize:
 
 A sensor is the smallest smart-home unit in camera.ui. Detection sensors push results from analyzing video; control sensors expose user-toggleable hardware (lights, sirens, locks); event sensors fire one-shot triggers (doorbell).
 
-Every sensor is a persisted entity of its own. The plugin supplies the durable identity, everything else belongs to the user: camera assignments, display name and whether the sensor is exported to consumers. There are two ways to register one:
+Every sensor is a persisted entity of its own. The plugin supplies the durable identity, everything else belongs to the user: camera assignments, display name and whether the sensor is exported to consumers. A sensor comes into existence in one of two ways:
 
-- **`cam.AddSensor(sensor)`** — the sensor belongs to this camera's hardware (spotlight, siren, battery, PTZ). The host locks the assignment to the camera; users cannot re-assign it.
-- **`p.API.SensorManager.AddSensor(sensor)`** — standalone device (smart plug, hub, imported smart-home device). The user assigns it to zero or more cameras in the UI.
+- **`cam.AddSensor(sensor)`**: the sensor belongs to this camera's hardware (spotlight, siren, battery, PTZ). The host locks the assignment to the camera; users cannot re-assign it.
+- **Adoption**: the sensor comes from an external inventory (Home Assistant entities, vendor accessories) and the user picks it on the Sensors page. The plugin implements `SensorDiscoveryProvider` (Section 6.4) and hands the runtime sensor over inside its hooks; the host keeps the record and binds it. The user assigns it to zero or more cameras in the UI.
 
-Either way, pass `cameraui.WithNativeID("...")` (e.g. the upstream device id) to the constructor so the host can reconcile the sensor across restarts by `(pluginId, nativeId)`. Without it, identity falls back to `(type, name)` and a rename creates a new sensor.
+Pass `cameraui.WithNativeID("...")` (e.g. the upstream device id) to the constructor so the host can reconcile the sensor across restarts by `(pluginId, nativeId)`. Without it, identity falls back to `(type, name)` and a rename creates a new sensor. An adopted sensor must carry the `DiscoveredSensor.ID` it was adopted with.
 
 For detection, construct the matching `*DetectorSensor`, wire up an implementation of the matching `*Detector` interface (the host calls it once per frame at the configured rate), then attach the sensor to the camera with `AddSensor`. The same struct can implement both — it's the typical pattern:
 
@@ -233,14 +233,7 @@ light.SetOn()                         // turn on
 light.SetBrightness(80)               // 0-100
 ```
 
-A standalone sensor works exactly the same, it just goes through the sensor manager instead of a camera:
-
-```go
-lock := cameraui.NewLockControl("Front Door", cameraui.WithNativeID("lock.front_door"))
-if err := p.API.SensorManager.AddSensor(lock); err != nil {
-    return err
-}
-```
+An adopted sensor works exactly the same once the host has bound it; the plugin only builds it (see Section 6.4).
 
 Every sensor also has an optional lifecycle pair. Implement `OnStart()` on your sensor type to run code once the sensor is registered and its storage is ready — start pollers, subscriptions, timers there. `OnStop()` is the counterpart and runs on removal, plugin shutdown and cleanup:
 
@@ -664,6 +657,51 @@ func (p *MotionPlugin) runOnFrames([]cameraui.VideoFrameData) []cameraui.Detecti
 The image-based detection interfaces (`ObjectDetectionInterface`, `FaceDetectionInterface`, `LicensePlateDetectionInterface`, `ClassifierDetectionInterface`, `ClipDetectionInterface`) take an extra `metadata cameraui.ImageMetadata` argument with `Width` / `Height` on the `Test*` method. The audio interface takes `metadata cameraui.AudioMetadata` with the `MimeType`. Otherwise the wiring is identical to the motion example above — add the matching `cameraui.PluginInterfaceX` flag to the contract and implement the `Test*` / `Detect*` / `*Settings` trio.
 
 A detection plugin almost always implements both halves: the appropriate `*DetectorSensor` (Section 4) for the live pipeline, AND the matching `*DetectionInterface` here for UI test dialogs and ad-hoc benchmarks.
+
+### 6.4 SensorDiscoveryProvider
+
+Let users pick sensors from an external inventory instead of the plugin importing everything. Declare `PluginInterfaceSensorDiscovery` in the contract. The host owns the adoption: `OnDiscoverSensors` returns everything the source offers (the host drops what is already adopted), `ConfigureAdoptedSensors` runs once at startup right after `ConfigureCameras` with every adopted record and returns one runtime sensor per record, `OnSensorAdopted` returns the runtime sensor for a record the user just adopted, and `OnSensorUnadopted` tells the plugin the user deleted one. The plugin persists nothing about adoption.
+
+`DiscoveredSensor.ID` is the source's stable identity (a registry id, a `unique_id`, a device id), never a mutable address: it becomes the sensor's native id and decides whether a rename at the source keeps the record. Report the source's condition on the sensor itself with `SetSourceState` and `SetAddress`; a sensor the source no longer has gets `SensorSourceStateRemoved`, it is never dropped by the plugin.
+
+```go
+var _ cameraui.SensorDiscoveryProvider = (*HubPlugin)(nil)
+
+func (p *HubPlugin) OnDiscoverSensors() ([]cameraui.DiscoveredSensor, error) {
+    entries := p.source.Entities()
+    out := make([]cameraui.DiscoveredSensor, 0, len(entries))
+    for _, e := range entries {
+        out = append(out, cameraui.DiscoveredSensor{ID: e.RegistryID, Address: e.EntityID, Name: e.Name, Type: cameraui.SensorTypeContact})
+    }
+    return out, nil
+}
+
+func (p *HubPlugin) ConfigureAdoptedSensors(records []cameraui.AdoptedSensor) ([]cameraui.Sensor, error) {
+    sensors := make([]cameraui.Sensor, 0, len(records))
+    for _, r := range records {
+        s, err := p.OnSensorAdopted(r)
+        if err != nil {
+            return nil, err
+        }
+        sensors = append(sensors, s)
+    }
+    return sensors, nil
+}
+
+func (p *HubPlugin) OnSensorAdopted(r cameraui.AdoptedSensor) (cameraui.Sensor, error) {
+    contact := cameraui.NewContactSensor(r.Name, cameraui.WithNativeID(r.NativeID), cameraui.WithAddress(r.Address))
+    if !p.source.Has(r.NativeID) {
+        contact.SetSourceState(cameraui.SensorSourceStateRemoved)
+    }
+    p.contacts[r.NativeID] = contact
+    return contact, nil
+}
+
+func (p *HubPlugin) OnSensorUnadopted(nativeID string) error {
+    delete(p.contacts, nativeID)
+    return nil
+}
+```
 
 ## 7. Logging
 

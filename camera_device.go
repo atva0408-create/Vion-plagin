@@ -31,6 +31,7 @@ type sensorInternalInit interface {
 	setStorage(storage *DeviceStorage)
 	initUpdateFn(updateFn propertyUpdateFn)
 	initCapabilitiesUpdateFn(updateFn func([]string))
+	initSourceUpdateFn(updateFn sourceUpdateFn)
 	ToJSON() sensorJSON
 }
 
@@ -348,8 +349,8 @@ func (d *CameraDevice) Disconnect() error {
 // and reconciles it across restarts like a standalone sensor.
 //
 // Registering here declares "this sensor belongs to this camera and no
-// other": the assignment is locked, users cannot re-assign it. For sensors
-// the user should assign freely, register via SensorManager.AddSensor instead.
+// other": the assignment is locked, users cannot re-assign it. Sensors the
+// user should assign freely come in through SensorDiscoveryProvider instead.
 func (d *CameraDevice) AddSensor(s Sensor) error {
 	registerSlots <- struct{}{}
 	defer func() { <-registerSlots }()
@@ -452,6 +453,10 @@ func (d *CameraDevice) addSensor(s Sensor) error {
 	si.initCapabilitiesUpdateFn(func(caps []string) {
 		ctx := context.Background()
 		_, _ = d.registryProxy.Invoke(ctx, "updateCapabilities", sensor.GetID(), caps)
+	})
+	si.initSourceUpdateFn(func(patch sensorSourcePatch) {
+		ctx := context.Background()
+		_, _ = d.registryProxy.Invoke(ctx, "updateSource", sensor.GetID(), patch)
 	})
 
 	// host-side writes (e.g. the motion dwell timer) must land back on the sensor

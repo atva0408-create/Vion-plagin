@@ -15,6 +15,10 @@ type sensorAddedEventData struct {
 	State  sensorRefreshedState `msgpack:"state"`
 }
 
+type sensorAdoptedEventData struct {
+	Sensor storedSensorData `msgpack:"sensor"`
+}
+
 type sensorDeletedEventData struct {
 	SensorID   string     `msgpack:"sensorId"`
 	SensorType SensorType `msgpack:"sensorType"`
@@ -53,19 +57,21 @@ type sensorRegistration struct {
 }
 
 type storedSensorData struct {
-	ID                string         `msgpack:"id"`
-	Type              SensorType     `msgpack:"type"`
-	Name              string         `msgpack:"name"`
-	DisplayName       string         `msgpack:"displayName"`
-	NativeID          string         `msgpack:"nativeId,omitempty"`
-	PluginID          string         `msgpack:"pluginId"`
-	AssignedCameraIDs []string       `msgpack:"assignedCameraIds"`
-	BoundCameraID     string         `msgpack:"boundCameraId,omitempty"`
-	Exposed           bool           `msgpack:"exposed"`
-	Connected         bool           `msgpack:"connected"`
-	Properties        map[string]any `msgpack:"properties,omitempty"`
-	Capabilities      []string       `msgpack:"capabilities,omitempty"`
-	RequiresFrames    bool           `msgpack:"requiresFrames,omitempty"`
+	ID                string            `msgpack:"id"`
+	Type              SensorType        `msgpack:"type"`
+	Name              string            `msgpack:"name"`
+	DisplayName       string            `msgpack:"displayName"`
+	NativeID          string            `msgpack:"nativeId,omitempty"`
+	PluginID          string            `msgpack:"pluginId"`
+	AssignedCameraIDs []string          `msgpack:"assignedCameraIds"`
+	BoundCameraID     string            `msgpack:"boundCameraId,omitempty"`
+	Address           string            `msgpack:"address,omitempty"`
+	SourceState       SensorSourceState `msgpack:"sourceState,omitempty"`
+	Exposed           bool              `msgpack:"exposed"`
+	Connected         bool              `msgpack:"connected"`
+	Properties        map[string]any    `msgpack:"properties,omitempty"`
+	Capabilities      []string          `msgpack:"capabilities,omitempty"`
+	RequiresFrames    bool              `msgpack:"requiresFrames,omitempty"`
 }
 
 // Data stays map[string]any, msgpack reflection panics on an inner any-typed Value

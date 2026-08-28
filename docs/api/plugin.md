@@ -143,6 +143,25 @@ APIEvent identifies a lifecycle event emitted on the PluginAPI eventEmitter. Plu
 	    APIEventShutdown APIEvent = "shutdown"
 	)
 
+<a name="AdoptedSensor"></a>
+
+## type AdoptedSensor
+
+AdoptedSensor is a sensor the user adopted; what the host hands a SensorDiscoveryProvider to build its runtime sensor from.
+
+	type AdoptedSensor struct {
+	    // ID is the persistent registry id, the sensor's id once bound.
+	    ID  string `msgpack:"id" json:"id"`
+	    // NativeID is the DiscoveredSensor.ID the adoption used.
+	    NativeID string `msgpack:"nativeId" json:"nativeId"`
+	    // Address is the last known address at the source, if any.
+	    Address string `msgpack:"address,omitempty" json:"address,omitempty"`
+	    // Name is the name at adoption time; the user may have renamed the sensor since.
+	    Name string `msgpack:"name" json:"name"`
+	    // Type is the sensor type the plugin offered it as.
+	    Type SensorType `msgpack:"type" json:"type"`
+	}
+
 <a name="AlertZone"></a>
 
 ## type AssignedPlugin
@@ -352,6 +371,35 @@ DiscoveredCamera is a camera found during discovery by a discovery provider plug
 	}
 
 <a name="DiscoveredSensor"></a>
+
+## type DiscoveredSensor
+
+DiscoveredSensor is a sensor a plugin can offer for adoption \(see SensorDiscoveryProvider\).
+
+	type DiscoveredSensor struct {
+	    // ID is the source's stable identity for this sensor, never its address:
+	    // a Home Assistant entity-registry id, an MQTT unique_id, a vendor device
+	    // id. It becomes the sensor's nativeId, and a sensor keeps its record,
+	    // assignments and history for as long as this id stays the same. Using a
+	    // mutable address (a Home Assistant entity_id) here turns every rename at
+	    // the source into an orphan plus a new sensor.
+	    ID  string `msgpack:"id" json:"id"`
+	    // Address is the current address at the source (e.g. a Home Assistant
+	    // entity id), shown next to the name (optional).
+	    Address string `msgpack:"address,omitempty" json:"address,omitempty"`
+	    // Name is the display name shown in the UI adoption list.
+	    Name string `msgpack:"name" json:"name"`
+	    // Type is the sensor type the plugin would register the sensor as.
+	    Type SensorType `msgpack:"type" json:"type"`
+	    // Room is the room or area label from the source system (optional).
+	    Room string `msgpack:"room,omitempty" json:"room,omitempty"`
+	    // Manufacturer is the manufacturer label (optional).
+	    Manufacturer string `msgpack:"manufacturer,omitempty" json:"manufacturer,omitempty"`
+	    // Model is the model label (optional).
+	    Model string `msgpack:"model,omitempty" json:"model,omitempty"`
+	}
+
+<a name="DiscoveryProvider"></a>
 
 ## type DiscoveryProvider
 
@@ -868,8 +916,8 @@ Example:
 	    // DeviceManager owns the camera devices assigned to this plugin and
 	    // publishes camera-state changes.
 	    DeviceManager *DeviceManager
-	    // SensorManager registers standalone sensors: entities of their own,
-	    // persisted across restarts, assignable to cameras by the user.
+	    // SensorManager is the host's view of the sensor registry (history reads);
+	    // standalone sensors are bound by the host through SensorDiscoveryProvider.
 	    SensorManager *SensorManager
 	    // DownloadManager mints token-protected download URLs for files the
 	    // plugin exposes to the UI (clip exports, snapshots).
@@ -1177,6 +1225,42 @@ PythonVersion is the Python interpreter major.minor version a Python plugin requ
 	)
 
 <a name="RTSPAudioCodec"></a>
+
+## type SensorDiscoveryProvider
+
+SensorDiscoveryProvider is implemented by plugins that face an external inventory \(Home Assistant entities, vendor accessories\) the user picks from instead of the plugin importing everything. Declare PluginInterfaceSensorDiscovery in the contract.
+
+The host owns the adoption: it lists what the plugin discovers, creates the sensor record when the user adopts, hands the plugin its adopted sensors on every start and tells it when the user deletes one. The plugin keeps no list of its own.
+
+Identity is the source's stable id \(DiscoveredSensor.ID\), never an address; the same id means the same sensor across restarts and renames.
+
+	type SensorDiscoveryProvider interface {
+	    // OnDiscoverSensors returns every sensor the source currently offers.
+	    // The host drops the ones already adopted, the plugin does not filter.
+	    // Called on demand (Sensors page, rescan) and on a polling schedule
+	    // while the page is open.
+	    OnDiscoverSensors() ([]DiscoveredSensor, error)
+	    // ConfigureAdoptedSensors is called once at startup, right after
+	    // ConfigureCameras, with every sensor the user adopted from this plugin.
+	    // Build and return one runtime sensor per record, always, from the
+	    // record's type and name alone; the host binds each returned sensor to
+	    // its record by native id. Report what the source looks like on the
+	    // sensor itself (SetSourceState, SetAddress) as soon as you know: a
+	    // record the source no longer has gets SensorSourceStateRemoved, it is
+	    // never dropped here.
+	    ConfigureAdoptedSensors(sensors []AdoptedSensor) ([]Sensor, error)
+	    // OnSensorAdopted is called when the user adopted a discovered sensor
+	    // and the host created its record. Build and return the runtime sensor
+	    // for it, same as one entry of ConfigureAdoptedSensors.
+	    OnSensorAdopted(sensor AdoptedSensor) (Sensor, error)
+	    // OnSensorUnadopted is called when the user deleted an adopted sensor.
+	    // The host has already unbound the runtime sensor; drop whatever the
+	    // plugin still holds for it. The entity shows up as discovered again on
+	    // the next scan. nativeID is the DiscoveredSensor.ID the adoption used.
+	    OnSensorUnadopted(nativeID string) error
+	}
+
+<a name="SensorHistoryEntry"></a>
 
 ## type Severity
 

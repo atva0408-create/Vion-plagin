@@ -15,8 +15,8 @@ type PluginAPI struct {
 	// DeviceManager owns the camera devices assigned to this plugin and
 	// publishes camera-state changes.
 	DeviceManager *DeviceManager
-	// SensorManager registers standalone sensors: entities of their own,
-	// persisted across restarts, assignable to cameras by the user.
+	// SensorManager is the host's view of the sensor registry (history reads);
+	// standalone sensors are bound by the host through SensorDiscoveryProvider.
 	SensorManager *SensorManager
 	// DownloadManager mints token-protected download URLs for files the
 	// plugin exposes to the UI (clip exports, snapshots).

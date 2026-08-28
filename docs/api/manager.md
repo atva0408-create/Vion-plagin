@@ -285,6 +285,27 @@ Example:
 
 <a name="NotificationSpeed"></a>
 
+## type SensorConsumer
+
+SensorConsumer is an OPTIONAL interface plugins implement to consume other plugins' sensors. The host builds the consumable view from the plugin contract: sensors whose type is listed in \`consumes\` and that the user exposed. Only bridge plugins implement this.
+
+	type SensorConsumer interface {
+	    // ConfigureSensors is called once on startup with every sensor this
+	    // plugin may consume. Each sensor carries type, assigned cameras and
+	    // connected state, so consumers decide rendering purely from that data.
+	    ConfigureSensors(sensors []Sensor) error
+	    // OnSensorAdded is called when a sensor enters this plugin's consumable
+	    // view at runtime: it was created, became exposed, or its type became
+	    // consumable.
+	    OnSensorAdded(sensor Sensor) error
+	    // OnSensorReleased is called when a sensor permanently leaves the
+	    // consumable view: it was deleted or unexposed. Plugin connectivity does
+	    // NOT fire this; watch OnConnectedChanged on the sensor for that.
+	    OnSensorReleased(sensorID string) error
+	}
+
+<a name="SensorDiscoveryProvider"></a>
+
 ## type SensorHistoryEntry
 
 SensorHistoryEntry is one recorded change of one sensor property.
@@ -297,3 +318,26 @@ SensorHistoryEntry is one recorded change of one sensor property.
 	}
 
 <a name="SensorManager"></a>
+
+## type SensorManager
+
+SensorManager is the host's view of the sensor registry. Standalone sensors are not registered here: a camera's own sensors go through CameraDevice.AddSensor, and sensors the user picks from an external inventory come in through SensorDiscoveryProvider, bound by the host.
+
+Accessed via api.SensorManager in plugins.
+
+	type SensorManager struct {
+	    // contains filtered or unexported fields
+	}
+
+<a name="SensorManager.GetSensorHistory"></a>
+### func \(\*SensorManager\) GetSensorHistory
+
+	func (m *SensorManager) GetSensorHistory(sensorIDs []string, from, to int64) ([]SensorHistoryEntry, error)
+
+GetSensorHistory returns what a set of sensors did during a window of time.
+
+It returns every recorded change between from and to, and for each property also the value it already had when the window opened, because a door that was open the whole time says as much as one that opened halfway through. Entries come back oldest first.
+
+The history is a short tail, not an archive: it is coalesced to one entry per second and capped per sensor, so a window far in the past may be gone.
+
+<a name="SensorOption"></a>

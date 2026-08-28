@@ -241,6 +241,13 @@ Example:
 
 
 
+<a name="BaseSensor.GetAddress"></a>
+### func \(\*BaseSensor\) GetAddress
+
+	func (s *BaseSensor) GetAddress() string
+
+
+
 <a name="BaseSensor.GetAssignedCameraIDs"></a>
 ### func \(\*BaseSensor\) GetAssignedCameraIDs
 
@@ -287,6 +294,13 @@ Example:
 ### func \(\*BaseSensor\) GetPluginID
 
 	func (s *BaseSensor) GetPluginID() string
+
+
+
+<a name="BaseSensor.GetSourceState"></a>
+### func \(\*BaseSensor\) GetSourceState
+
+	func (s *BaseSensor) GetSourceState() SensorSourceState
 
 
 
@@ -351,6 +365,18 @@ OnConnectedChanged fires when the sensor's registration state changes.
 
 OnPropertyChanged subscribes to property changes. Returns a Disposable to unsubscribe.
 
+<a name="BaseSensor.SetAddress"></a>
+### func \(\*BaseSensor\) SetAddress
+
+	func (s *BaseSensor) SetAddress(address string)
+
+SetAddress reports the sensor's current address at the source, e.g. after a Home Assistant entity was renamed. The identity \(nativeId\) stays.
+
+Example:
+
+	sensor.SetAddress(entry.EntityID)
+	
+
 <a name="BaseSensor.SetCapabilities"></a>
 ### func \(\*BaseSensor\) SetCapabilities
 
@@ -373,6 +399,18 @@ SetDisplayName sets the display name \(the only mutable identifier on a sensor\)
 Example:
 
 	sensor.SetDisplayName("Front Door Motion")
+	
+
+<a name="BaseSensor.SetSourceState"></a>
+### func \(\*BaseSensor\) SetSourceState
+
+	func (s *BaseSensor) SetSourceState(state SensorSourceState)
+
+SetSourceState reports what the source behind this sensor looks like right now. The host shows the state with its reason on the sensors page and never deletes on it. Only meaningful for adopted sensors.
+
+Example:
+
+	sensor.SetSourceState(sdk.SensorSourceStateRemoved)
 	
 
 <a name="BaseSensor.Storage"></a>
@@ -2323,6 +2361,51 @@ SensorCategory categorizes a sensor's role in the system. It determines how the 
 	)
 
 <a name="SensorConsumer"></a>
+
+## type SensorOption
+
+SensorOption configures a sensor at construction time.
+
+	type SensorOption func(*sensorOptions)
+
+<a name="WithAddress"></a>
+### func WithAddress
+
+	func WithAddress(address string) SensorOption
+
+WithAddress sets the sensor's current address at the source, e.g. a Home Assistant entity id. Display only, may change over time; identity is the native id.
+
+<a name="WithNativeID"></a>
+### func WithNativeID
+
+	func WithNativeID(nativeID string) SensorOption
+
+WithNativeID sets the plugin\-supplied durable identity \(e.g. an upstream device id\). The host reconciles the sensor across restarts by \(pluginId, nativeId\); without it, identity falls back to \(type, name\) and a rename creates a new sensor.
+
+<a name="WithOrigin"></a>
+### func WithOrigin
+
+	func WithOrigin(origin string) SensorOption
+
+WithOrigin marks the source system the sensor was imported from \(e.g. "homeassistant"\). Export bridges targeting that system skip the sensor.
+
+<a name="SensorPropertyChange"></a>
+
+## type SensorSourceState
+
+SensorSourceState is the plugin's view of the source behind an adopted sensor. Unavailable means wait \(source unreachable, entity temporarily unavailable\), Removed means the source reported the entity gone while it was reachable. Neither deletes the sensor: an adopted sensor is deleted by the user only.
+
+	type SensorSourceState string
+
+<a name="SensorSourceStateConnected"></a>
+
+	const (
+	    SensorSourceStateConnected   SensorSourceState = "connected"
+	    SensorSourceStateUnavailable SensorSourceState = "unavailable"
+	    SensorSourceStateRemoved     SensorSourceState = "removed"
+	)
+
+<a name="SensorTriggerSettings"></a>
 
 ## type SensorTriggerSettings
 

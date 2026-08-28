@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	rpc "github.com/cameraui/rpc/go"
@@ -27,13 +28,10 @@ type SensorConsumer interface {
 	OnSensorReleased(sensorID string) error
 }
 
-// SensorManager registers standalone sensors: devices that are not part of a
-// camera's hardware (smart plugs, imported smart-home devices, hubs).
-//
-// The host persists each sensor as its own entity: the user assigns it to
-// cameras, renames it and decides whether it is exported or not.
-// Sensors that belong to a camera's hardware are registered via
-// CameraDevice.AddSensor instead.
+// SensorManager is the host's view of the sensor registry. Standalone sensors
+// are not registered here: a camera's own sensors go through
+// CameraDevice.AddSensor, and sensors the user picks from an external
+// inventory come in through SensorDiscoveryProvider, bound by the host.
 //
 // Accessed via api.SensorManager in plugins.
 type SensorManager struct {
@@ -45,11 +43,12 @@ type SensorManager struct {
 	logger        *Logger
 	plugin        Plugin
 
+	// adopted sensors this plugin handed over, bound to their host records
 	owned    map[string]Sensor
 	cleanups map[string]func()
 
-	// camera-registered sensors, tracked for event updates only: lifecycle,
-	// cleanup and GetSensors stay with the owning CameraDevice
+	// camera-registered sensors, tracked for event updates only: lifecycle
+	// and cleanup stay with the owning CameraDevice
 	external map[string]Sensor
 
 	// consumable view: exposed foreign sensors of consumed types
@@ -73,24 +72,19 @@ func newSensorManager(client *rpc.Client, storageCtrl *StorageController, plugin
 	}
 }
 
-// AddSensor registers a standalone sensor with the host.
-//
-// The host reconciles it against the persisted entity by (pluginId, nativeId),
-// or by (type, name) when no native id is set, and replaces the sensor's
-// provisional id with the persistent entity id. Camera assignment is the user's
-// decision and happens in the UI.
-//
-// Example:
-//
-//	lock := sdk.NewLockControl("Front Door", sdk.WithNativeID("lock.front_door"))
-//	err := api.SensorManager.AddSensor(lock)
-//
 // DiscoveredSensor is a sensor a plugin can offer for adoption (see
 // SensorDiscoveryProvider).
 type DiscoveredSensor struct {
-	// ID is the stable identifier within the plugin (e.g. the source
-	// system's entity id). Used for deduplication and adoption.
+	// ID is the source's stable identity for this sensor, never its address:
+	// a Home Assistant entity-registry id, an MQTT unique_id, a vendor device
+	// id. It becomes the sensor's nativeId, and a sensor keeps its record,
+	// assignments and history for as long as this id stays the same. Using a
+	// mutable address (a Home Assistant entity_id) here turns every rename at
+	// the source into an orphan plus a new sensor.
 	ID string `msgpack:"id" json:"id"`
+	// Address is the current address at the source (e.g. a Home Assistant
+	// entity id), shown next to the name (optional).
+	Address string `msgpack:"address,omitempty" json:"address,omitempty"`
 	// Name is the display name shown in the UI adoption list.
 	Name string `msgpack:"name" json:"name"`
 	// Type is the sensor type the plugin would register the sensor as.
@@ -103,221 +97,26 @@ type DiscoveredSensor struct {
 	Model string `msgpack:"model,omitempty" json:"model,omitempty"`
 }
 
-// RegisteredSensorInfo is the persisted registry record of a sensor this
-// plugin registered, see SensorManager.GetRegisteredSensors.
-type RegisteredSensorInfo struct {
-	// ID is the persistent registry id.
+// AdoptedSensor is a sensor the user adopted; what the host hands a
+// SensorDiscoveryProvider to build its runtime sensor from.
+type AdoptedSensor struct {
+	// ID is the persistent registry id, the sensor's id once bound.
 	ID string `msgpack:"id" json:"id"`
-	// NativeID is the nativeId the sensor was registered with, when it had one.
-	NativeID string `msgpack:"nativeId,omitempty" json:"nativeId,omitempty"`
-	// Type is the sensor type.
-	Type SensorType `msgpack:"type" json:"type"`
-	// Name is the sensor name at registration.
+	// NativeID is the DiscoveredSensor.ID the adoption used.
+	NativeID string `msgpack:"nativeId" json:"nativeId"`
+	// Address is the last known address at the source, if any.
+	Address string `msgpack:"address,omitempty" json:"address,omitempty"`
+	// Name is the name at adoption time; the user may have renamed the sensor since.
 	Name string `msgpack:"name" json:"name"`
-	// Connected is true while a live sensor instance backs the record.
-	Connected bool `msgpack:"connected" json:"connected"`
+	// Type is the sensor type the plugin offered it as.
+	Type SensorType `msgpack:"type" json:"type"`
 }
 
 // registerSlots bounds concurrent sensor registrations per plugin process: a
-// plugin importing hundreds of sensors at once would put every RPC in flight
+// plugin binding hundreds of sensors at once would put every RPC in flight
 // together and let the queue outrun the call timeout on a host that is still
 // starting up. Shared with CameraDevice.AddSensor.
 var registerSlots = make(chan struct{}, 8)
-
-func (m *SensorManager) AddSensor(s Sensor) error {
-	registerSlots <- struct{}{}
-	defer func() { <-registerSlots }()
-	return m.addSensor(s)
-}
-
-func (m *SensorManager) addSensor(s Sensor) error {
-	si, ok := s.(sensorInternalInit)
-	if !ok {
-		return fmt.Errorf("sensor %s does not embed BaseSensor", s.GetName())
-	}
-	si.setPluginID(m.info.ID)
-
-	// producers need the global stream too: assignment changes must reach
-	// owned sensors, their detection fan-out reads assignedCameraIds
-	if err := m.ensureGlobalSubscription(); err != nil {
-		return err
-	}
-
-	sensorJSON := si.ToJSON()
-
-	// resolve the durable id first and wire storage with it, so registration
-	// data (modelSpec) can read sensor storage
-	ctx := context.Background()
-	resolveResult, err := m.registryProxy.Invoke(ctx, "resolveSensor", sensorJSON, m.info.ID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve sensor: %w", err)
-	}
-	sensorID, ok := resolveResult.(string)
-	if !ok || sensorID == "" {
-		return fmt.Errorf("failed to decode resolved sensor id")
-	}
-	si.setID(sensorID)
-	sensorJSON.ID = sensorID
-
-	sensorStorage, err := m.storageCtrl.createSensorStorage(s.GetID())
-	if err != nil {
-		return fmt.Errorf("failed to create sensor storage: %w", err)
-	}
-	si.setStorage(sensorStorage)
-
-	sensorJSON.ModelSpec = detectorModelSpec(s)
-
-	registerResult, err := m.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, m.info.ID)
-	if err != nil {
-		return fmt.Errorf("failed to register sensor: %w", err)
-	}
-	registration, err := decodeSensorRegistration(registerResult)
-	if err != nil {
-		return fmt.Errorf("failed to decode sensor registration: %w", err)
-	}
-	si.setAssignedCameras(registration.AssignedCameraIDs)
-
-	sensorProviderNS := getSensorProviderNamespaces(m.info.ID, s.GetID())
-	rpcCleanup, err := m.client.RegisterHandler(sensorProviderNS.SensorRPC, s)
-	if err != nil {
-		return fmt.Errorf("failed to register sensor RPC: %w", err)
-	}
-
-	sensor := s
-	si.initUpdateFn(func(properties map[string]any) {
-		ctx := context.Background()
-		if isDetectionSensorType(sensor.GetType()) {
-			// the spec belongs to the registry, it reaches the coordinators from there
-			if spec, ok := properties["modelSpec"]; ok {
-				_, _ = m.registryProxy.Invoke(ctx, "updateModelSpec", sensor.GetID(), spec)
-				properties = withoutModelSpec(properties)
-				if len(properties) == 0 {
-					return
-				}
-			}
-
-			// external detection provider: fan the write into every assigned
-			// camera's coordinator
-			for _, cameraID := range sensor.GetAssignedCameraIDs() {
-				detectionNS := getFrameWorkerDetectionNamespaces(cameraID)
-				coordinator := m.client.CreateProxy(detectionNS.DetectionRPC)
-				_, _ = coordinator.Invoke(ctx, "reportSensorWrite", sensor.GetID(), sensor.GetType(), properties)
-			}
-			return
-		}
-		_, _ = m.registryProxy.Invoke(ctx, "updatePropertyValues", sensor.GetID(), properties)
-	})
-	si.initCapabilitiesUpdateFn(func(caps []string) {
-		ctx := context.Background()
-		_, _ = m.registryProxy.Invoke(ctx, "updateCapabilities", sensor.GetID(), caps)
-	})
-
-	sensorEventNS := getSensorEventNamespaces(s.GetID())
-	unsubBackend, subErr := m.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
-		var msg sensorEventMessage
-		if !decodeMsgpack(m.logger, data, &msg, "sensorEventMessage") {
-			return
-		}
-		if msg.Type == "property:changed" {
-			property, _ := msg.Data["property"].(string)
-			if property != "" {
-				if bpr, ok := s.(backendPropertyReceiver); ok {
-					value := coercePropertyValue(s.GetType(), property, msg.Data["value"])
-					// honor the server-side timestamp, like the consumer proxies
-					if ts, ok := toInt64(msg.Data["timestamp"]); ok && ts > 0 {
-						bpr.setPropertyWithTimestamp(property, value, ts)
-					} else {
-						bpr.onBackendPropertyChanged(property, value)
-					}
-				}
-			}
-		}
-	})
-	if subErr != nil {
-		// the sensor stays registered, only host-side writes are lost
-		m.logger.Error(fmt.Sprintf("subscribe sensor events for %s: %v", s.GetID(), subErr))
-	}
-
-	m.mu.Lock()
-	m.owned[s.GetID()] = s
-	m.cleanups[s.GetID()] = func() {
-		if unsubBackend != nil {
-			unsubBackend()
-		}
-		_ = rpcCleanup()
-	}
-	m.mu.Unlock()
-
-	setActiveWithLifecycle(s, true)
-
-	return nil
-}
-
-// RemoveSensor unregisters a sensor. The persisted entity stays (shows
-// disconnected) unless the user deletes it in the UI.
-func (m *SensorManager) RemoveSensor(s Sensor) error {
-	ctx := context.Background()
-	if _, err := m.registryProxy.Invoke(ctx, "unregisterSensor", s.GetID()); err != nil {
-		m.logger.Warn(fmt.Sprintf("Failed to unregister sensor %s: %v", s.GetID(), err))
-	}
-
-	m.mu.Lock()
-	cleanup := m.cleanups[s.GetID()]
-	delete(m.cleanups, s.GetID())
-	delete(m.owned, s.GetID())
-	m.mu.Unlock()
-
-	if cleanup != nil {
-		cleanup()
-	}
-
-	cleanupSensorWithLifecycle(s)
-
-	return nil
-}
-
-// GetSensors returns all sensors this plugin has registered in this session.
-func (m *SensorManager) GetSensors() []Sensor {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	result := make([]Sensor, 0, len(m.owned))
-	for _, s := range m.owned {
-		result = append(result, s)
-	}
-	return result
-}
-
-// GetRegisteredSensors returns the sensors of this plugin the host has
-// persisted, including ones from earlier runs that are not registered in
-// this session. Lets a provider reconcile an external inventory against
-// what already exists.
-func (m *SensorManager) GetRegisteredSensors() ([]RegisteredSensorInfo, error) {
-	ctx := context.Background()
-	result, err := m.registryProxy.Invoke(ctx, "getSensors", m.info.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch registered sensors: %w", err)
-	}
-	sensorsRaw, ok := result.([]any)
-	if !ok {
-		return nil, fmt.Errorf("failed to decode registered sensors")
-	}
-	infos := make([]RegisteredSensorInfo, 0, len(sensorsRaw))
-	for _, raw := range sensorsRaw {
-		encoded, err := rpc.Encode(raw)
-		if err != nil {
-			continue
-		}
-		var data storedSensorData
-		if !decodeMsgpack(m.logger, encoded, &data, "storedSensorData") {
-			continue
-		}
-		if data.PluginID != m.info.ID {
-			continue
-		}
-		infos = append(infos, RegisteredSensorInfo{ID: data.ID, NativeID: data.NativeID, Type: data.Type, Name: data.Name, Connected: data.Connected})
-	}
-	return infos, nil
-}
 
 // GetSensorHistory returns what a set of sensors did during a window of time.
 //
@@ -420,12 +219,16 @@ func (m *SensorManager) untrackCameraSensor(sensorID string) {
 }
 
 func (m *SensorManager) init() error {
-	if len(m.info.Contract.Consumes) == 0 {
+	consumesSomething := len(m.info.Contract.Consumes) > 0
+	if !consumesSomething && !m.providesAdopted() {
 		return nil
 	}
 
 	if err := m.ensureGlobalSubscription(); err != nil {
 		return err
+	}
+	if !consumesSomething {
+		return nil
 	}
 
 	ctx := context.Background()
@@ -464,6 +267,261 @@ func (m *SensorManager) init() error {
 	}
 
 	return nil
+}
+
+// the host hands the plugin what the user adopted, the plugin hands back one
+// runtime sensor per record; nothing is created or dropped here
+func (m *SensorManager) configureAdoptedSensors() {
+	provider, ok := m.plugin.(SensorDiscoveryProvider)
+	if !ok || !m.providesAdopted() {
+		return
+	}
+
+	records, err := m.ownAdoptedRecords()
+	if err != nil {
+		m.logger.Warn(fmt.Sprintf("Could not load the adopted sensors: %v", err))
+		return
+	}
+
+	sensors, err := provider.ConfigureAdoptedSensors(records)
+	if err != nil {
+		m.logger.Warn(fmt.Sprintf("ConfigureAdoptedSensors failed: %v", err))
+		return
+	}
+
+	byNativeID := make(map[string]AdoptedSensor, len(records))
+	for _, record := range records {
+		byNativeID[record.NativeID] = record
+	}
+	bound := make(map[string]struct{}, len(sensors))
+	var wg sync.WaitGroup
+	for _, sensor := range sensors {
+		if sensor == nil {
+			continue
+		}
+		record, ok := byNativeID[sensor.GetNativeID()]
+		if !ok {
+			m.logger.Warn(fmt.Sprintf("Sensor %q returned by ConfigureAdoptedSensors has no adopted record (nativeId %q), ignored", sensor.GetName(), sensor.GetNativeID()))
+			continue
+		}
+		if _, dup := bound[record.NativeID]; dup || m.isOwned(record.ID) {
+			continue
+		}
+		bound[record.NativeID] = struct{}{}
+		wg.Add(1)
+		go func(sensor Sensor, record AdoptedSensor) {
+			defer wg.Done()
+			m.bindAdopted(sensor, &record)
+		}(sensor, record)
+	}
+	wg.Wait()
+
+	if missing := len(records) - len(bound); missing > 0 {
+		m.logger.Warn(fmt.Sprintf("%d adopted sensor(s) got no runtime sensor from the plugin, they stay disconnected", missing))
+	}
+}
+
+func (m *SensorManager) ownAdoptedRecords() ([]AdoptedSensor, error) {
+	result, err := m.registryProxy.Invoke(context.Background(), "getSensors", m.info.ID)
+	if err != nil {
+		return nil, err
+	}
+	sensorsRaw, _ := result.([]any)
+	records := make([]AdoptedSensor, 0, len(sensorsRaw))
+	for _, raw := range sensorsRaw {
+		encoded, err := rpc.Encode(raw)
+		if err != nil {
+			continue
+		}
+		var data storedSensorData
+		if !decodeMsgpack(m.logger, encoded, &data, "storedSensorData") {
+			continue
+		}
+		if m.isOwnAdopted(&data) {
+			records = append(records, toAdopted(&data))
+		}
+	}
+	return records, nil
+}
+
+func (m *SensorManager) providesAdopted() bool {
+	return slices.Contains(m.info.Contract.Interfaces, PluginInterfaceSensorDiscovery)
+}
+
+func (m *SensorManager) isOwnAdopted(data *storedSensorData) bool {
+	return data.PluginID == m.info.ID && data.BoundCameraID == "" && data.NativeID != ""
+}
+
+func (m *SensorManager) isOwned(sensorID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.owned[sensorID]
+	return ok
+}
+
+func (m *SensorManager) bindAdopted(s Sensor, record *AdoptedSensor) {
+	registerSlots <- struct{}{}
+	defer func() { <-registerSlots }()
+	if err := m.bind(s, record.ID); err != nil {
+		m.logger.Warn(fmt.Sprintf("Binding adopted sensor %q failed: %v", record.Name, err))
+	}
+}
+
+// the record exists (adoption), binding attaches the runtime sensor to it
+func (m *SensorManager) bind(s Sensor, recordID string) error {
+	si, ok := s.(sensorInternalInit)
+	if !ok {
+		return fmt.Errorf("sensor %s does not embed BaseSensor", s.GetName())
+	}
+
+	// producers need the global stream too: assignment changes must reach
+	// owned sensors, their detection fan-out reads assignedCameraIds
+	if err := m.ensureGlobalSubscription(); err != nil {
+		return err
+	}
+
+	si.setPluginID(m.info.ID)
+	si.setID(recordID)
+
+	sensorJSON := si.ToJSON()
+
+	sensorStorage, err := m.storageCtrl.createSensorStorage(s.GetID())
+	if err != nil {
+		return fmt.Errorf("failed to create sensor storage: %w", err)
+	}
+	si.setStorage(sensorStorage)
+
+	sensorJSON.ModelSpec = detectorModelSpec(s)
+
+	ctx := context.Background()
+	registerResult, err := m.registryProxy.Invoke(ctx, "registerSensor", sensorJSON, m.info.ID)
+	if err != nil {
+		return fmt.Errorf("failed to register sensor: %w", err)
+	}
+	registration, err := decodeSensorRegistration(registerResult)
+	if err != nil {
+		return fmt.Errorf("failed to decode sensor registration: %w", err)
+	}
+	si.setAssignedCameras(registration.AssignedCameraIDs)
+
+	sensorProviderNS := getSensorProviderNamespaces(m.info.ID, s.GetID())
+	rpcCleanup, err := m.client.RegisterHandler(sensorProviderNS.SensorRPC, s)
+	if err != nil {
+		return fmt.Errorf("failed to register sensor RPC: %w", err)
+	}
+
+	sensor := s
+	si.initUpdateFn(func(properties map[string]any) {
+		ctx := context.Background()
+		if isDetectionSensorType(sensor.GetType()) {
+			// the spec belongs to the registry, it reaches the coordinators from there
+			if spec, ok := properties["modelSpec"]; ok {
+				_, _ = m.registryProxy.Invoke(ctx, "updateModelSpec", sensor.GetID(), spec)
+				properties = withoutModelSpec(properties)
+				if len(properties) == 0 {
+					return
+				}
+			}
+
+			// external detection provider: fan the write into every assigned
+			// camera's coordinator
+			for _, cameraID := range sensor.GetAssignedCameraIDs() {
+				detectionNS := getFrameWorkerDetectionNamespaces(cameraID)
+				coordinator := m.client.CreateProxy(detectionNS.DetectionRPC)
+				_, _ = coordinator.Invoke(ctx, "reportSensorWrite", sensor.GetID(), sensor.GetType(), properties)
+			}
+			return
+		}
+		_, _ = m.registryProxy.Invoke(ctx, "updatePropertyValues", sensor.GetID(), properties)
+	})
+	si.initCapabilitiesUpdateFn(func(caps []string) {
+		ctx := context.Background()
+		_, _ = m.registryProxy.Invoke(ctx, "updateCapabilities", sensor.GetID(), caps)
+	})
+	si.initSourceUpdateFn(func(patch sensorSourcePatch) {
+		ctx := context.Background()
+		_, _ = m.registryProxy.Invoke(ctx, "updateSource", sensor.GetID(), patch)
+	})
+
+	sensorEventNS := getSensorEventNamespaces(s.GetID())
+	unsubBackend, subErr := m.client.Subscribe(sensorEventNS.SensorSubject, func(data []byte) {
+		var msg sensorEventMessage
+		if !decodeMsgpack(m.logger, data, &msg, "sensorEventMessage") {
+			return
+		}
+		if msg.Type == "property:changed" {
+			property, _ := msg.Data["property"].(string)
+			if property != "" {
+				if bpr, ok := s.(backendPropertyReceiver); ok {
+					value := coercePropertyValue(s.GetType(), property, msg.Data["value"])
+					// honor the server-side timestamp, like the consumer proxies
+					if ts, ok := toInt64(msg.Data["timestamp"]); ok && ts > 0 {
+						bpr.setPropertyWithTimestamp(property, value, ts)
+					} else {
+						bpr.onBackendPropertyChanged(property, value)
+					}
+				}
+			}
+		}
+	})
+	if subErr != nil {
+		// the sensor stays registered, only host-side writes are lost
+		m.logger.Error(fmt.Sprintf("subscribe sensor events for %s: %v", s.GetID(), subErr))
+	}
+
+	m.mu.Lock()
+	m.owned[s.GetID()] = s
+	m.cleanups[s.GetID()] = func() {
+		if unsubBackend != nil {
+			unsubBackend()
+		}
+		_ = rpcCleanup()
+	}
+	m.mu.Unlock()
+
+	setActiveWithLifecycle(s, true)
+
+	return nil
+}
+
+func (m *SensorManager) unbind(sensorID string) Sensor {
+	m.mu.Lock()
+	s, ok := m.owned[sensorID]
+	if !ok {
+		m.mu.Unlock()
+		return nil
+	}
+	cleanup := m.cleanups[sensorID]
+	delete(m.cleanups, sensorID)
+	delete(m.owned, sensorID)
+	m.mu.Unlock()
+
+	if cleanup != nil {
+		cleanup()
+	}
+	cleanupSensorWithLifecycle(s)
+	return s
+}
+
+func (m *SensorManager) adoptOwn(record *AdoptedSensor) {
+	provider, ok := m.plugin.(SensorDiscoveryProvider)
+	if !ok {
+		return
+	}
+	s, err := provider.OnSensorAdopted(*record)
+	if err != nil {
+		m.logger.Warn(fmt.Sprintf("OnSensorAdopted failed for %q: %v", record.Name, err))
+		return
+	}
+	if s == nil || s.GetNativeID() != record.NativeID {
+		nativeID := "missing"
+		if s != nil {
+			nativeID = s.GetNativeID()
+		}
+		m.logger.Warn(fmt.Sprintf("Sensor returned by OnSensorAdopted carries nativeId %q, expected %q, ignored", nativeID, record.NativeID))
+		return
+	}
+	m.bindAdopted(s, record)
 }
 
 func (m *SensorManager) close() {
@@ -647,6 +705,22 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 			}
 		}
 
+	case "sensor:adopted":
+		encoded, err := rpc.Encode(msg.Data)
+		if err != nil {
+			return
+		}
+		var adopted sensorAdoptedEventData
+		if !decodeMsgpack(m.logger, encoded, &adopted, "sensorAdoptedEventData") {
+			return
+		}
+		if !m.isOwnAdopted(&adopted.Sensor) || !m.providesAdopted() || m.isOwned(adopted.Sensor.ID) {
+			return
+		}
+		record := toAdopted(&adopted.Sensor)
+		// the plugin may reach its source to build the sensor, keep the event stream moving
+		go m.adoptOwn(&record)
+
 	case "sensor:deleted":
 		encoded, err := rpc.Encode(msg.Data)
 		if err != nil {
@@ -655,6 +729,13 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 		var deleted sensorDeletedEventData
 		if !decodeMsgpack(m.logger, encoded, &deleted, "sensorDeletedEventData") {
 			return
+		}
+		if unbound := m.unbind(deleted.SensorID); unbound != nil && unbound.GetNativeID() != "" && m.providesAdopted() {
+			if provider, ok := m.plugin.(SensorDiscoveryProvider); ok {
+				if err := provider.OnSensorUnadopted(unbound.GetNativeID()); err != nil {
+					m.logger.Warn(fmt.Sprintf("OnSensorUnadopted failed for %s: %v", unbound.GetNativeID(), err))
+				}
+			}
 		}
 		m.releaseConsumed(deleted.SensorID)
 
@@ -760,4 +841,8 @@ func (m *SensorManager) handleGlobalSensorEvent(msg sensorRegistryEventMessage) 
 			}
 		}
 	}
+}
+
+func toAdopted(data *storedSensorData) AdoptedSensor {
+	return AdoptedSensor{ID: data.ID, NativeID: data.NativeID, Address: data.Address, Name: data.Name, Type: data.Type}
 }

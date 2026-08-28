@@ -102,25 +102,42 @@ type DiscoveryProvider interface {
 	OnAdoptCamera(camera DiscoveredCamera, cameraSettings map[string]any) (map[string]any, error)
 }
 
-// SensorDiscoveryProvider is implemented by sensor-providing plugins that
-// face an external inventory (Home Assistant entities, vendor accessories)
-// the user should pick from instead of the plugin importing everything.
-// Discovered sensors are listed on the Sensors page; adoption and release
-// are the plugin's to persist, so an adopted sensor re-registers on every
-// start through the normal SensorManager.AddSensor path.
+// SensorDiscoveryProvider is implemented by plugins that face an external
+// inventory (Home Assistant entities, vendor accessories) the user picks
+// from instead of the plugin importing everything. Declare
+// PluginInterfaceSensorDiscovery in the contract.
+//
+// The host owns the adoption: it lists what the plugin discovers, creates the
+// sensor record when the user adopts, hands the plugin its adopted sensors on
+// every start and tells it when the user deletes one. The plugin keeps no
+// list of its own.
+//
+// Identity is the source's stable id (DiscoveredSensor.ID), never an
+// address; the same id means the same sensor across restarts and renames.
 type SensorDiscoveryProvider interface {
-	// OnDiscoverSensors returns the sensors the plugin can currently offer
-	// for adoption. Called by the host on demand (Sensors page load /
-	// refresh); already-registered sensors must not be included.
+	// OnDiscoverSensors returns every sensor the source currently offers.
+	// The host drops the ones already adopted, the plugin does not filter.
+	// Called on demand (Sensors page, rescan) and on a polling schedule
+	// while the page is open.
 	OnDiscoverSensors() ([]DiscoveredSensor, error)
-	// OnAdoptSensor adopts a discovered sensor: persists the choice and
-	// registers the sensor. From then on the plugin registers it on every
-	// start until it is released.
-	OnAdoptSensor(sensor DiscoveredSensor) error
-	// OnReleaseSensor releases a previously adopted sensor: forgets the
-	// choice and unregisters it. Called when the user removes the sensor
-	// in the UI.
-	OnReleaseSensor(discoveredID string) error
+	// ConfigureAdoptedSensors is called once at startup, right after
+	// ConfigureCameras, with every sensor the user adopted from this plugin.
+	// Build and return one runtime sensor per record, always, from the
+	// record's type and name alone; the host binds each returned sensor to
+	// its record by native id. Report what the source looks like on the
+	// sensor itself (SetSourceState, SetAddress) as soon as you know: a
+	// record the source no longer has gets SensorSourceStateRemoved, it is
+	// never dropped here.
+	ConfigureAdoptedSensors(sensors []AdoptedSensor) ([]Sensor, error)
+	// OnSensorAdopted is called when the user adopted a discovered sensor
+	// and the host created its record. Build and return the runtime sensor
+	// for it, same as one entry of ConfigureAdoptedSensors.
+	OnSensorAdopted(sensor AdoptedSensor) (Sensor, error)
+	// OnSensorUnadopted is called when the user deleted an adopted sensor.
+	// The host has already unbound the runtime sensor; drop whatever the
+	// plugin still holds for it. The entity shows up as discovered again on
+	// the next scan. nativeID is the DiscoveredSensor.ID the adoption used.
+	OnSensorUnadopted(nativeID string) error
 }
 
 // MotionDetectionInterface is implemented by plugins that perform video-based
