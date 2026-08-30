@@ -19,6 +19,12 @@ type CameraInput struct {
 	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
 	// BackchannelDisabled drops the talk channel of this source, so clients get no microphone.
 	BackchannelDisabled bool `msgpack:"backchannelDisabled,omitempty" json:"backchannelDisabled,omitempty"`
+	// Timeout is the seconds without media before the stream reconnects. Zero
+	// means the host default: 5 for cameras, 60 for plugin-served sources.
+	Timeout int `msgpack:"timeout,omitempty" json:"timeout,omitempty"`
+	// HandshakeTimeout is the seconds allowed per RTSP request while
+	// connecting. Raise it for cameras that wake slowly. Zero means 5.
+	HandshakeTimeout int `msgpack:"handshakeTimeout,omitempty" json:"handshakeTimeout,omitempty"`
 	// Urls are the generated streaming URLs.
 	Urls StreamUrls `msgpack:"urls,omitempty" json:"urls"`
 	// VideoCodec is the probed video codec of this source. Filled by the
@@ -234,6 +240,12 @@ type CameraConfigInputSettings struct {
 	Muted bool `msgpack:"muted,omitempty" json:"muted,omitempty"`
 	// BackchannelDisabled drops the talk channel of this source, so clients get no microphone.
 	BackchannelDisabled bool `msgpack:"backchannelDisabled,omitempty" json:"backchannelDisabled,omitempty"`
+	// Timeout is the seconds without media before the stream reconnects. Zero
+	// means the host default: 5 for cameras, 60 for plugin-served sources.
+	Timeout int `msgpack:"timeout,omitempty" json:"timeout,omitempty"`
+	// HandshakeTimeout is the seconds allowed per RTSP request while
+	// connecting. Raise it for cameras that wake slowly. Zero means 5.
+	HandshakeTimeout int `msgpack:"handshakeTimeout,omitempty" json:"handshakeTimeout,omitempty"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
 	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
 	// Urls are the raw source URLs (resolved into streaming URLs by the host).
