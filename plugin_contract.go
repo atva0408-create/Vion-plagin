@@ -76,6 +76,10 @@ const (
 	// PluginInterfaceOAuthClientCredentials marks a plugin implementing
 	// OAuthClientCredentialsCapable (user-supplied client_id + client_secret).
 	PluginInterfaceOAuthClientCredentials PluginInterface = "OAuthClientCredentials"
+	// PluginInterfaceAssistantTools marks a plugin implementing
+	// AssistantToolProvider, so the assistant can offer the plugin's tools to
+	// the model.
+	PluginInterfaceAssistantTools PluginInterface = "AssistantTools"
 )
 
 // PluginCapability is a permission a plugin requests so it can call a
