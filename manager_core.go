@@ -16,6 +16,57 @@ type SensorHistoryEntry struct {
 	Timestamp int64  `msgpack:"timestamp" json:"timestamp"`
 }
 
+// AssistantAskImage is one picture of an AssistantAskRequest.
+type AssistantAskImage struct {
+	Data     []byte `msgpack:"data" json:"data"`
+	MimeType string `msgpack:"mimeType" json:"mimeType"`
+}
+
+// AssistantAskRequest is one completion request to the assistant model the
+// admin assigned to this plugin. TimeoutMs defaults to 45 s and is capped at
+// 300 s; pictures are sent only when the assigned model passed the picture test.
+type AssistantAskRequest struct {
+	Prompt       string              `msgpack:"prompt" json:"prompt"`
+	System       string              `msgpack:"system,omitempty" json:"system,omitempty"`
+	Images       []AssistantAskImage `msgpack:"images,omitempty" json:"images,omitempty"`
+	OutputSchema map[string]any      `msgpack:"outputSchema,omitempty" json:"outputSchema,omitempty"`
+	TimeoutMs    int                 `msgpack:"timeoutMs,omitempty" json:"timeoutMs,omitempty"`
+}
+
+// AssistantAskUsage counts the tokens one ask consumed.
+type AssistantAskUsage struct {
+	PromptTokens     int `msgpack:"promptTokens" json:"promptTokens"`
+	CompletionTokens int `msgpack:"completionTokens" json:"completionTokens"`
+}
+
+// AssistantAskResult is the answer of CoreManager.AssistantAsk: Text (and
+// JSON when a schema was given) with OK true, otherwise Reason and Message
+// say why the call did not run (not_allowed, unconfigured, timeout, error).
+type AssistantAskResult struct {
+	OK      bool              `msgpack:"ok" json:"ok"`
+	Text    string            `msgpack:"text,omitempty" json:"text,omitempty"`
+	JSON    any               `msgpack:"json,omitempty" json:"json,omitempty"`
+	Usage   AssistantAskUsage `msgpack:"usage,omitempty" json:"usage,omitempty"`
+	Reason  string            `msgpack:"reason,omitempty" json:"reason,omitempty"`
+	Message string            `msgpack:"message,omitempty" json:"message,omitempty"`
+}
+
+// AssistantAccess says whether this plugin may use the assistant model and
+// what the assigned entry can do. Model is empty when not allowed, Vision is
+// nil until the picture probe ran, Language is the answer language of the
+// assistant settings (for example "de") and empty when it follows the interface.
+type AssistantAccess struct {
+	Allowed  bool   `msgpack:"allowed" json:"allowed"`
+	Model    string `msgpack:"model,omitempty" json:"model,omitempty"`
+	Vision   *bool  `msgpack:"vision" json:"vision"`
+	Language string `msgpack:"language,omitempty" json:"language,omitempty"`
+}
+
+type assistantAskWire struct {
+	AssistantAskRequest
+	PluginID string `msgpack:"pluginId" json:"pluginId"`
+}
+
 // CoreManagerEvent is the payload emitted by CoreManager.OnEvent.
 //
 // The host currently publishes one event type, "cloudAccountChanged".
@@ -55,6 +106,40 @@ func newCoreManager(client *rpc.Client, logger *Logger) *CoreManager {
 // OnEvent returns an Observable for core manager events (e.g. cloud account changes).
 func (cm *CoreManager) OnEvent() *Observable[CoreManagerEvent] {
 	return cm.event.AsObservable()
+}
+
+// AssistantAsk asks the assistant model for one completion. The admin decides
+// under Settings, Assistant which plugins may use the model and which entry
+// they get; the key never reaches the plugin.
+//
+// Example:
+//
+//	answer, err := api.CoreManager.AssistantAsk(ctx, &sdk.AssistantAskRequest{
+//	    System:   "Answer with one word.",
+//	    Prompt:   "Is there a person in this picture?",
+//	    Images:   []sdk.AssistantAskImage{{Data: jpeg, MimeType: "image/jpeg"}},
+//	})
+//	if err == nil && answer.OK {
+//	    fmt.Println(answer.Text)
+//	}
+func (cm *CoreManager) AssistantAsk(ctx context.Context, request *AssistantAskRequest) (*AssistantAskResult, error) {
+	var result AssistantAskResult
+	wire := &assistantAskWire{AssistantAskRequest: *request, PluginID: os.Getenv("PLUGIN_ID")}
+	if err := cm.InvokeInto(ctx, &result, "assistantAsk", wire); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// AssistantAccess reports whether this plugin may use the assistant model and
+// what the assigned entry can do. Subscribe to OnEvent for
+// "assistantModelChanged" to learn about changes while running.
+func (cm *CoreManager) AssistantAccess(ctx context.Context) (*AssistantAccess, error) {
+	var access AssistantAccess
+	if err := cm.InvokeInto(ctx, &access, "assistantAccess", os.Getenv("PLUGIN_ID")); err != nil {
+		return nil, err
+	}
+	return &access, nil
 }
 
 // GetFFmpegPath returns the path to the FFmpeg binary.

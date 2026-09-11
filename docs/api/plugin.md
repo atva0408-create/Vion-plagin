@@ -175,7 +175,7 @@ AssignedPlugin is plugin assignment info \(id \+ display name\).
 	    Name string `msgpack:"name" json:"name"`
 	}
 
-<a name="AssistantToolContext"></a>
+<a name="AssistantAccess"></a>
 
 ## type AssistantToolContext
 

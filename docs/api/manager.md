@@ -15,6 +15,32 @@ Exposes cross\-cutting services like the FFmpeg binary path, server addresses, t
 	    // contains filtered or unexported fields
 	}
 
+<a name="CoreManager.AssistantAccess"></a>
+### func \(\*CoreManager\) AssistantAccess
+
+	func (cm *CoreManager) AssistantAccess(ctx context.Context) (*AssistantAccess, error)
+
+AssistantAccess reports whether this plugin may use the assistant model and what the assigned entry can do. Subscribe to OnEvent for "assistantModelChanged" to learn about changes while running.
+
+<a name="CoreManager.AssistantAsk"></a>
+### func \(\*CoreManager\) AssistantAsk
+
+	func (cm *CoreManager) AssistantAsk(ctx context.Context, request *AssistantAskRequest) (*AssistantAskResult, error)
+
+AssistantAsk asks the assistant model for one completion. The admin decides under Settings, Assistant which plugins may use the model and which entry they get; the key never reaches the plugin.
+
+Example:
+
+	answer, err := api.CoreManager.AssistantAsk(ctx, &sdk.AssistantAskRequest{
+	    System:   "Answer with one word.",
+	    Prompt:   "Is there a person in this picture?",
+	    Images:   []sdk.AssistantAskImage{{Data: jpeg, MimeType: "image/jpeg"}},
+	})
+	if err == nil && answer.OK {
+	    fmt.Println(answer.Text)
+	}
+	
+
 <a name="CoreManager.ConnectToPlugin"></a>
 ### func \(\*CoreManager\) ConnectToPlugin
 

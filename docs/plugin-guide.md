@@ -835,6 +835,22 @@ if err == nil && face != nil {
 
 Use `p.API.CoreManager.GetPluginsByInterface(cameraui.PluginInterfaceFaceDetection)` to discover candidate plugins by capability rather than by name.
 
+To use one of the language models configured in camera.ui, call `p.API.CoreManager.AssistantAsk`. The admin allows the plugin under Settings, Assistant, Plugin access and picks the model; camera.ui runs the request, so the plugin never holds a key. `AssistantAccess` tells you whether the plugin is allowed, and the `assistantModelChanged` core event fires when that changes:
+
+```go
+access, err := p.API.CoreManager.AssistantAccess(ctx)
+if err == nil && access.Allowed {
+    answer, err := p.API.CoreManager.AssistantAsk(ctx, &cameraui.AssistantAskRequest{
+        System: "Answer with one word.",
+        Prompt: "Is there a person in this picture?",
+        Images: []cameraui.AssistantAskImage{{Data: jpegBytes, MimeType: "image/jpeg"}},
+    })
+    if err == nil && answer.OK {
+        _ = answer.Text
+    }
+}
+```
+
 ## 9. Common pitfalls
 
 - **Always release per-camera state in `OnCameraReleased`.** Tickers, vendor sessions, RTP sockets, `*Disposable`s from sensor callbacks — drop them all. Leaking them keeps the camera object alive forever and prevents reassignment from working.
