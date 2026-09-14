@@ -137,6 +137,7 @@ BUCKETS: dict[str, str] = {
     "Point": "camera",
     "MotionResolution": "camera",
     "PtzAutotrackSettings": "camera",
+    "SnapshotRefreshMode": "camera",
     "SnapshotSettings": "camera",
     "SnapshotInterface": "camera",
     "StreamingInterface": "camera",

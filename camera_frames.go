@@ -20,14 +20,27 @@ const (
 	FrameWorkerDecoderRKMPP        FrameWorkerDecoderHardware = "rkmpp"
 )
 
+// SnapshotRefreshMode is when a camera takes a new snapshot. "interval"
+// runs a timer, "onView" fetches for a viewer once the stored picture is
+// older than MaxAge, "onDemand" only on an explicit request (automations,
+// the refresh button, the API).
+type SnapshotRefreshMode string
+
+const (
+	SnapshotRefreshInterval SnapshotRefreshMode = "interval"
+	SnapshotRefreshOnView   SnapshotRefreshMode = "onView"
+	SnapshotRefreshOnDemand SnapshotRefreshMode = "onDemand"
+)
+
 // SnapshotSettings is the snapshot settings for a camera.
 type SnapshotSettings struct {
-	// AutoRefresh enables automatic snapshot refresh.
-	AutoRefresh bool `msgpack:"autoRefresh" json:"autoRefresh"`
-	// TTL is the cache TTL in seconds (how long a snapshot is valid).
-	TTL int `msgpack:"ttl" json:"ttl"`
-	// Interval is the auto-refresh interval in seconds (min: 10, max: 60).
+	// Mode is when a new picture is taken.
+	Mode SnapshotRefreshMode `msgpack:"mode" json:"mode"`
+	// Interval is the timer interval in seconds for "interval" mode (10 to 3600).
 	Interval int `msgpack:"interval" json:"interval"`
+	// MaxAge is the age in seconds after which a viewer gets a new picture in
+	// "onView" mode (10 to 3600).
+	MaxAge int `msgpack:"maxAge" json:"maxAge"`
 }
 
 // FrameWorkerDecoderSettings is the decoder hardware selection for the
