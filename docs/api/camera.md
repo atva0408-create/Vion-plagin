@@ -1431,6 +1431,10 @@ VideoCodecProperties holds video codec properties from a stream probe.
 	    PayloadType int `msgpack:"payloadType" json:"payloadType"`
 	    // FmtpInfo holds optional format parameters.
 	    FmtpInfo *FMTPInfo `msgpack:"fmtpInfo,omitempty" json:"fmtpInfo,omitempty"`
+	    // Profile is the H.264 or H.265 profile, for example "High" or "Main 10".
+	    Profile string `msgpack:"profile,omitempty" json:"profile,omitempty"`
+	    // Level is the H.264 or H.265 level times ten, for example 51 for level 5.1.
+	    Level int `msgpack:"level,omitempty" json:"level,omitempty"`
 	}
 
 <a name="VideoFFmpegCodec"></a>
