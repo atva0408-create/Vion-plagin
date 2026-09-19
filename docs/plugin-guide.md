@@ -851,6 +851,26 @@ if err == nil && access.Allowed {
 }
 ```
 
+A plugin can also go the other way and **bring a model**: list `cameraui.PluginInterfaceAssistantModels` in the contract and implement `cameraui.AssistantModelProvider`. Its models then appear in the provider list of the assistant settings, with no key and no address to fill in. Worth it for a model camera.ui cannot reach itself: one without an HTTP API, one behind an unusual authentication, or one that only runs on the machine the plugin runs on.
+
+```go
+func (p *MyPlugin) AssistantModels() []cameraui.AssistantModelSpec {
+    return []cameraui.AssistantModelSpec{{ID: "local", Name: "Local model", ContextTokens: 8192, ToolCalling: true}}
+}
+
+func (p *MyPlugin) AssistantGenerate(request cameraui.AssistantModelRequest, ctx cameraui.AssistantModelContext) (<-chan cameraui.AssistantModelChunk, error) {
+    out := make(chan cameraui.AssistantModelChunk)
+    go func() {
+        defer close(out)
+        out <- cameraui.AssistantModelChunk{Type: "text", Delta: p.answer(request)}
+        out <- cameraui.AssistantModelChunk{Type: "done", Finish: "stop"}
+    }()
+    return out, nil
+}
+```
+
+Every request carries the whole conversation, the plugin keeps no state. `ContextTokens` is not decoration: camera.ui plans prompt, tools and history with it. A tool call goes out once its arguments are complete, the host runs the tool and asks again with the result in `Messages`. A model that has to be downloaded or loaded first also implements `cameraui.AssistantModelStatusReporter`, so the settings page shows what the plugin is waiting for instead of an empty list.
+
 ## 9. Common pitfalls
 
 - **Always release per-camera state in `OnCameraReleased`.** Tickers, vendor sessions, RTP sockets, `*Disposable`s from sensor callbacks — drop them all. Leaking them keeps the camera object alive forever and prevents reassignment from working.

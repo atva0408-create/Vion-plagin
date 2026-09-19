@@ -104,6 +104,18 @@ type AssistantModelChunk struct {
 	Message string `msgpack:"message,omitempty" json:"message,omitempty"`
 }
 
+// AssistantModelStatus says whether the plugin can answer right now. A model
+// that has to be downloaded or loaded first reports Ready false with a line the
+// settings page shows, and a Progress while it knows one.
+type AssistantModelStatus struct {
+	// Ready reports whether the models of this plugin can answer right now.
+	Ready bool `msgpack:"ready" json:"ready"`
+	// Message is one line for the user: what the plugin is waiting for, or what it is doing.
+	Message string `msgpack:"message,omitempty" json:"message,omitempty"`
+	// Progress is how far the loading got, between 0 and 1.
+	Progress float64 `msgpack:"progress,omitempty" json:"progress,omitempty"`
+}
+
 // AssistantModelContext says who the answer is for and when to stop writing it.
 type AssistantModelContext struct {
 	// UserID of the user the answer is for. Empty for scheduled runs and plugin requests.
@@ -145,4 +157,22 @@ type AssistantModelProvider interface {
 	// one with Type "done", then either returns the text to the user or runs
 	// the tool calls and asks again with their results in Messages.
 	AssistantGenerate(request AssistantModelRequest, ctx AssistantModelContext) (<-chan AssistantModelChunk, error)
+}
+
+// AssistantModelStatusReporter is an optional interface a model provider
+// implements when its models need loading before they can answer. The host asks
+// before it offers them and while the settings page is open, so a model that is
+// still downloading shows up as busy instead of missing.
+//
+// Example:
+//
+//	func (p *MyPlugin) AssistantModelStatus() sdk.AssistantModelStatus {
+//		loaded, total := p.download()
+//		if loaded < total {
+//			return sdk.AssistantModelStatus{Message: "Loading the model", Progress: float64(loaded) / float64(total)}
+//		}
+//		return sdk.AssistantModelStatus{Ready: true}
+//	}
+type AssistantModelStatusReporter interface {
+	AssistantModelStatus() AssistantModelStatus
 }
