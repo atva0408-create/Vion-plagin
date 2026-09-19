@@ -94,7 +94,7 @@ Example:
 	}
 	
 
-<a name="Run"></a>
+<a name="IsService"></a>
 
 ## func Run
 
@@ -1332,6 +1332,9 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 	    // AssistantToolProvider, so the assistant can offer the plugin's tools to
 	    // the model.
 	    PluginInterfaceAssistantTools PluginInterface = "AssistantTools"
+	    // PluginInterfaceAssistantModels marks a plugin implementing
+	    // AssistantModelProvider, so its models appear in the assistant settings.
+	    PluginInterfaceAssistantModels PluginInterface = "AssistantModels"
 	)
 
 <a name="PluginRole"></a>
@@ -1357,6 +1360,9 @@ PluginRole identifies the role a plugin plays in the system. The role decides wh
 	    // PluginRoleCameraAndSensorProvider manages cameras and exposes sensors,
 	    // on its own cameras and, with Consumes set, on foreign ones.
 	    PluginRoleCameraAndSensorProvider PluginRole = "cameraAndSensorProvider"
+	    // PluginRoleService serves camera.ui itself, for example with a language
+	    // model. Touches no cameras and no sensors, and is never assigned to one.
+	    PluginRoleService PluginRole = "service"
 	)
 
 <a name="PluginStatus"></a>

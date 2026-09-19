@@ -74,6 +74,27 @@ type Plugin interface {
 	OnCameraReleased(cameraID string) error
 }
 
+// NoCameras implements the camera lifecycle of Plugin with no-ops. Embed it in
+// a plugin with role Service, which serves camera.ui itself and never touches
+// cameras.
+//
+// Example:
+//
+//	type MyPlugin struct {
+//	    sdk.NoCameras
+//	    api *sdk.PluginAPI
+//	}
+type NoCameras struct{}
+
+// ConfigureCameras does nothing.
+func (NoCameras) ConfigureCameras(cameras []*CameraDevice) error { return nil }
+
+// OnCameraAdded does nothing.
+func (NoCameras) OnCameraAdded(camera *CameraDevice) error { return nil }
+
+// OnCameraReleased does nothing.
+func (NoCameras) OnCameraReleased(cameraID string) error { return nil }
+
 // StorageSchemaProvider is an optional interface plugins can implement to
 // register a JSON schema for their plugin-level storage. The host renders it
 // as a settings form in the UI.

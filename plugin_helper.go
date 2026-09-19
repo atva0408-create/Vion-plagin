@@ -118,6 +118,10 @@ func ValidateContractConsistency(c *PluginContract, pluginName string) error {
 		if len(c.Provides) == 0 {
 			return errors.New(prefix + "CameraAndSensorProvider plugins must provide at least one sensor type.")
 		}
+	case PluginRoleService:
+		if len(c.Provides) > 0 || len(c.Consumes) > 0 {
+			return errors.New(prefix + "Service plugins cannot provide or consume sensors.")
+		}
 	}
 	return nil
 }
@@ -132,6 +136,18 @@ func ValidateContractConsistency(c *PluginContract, pluginName string) error {
 //	}
 func IsHub(c *PluginContract) bool {
 	return c.Role == PluginRoleHub
+}
+
+// IsService reports whether the plugin only serves camera.ui itself (role
+// Service), which means it never appears in a camera's plugin list.
+//
+// Example:
+//
+//	if IsService(contract) {
+//	    skipCameraAssignment()
+//	}
+func IsService(c *PluginContract) bool {
+	return c.Role == PluginRoleService
 }
 
 // CanCreateCameras reports whether the plugin can create cameras (role is

@@ -46,7 +46,7 @@ type AssistantAskResult struct {
 	OK      bool              `msgpack:"ok" json:"ok"`
 	Text    string            `msgpack:"text,omitempty" json:"text,omitempty"`
 	JSON    any               `msgpack:"json,omitempty" json:"json,omitempty"`
-	Usage   AssistantAskUsage `msgpack:"usage,omitempty" json:"usage,omitempty"`
+	Usage   AssistantAskUsage `msgpack:"usage,omitempty" json:"usage"`
 	Reason  string            `msgpack:"reason,omitempty" json:"reason,omitempty"`
 	Message string            `msgpack:"message,omitempty" json:"message,omitempty"`
 }

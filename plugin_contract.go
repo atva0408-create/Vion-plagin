@@ -18,6 +18,9 @@ const (
 	// PluginRoleCameraAndSensorProvider manages cameras and exposes sensors,
 	// on its own cameras and, with Consumes set, on foreign ones.
 	PluginRoleCameraAndSensorProvider PluginRole = "cameraAndSensorProvider"
+	// PluginRoleService serves camera.ui itself, for example with a language
+	// model. Touches no cameras and no sensors, and is never assigned to one.
+	PluginRoleService PluginRole = "service"
 )
 
 // PluginInterface is a capability flag a plugin advertises in its contract.
@@ -80,6 +83,9 @@ const (
 	// AssistantToolProvider, so the assistant can offer the plugin's tools to
 	// the model.
 	PluginInterfaceAssistantTools PluginInterface = "AssistantTools"
+	// PluginInterfaceAssistantModels marks a plugin implementing
+	// AssistantModelProvider, so its models appear in the assistant settings.
+	PluginInterfaceAssistantModels PluginInterface = "AssistantModels"
 )
 
 // PluginCapability is a permission a plugin requests so it can call a
