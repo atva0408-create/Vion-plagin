@@ -16,6 +16,10 @@ type AssistantModelSpec struct {
 	ToolCalling bool `msgpack:"toolCalling" json:"toolCalling"`
 	// StructuredOutput reports whether the model honors a JSON schema. Without it the host asks for free text.
 	StructuredOutput bool `msgpack:"structuredOutput" json:"structuredOutput"`
+	// ToolRouting asks the host to pick the tools for a question with a short call
+	// of its own and to put only those in front of the model. For a small model
+	// that calls the tools it sees but does not work through a catalog of fifty.
+	ToolRouting bool `msgpack:"toolRouting,omitempty" json:"toolRouting,omitempty"`
 	// Note is one line shown next to the model, for example where it runs or what it costs.
 	Note string `msgpack:"note,omitempty" json:"note,omitempty"`
 }
