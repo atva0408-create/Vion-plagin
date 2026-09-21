@@ -18,6 +18,7 @@ const (
 	SensorTypeObject         SensorType = "object"         // Object detection (person, vehicle, animal, etc.)
 	SensorTypeAudio          SensorType = "audio"          // Audio event detection (glass break, scream, etc.)
 	SensorTypeFace           SensorType = "face"           // Face detection and recognition
+	SensorTypeFaceEmbedder   SensorType = "faceEmbedder"   // Face embedding generation from a face crop, for recognition against enrolled faces
 	SensorTypeLicensePlate   SensorType = "licensePlate"   // License plate detection and OCR
 	SensorTypeClassifier     SensorType = "classifier"     // General-purpose image classifier
 	SensorTypeClip           SensorType = "clip"           // CLIP embedding generation for semantic search
@@ -676,7 +677,7 @@ func mergeSortedUnique(previous, next []string) []string {
 func isDetectionSensorType(t SensorType) bool {
 	switch t {
 	case SensorTypeMotion, SensorTypeAudio, SensorTypeObject, SensorTypeObjectAssist,
-		SensorTypeFace, SensorTypeLicensePlate, SensorTypeClassifier, SensorTypeClip:
+		SensorTypeFace, SensorTypeFaceEmbedder, SensorTypeLicensePlate, SensorTypeClassifier, SensorTypeClip:
 		return true
 	}
 	return false

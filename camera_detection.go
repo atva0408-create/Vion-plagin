@@ -158,13 +158,23 @@ type SensorTriggerSettings struct {
 	Triggers []string `msgpack:"triggers" json:"triggers"`
 }
 
+// FaceMatchSensitivity is how readily a face counts as a known person.
+type FaceMatchSensitivity string
+
+const (
+	FaceMatchStrict   FaceMatchSensitivity = "strict"
+	FaceMatchBalanced FaceMatchSensitivity = "balanced"
+	FaceMatchRelaxed  FaceMatchSensitivity = "relaxed"
+)
+
 // FaceDetectionSettings is the face detection settings.
 type FaceDetectionSettings struct {
 	// Confidence is the minimum confidence threshold (0 - 1) for a face to count.
 	Confidence *float64 `msgpack:"confidence,omitempty" json:"confidence,omitempty"`
-	// MatchThreshold is the minimum similarity (0 - 1) for a face to be recognized
-	// as an enrolled person. Higher means fewer false matches, lower means more.
-	MatchThreshold *float64 `msgpack:"matchThreshold,omitempty" json:"matchThreshold,omitempty"`
+	// MatchSensitivity is how readily a face is recognized as an enrolled
+	// person. Named rather than numeric because the similarity a model calls a
+	// match differs per model.
+	MatchSensitivity *FaceMatchSensitivity `msgpack:"matchSensitivity,omitempty" json:"matchSensitivity,omitempty"`
 }
 
 // LicensePlateDetectionSettings is the license plate detection settings.

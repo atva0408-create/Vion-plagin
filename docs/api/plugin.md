@@ -637,11 +637,9 @@ FaceDetectionResponse is the result of a face detection run.
 	type FaceDetectionResponse struct {
 	    // Detected is true when the run produced at least one detection.
 	    Detected bool `msgpack:"detected" json:"detected"`
-	    // Detections are the detected faces, each with its embedding.
+	    // Detections are the located faces. Vectors come from a face-embedding
+	    // plugin, not from here.
 	    Detections []FaceDetection `msgpack:"detections" json:"detections"`
-	    // EmbeddingModel is the model that produced the embeddings; consumers
-	    // must not mix models.
-	    EmbeddingModel string `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
 	}
 
 <a name="FaceDetectionSettings"></a>
@@ -1138,6 +1136,8 @@ PluginAssignments maps sensor types to their assigned plugin\(s\) for a camera. 
 	    Audio *AssignedPlugin `msgpack:"audio,omitempty" json:"audio,omitempty"`
 	    // Face is the assigned face detection plugin.
 	    Face *AssignedPlugin `msgpack:"face,omitempty" json:"face,omitempty"`
+	    // FaceEmbedder is the assigned face embedding plugin.
+	    FaceEmbedder *AssignedPlugin `msgpack:"faceEmbedder,omitempty" json:"faceEmbedder,omitempty"`
 	    // LicensePlate is the assigned license plate detection plugin.
 	    LicensePlate *AssignedPlugin `msgpack:"licensePlate,omitempty" json:"licensePlate,omitempty"`
 	    // PTZ is the assigned PTZ control plugin.
@@ -1302,6 +1302,10 @@ PluginInterface is a capability flag a plugin advertises in its contract. The ho
 	    // ClipDetectionInterface (CLIP image and text embeddings used for
 	    // semantic search).
 	    PluginInterfaceClipDetection PluginInterface = "ClipDetection"
+	    // PluginInterfaceFaceEmbedding marks a plugin implementing
+	    // FaceEmbeddingInterface (turns a face crop into a vector). Matching
+	    // against enrolled faces happens in the NVR.
+	    PluginInterfaceFaceEmbedding PluginInterface = "FaceEmbedding"
 	    // PluginInterfaceDiscoveryProvider marks a plugin implementing
 	    // DiscoveryProvider (network scan + adoption). Only valid for
 	    // camera-controlling roles.

@@ -53,6 +53,10 @@ const (
 	// ClipDetectionInterface (CLIP image and text embeddings used for
 	// semantic search).
 	PluginInterfaceClipDetection PluginInterface = "ClipDetection"
+	// PluginInterfaceFaceEmbedding marks a plugin implementing
+	// FaceEmbeddingInterface (turns a face crop into a vector). Matching
+	// against enrolled faces happens in the NVR.
+	PluginInterfaceFaceEmbedding PluginInterface = "FaceEmbedding"
 	// PluginInterfaceDiscoveryProvider marks a plugin implementing
 	// DiscoveryProvider (network scan + adoption). Only valid for
 	// camera-controlling roles.

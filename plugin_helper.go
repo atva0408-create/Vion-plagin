@@ -8,7 +8,7 @@ import (
 
 var validSensorTypes = []SensorType{
 	SensorTypeMotion, SensorTypeObject, SensorTypeAudio,
-	SensorTypeFace, SensorTypeLicensePlate, SensorTypeClassifier,
+	SensorTypeFace, SensorTypeFaceEmbedder, SensorTypeLicensePlate, SensorTypeClassifier,
 	SensorTypeContact, SensorTypeTemperature, SensorTypeHumidity, SensorTypeOccupancy,
 	SensorTypeSmoke, SensorTypeLeak, SensorTypeGas, SensorTypeCarbonMonoxide,
 	SensorTypeHeat, SensorTypeCold, SensorTypeVibration, SensorTypeTamper,

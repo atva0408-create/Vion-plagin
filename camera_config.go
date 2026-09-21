@@ -79,6 +79,8 @@ type PluginAssignments struct {
 	Audio *AssignedPlugin `msgpack:"audio,omitempty" json:"audio,omitempty"`
 	// Face is the assigned face detection plugin.
 	Face *AssignedPlugin `msgpack:"face,omitempty" json:"face,omitempty"`
+	// FaceEmbedder is the assigned face embedding plugin.
+	FaceEmbedder *AssignedPlugin `msgpack:"faceEmbedder,omitempty" json:"faceEmbedder,omitempty"`
 	// LicensePlate is the assigned license plate detection plugin.
 	LicensePlate *AssignedPlugin `msgpack:"licensePlate,omitempty" json:"licensePlate,omitempty"`
 	// PTZ is the assigned PTZ control plugin.

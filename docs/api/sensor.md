@@ -950,9 +950,7 @@ FaceDetection is a face detection result, extending Detection with face\-specifi
 
 	type FaceDetection struct {
 	    Detection
-	    Identity  string    `msgpack:"identity,omitempty" json:"identity,omitempty"`   // Recognized identity name, if matched against known faces
-	    Embedding []float64 `msgpack:"embedding,omitempty" json:"embedding,omitempty"` // Face embedding vector for recognition/comparison
-	    Thumbnail []byte    `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"` // JPEG thumbnail crop of the detected face
+	    Identity string `msgpack:"identity,omitempty" json:"identity,omitempty"` // Recognized identity name, if matched against known faces
 	}
 
 <a name="FaceDetectionInterface"></a>
@@ -989,7 +987,7 @@ FaceDetectorSensor is a face sensor that consumes video frames from the backend 
 
 NewFaceDetectorSensor creates a face detector sensor with the given name and options.
 
-<a name="FaceResult"></a>
+<a name="FaceEmbedder"></a>
 
 ## type FaceResult
 
@@ -1067,7 +1065,7 @@ GetIdentities returns the names of the faces recognized during the active detect
 ReportDetections reports detected faces.
 
 - ReportDetections\(true, nil\): face detected without specifics. The SDK synthesizes a single full\-frame face detection without identity.
-- ReportDetections\(true, \[...\]\): explicit face detections with identity, embedding, and/or thumbnail.
+- ReportDetections\(true, \[...\]\): explicit face detections, with an identity where the plugin recognizes the face itself.
 - ReportDetections\(false, nil\): clear.
 
 Example:
@@ -2433,6 +2431,7 @@ SensorType identifies the kind of sensor. "Sensor" is camera.ui's umbrella term 
 	    SensorTypeObject         SensorType = "object"         // Object detection (person, vehicle, animal, etc.)
 	    SensorTypeAudio          SensorType = "audio"          // Audio event detection (glass break, scream, etc.)
 	    SensorTypeFace           SensorType = "face"           // Face detection and recognition
+	    SensorTypeFaceEmbedder   SensorType = "faceEmbedder"   // Face embedding generation from a face crop, for recognition against enrolled faces
 	    SensorTypeLicensePlate   SensorType = "licensePlate"   // License plate detection and OCR
 	    SensorTypeClassifier     SensorType = "classifier"     // General-purpose image classifier
 	    SensorTypeClip           SensorType = "clip"           // CLIP embedding generation for semantic search

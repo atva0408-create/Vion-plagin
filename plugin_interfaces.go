@@ -47,11 +47,9 @@ type AudioDetectionResponse struct {
 type FaceDetectionResponse struct {
 	// Detected is true when the run produced at least one detection.
 	Detected bool `msgpack:"detected" json:"detected"`
-	// Detections are the detected faces, each with its embedding.
+	// Detections are the located faces. Vectors come from a face-embedding
+	// plugin, not from here.
 	Detections []FaceDetection `msgpack:"detections" json:"detections"`
-	// EmbeddingModel is the model that produced the embeddings; consumers
-	// must not mix models.
-	EmbeddingModel string `msgpack:"embeddingModel,omitempty" json:"embeddingModel,omitempty"`
 }
 
 // LicensePlateDetectionResponse is the result of a license plate detection
@@ -235,6 +233,33 @@ type ClipDetectionPluginResponse struct {
 	// this model; consumers map scores to a 0..1 relevance scale and treat a
 	// missing band as score 0.
 	ScoreBand []float64 `msgpack:"scoreBand" json:"scoreBand"`
+}
+
+// FaceEmbeddingPluginResponse is the result of a face embedding run on a
+// single image.
+type FaceEmbeddingPluginResponse struct {
+	Embedding      []float64 `msgpack:"embedding" json:"embedding"`                     // Embedding vector for the face, empty when no face could be embedded
+	EmbeddingModel string    `msgpack:"embeddingModel" json:"embeddingModel"`           // Model that produced the embedding; consumers must not mix models
+	Landmarks      []Point   `msgpack:"landmarks,omitempty" json:"landmarks,omitempty"` // The five points the face was aligned on, in 0 - 1 of the input image: right eye, left eye, nose, right and left mouth corner
+	Quality        float64   `msgpack:"quality,omitempty" json:"quality,omitempty"`     // How sure the model is that those points sit on a face (0 - 1)
+}
+
+// FaceEmbeddingInterface is implemented by plugins that turn a face crop into
+// an embedding vector. Split from face detection so the two can run on
+// different hosts: locating a face is cheap, embedding it is not.
+type FaceEmbeddingInterface interface {
+	// EmbedFaceImages embeds a batch of encoded images (JPEG/PNG), each
+	// showing one face: one result per input in the same order. An empty
+	// Embedding means the picture holds no face this model can use, nil that
+	// the plugin could not run at all — the caller may drop such a picture, so
+	// the two must not be mixed up. Meant for re-embedding stored pictures
+	// after an embedding-model change. landmarks holds the points an earlier
+	// result returned for the same picture, one entry per image, nil where
+	// there are none: with them the face is not searched again.
+	EmbedFaceImages(images [][]byte, config map[string]any, landmarks [][]Point) ([]*FaceEmbeddingPluginResponse, error)
+	// FaceEmbeddingSettings returns the JSON schema for the face-embedding
+	// settings form in the UI, or nil for no schema.
+	FaceEmbeddingSettings() ([]JsonSchema, error)
 }
 
 // ClipDetectionInterface is implemented by plugins that generate CLIP

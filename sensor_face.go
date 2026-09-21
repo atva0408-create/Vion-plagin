@@ -11,9 +11,7 @@ const (
 // fixed to "face".
 type FaceDetection struct {
 	Detection
-	Identity  string    `msgpack:"identity,omitempty" json:"identity,omitempty"`   // Recognized identity name, if matched against known faces
-	Embedding []float64 `msgpack:"embedding,omitempty" json:"embedding,omitempty"` // Face embedding vector for recognition/comparison
-	Thumbnail []byte    `msgpack:"thumbnail,omitempty" json:"thumbnail,omitempty"` // JPEG thumbnail crop of the detected face
+	Identity string `msgpack:"identity,omitempty" json:"identity,omitempty"` // Recognized identity name, if matched against known faces
 }
 
 // FaceResult is the return value of FaceDetector.DetectFaces.
@@ -77,8 +75,8 @@ func (s *FaceSensor) GetIdentities() []string {
 //
 //   - ReportDetections(true, nil): face detected without specifics. The SDK
 //     synthesizes a single full-frame face detection without identity.
-//   - ReportDetections(true, [...]): explicit face detections with identity,
-//     embedding, and/or thumbnail.
+//   - ReportDetections(true, [...]): explicit face detections, with an
+//     identity where the plugin recognizes the face itself.
 //   - ReportDetections(false, nil): clear.
 //
 // Example:
