@@ -869,7 +869,7 @@ func (p *MyPlugin) AssistantGenerate(request cameraui.AssistantModelRequest, ctx
 }
 ```
 
-Every request carries the whole conversation, the plugin keeps no state. `ContextTokens` is not decoration: camera.ui plans prompt, tools and history with it. A tool call goes out once its arguments are complete, the host runs the tool and asks again with the result in `Messages`. A model that has to be downloaded or loaded first also implements `cameraui.AssistantModelStatusReporter`, so the settings page shows what the plugin is waiting for instead of an empty list.
+Every request carries the whole conversation, the plugin keeps no state. `ContextTokens` is not decoration: camera.ui plans prompt, tools and history with it. A tool call goes out once its arguments are complete, the host runs the tool and asks again with the result in `Messages`. A small model that calls the tools it sees but gets lost in a long catalog sets `ToolRouting: true`: camera.ui then picks the tools for each question with a short call of its own and offers only those. The user can switch it per model. A model that has to be downloaded or loaded first also implements `cameraui.AssistantModelStatusReporter`, so the settings page shows what the plugin is waiting for instead of an empty list.
 
 ## 9. Common pitfalls
 
