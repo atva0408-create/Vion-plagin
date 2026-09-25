@@ -39,6 +39,11 @@ type CameraInput struct {
 	BackchannelAudioCodec AudioCodec `msgpack:"backchannelAudioCodec,omitempty" json:"backchannelAudioCodec,omitempty"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
 	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
+	// ChildCameraId is the camera whose stream shows in the picture-in-picture
+	// overlay, instead of a source of this camera.
+	ChildCameraId string `msgpack:"childCameraId,omitempty" json:"childCameraId,omitempty"`
+	// ChildCameraRole is the role of the ChildCameraId stream shown in the overlay.
+	ChildCameraRole StreamingRole `msgpack:"childCameraRole,omitempty" json:"childCameraRole,omitempty"`
 }
 
 // CameraInformation is camera hardware/firmware information.
@@ -250,6 +255,11 @@ type CameraConfigInputSettings struct {
 	HandshakeTimeout int `msgpack:"handshakeTimeout,omitempty" json:"handshakeTimeout,omitempty"`
 	// ChildSourceId is the child source ID (for snapshot fallback).
 	ChildSourceId string `msgpack:"childSourceId,omitempty" json:"childSourceId,omitempty"`
+	// ChildCameraId is the camera whose stream shows in the picture-in-picture
+	// overlay, instead of a source of this camera.
+	ChildCameraId string `msgpack:"childCameraId,omitempty" json:"childCameraId,omitempty"`
+	// ChildCameraRole is the role of the ChildCameraId stream shown in the overlay.
+	ChildCameraRole StreamingRole `msgpack:"childCameraRole,omitempty" json:"childCameraRole,omitempty"`
 	// Urls are the raw source URLs (resolved into streaming URLs by the host).
 	Urls []string `msgpack:"urls,omitempty" json:"urls,omitempty"`
 }
