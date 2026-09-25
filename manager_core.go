@@ -163,10 +163,11 @@ func (cm *CoreManager) GetFFmpegPath() (string, error) {
 }
 
 // GetServerAddresses returns the server addresses (IP addresses the server
-// is listening on).
+// is listening on). A plugin running on a worker gets the addresses selected
+// for that worker, empty when none are selected.
 func (cm *CoreManager) GetServerAddresses() ([]string, error) {
 	ctx := context.Background()
-	result, err := cm.proxy.Invoke(ctx, "getServerAddresses")
+	result, err := cm.proxy.Invoke(ctx, "getServerAddresses", os.Getenv("PLUGIN_ID"))
 	if err != nil {
 		return nil, fmt.Errorf("getServerAddresses: %w", err)
 	}

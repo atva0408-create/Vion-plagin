@@ -76,7 +76,7 @@ GetPluginsByInterface returns all installed, enabled plugins that implement a sp
 
 	func (cm *CoreManager) GetServerAddresses() ([]string, error)
 
-GetServerAddresses returns the server addresses \(IP addresses the server is listening on\).
+GetServerAddresses returns the server addresses \(IP addresses the server is listening on\). A plugin running on a worker gets the addresses selected for that worker, empty when none are selected.
 
 <a name="CoreManager.InvokeInto"></a>
 ### func \(\*CoreManager\) InvokeInto
