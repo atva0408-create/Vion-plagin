@@ -54,7 +54,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
+          # ViON packages are published to the self-hosted registry (deploy/npm-registry in VIONN)
+          registry-url: "${{ vars.NPM_REGISTRY_URL || 'https://npm.vionvision.tech' }}"
 
       - name: Setup Python
         if: needs.resolve.outputs.runtime == 'python'
@@ -105,8 +106,8 @@ jobs:
       - name: Publish to npm (provenance via OIDC)
         working-directory: ${{ needs.resolve.outputs.plugin }}
         env:
-          # first publish of a new package needs a token; later releases can use npm trusted publishing (OIDC)
+          # publish token for the ViON registry (Verdaccio user with publish rights)
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@11.18.0
-          npx cui publish --${{ needs.resolve.outputs.dist_tag }} --yes --provenance
+          npx cui publish --${{ needs.resolve.outputs.dist_tag }} --yes
