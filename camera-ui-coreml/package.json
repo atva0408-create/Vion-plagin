@@ -1,6 +1,6 @@
 {
   "displayName": "CoreML",
-  "name": "@camera.ui/camera-ui-coreml",
+  "name": "@vionvision/camera-ui-coreml",
   "version": "1.2.11",
   "description": "Apple CoreML detection backend for camera.ui. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings on Apple hardware.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",

@@ -1,6 +1,6 @@
 {
   "displayName": "OpenCV",
-  "name": "@camera.ui/camera-ui-opencv",
+  "name": "@vionvision/camera-ui-opencv",
   "version": "1.2.5",
   "description": "Motion detection for camera.ui using OpenCV.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",

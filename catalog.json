@@ -1,5 +1,5 @@
 {
-  "@camera.ui/camera-ui-audio-yamnet": {
+  "@vionvision/camera-ui-audio-yamnet": {
     "displayName": "YAMNet Audio Detection",
     "category": "detection",
     "featured": false,
@@ -8,7 +8,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-coral": {
+  "@vionvision/camera-ui-coral": {
     "displayName": "Coral",
     "category": "ai-model",
     "featured": false,
@@ -17,7 +17,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-coreml": {
+  "@vionvision/camera-ui-coreml": {
     "displayName": "CoreML",
     "category": "ai-model",
     "featured": true,
@@ -26,7 +26,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-eufy": {
+  "@vionvision/camera-ui-eufy": {
     "displayName": "Eufy",
     "category": "camera-source",
     "featured": false,
@@ -35,7 +35,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-hailo": {
+  "@vionvision/camera-ui-hailo": {
     "displayName": "Hailo",
     "category": "ai-model",
     "featured": false,
@@ -44,7 +44,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-homeassistant": {
+  "@vionvision/camera-ui-homeassistant": {
     "displayName": "Home Assistant",
     "category": "automation",
     "featured": true,
@@ -53,7 +53,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-homekit": {
+  "@vionvision/camera-ui-homekit": {
     "displayName": "HomeKit",
     "category": "automation",
     "featured": true,
@@ -62,7 +62,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-ncnn": {
+  "@vionvision/camera-ui-ncnn": {
     "displayName": "NCNN",
     "category": "ai-model",
     "featured": false,
@@ -80,7 +80,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-onnx": {
+  "@vionvision/camera-ui-onnx": {
     "displayName": "ONNX",
     "category": "ai-model",
     "featured": true,
@@ -89,7 +89,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-onnx-legacy": {
+  "@vionvision/camera-ui-onnx-legacy": {
     "displayName": "ONNX Legacy",
     "category": "ai-model",
     "featured": false,
@@ -98,7 +98,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-onvif": {
+  "@vionvision/camera-ui-onvif": {
     "displayName": "Onvif",
     "category": "camera-source",
     "featured": false,
@@ -107,7 +107,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-opencl": {
+  "@vionvision/camera-ui-opencl": {
     "displayName": "OpenCL",
     "category": "ai-model",
     "featured": false,
@@ -116,7 +116,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-opencv": {
+  "@vionvision/camera-ui-opencv": {
     "displayName": "OpenCV",
     "category": "ai-model",
     "featured": false,
@@ -125,7 +125,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-openvino": {
+  "@vionvision/camera-ui-openvino": {
     "displayName": "OpenVino",
     "category": "ai-model",
     "featured": true,
@@ -134,7 +134,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-openvino-legacy": {
+  "@vionvision/camera-ui-openvino-legacy": {
     "displayName": "OpenVino Legacy",
     "category": "ai-model",
     "featured": false,
@@ -143,7 +143,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-pamdiff": {
+  "@vionvision/camera-ui-pamdiff": {
     "displayName": "Pam Diff",
     "category": "detection",
     "featured": false,
@@ -152,7 +152,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-reolink": {
+  "@vionvision/camera-ui-reolink": {
     "displayName": "Reolink",
     "category": "camera-source",
     "featured": false,
@@ -161,7 +161,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-ring": {
+  "@vionvision/camera-ui-ring": {
     "displayName": "Ring",
     "category": "camera-source",
     "featured": false,
@@ -170,7 +170,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-rust-motion": {
+  "@vionvision/camera-ui-rust-motion": {
     "displayName": "Rust Motion",
     "category": "detection",
     "featured": true,
@@ -179,7 +179,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-smtp": {
+  "@vionvision/camera-ui-smtp": {
     "displayName": "SMTP",
     "category": "detection",
     "featured": false,
@@ -188,7 +188,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-tuya": {
+  "@vionvision/camera-ui-tuya": {
     "displayName": "Tuya",
     "category": "camera-source",
     "featured": false,
@@ -197,7 +197,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-wasm-motion": {
+  "@vionvision/camera-ui-wasm-motion": {
     "displayName": "WASM Motion",
     "category": "detection",
     "featured": false,
@@ -206,7 +206,7 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@camera.ui/camera-ui-wyze": {
+  "@vionvision/camera-ui-wyze": {
     "displayName": "Wyze",
     "category": "camera-source",
     "featured": false,

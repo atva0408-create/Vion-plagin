@@ -1,6 +1,6 @@
 {
   "displayName": "Eufy",
-  "name": "@camera.ui/camera-ui-eufy",
+  "name": "@vionvision/camera-ui-eufy",
   "version": "2.0.3",
   "description": "Integrates Eufy cameras, doorbells, HomeBases and sensors into camera.ui, with device discovery, live streaming, two-way audio, detection events, camera controls and adoptable Eufy sensors.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",

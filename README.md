@@ -6,6 +6,8 @@
 
 Official plugins for the ViON video surveillance platform.
 
+All plugins are published under the `@vionvision` npm scope.
+
 ## Model downloads
 
 Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, Hailo, YAMNet) download their models on first use.
@@ -26,26 +28,26 @@ git fetch upstream && git merge upstream/main
 
 | Plugin                                 | Package                             |
 | -------------------------------------- | ----------------------------------- |
-| [Coral](camera-ui-coral)               | `@camera.ui/camera-ui-coral`        |
-| [CoreML](camera-ui-coreml)             | `@camera.ui/camera-ui-coreml`       |
-| [Eufy](camera-ui-eufy)                 | `@camera.ui/camera-ui-eufy`         |
-| [Hailo](camera-ui-hailo)               | `@camera.ui/camera-ui-hailo`        |
-| [HomeKit](camera-ui-homekit)           | `@camera.ui/camera-ui-homekit`      |
-| [NCNN](camera-ui-ncnn)                 | `@camera.ui/camera-ui-ncnn`         |
-| [ONNX](camera-ui-onnx)                 | `@camera.ui/camera-ui-onnx`         |
-| [ONVIF](camera-ui-onvif)               | `@camera.ui/camera-ui-onvif`        |
-| [OpenCL](camera-ui-opencl)             | `@camera.ui/camera-ui-opencl`       |
-| [OpenCV](camera-ui-opencv)             | `@camera.ui/camera-ui-opencv`       |
-| [OpenVino](camera-ui-openvino)         | `@camera.ui/camera-ui-openvino`     |
-| [Pam Diff](camera-ui-pamdiff)          | `@camera.ui/camera-ui-pamdiff`      |
-| [Reolink](camera-ui-reolink)           | `@camera.ui/camera-ui-reolink`      |
-| [Ring](camera-ui-ring)                 | `@camera.ui/camera-ui-ring`         |
-| [Rust Motion](camera-ui-rust-motion)   | `@camera.ui/camera-ui-rust-motion`  |
-| [SMTP](camera-ui-smtp)                 | `@camera.ui/camera-ui-smtp`         |
-| [Tuya](camera-ui-tuya)                 | `@camera.ui/camera-ui-tuya`         |
-| [WASM Motion](camera-ui-wasm-motion)   | `@camera.ui/camera-ui-wasm-motion`  |
-| [Wyze](camera-ui-wyze)                 | `@camera.ui/camera-ui-wyze`         |
-| [YAMNet Audio](camera-ui-audio-yamnet) | `@camera.ui/camera-ui-audio-yamnet` |
+| [Coral](camera-ui-coral)               | `@vionvision/camera-ui-coral`        |
+| [CoreML](camera-ui-coreml)             | `@vionvision/camera-ui-coreml`       |
+| [Eufy](camera-ui-eufy)                 | `@vionvision/camera-ui-eufy`         |
+| [Hailo](camera-ui-hailo)               | `@vionvision/camera-ui-hailo`        |
+| [HomeKit](camera-ui-homekit)           | `@vionvision/camera-ui-homekit`      |
+| [NCNN](camera-ui-ncnn)                 | `@vionvision/camera-ui-ncnn`         |
+| [ONNX](camera-ui-onnx)                 | `@vionvision/camera-ui-onnx`         |
+| [ONVIF](camera-ui-onvif)               | `@vionvision/camera-ui-onvif`        |
+| [OpenCL](camera-ui-opencl)             | `@vionvision/camera-ui-opencl`       |
+| [OpenCV](camera-ui-opencv)             | `@vionvision/camera-ui-opencv`       |
+| [OpenVino](camera-ui-openvino)         | `@vionvision/camera-ui-openvino`     |
+| [Pam Diff](camera-ui-pamdiff)          | `@vionvision/camera-ui-pamdiff`      |
+| [Reolink](camera-ui-reolink)           | `@vionvision/camera-ui-reolink`      |
+| [Ring](camera-ui-ring)                 | `@vionvision/camera-ui-ring`         |
+| [Rust Motion](camera-ui-rust-motion)   | `@vionvision/camera-ui-rust-motion`  |
+| [SMTP](camera-ui-smtp)                 | `@vionvision/camera-ui-smtp`         |
+| [Tuya](camera-ui-tuya)                 | `@vionvision/camera-ui-tuya`         |
+| [WASM Motion](camera-ui-wasm-motion)   | `@vionvision/camera-ui-wasm-motion`  |
+| [Wyze](camera-ui-wyze)                 | `@vionvision/camera-ui-wyze`         |
+| [YAMNet Audio](camera-ui-audio-yamnet) | `@vionvision/camera-ui-audio-yamnet` |
 
 ---
 

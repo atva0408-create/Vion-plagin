@@ -104,6 +104,9 @@ jobs:
 
       - name: Publish to npm (provenance via OIDC)
         working-directory: ${{ needs.resolve.outputs.plugin }}
+        env:
+          # first publish of a new package needs a token; later releases can use npm trusted publishing (OIDC)
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@11.18.0
           npx cui publish --${{ needs.resolve.outputs.dist_tag }} --yes --provenance

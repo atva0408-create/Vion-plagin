@@ -1,6 +1,6 @@
 {
   "displayName": "OpenCL",
-  "name": "@camera.ui/camera-ui-opencl",
+  "name": "@vionvision/camera-ui-opencl",
   "version": "1.2.5",
   "description": "GPU-accelerated motion detection for camera.ui using OpenCL.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",

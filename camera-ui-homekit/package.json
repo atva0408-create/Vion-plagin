@@ -1,6 +1,6 @@
 {
   "displayName": "HomeKit",
-  "name": "@camera.ui/camera-ui-homekit",
+  "name": "@vionvision/camera-ui-homekit",
   "version": "1.3.2",
   "description": "Exposes camera.ui cameras and sensors to Apple HomeKit: cameras stream and record via HomeKit Secure Video, sensors appear as accessories in the Home app.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
