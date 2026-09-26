@@ -40,7 +40,18 @@ interface ManagedCamera {
   device: CameraDevice;
   recorders: Map<Role, Recorder>;
   subscriptions: Disposable[];
+  /** Recording is enabled but the plan has no free camera slot. */
+  overLimit?: boolean;
 }
+
+/** Plan limits from the host (ViON Cloud plan or local defaults); 0 = unlimited. */
+interface Entitlements {
+  source: 'cloud' | 'local';
+  plan: { id: string; name: string };
+  nvr: { maxCameras: number; retentionDays: number };
+}
+
+const ENTITLEMENTS_INTERVAL_MS = 10 * 60_000;
 
 export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
@@ -48,6 +59,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private ffmpegPath = 'ffmpeg';
   private readonly cameras = new Map<string, ManagedCamera>();
   private retentionTimer: NodeJS.Timeout | undefined;
+  private entitlementsTimer: NodeJS.Timeout | undefined;
+  /** Unknown until the host answers (older hosts without the call: no limits). */
+  private entitlements: Entitlements | undefined;
   private instanceId = '';
   private paused = false;
   private ready: Promise<void>;
@@ -72,10 +86,22 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   get storageSchema(): JsonSchema[] {
     return [
       {
+        type: 'string',
+        key: 'plan',
+        title: 'Тариф',
+        description: 'Лимиты записи задаёт тариф ViON Cloud владельца сервера. Сменить тариф: cloud.vionvision.tech → «Тариф».',
+        group: 'License',
+        readonly: true,
+        onGet: async () => {
+          await this.refreshEntitlements();
+          return this.planSummary();
+        },
+      },
+      {
         type: 'number',
         key: 'retentionDays',
         title: 'Хранить записи, дней',
-        description: 'Записи и события старше этого срока удаляются автоматически (избранное сохраняется).',
+        description: 'Записи и события старше этого срока удаляются автоматически (избранное сохраняется). Не больше срока, который даёт тариф.',
         group: 'Storage',
         defaultValue: 14,
         minimum: 1,
@@ -146,12 +172,55 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private get setting(): Required<Pick<PluginStorageValues, 'retentionDays' | 'quotaGB' | 'minFreePercent' | 'segmentSeconds' | 'postBufferSeconds'>> {
     const v = this.storage.values;
     return {
-      retentionDays: Number(v.retentionDays) || 14,
+      retentionDays: this.capRetention(Number(v.retentionDays) || 14),
       quotaGB: Number(v.quotaGB) || 0,
       minFreePercent: Number(v.minFreePercent) || 5,
       segmentSeconds: Number(v.segmentSeconds) || 60,
       postBufferSeconds: Number(v.postBufferSeconds ?? 10),
     };
+  }
+
+  private capRetention(days: number): number {
+    const max = this.entitlements?.nvr.retentionDays ?? 0;
+    return max > 0 ? Math.min(days, max) : days;
+  }
+
+  private async refreshEntitlements(): Promise<void> {
+    const core = this.api.coreManager as unknown as { getEntitlements?: () => Promise<Entitlements> };
+    if (typeof core.getEntitlements !== 'function') return;
+    try {
+      const next = await core.getEntitlements();
+      const changed = JSON.stringify(next) !== JSON.stringify(this.entitlements);
+      this.entitlements = next;
+      if (changed) {
+        this.logger.log(`Plan: ${this.planSummary()}`);
+        this.syncAll();
+      }
+    } catch (error) {
+      this.logger.debug(`Entitlements unavailable: ${(error as Error).message}`);
+    }
+  }
+
+  private planSummary(): string {
+    const e = this.entitlements;
+    if (!e) return 'без ограничений';
+    const cams = e.nvr.maxCameras > 0 ? `до ${e.nvr.maxCameras} камер с записью` : 'запись со всех камер';
+    const days = e.nvr.retentionDays > 0 ? `архив до ${e.nvr.retentionDays} дн.` : 'архив без ограничения срока';
+    return e.source === 'cloud' ? `ViON Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к ViON Cloud: ${cams}, ${days}`;
+  }
+
+  /** Cameras allowed to record: the first `maxCameras` in the order recording was enabled (persisted). */
+  private licensedCameraIds(): Set<string> {
+    const wanting = [...this.cameras.values()].filter((c) => isRecordingWanted(c.device)).map((c) => c.device.id);
+    const order = (JSON.parse(this.store.meta('record_order') ?? '[]') as string[]).filter((id) => wanting.includes(id));
+    for (const id of wanting) if (!order.includes(id)) order.push(id);
+    this.store.setMeta('record_order', JSON.stringify(order));
+    const max = this.entitlements?.nvr.maxCameras ?? 0;
+    return new Set(max > 0 ? order.slice(0, max) : order);
+  }
+
+  private syncAll(): void {
+    for (const managed of this.cameras.values()) this.syncRecorders(managed);
   }
 
   private init(): void {
@@ -174,6 +243,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   private async start(): Promise<void> {
+    void this.refreshEntitlements();
+    this.entitlementsTimer = setInterval(() => void this.refreshEntitlements(), ENTITLEMENTS_INTERVAL_MS);
     this.retentionTimer = setInterval(() => void this.enforceRetention(), RETENTION_INTERVAL_MS);
     void this.enforceRetention();
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
@@ -181,6 +252,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private async stop(): Promise<void> {
     clearInterval(this.retentionTimer);
+    clearInterval(this.entitlementsTimer);
     this.playback?.stopAll();
     await Promise.all([...this.cameras.keys()].map((id) => this.releaseCamera(id)));
     this.store?.close();
@@ -195,12 +267,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     await this.releaseCamera(camera.id);
     const managed: ManagedCamera = { device: camera, recorders: new Map(), subscriptions: [] };
     this.cameras.set(camera.id, managed);
-    managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncRecorders(managed)));
+    managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncAll()));
     this.syncRecorders(managed);
   }
 
   public async onCameraReleased(cameraId: string): Promise<void> {
     await this.releaseCamera(cameraId);
+    this.syncAll();
   }
 
   private async releaseCamera(cameraId: string): Promise<void> {
@@ -216,7 +289,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const rs = device.recordingSettings;
     const disabled = (device as unknown as { disabled?: boolean }).disabled === true;
     const wanted = new Map<Role, { rtspUrl: string; tsUrl?: string }>();
-    if (rs?.enabled && !disabled && (rs.mode === 'continuous' || rs.mode === 'event')) {
+    const licensed = !isRecordingWanted(device) || this.licensedCameraIds().has(device.id);
+    if (!licensed && !managed.overLimit) {
+      this.pushSystemEvent({
+        type: 'license',
+        severity: 'warning',
+        cameraId: device.id,
+        message: `Запись «${device.name}» не ведётся: лимит тарифа (${this.planSummary()})`,
+      });
+    }
+    managed.overLimit = !licensed;
+    if (licensed && rs?.enabled && !disabled && (rs.mode === 'continuous' || rs.mode === 'event')) {
       const roles: Role[] = rs.sources?.length ? rs.sources : ['high'];
       for (const role of roles) {
         const source = role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
@@ -1020,6 +1103,12 @@ function go2rtcTsUrl(snapshotUrl: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isRecordingWanted(device: CameraDevice): boolean {
+  const rs = device.recordingSettings;
+  const disabled = (device as unknown as { disabled?: boolean }).disabled === true;
+  return !!rs?.enabled && !disabled && (rs.mode === 'continuous' || rs.mode === 'event');
 }
 
 function localDay(ms: number): string {

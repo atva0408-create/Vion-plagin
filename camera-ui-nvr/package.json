@@ -1,7 +1,7 @@
 {
   "displayName": "ViON NVR",
   "name": "@vionvision/camera-ui-nvr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ViON video recorder: continuous and event recording, timeline playback, events and export. Runs fully on your server, no external accounts.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
