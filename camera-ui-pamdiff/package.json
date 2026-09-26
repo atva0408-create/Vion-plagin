@@ -2,7 +2,7 @@
   "displayName": "Pam Diff",
   "name": "@vionvision/camera-ui-pamdiff",
   "version": "1.2.5",
-  "description": "Pixel-based motion detection for camera.ui using the pam-diff algorithm on ffmpeg PAM frames.",
+  "description": "Попиксельный детектор движения для ViON: алгоритм pam-diff на кадрах PAM из ffmpeg.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",

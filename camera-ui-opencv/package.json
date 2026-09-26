@@ -2,7 +2,7 @@
   "displayName": "OpenCV",
   "name": "@vionvision/camera-ui-opencv",
   "version": "1.2.5",
-  "description": "Motion detection for camera.ui using OpenCV.",
+  "description": "Детектор движения для ViON на OpenCV.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/main.py",
   "type": "module",

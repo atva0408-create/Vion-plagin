@@ -2,7 +2,7 @@
   "displayName": "Eufy",
   "name": "@vionvision/camera-ui-eufy",
   "version": "2.0.3",
-  "description": "Integrates Eufy cameras, doorbells, HomeBases and sensors into camera.ui, with device discovery, live streaming, two-way audio, detection events, camera controls and adoptable Eufy sensors.",
+  "description": "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к ViON: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",

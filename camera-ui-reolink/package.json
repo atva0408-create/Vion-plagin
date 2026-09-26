@@ -2,7 +2,7 @@
   "displayName": "Reolink",
   "name": "@vionvision/camera-ui-reolink",
   "version": "1.2.25",
-  "description": "Integrates Reolink cameras and doorbells into camera.ui via the native Baichuan protocol, with device discovery, live streaming, two-way audio, and motion, AI object, battery and doorbell events.",
+  "description": "Подключает камеры и звонки Reolink к ViON по родному протоколу Baichuan: поиск устройств, прямой эфир, двусторонний звук, события движения, ИИ-объектов, батареи и звонка.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/main.go",
   "type": "module",

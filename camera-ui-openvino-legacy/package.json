@@ -2,7 +2,7 @@
   "displayName": "OpenVino Legacy",
   "name": "@vionvision/camera-ui-openvino-legacy",
   "version": "1.2.16",
-  "description": "OpenVINO detection backend for camera.ui with the older 2024.6 runtime. For Intel GPUs up to 10th gen Core on Windows, whose drivers cannot build the GPU code of newer OpenVINO releases. On Linux the camera.ui Docker image covers these GPUs with legacy compute libs; use the regular OpenVino plugin everywhere else.",
+  "description": "Детектор OpenVINO для ViON со старой средой 2024.6. Для графики Intel до 10-го поколения Core в Windows, чьи драйверы не собирают GPU-код новых версий OpenVINO. В Linux эти GPU поддерживает Docker-образ ViON; в остальных случаях используйте обычный плагин OpenVino.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/main.py",
   "type": "module",

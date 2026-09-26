@@ -2,7 +2,7 @@
   "displayName": "SMTP",
   "name": "@vionvision/camera-ui-smtp",
   "version": "1.2.5",
-  "description": "Motion detection for camera.ui via SMTP. Runs a small SMTP server that turns camera e-mail alerts into motion events.",
+  "description": "Обнаружение движения для ViON через SMTP. Небольшой SMTP-сервер превращает письма-оповещения камер в события движения.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
