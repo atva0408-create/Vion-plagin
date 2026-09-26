@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-onvif",
   "version": "1.2.6",
   "description": "ONVIF integration for camera.ui. Provides camera discovery, PTZ control, and motion, object, audio and face events via ONVIF.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "type": "module",
   "main": "./bundle/dist/index.js",
   "scripts": {
@@ -39,7 +39,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -47,7 +47,7 @@
   },
   "os": [],
   "cpu": [],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-onvif#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-onvif#readme",
   "keywords": [
     "camera-ui-plugin",
     "onvif",
@@ -58,7 +58,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-onvif"
   }
 }

@@ -21,7 +21,7 @@ export class SMTPMotionSensor extends MotionSensor<SMTPSensorStorageValues> {
         title: 'Email Address',
         format: 'email',
         description: 'The email address that triggers motion. The SMTP server accepts any username and domain.',
-        placeholder: 'camera@camera.ui',
+        placeholder: 'camera@vion.local',
         store: true,
         required: true,
       },

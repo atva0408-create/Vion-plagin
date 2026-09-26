@@ -195,7 +195,7 @@ export class HaClient {
       }
       if (message.type === 'auth_invalid') {
         if (this.target.apiUrl.startsWith('http://supervisor')) {
-          this.logger.error('Home Assistant rejected the supervisor token. Update the camera.ui add-on, older versions lack the Home Assistant API permission.');
+          this.logger.error('Home Assistant rejected the supervisor token. Update the ViON add-on, older versions lack the Home Assistant API permission.');
         } else {
           this.logger.error('Home Assistant rejected the access token');
         }

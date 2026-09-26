@@ -54,7 +54,7 @@ export default class RingPlugin extends BasePlugin<StorageValues> implements Dis
         hidden: true,
         required: true,
         store: true,
-        defaultValue: 'camera.ui',
+        defaultValue: 'ViON',
       },
       {
         type: 'string',

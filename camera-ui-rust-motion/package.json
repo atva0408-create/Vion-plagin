@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-rust-motion",
   "version": "1.2.5",
   "description": "Native motion detection for camera.ui, powered by a Rust detector for low CPU usage.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {
@@ -41,9 +41,9 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-rust-motion#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-rust-motion#readme",
   "keywords": [
     "camera-ui-plugin",
     "rust",
@@ -53,7 +53,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-rust-motion"
   },
   "engines": {

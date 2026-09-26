@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 
-const RAW_BASE = 'https://raw.githubusercontent.com/cameraui/plugins/main';
+const RAW_BASE = 'https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main';
 
 type Category = 'detection' | 'camera-source' | 'notification' | 'recording' | 'automation' | 'ai-model' | 'utility' | 'other';
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from camera_ui_sdk import BASE_AUDIO_LABELS
 
-YAMNET_MODEL_URL = "https://models.cameraui.com/v1/audio-yamnet/yamnet.tflite"
-YAMNET_LABELS_URL = "https://models.cameraui.com/v1/audio-yamnet/yamnet_class_map.csv"
+# override with VION_MODELS_HOST to serve models from your own mirror
+_MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.cameraui.com").rstrip("/")
+YAMNET_MODEL_URL = f"{_MODELS_HOST}/v1/audio-yamnet/yamnet.tflite"
+YAMNET_LABELS_URL = f"{_MODELS_HOST}/v1/audio-yamnet/yamnet_class_map.csv"
 
 YAMNET_SAMPLE_RATE = 16000
 YAMNET_CHANNELS = 1

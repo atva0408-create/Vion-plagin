@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-eufy",
   "version": "2.0.3",
   "description": "Integrates Eufy cameras, doorbells, HomeBases and sensors into camera.ui, with device discovery, live streaming, two-way audio, detection events, camera controls and adoptable Eufy sensors.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {
@@ -42,7 +42,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -50,7 +50,7 @@
   },
   "os": [],
   "cpu": [],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-eufy#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-eufy#readme",
   "keywords": [
     "camera-ui-plugin",
     "cameras",
@@ -61,7 +61,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-eufy"
   },
   "allowScripts": {

@@ -41,7 +41,7 @@ function pluginRequirements(): string[] {
 function setupPython(): void {
   step('Setting up Python environment');
   if (SKIP_PYTHON) {
-    warn('skipped (--skip-python; managed by camera.ui monorepo)');
+    warn('skipped (--skip-python; managed by ViON monorepo)');
     return;
   }
 
@@ -76,7 +76,7 @@ function setupPython(): void {
 }
 
 function main(): void {
-  console.log(chalk.bold.magenta('\ncamera.ui · plugins · setup\n'));
+  console.log(chalk.bold.magenta('\nViON · plugins · setup\n'));
   console.log(chalk.gray(`root: ${ROOT}`));
 
   step('Initializing git submodules');

@@ -266,7 +266,7 @@ export class CameraAccessory extends Subscribed {
 
     accessoryInformation?.setCharacteristic(Characteristic.Name, this.cameraDevice.name);
     accessoryInformation?.setCharacteristic(Characteristic.ConfiguredName, this.cameraDevice.name);
-    accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'camera.ui');
+    accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'ViON');
     accessoryInformation?.setCharacteristic(Characteristic.Identify, true);
 
     if (this.cameraDevice.info.manufacturer) accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, this.cameraDevice.info.manufacturer);

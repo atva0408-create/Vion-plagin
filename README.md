@@ -1,6 +1,28 @@
-# camera.ui - Plugins
+<p align="center">
+  <img src=".github/vion-logo.svg" alt="ViON" width="320" />
+</p>
 
-Official plugins for the camera.ui ecosystem.
+# ViON - Plugins
+
+Official plugins for the ViON video surveillance platform.
+
+## Model downloads
+
+Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, Hailo, YAMNet) download their models on first use.
+Set `VION_MODELS_HOST` (for example `https://models.vionvision.tech`) to serve them from your own mirror;
+the path layout is `/<version>/<backend>/...`, identical to the upstream host.
+
+## Upstream
+
+Based on [camera.ui plugins](https://github.com/cameraui/plugins) by seydx (MIT), used with the author's permission.
+To pull upstream changes:
+
+```sh
+git remote add upstream https://github.com/cameraui/plugins.git
+git fetch upstream && git merge upstream/main
+```
+
+## Plugins
 
 | Plugin                                 | Package                             |
 | -------------------------------------- | ----------------------------------- |
@@ -27,4 +49,4 @@ Official plugins for the camera.ui ecosystem.
 
 ---
 
-_Part of the camera.ui ecosystem - A comprehensive camera management solution._
+_Part of the ViON ecosystem - [vionvision.tech](https://vionvision.tech)._

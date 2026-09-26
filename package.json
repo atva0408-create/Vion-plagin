@@ -18,13 +18,13 @@
     "setup": "tsx ./scripts/setup.ts",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./ && cupdate && tsx ./scripts/update.ts"
   },
-  "homepage": "https://github.com/cameraui/plugins#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin#readme",
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git"
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git"
   },
   "license": "MIT",
   "author": "seydx",

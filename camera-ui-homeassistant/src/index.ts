@@ -23,7 +23,8 @@ import type { CommandFn, ControlKind } from './controls.js';
 import type { ImportedSensor } from './sensors.js';
 import type { HaDevice, HaRegistryEntry, HaRegistryEvent, HaState, StorageValues } from './types.js';
 
-const OWN_MANUFACTURER = 'camera.ui';
+// 'camera.ui' is kept so devices announced by older servers are still recognised as our own
+const OWN_MANUFACTURERS = new Set(['ViON', 'camera.ui']);
 const OWN_PLATFORM = 'cameraui';
 const OWN_ID_PREFIX = 'cameraui_';
 const RESYNC_INTERVAL_MS = 15 * 60_000;
@@ -79,7 +80,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         type: 'string',
         key: 'host',
         title: 'Home Assistant URL',
-        description: 'For example http://homeassistant.local:8123. Leave empty when camera.ui runs as Home Assistant add-on.',
+        description: 'For example http://homeassistant.local:8123. Leave empty when ViON runs as Home Assistant add-on.',
         required: false,
         store: true,
         onSet: async () => this.reconnectSoon(),
@@ -88,7 +89,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         type: 'string',
         key: 'token',
         title: 'Access Token',
-        description: 'Long-lived access token from your Home Assistant profile. Leave empty when camera.ui runs as Home Assistant add-on.',
+        description: 'Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as Home Assistant add-on.',
         format: 'password',
         required: false,
         store: true,
@@ -427,7 +428,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
     if (entry?.platform === OWN_PLATFORM) return true;
     const device = entry?.device_id ? registry.devices.get(entry.device_id) : undefined;
     if (!device) return false;
-    if (device.manufacturer === OWN_MANUFACTURER) return true;
+    if (device.manufacturer && OWN_MANUFACTURERS.has(device.manufacturer)) return true;
     return device.identifiers?.some(([domain, id]) => domain === OWN_PLATFORM || (typeof id === 'string' && id.startsWith(OWN_ID_PREFIX))) ?? false;
   }
 

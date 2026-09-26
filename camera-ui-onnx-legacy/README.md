@@ -2,7 +2,7 @@
 
 ONNX Runtime detection backend for camera.ui. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
 
-The same detection plugin as [ONNX](https://github.com/cameraui/plugins/blob/main/camera-ui-onnx/README.md), pinned to onnxruntime-gpu 1.26, the last release built on CUDA 12.
+The same detection plugin as [ONNX](https://github.com/atva0408-create/Vion-plagin/blob/main/camera-ui-onnx/README.md), pinned to onnxruntime-gpu 1.26, the last release built on CUDA 12.
 
 CUDA 13 dropped support for NVIDIA architectures before Turing. The regular ONNX plugin runs on the CUDA 13 line, so on those cards detection silently falls back to the CPU. This plugin stays on the CUDA 12 build, which still carries kernels for them.
 

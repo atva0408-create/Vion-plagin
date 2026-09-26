@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
+
 from camera_ui_sdk import DetectionLabel
 
 model_version = "v1"
 
-_MODELS_HOST = "https://models.cameraui.com"
+# override with VION_MODELS_HOST to serve models from your own mirror
+_MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.cameraui.com").rstrip("/")
 MODEL_BASE_URL = f"{_MODELS_HOST}/{model_version}/hailo"
 MODEL_LFS_URL = MODEL_BASE_URL
 

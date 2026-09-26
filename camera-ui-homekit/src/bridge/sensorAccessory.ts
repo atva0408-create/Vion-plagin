@@ -346,7 +346,7 @@ function createAccessory(sensor: SensorLike, displayName: string, accessoryUUID:
   const accessoryInformation = accessory.getService(Service.AccessoryInformation);
   accessoryInformation?.setCharacteristic(Characteristic.Name, displayName);
   accessoryInformation?.setCharacteristic(Characteristic.ConfiguredName, displayName);
-  accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'camera.ui');
+  accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'ViON');
   accessoryInformation?.setCharacteristic(Characteristic.Model, sensor.type);
   accessoryInformation?.setCharacteristic(Characteristic.SerialNumber, sensor.id);
 

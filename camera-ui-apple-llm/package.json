@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-apple-llm",
   "version": "1.0.1",
   "description": "Apple's on-device foundation model as an assistant model for camera.ui, with tools and pictures. Runs on the Mac itself, no key and no cloud.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {
@@ -35,7 +35,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -47,7 +47,7 @@
   "cpu": [
     "arm64"
   ],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-apple-llm#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-apple-llm#readme",
   "keywords": [
     "camera-ui-plugin",
     "assistant",
@@ -59,7 +59,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-apple-llm"
   }
 }

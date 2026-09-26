@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-openvino",
   "version": "1.2.16",
   "description": "OpenVINO detection backend for camera.ui, optimized for Intel hardware. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/main.py",
   "type": "module",
   "scripts": {
@@ -26,7 +26,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -40,7 +40,7 @@
     "x64",
     "arm64"
   ],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-openvino#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-openvino#readme",
   "keywords": [
     "camera-ui-plugin",
     "object",
@@ -58,7 +58,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-openvino"
   }
 }

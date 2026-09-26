@@ -2,7 +2,7 @@
 
 OpenVino detection backend for camera.ui, optimized for Intel hardware. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
 
-The same detection plugin as [OpenVino](https://github.com/cameraui/plugins/blob/main/camera-ui-openvino/README.md), pinned to the older OpenVINO 2024.6 runtime.
+The same detection plugin as [OpenVino](https://github.com/atva0408-create/Vion-plagin/blob/main/camera-ui-openvino/README.md), pinned to the older OpenVINO 2024.6 runtime.
 
 Newer OpenVINO releases generate GPU code that the drivers of older Intel chips can no longer build. On those machines the regular plugin logs `CL_BUILD_PROGRAM_FAILURE` and every model silently falls back to the CPU. The 2024.6 runtime still compiles for these GPUs.
 

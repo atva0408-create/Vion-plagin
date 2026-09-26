@@ -217,11 +217,11 @@ export class SensorBridge {
     const republishId = this.storage.values.bridgeRepublishId;
     // no dot in the name: it becomes the mDNS instance name, and ciao splits it
     // into DNS labels there, which makes the bridge undiscoverable
-    const bridge = new Bridge('camera ui Bridge', uuid.generate(`${republishId}-cameraui-bridge`));
+    const bridge = new Bridge('ViON Bridge', uuid.generate(`${republishId}-cameraui-bridge`));
 
     const accessoryInformation = bridge.getService(Service.AccessoryInformation);
-    accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'camera.ui');
-    accessoryInformation?.setCharacteristic(Characteristic.Model, 'camera.ui Bridge');
+    accessoryInformation?.setCharacteristic(Characteristic.Manufacturer, 'ViON');
+    accessoryInformation?.setCharacteristic(Characteristic.Model, 'ViON Bridge');
 
     for (const sensor of this.sensors.values()) {
       const built = buildSensorAccessory(sensor, republishId, this.logger);

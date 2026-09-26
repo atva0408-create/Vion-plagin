@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-homeassistant",
   "version": "1.0.16",
   "description": "Imports Home Assistant sensors into camera.ui: motion, occupancy, contacts, doorbells, smoke, leak and more become assignable camera.ui sensors that can trigger camera detection.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {
@@ -40,7 +40,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -48,7 +48,7 @@
   },
   "os": [],
   "cpu": [],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-homeassistant#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-homeassistant#readme",
   "keywords": [
     "camera-ui-plugin",
     "home-assistant",
@@ -58,7 +58,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-homeassistant"
   }
 }

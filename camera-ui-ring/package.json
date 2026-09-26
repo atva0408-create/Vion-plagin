@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-ring",
   "version": "1.2.5",
   "description": "Integrates Ring cameras and doorbells into camera.ui, with device discovery, live streaming, and motion, battery, light, siren and doorbell events.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {
@@ -41,7 +41,7 @@
     "updates": "^19.0.0"
   },
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.5",
@@ -49,7 +49,7 @@
   },
   "os": [],
   "cpu": [],
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-ring#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-ring#readme",
   "keywords": [
     "camera-ui-plugin",
     "ring",
@@ -59,7 +59,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-ring"
   }
 }

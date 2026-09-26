@@ -3,7 +3,7 @@
   "name": "@camera.ui/camera-ui-reolink",
   "version": "1.2.25",
   "description": "Integrates Reolink cameras and doorbells into camera.ui via the native Baichuan protocol, with device discovery, live streaming, two-way audio, and motion, AI object, battery and doorbell events.",
-  "author": "seydx (https://github.com/cameraui/plugins)",
+  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/main.go",
   "type": "module",
   "scripts": {
@@ -31,13 +31,13 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/cameraui/plugins/issues"
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
     "camera.ui": ">=2.2.8",
     "node": ">=22.0.0"
   },
-  "homepage": "https://github.com/cameraui/plugins/tree/main/camera-ui-reolink#readme",
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-reolink#readme",
   "keywords": [
     "camera-ui-plugin",
     "reolink",
@@ -45,7 +45,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cameraui/plugins.git"
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git"
   },
   "os": [],
   "cpu": []
