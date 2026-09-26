@@ -1,4 +1,13 @@
 {
+  "@vionvision/camera-ui-nvr": {
+    "displayName": "ViON NVR",
+    "category": "recording",
+    "featured": true,
+    "tagline": "Видеорегистратор ViON: запись, архив, таймлайн, события и экспорт.",
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-nvr/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
   "@vionvision/camera-ui-audio-yamnet": {
     "displayName": "YAMNet Audio Detection",
     "category": "detection",
