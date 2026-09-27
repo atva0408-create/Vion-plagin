@@ -10,6 +10,11 @@ import type { NvrPlaybackCallbacks } from './types.js';
 const LEAD_US = 1_500_000;
 /** A jump larger than this between segments is reported as a gap. */
 const GAP_US = 3_000_000;
+/**
+ * Playback asked for a moment just before the recording (an event that starts while the camera is
+ * still connecting, a long keyframe interval) starts at the first recorded frame instead.
+ */
+const START_GAP_US = 30_000_000;
 const YIELD_EVERY = 8;
 
 interface Session {
@@ -56,7 +61,7 @@ export class PlaybackManager {
 
     try {
       let segment = this.store.segmentAt(cameraId, role, tsUs);
-      if (!segment || segment.start_us - tsUs > GAP_US) {
+      if (!segment || segment.start_us - tsUs > START_GAP_US) {
         call('onNoData', { ts: tsUs });
         return;
       }

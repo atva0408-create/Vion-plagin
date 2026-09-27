@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { exportClip } from '../src/export.js';
-import { keyframeAtOrBefore, readGop, readKeyframe } from '../src/reader.js';
+import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from '../src/reader.js';
 import { Recorder } from '../src/recorder.js';
 import { PlaybackManager } from '../src/playback.js';
 import { parseKeyframes, Store } from '../src/store.js';
@@ -43,6 +43,27 @@ const it = pm.play('cam1', first.start_us + 1_000_000, 'high', {
 });
 for await (const _ of it) { if (Date.now() - t0 > 3000) break; }
 console.log('playback ready', ready, 'frames', frames, 'secs of media', ((lastTs - first.start_us - 1_000_000) / 1e6).toFixed(2), 'wall', ((Date.now() - t0) / 1000).toFixed(2), 'noData', noData);
+
+// an event that starts a few seconds before the recording plays from the first recorded frame
+{
+  let early = 0;
+  let earlyNoData = 0;
+  const t1 = Date.now();
+  for await (const _ of pm.play('cam1', first.start_us - 5_000_000, 'high', { onReady: () => undefined, onVideo: () => early++, onNoData: () => earlyNoData++ })) {
+    if (early > 10 || Date.now() - t1 > 3000) break;
+  }
+  if (!early) throw new Error('playback before the first segment sent no frames');
+  console.log('early start frames', early, 'noData', earlyNoData);
+}
+
+// a segment whose file is gone (retention) is skipped, not an error
+{
+  const gone = { ...first, path: join(dir, 'missing.ts') };
+  const frames: unknown[] = [];
+  for await (const f of readFrames(gone, keyframeAtOrBefore(first, first.start_us)!)) frames.push(f);
+  if (frames.length) throw new Error('frames from a missing file');
+  console.log('missing segment file skipped');
+}
 
 const out = await exportClip({ ffmpegPath: REAL, segments: segs, startUs: first.start_us + 2_000_000, endUs: first.start_us + 9_000_000, outDir: join(dir, 'exp'), filename: 'clip.mp4' });
 console.log('export', out);

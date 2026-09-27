@@ -5,6 +5,7 @@ import { probeCodec, withParameterSets } from './media/codec.js';
 import { ptsDelta, TsDemuxer } from './media/ts-demux.js';
 import { parseKeyframes } from './store.js';
 
+import type { FileHandle } from 'node:fs/promises';
 import type { CodecInfo } from './media/codec.js';
 import type { Keyframe, SegmentRow } from './store.js';
 
@@ -58,7 +59,14 @@ export async function *readFrames(segment: SegmentRow, from: Keyframe, opts: { f
     { videoPid: segment.video_pid, codec: segment.codec },
   );
 
-  const fh = await open(segment.path, 'r');
+  let fh: FileHandle;
+  try {
+    fh = await open(segment.path, 'r');
+  } catch (error) {
+    // removed by retention between the index lookup and the read: the segment is simply gone
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
   try {
     let position = from.offset;
     const buf = Buffer.alloc(CHUNK);

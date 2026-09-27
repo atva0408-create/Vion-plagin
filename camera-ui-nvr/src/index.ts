@@ -748,8 +748,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const role of ['high', 'mid', 'low']) {
       for (const seg of this.store.segments(cameraId, role, startUs, Math.min(endUs, limit))) {
         if (seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit) {
-          await rm(seg.path, { force: true });
           this.store.deleteSegment(seg.id);
+          await rm(seg.path, { force: true });
           minUs = Math.min(minUs, seg.start_us);
           maxUs = Math.max(maxUs, seg.end_us);
         }
@@ -993,8 +993,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       let removed = 0;
       for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200)) {
         for (const seg of batch) {
-          await rm(seg.path, { force: true });
           this.store.deleteSegment(seg.id);
+          await rm(seg.path, { force: true });
           removed++;
         }
       }
@@ -1015,8 +1015,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           }
           break;
         }
-        await rm(oldest.path, { force: true });
         this.store.deleteSegment(oldest.id);
+        await rm(oldest.path, { force: true });
         removed++;
       }
       if (this.paused) {
