@@ -71,6 +71,8 @@ export class Store {
       CREATE INDEX IF NOT EXISTS events_time ON events (start_ms);
       CREATE INDEX IF NOT EXISTS events_camera_time ON events (camera_id, start_ms);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS event_trace (event_id TEXT NOT NULL, t_ms INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS event_trace_event ON event_trace (event_id, t_ms);
     `);
   }
 
@@ -180,7 +182,16 @@ export class Store {
     return (this.db.prepare('SELECT * FROM events WHERE id = ?').get(id) ?? undefined) as EventRow | undefined;
   }
 
-  public events(opts: { cameraIds?: string[]; startMs?: number; endMs?: number; before?: number; favoritesOnly?: boolean; state?: string; limit: number }): EventRow[] {
+  public events(opts: {
+    cameraIds?: string[];
+    startMs?: number;
+    endMs?: number;
+    startedSinceMs?: number;
+    before?: number;
+    favoritesOnly?: boolean;
+    state?: string;
+    limit: number;
+  }): EventRow[] {
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (opts.cameraIds?.length) {
@@ -194,6 +205,10 @@ export class Store {
     if (opts.endMs !== undefined) {
       where.push('start_ms <= ?');
       args.push(opts.endMs);
+    }
+    if (opts.startedSinceMs !== undefined) {
+      where.push('start_ms >= ?');
+      args.push(opts.startedSinceMs);
     }
     if (opts.before !== undefined) {
       where.push('start_ms < ?');
@@ -214,6 +229,36 @@ export class Store {
 
   public deleteEvent(id: string): void {
     this.db.prepare('DELETE FROM events WHERE id = ?').run(id);
+    this.db.prepare('DELETE FROM event_trace WHERE event_id = ?').run(id);
+  }
+
+  // --- detection trace ---
+  public addTrace(eventId: string, ticks: { tMs: number }[]): void {
+    const insert = this.db.prepare('INSERT INTO event_trace (event_id, t_ms, data) VALUES (?, ?, ?)');
+    this.db.exec('BEGIN');
+    try {
+      for (const tick of ticks) insert.run(eventId, Math.round(Number(tick.tMs) || 0), JSON.stringify(tick));
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  public traceCount(eventId: string): number {
+    return Number((this.db.prepare('SELECT COUNT(*) AS n FROM event_trace WHERE event_id = ?').get(eventId) as { n: number }).n);
+  }
+
+  /** Ticks in time order (ties: arrival order). */
+  public trace(eventId: string, offset: number, limit: number): string[] {
+    return (
+      this.db.prepare('SELECT data FROM event_trace WHERE event_id = ? ORDER BY t_ms, rowid LIMIT ? OFFSET ?').all(eventId, limit, offset) as { data: string }[]
+    ).map((r) => r.data);
+  }
+
+  /** Number of ticks before `tMs`: the offset of the first tick at or after it. */
+  public traceOffset(eventId: string, tMs: number): number {
+    return Number((this.db.prepare('SELECT COUNT(*) AS n FROM event_trace WHERE event_id = ? AND t_ms < ?').get(eventId, tMs) as { n: number }).n);
   }
 
   public eventsBefore(cutoffMs: number, limit: number): EventRow[] {

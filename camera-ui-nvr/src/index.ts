@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { EventDescriber } from './describer.js';
 import { exportClip, writeZip } from './export.js';
 import { FaceStore } from './faces.js';
+import { matchesEvent } from './filter.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
@@ -17,11 +18,13 @@ import type { CameraDevice, DetectionEventType, DeviceStorage, Disposable, JsonS
 import type { EventDescription } from './describer.js';
 import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
-import type { EventRow } from './store.js';
+import type { EventRow, SegmentRow } from './store.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
+  EventTrace,
   GetEventsOptions,
+  NvrFeatures,
   NvrFrame,
   NvrPlaybackCallbacks,
   PluginStorageValues,
@@ -31,16 +34,27 @@ import type {
   RecordingState,
   StorageStats,
   SystemEvent,
+  TraceChain,
+  TraceFrameTarget,
+  TraceTick,
 } from './types.js';
 
 type Unsubscribe = () => void;
 type Role = 'high' | 'mid' | 'low';
+type ExportQuality = 'best' | 'smallest';
 
 const RETENTION_INTERVAL_MS = 5 * 60_000;
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
 const MAX_SYSTEM_EVENTS = 500;
+/** Rows one event page may read once it has results (a selective filter scans further for the first one). */
+const PAGE_SCAN_ROWS = 20_000;
+const STATS_SCAN_ROWS = 100_000;
+const STATS_CAP = 5000;
+const TRACE_PAGE = 60;
+/** Keyframes per trace-frames call (thumbnail strip), GOP frames per exact frame. */
+const TRACE_MAX_TARGETS = 60;
 
 interface ManagedCamera {
   device: CameraDevice;
@@ -183,7 +197,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         type: 'number',
         key: 'retentionDays',
         title: 'Хранить записи, дней',
-        description: 'Записи и события старше этого срока удаляются автоматически (избранное сохраняется). Не больше срока, который даёт тариф.',
+        description:
+          'Видео и события старше этого срока удаляются автоматически. Избранные события остаются в списке, но их видео тоже удаляется. ' +
+          'Не больше срока, который даёт тариф.',
         group: 'Storage',
         defaultValue: 14,
         minimum: 1,
@@ -477,7 +493,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       });
     }
     managed.overLimit = !licensed;
-    if (licensed && rs?.enabled && !disabled && (rs.mode === 'continuous' || rs.mode === 'event')) {
+    const mode = effectiveMode(rs?.mode);
+    if (licensed && rs?.enabled && !disabled && mode) {
       const roles: Role[] = rs.sources?.length ? rs.sources : ['high'];
       for (const role of roles) {
         const source = role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
@@ -494,7 +511,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const s = this.setting;
     for (const [role, { rtspUrl, tsUrl }] of wanted) {
       const common = {
-        mode: rs.mode as 'continuous' | 'event',
+        mode: mode!,
         preBufferSec: Math.min(60, Math.max(0, Number(rs.preBuffer) || 0)),
         postBufferSec: s.postBufferSeconds,
         segmentSec: s.segmentSeconds,
@@ -551,6 +568,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (attachments) await this.saveAttachments(cameraId, merged, attachments);
     this.indexEvent(merged, attachments);
     this.store.upsertEvent(withoutVectors(merged));
+    if (Array.isArray(attachments?.trace) && attachments.trace.length) this.saveTrace(cameraId, merged.id, attachments.trace);
 
     // event-mode recorders run until the post-buffer after the last update
     const managed = this.cameras.get(cameraId);
@@ -582,6 +600,26 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     await Promise.all(writes);
   }
 
+  /** Trace ticks go to the index; the camera's zones and thresholds are kept once, at the first ticks. */
+  private saveTrace(cameraId: string, eventId: string, ticks: TraceTick[]): void {
+    try {
+      const first = this.store.traceCount(eventId) === 0;
+      this.store.addTrace(
+        eventId,
+        ticks.filter((t) => Number.isFinite(Number(t?.tMs))),
+      );
+      const device = this.cameras.get(cameraId)?.device;
+      if (first && device) {
+        const dir = this.thumbDir(cameraId, eventId);
+        mkdirSync(dir, { recursive: true });
+        const config = { zones: device.zones, objectConfidences: device.detectionSettings?.object?.confidences };
+        void writeFile(join(dir, 'trace-config.json'), JSON.stringify(config)).catch(() => undefined);
+      }
+    } catch (error) {
+      this.logger.warn(`Trace: ${(error as Error).message}`);
+    }
+  }
+
   private thumbDir(cameraId: string, eventId: string): string {
     return join(this.dataDir, 'thumbs', cameraId.replace(/[^\w-]/g, '_'), eventId.replace(/[^\w-]/g, '_'));
   }
@@ -589,48 +627,68 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   // ------------------------------------------------------------------ events
 
   public async getEvents(opts: GetEventsOptions = {}): Promise<{ events: RecordedEvent[]; hasMore: boolean }> {
-    return this.queryEvents(undefined, opts);
+    await this.ready;
+    return this.queryEvents(undefined, opts, pageLimit(opts.limit), PAGE_SCAN_ROWS);
   }
 
   public async getCameraEvents(cameraIds: string[], opts: GetEventsOptions = {}): Promise<{ events: RecordedEvent[]; hasMore: boolean }> {
-    return this.queryEvents(cameraIds, opts);
+    await this.ready;
+    return this.queryEvents(cameraIds, opts, pageLimit(opts.limit), PAGE_SCAN_ROWS);
   }
 
-  private async queryEvents(cameraIds: string[] | undefined, opts: GetEventsOptions): Promise<{ events: RecordedEvent[]; hasMore: boolean }> {
-    await this.ready;
-    const limit = Math.min(Math.max(opts.limit ?? 40, 1), 500);
+  /**
+   * Newest first, with the filters applied per event (triggers, types, attributes with their «И/ИЛИ»,
+   * confidence, search, hidden types; see filter.ts). A selective filter may need many rows for one
+   * page, so rows are read in large batches. Once the page has results, the scan stops after
+   * `scanRows` rows and reports `hasMore`: the next page continues before its last event. An empty
+   * page never reports `hasMore` (the client would ask for the same page again).
+   */
+  private queryEvents(cameraIds: string[] | undefined, opts: GetEventsOptions, limit: number, scanRows: number): { events: RecordedEvent[]; hasMore: boolean } {
+    const batch = Math.min(Math.max(limit * 2 + 1, 200), 2000);
+    const withRecording = opts.withRecordingInfo ?? opts.hasRecording;
     const out: RecordedEvent[] = [];
     let before = opts.before;
-    // filters that SQL can't express are applied here; fetch in pages until the page is full
-    for (let round = 0; round < 20 && out.length <= limit; round++) {
+    let scanned = 0;
+    for (;;) {
       const rows = this.store.events({
         cameraIds,
-        startMs: opts.startMs ?? opts.startedSinceMs,
+        startMs: opts.startMs,
         endMs: opts.endMs,
+        startedSinceMs: opts.startedSinceMs,
         before,
         favoritesOnly: opts.favoritesOnly,
         state: opts.state,
-        limit: limit * 2 + 1,
+        limit: batch,
       });
       for (const row of rows) {
-        const ev = this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1, opts.withRecordingInfo ?? opts.hasRecording);
-        if (matches(ev, opts)) out.push(ev);
+        const raw = JSON.parse(row.data) as RecordedEvent;
+        if (!matchesEvent(raw, opts)) continue;
+        // the recording lookup costs a query: only for events the other filters let through
+        const ev = this.decorate(raw, row.favorite === 1, withRecording);
+        if (opts.hasRecording && !ev.hasRecording) continue;
+        out.push(ev);
+        if (out.length > limit) return { events: out.slice(0, limit), hasMore: true };
       }
-      if (rows.length < limit * 2 + 1) break;
+      scanned += rows.length;
+      if (rows.length < batch) return { events: out, hasMore: false };
+      if (out.length > 0 && scanned >= scanRows) return { events: out, hasMore: true };
       before = rows.at(-1)!.start_ms;
     }
-    return { events: out.slice(0, limit), hasMore: out.length > limit };
   }
 
   public async getEventStats(
     cameraIds: string[],
     opts: GetEventsOptions = {},
-  ): Promise<{ total: number; episodes: number; byType: Record<string, number>; capped: boolean }> {
-    const CAP = 5000;
-    const { events, hasMore } = await this.queryEvents(cameraIds?.length ? cameraIds : undefined, { ...opts, limit: CAP });
+  ): Promise<{ total: number; segments: number; episodes: number; byType: Record<string, number>; capped: boolean }> {
+    await this.ready;
+    const { events, hasMore } = this.queryEvents(cameraIds?.length ? cameraIds : undefined, { ...opts, before: undefined }, STATS_CAP, STATS_SCAN_ROWS);
     const byType: Record<string, number> = {};
-    for (const ev of events) for (const t of ev.types ?? []) byType[t] = (byType[t] ?? 0) + 1;
-    return { total: events.length, episodes: 0, byType, capped: hasMore };
+    let segments = 0;
+    for (const ev of events) {
+      for (const t of ev.types ?? []) byType[t] = (byType[t] ?? 0) + 1;
+      segments += Math.max(1, ev.segments?.length ?? 0);
+    }
+    return { total: events.length, segments, episodes: 0, byType, capped: hasMore };
   }
 
   public async getEventThumbnails(
@@ -646,6 +704,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       attributes: {},
     };
     for (const file of await readdir(dir)) {
+      // pictures only (the folder also keeps the trace's camera config)
+      if (!file.endsWith('.jpg')) continue;
       const data = new Uint8Array(await readFile(join(dir, file)));
       const name = file.replace(/\.jpg$/, '');
       if (name === 'event') result.event = data;
@@ -854,8 +914,66 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return meta ? { ...meta, frames } : { frames: [], videoCodec: '', noData: true };
   }
 
-  public async nvrTraceFrames(): Promise<{ chains: never[]; noData: boolean }> {
-    return { chains: [], noData: true };
+  /**
+   * Pictures for detection-trace ticks, from the recording. `keyframe`: the keyframe at or before each
+   * target (thumbnail strip); `exact`: the frame at the target, decoded from its keyframe. The trace
+   * times are the server's capture times and the recording is indexed by wall clock, so a picture is
+   * the recorded frame nearest in time, never marked exact.
+   */
+  public async nvrTraceFrames(
+    cameraId: string,
+    targets: TraceFrameTarget[],
+    mode: 'exact' | 'keyframe' = 'keyframe',
+  ): Promise<{ chains: TraceChain[]; missing?: number[]; noData?: boolean }> {
+    await this.ready;
+    const chains = new Map<string, TraceChain>();
+    const missing: number[] = [];
+    const seen = new Map<string, number>();
+    const list = (targets ?? []).slice(0, TRACE_MAX_TARGETS);
+    for (let target = 0; target < list.length; target++) {
+      const tsUs = Math.round(Number(list[target].tMs) * 1000);
+      const role = this.resolveRole(cameraId, list[target].src);
+      const seg = Number.isFinite(tsUs) ? this.store.segmentAt(cameraId, role, tsUs) : undefined;
+      const kf = seg && seg.start_us <= tsUs + 2_000_000 ? keyframeAtOrBefore(seg, tsUs) : undefined;
+      if (!seg || !kf) {
+        missing.push(target);
+        continue;
+      }
+      // exact: one chain per target (each GOP decodes on its own); keyframes share one chain per stream
+      const key = mode === 'exact' ? `${target}` : `${role}|${seg.codec_string}|${seg.width}x${seg.height}`;
+      let chain = chains.get(key);
+      if (!chain) {
+        chain = { role, videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height, frames: [], keep: [] };
+        chains.set(key, chain);
+      }
+      if (mode === 'exact') {
+        const gop = await readGop(seg, kf, tsUs);
+        if (!gop.length) {
+          missing.push(target);
+          chains.delete(key);
+          continue;
+        }
+        chain.frames = gop.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe }));
+        chain.keep.push({ target, index: gop.length - 1, exact: false });
+        continue;
+      }
+      const frameKey = `${key}|${seg.id}:${kf.offset}`;
+      const known = seen.get(frameKey);
+      if (known !== undefined) {
+        chain.keep.push({ target, index: known, exact: false });
+        continue;
+      }
+      const frame = await readKeyframe(seg, kf);
+      if (!frame) {
+        missing.push(target);
+        continue;
+      }
+      seen.set(frameKey, chain.frames.length);
+      chain.keep.push({ target, index: chain.frames.length, exact: false });
+      chain.frames.push({ frame: frame.data, ts: frame.tsUs, keyframe: true });
+    }
+    const out = [...chains.values()].filter((c) => c.frames.length);
+    return out.length ? { chains: out, ...(missing.length ? { missing } : {}) } : { chains: [], noData: true };
   }
 
   // ------------------------------------------------------------------ export
@@ -885,15 +1003,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   public async nvrExportEstimate(request: {
     cameras: string[];
     slices: { day: string; startUs: number; endUs: number }[];
+    quality?: ExportQuality;
   }): Promise<{ files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[]; totalBytes: number; durationMs: number }> {
     await this.ready;
     const files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[] = [];
     let durationMs = 0;
     for (const cameraId of request.cameras) {
-      const role = this.primaryRole(cameraId);
       for (const slice of request.slices) {
         let bytes = 0;
-        for (const seg of this.store.segments(cameraId, role, slice.startUs, slice.endUs)) {
+        for (const seg of this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality)) {
           const span = Math.max(1, seg.end_us - seg.start_us);
           const overlap = Math.max(0, Math.min(seg.end_us, slice.endUs) - Math.max(seg.start_us, slice.startUs));
           bytes += Math.round((seg.bytes * overlap) / span);
@@ -908,6 +1026,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   public async nvrExportBatch(request: {
     cameras: string[];
     slices: { day: string; startUs: number; endUs: number }[];
+    quality?: ExportQuality;
     timelapseIntervalSec?: number;
   }): Promise<{ url: string; filename: string }> {
     await this.ready;
@@ -915,7 +1034,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const parts: { path: string; name: string }[] = [];
     for (const cameraId of request.cameras) {
       for (const slice of request.slices) {
-        const segments = this.store.segments(cameraId, this.primaryRole(cameraId), slice.startUs, slice.endUs);
+        const segments = this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality);
         if (!segments.length) continue;
         const name = `${this.cameraSlug(cameraId)}_${fileStamp(slice.startUs)}.mp4`;
         const res = await exportClip({
@@ -949,6 +1068,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return { url: dl.url, filename };
   }
 
+  /**
+   * Recorded files for an export slice in the chosen quality: «best» takes the highest-resolution
+   * stream that has recordings in the slice, «smallest» the lowest. A camera recording only one
+   * stream exports that stream either way.
+   */
+  private exportSegments(cameraId: string, startUs: number, endUs: number, quality: ExportQuality = 'best'): SegmentRow[] {
+    const order = quality === 'smallest' ? ['low', 'mid', 'high'] : ['high', 'mid', 'low'];
+    for (const role of order) {
+      const segments = this.store.segments(cameraId, role, startUs, endUs);
+      if (segments.length) return segments;
+    }
+    return [];
+  }
+
   // ----------------------------------------------------------------- storage
 
   public async getStorageStats(): Promise<StorageStats> {
@@ -972,7 +1105,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay,
         daysCount: Math.max(1, Math.round((new Date(newestDay).getTime() - new Date(oldestDay).getTime()) / 86_400_000) + 1),
         bandwidthMBh: Math.round((row.bytes / 1024 ** 2 / hours) * 10) / 10,
-        recordingMode: managed?.device.recordingSettings?.mode ?? 'off',
+        recordingMode: effectiveMode(managed?.device.recordingSettings?.mode) ?? 'off',
         isRecording: recorders.some((r) => r.isRecording),
       };
     }
@@ -984,7 +1117,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay: '',
         daysCount: 0,
         bandwidthMBh: 0,
-        recordingMode: managed.device.recordingSettings?.mode ?? 'off',
+        recordingMode: effectiveMode(managed.device.recordingSettings?.mode) ?? 'off',
         isRecording: [...managed.recorders.values()].some((r) => r.isRecording),
       };
     }
@@ -1067,6 +1200,38 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }
   }
 
+  // ------------------------------------------------------------ detection trace
+
+  /** Stored detection-trace ticks of an event, a page at a time (time order). */
+  public async getEventTrace(eventId: string, offset = 0, limit = TRACE_PAGE): Promise<EventTrace> {
+    await this.ready;
+    const from = Math.max(0, Math.floor(Number(offset) || 0));
+    const ticks = this.store.trace(eventId, from, Math.min(Math.max(Math.floor(Number(limit) || TRACE_PAGE), 1), 500)).map((t) => JSON.parse(t) as TraceTick);
+    const result: EventTrace = { eventId, offset: from, total: this.store.traceCount(eventId), exact: true, ticks };
+    const row = this.store.event(eventId);
+    if (row) {
+      try {
+        result.config = JSON.parse(readFileSync(join(this.thumbDir(row.camera_id, eventId), 'trace-config.json'), 'utf8')) as EventTrace['config'];
+      } catch {
+        // recorded before the NVR kept the camera config: the UI uses the current zones
+      }
+    }
+    return result;
+  }
+
+  /** Offset of the first trace tick at or after `tMs`. */
+  public async getEventTraceOffset(eventId: string, tMs: number): Promise<number> {
+    await this.ready;
+    return this.store.traceOffset(eventId, Number(tMs) || 0);
+  }
+
+  // ---------------------------------------------------------------- features
+
+  /** What this NVR supports beyond the basics; the UI hides the rest. */
+  public async getNvrFeatures(): Promise<NvrFeatures> {
+    return { episodes: false, exportQuality: true };
+  }
+
   // --------------------------------------------- not implemented yet (stubs)
 
   public async getEpisodes(): Promise<{ episodes: never[]; hasMore: boolean }> {
@@ -1089,14 +1254,6 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   public async nvrExportEpisode(): Promise<never> {
     throw new Error('Episodes are not supported yet');
-  }
-
-  public async getEventTrace(eventId: string): Promise<{ eventId: string; offset: number; total: number; exact: boolean; episodes: never[]; hasMore: boolean }> {
-    return { eventId, offset: 0, total: 0, exact: true, episodes: [], hasMore: false };
-  }
-
-  public async getEventTraceOffset(): Promise<number> {
-    return 0;
   }
 
   // ------------------------------------------------------ indexing (CLIP, faces)
@@ -1755,23 +1912,9 @@ function mergeEvent(prev: RecordedEvent, next: RecordedEvent): RecordedEvent {
   return { ...prev, ...next, segments, types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])] };
 }
 
-function matches(ev: RecordedEvent, opts: GetEventsOptions): boolean {
-  if (opts.types?.length && !opts.types.some((t) => ev.types?.includes(t) || ev.segments?.some((s) => s.detections?.some((d) => d.label === t)))) return false;
-  if (opts.hasDetections && !ev.segments?.some((s) => s.detections?.length)) return false;
-  if (opts.hasRecording && !ev.hasRecording) return false;
-  if (opts.minConfidence !== undefined && !ev.segments?.some((s) => s.detections?.some((d) => Number(d.score ?? 0) >= opts.minConfidence!))) return false;
-  if (opts.search) {
-    const q = opts.search.toLowerCase();
-    const hay = [
-      ...(ev.types ?? []),
-      ...(ev.segments ?? []).flatMap((s) => [...(s.detections ?? []).map((d) => String(d.label)), ...(s.attributes ?? []).map((a) => String(a.label))]),
-      ...(ev.ai ? [ev.ai.title, ev.ai.description, ...ev.ai.tags] : []),
-    ]
-      .join(' ')
-      .toLowerCase();
-    if (!hay.includes(q)) return false;
-  }
-  return true;
+/** Page size of an event query: the client's `limit`, within 1…500. */
+function pageLimit(limit: number | undefined): number {
+  return Math.min(Math.max(Number(limit) || 40, 1), 500);
 }
 
 function mergeRanges(ranges: RecordingSegment[]): RecordingSegment[] {
@@ -1807,7 +1950,17 @@ function go2rtcTsUrl(snapshotUrl: string | undefined): string | undefined {
 function isRecordingWanted(device: CameraDevice): boolean {
   const rs = device.recordingSettings;
   const disabled = (device as unknown as { disabled?: boolean }).disabled === true;
-  return !!rs?.enabled && !disabled && (rs.mode === 'continuous' || rs.mode === 'event');
+  return !!rs?.enabled && !disabled && !!effectiveMode(rs.mode);
+}
+
+/**
+ * How the recorder runs for a camera's recording mode. `adhoc` (manual start) has no trigger in ViON
+ * and is no longer offered; cameras still set to it record like «по событию» instead of not at all.
+ */
+function effectiveMode(mode: string | undefined): 'continuous' | 'event' | undefined {
+  if (mode === 'continuous') return 'continuous';
+  if (mode === 'event' || mode === 'adhoc') return 'event';
+  return undefined;
 }
 
 function localDay(ms: number): string {

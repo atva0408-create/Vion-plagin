@@ -28,11 +28,69 @@ export interface EventAttachments {
   card?: Uint8Array;
   /** One crop per attribute of the current segment (server), or crops keyed by thumbnail key. */
   attributes?: (Uint8Array | null | undefined)[] | Record<string, Uint8Array>;
+  /** Detection trace ticks since the previous message (server's frame worker). */
+  trace?: TraceTick[];
   [key: string]: unknown;
+}
+
+/** One frame of the detection trace; the NVR stores it as is and only reads `tMs`/`src`. */
+export interface TraceTick {
+  tMs: number;
+  rtp?: number;
+  src?: string;
+  [key: string]: unknown;
+}
+
+export interface EventTrace {
+  eventId: string;
+  /** Zones and thresholds of the camera when the event was recorded. */
+  config?: { zones: unknown; objectConfidences?: Record<string, number> };
+  offset: number;
+  total: number;
+  exact: boolean;
+  ticks: TraceTick[];
+}
+
+export interface TraceFrameTarget {
+  tMs: number;
+  rtp?: number;
+  src?: string;
+}
+
+export interface TraceChain {
+  role: string;
+  videoCodec: string;
+  codecString?: string;
+  width?: number;
+  height?: number;
+  /** Decodable in order: every chain starts with a keyframe. */
+  frames: NvrFrame[];
+  /** Which decoded frame shows which target. */
+  keep: { index: number; target: number; exact: boolean }[];
+}
+
+/** Optional features of this NVR, so the UI offers only what works. */
+export interface NvrFeatures {
+  /** Cross-camera episodes (Записи → Показать → Эпизоды). */
+  episodes: boolean;
+  /** Export honours «Качество» (best/smallest stream). */
+  exportQuality: boolean;
 }
 
 export interface GetEventsOptions {
   types?: string[];
+  /** Sensor/trigger types (motion, audio, contact, doorbell…). */
+  triggers?: string[];
+  /** Audio labels of audio triggers (doorbell, glass_break…). */
+  triggerLabels?: string[];
+  /** Attribute types (face, license_plate…). */
+  attributes?: string[];
+  /** Joins the trigger group with the type group (default «or»). */
+  filterLogicTriggers?: 'and' | 'or';
+  /** Joins the previous groups with the attribute group (default «or»). */
+  filterLogicAttributes?: 'and' | 'or';
+  /** Per camera: types whose events are hidden when nothing else was seen. */
+  hiddenTypes?: Record<string, string[]>;
   state?: 'active' | 'ended';
   search?: string;
   hasDetections?: boolean;
