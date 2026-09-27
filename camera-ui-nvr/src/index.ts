@@ -148,6 +148,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private ready: Promise<void>;
   private markReady!: () => void;
 
+  private readonly eventChains = new Map<string, Promise<void>>();
   private readonly detectionListeners = new Set<(m: DetectionEventMessage) => void>();
   private readonly deletedListeners = new Set<(ids: string[]) => void>();
   private readonly recordingsDeletedListeners = new Set<(e: RecordingsDeletedEvent) => void>();
@@ -527,8 +528,23 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   // ------------------------------------------------------------- detections
 
-  /** Called by the server's frame worker for every detection event update. */
-  public async ingestDetectionEvent(cameraId: string, type: DetectionEventType, event: RecordedEvent, attachments?: EventAttachments): Promise<void> {
+  /**
+   * Called by the server's frame worker for every detection event update. The server does not wait
+   * for the previous call, so updates of one event are chained: an "end" arriving while an earlier
+   * update still writes its pictures must not be overwritten by that update's stale merge.
+   */
+  public ingestDetectionEvent(cameraId: string, type: DetectionEventType, event: RecordedEvent, attachments?: EventAttachments): Promise<void> {
+    const previous = this.eventChains.get(event.id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.ingestNow(cameraId, type, event, attachments));
+    this.eventChains.set(event.id, next);
+    const cleanup = () => {
+      if (this.eventChains.get(event.id) === next) this.eventChains.delete(event.id);
+    };
+    next.then(cleanup, cleanup);
+    return next;
+  }
+
+  private async ingestNow(cameraId: string, type: DetectionEventType, event: RecordedEvent, attachments?: EventAttachments): Promise<void> {
     await this.ready;
     const existingRow = this.store.event(event.id);
     const merged = existingRow ? mergeEvent(JSON.parse(existingRow.data) as RecordedEvent, event) : { ...event, cameraId };
@@ -611,10 +627,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     opts: GetEventsOptions = {},
   ): Promise<{ total: number; episodes: number; byType: Record<string, number>; capped: boolean }> {
     const CAP = 5000;
-    const { events } = await this.queryEvents(cameraIds?.length ? cameraIds : undefined, { ...opts, limit: 500 });
+    const { events, hasMore } = await this.queryEvents(cameraIds?.length ? cameraIds : undefined, { ...opts, limit: CAP });
     const byType: Record<string, number> = {};
     for (const ev of events) for (const t of ev.types ?? []) byType[t] = (byType[t] ?? 0) + 1;
-    return { total: events.length, episodes: 0, byType, capped: events.length >= CAP };
+    return { total: events.length, episodes: 0, byType, capped: hasMore };
   }
 
   public async getEventThumbnails(
@@ -748,8 +764,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const role of ['high', 'mid', 'low']) {
       for (const seg of this.store.segments(cameraId, role, startUs, Math.min(endUs, limit))) {
         if (seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit) {
-          this.store.deleteSegment(seg.id);
+          // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
           await rm(seg.path, { force: true });
+          this.store.deleteSegment(seg.id);
           minUs = Math.min(minUs, seg.start_us);
           maxUs = Math.max(maxUs, seg.end_us);
         }
@@ -993,8 +1010,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       let removed = 0;
       for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200)) {
         for (const seg of batch) {
-          this.store.deleteSegment(seg.id);
+          // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
           await rm(seg.path, { force: true });
+          this.store.deleteSegment(seg.id);
           removed++;
         }
       }
@@ -1015,8 +1033,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           }
           break;
         }
-        this.store.deleteSegment(oldest.id);
+        // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
         await rm(oldest.path, { force: true });
+        this.store.deleteSegment(oldest.id);
         removed++;
       }
       if (this.paused) {

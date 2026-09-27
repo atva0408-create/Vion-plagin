@@ -61,7 +61,7 @@ export class Recorder {
   private restartTimer: NodeJS.Timeout | undefined;
   private backoffMs = 2000;
 
-  private readonly demux: TsDemuxer;
+  private demux: TsDemuxer;
   private codec: CodecInfo | undefined;
   private patPacket: Buffer | undefined;
   private pmtPacket: Buffer | undefined;
@@ -75,15 +75,21 @@ export class Recorder {
   private recordUntilUs = 0;
   private triggeredAtUs = 0;
   private recording = false;
+  /** Last GOP written to a closed segment: the pre-buffer of the next one must not repeat it. */
+  private lastWrittenGopUs = -1;
 
   constructor(private opts: RecorderOptions) {
-    this.demux = new TsDemuxer((au) => {
+    this.demux = this.createDemuxer();
+    mkdirSync(opts.dir, { recursive: true });
+  }
+
+  private createDemuxer(): TsDemuxer {
+    return new TsDemuxer((au) => {
       if (au.keyframe && !this.codec && this.demux.codec) {
         this.codec = probeCodec(au.data, this.demux.codec);
         if (this.codec) this.opts.log('log', `${this.label} ${this.codec.codecString} ${this.codec.width}x${this.codec.height}`);
       }
     });
-    mkdirSync(opts.dir, { recursive: true });
   }
 
   private get label(): string {
@@ -219,6 +225,13 @@ export class Recorder {
     this.anchor = undefined;
     this.gop = undefined;
     this.ring = [];
+    // the next connection may carry another codec, resolution or PID (camera reconfigured, fallback
+    // source): learn the stream again instead of filtering it with the old one
+    this.demux = this.createDemuxer();
+    this.codec = undefined;
+    this.patPacket = undefined;
+    this.pmtPacket = undefined;
+    this.pmtPid = -1;
   }
 
   private onData(chunk: Buffer): void {
@@ -310,18 +323,29 @@ export class Recorder {
         first = idx;
         if (this.ring[idx].tsUs <= fromUs) break;
       }
-      const backlog = this.opts.mode === 'event' ? this.ring.slice(first) : [];
+      const backlog = this.opts.mode === 'event' ? this.ring.slice(first).filter((g) => g.tsUs > this.lastWrittenGopUs) : [];
       this.openSegment(backlog[0]?.tsUs ?? tsUs, backlog);
     }
   }
 
   private openSegment(startUs: number, backlog: Gop[]): void {
+    try {
+      this.openSegmentUnsafe(startUs, backlog);
+    } catch (error) {
+      // disk full / unwritable / DB busy: skip this segment, the next keyframe tries again
+      this.opts.log('error', `${this.label} cannot open a segment: ${(error as Error).message}`);
+    }
+  }
+
+  private openSegmentUnsafe(startUs: number, backlog: Gop[]): void {
     if (!this.codec || !this.patPacket || !this.pmtPacket) return;
     const day = new Date(startUs / 1000).toISOString().slice(0, 10);
     const dir = join(this.opts.dir, day);
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${Math.round(startUs / 1000)}-${this.opts.role}.ts`);
     const stream = createWriteStream(path);
+    // without a listener a write error (ENOSPC, EIO) is an uncaught exception that kills the plugin
+    stream.on('error', (error) => this.onWriteError(stream, error));
     const id = this.opts.store.addSegment({
       camera_id: this.opts.cameraId,
       role: this.opts.role,
@@ -344,7 +368,26 @@ export class Recorder {
       for (const p of gop.packets) this.write(p);
     }
     if (this.gop) this.segment.keyframes.push([this.segment.bytes, this.gop.tsUs]);
+    // index the first keyframes now: playback and scrub reaching a brand-new segment (rollover at the
+    // live tip) must not see an empty index until the first periodic flush
+    this.opts.store.updateSegment(id, this.segment.endUs, this.segment.bytes, JSON.stringify(this.segment.keyframes));
     this.setRecording(true);
+    this.opts.onSegment();
+  }
+
+  private onWriteError(stream: NodeJS.WritableStream, error: Error): void {
+    this.opts.log('error', `${this.label} write failed: ${error.message}`);
+    const seg = this.segment;
+    if (seg?.stream !== stream || !seg) return;
+    this.segment = undefined;
+    this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
+    try {
+      if (seg.keyframes.length) this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
+      else this.opts.store.deleteSegment(seg.id);
+    } catch {
+      // the index is fixed up by retention
+    }
+    this.setRecording(false);
     this.opts.onSegment();
   }
 
@@ -366,7 +409,8 @@ export class Recorder {
     if (!seg) return;
     this.segment = undefined;
     seg.endUs = Math.max(seg.endUs, Date.now() * 1000);
-    await new Promise<void>((resolve) => seg.stream.end(resolve));
+    this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
+    await new Promise<void>((resolve) => seg.stream.end(() => resolve()));
     if (seg.keyframes.length === 0) {
       this.opts.store.deleteSegment(seg.id);
     } else {
