@@ -29,6 +29,25 @@ const faceEmbedder = {
   embedFaceImages: async (images: Uint8Array[]) => images.map((img) => ({ embedding: vec(img[0] === 7 ? 9 : 10), embeddingModel: 'arcface-test', quality: 0.9 })),
 };
 
+const asked: { prompt: string; images: number; system: string }[] = [];
+const published: Record<string, unknown>[] = [];
+let allowed = true;
+const assistant = {
+  assistantAccess: async () => ({ allowed, model: 'qwen2.5-vl', vision: true, language: 'ru' }),
+  assistantAsk: async (req: { prompt: string; system: string; images?: unknown[] }) => {
+    asked.push({ prompt: req.prompt, images: req.images?.length ?? 0, system: req.system });
+    const courier = req.prompt.includes('Подъезд');
+    return {
+      ok: true,
+      text: '',
+      json: courier
+        ? { title: 'Курьер оставил посылку', description: 'Курьер в синей куртке оставил коробку у двери и ушёл.', tags: ['курьер', 'посылка', 'дверь'] }
+        : { title: 'Белый фургон у ворот', description: 'Белый фургон остановился у ворот.', tags: ['фургон', 'белый', 'ворота'] },
+      usage: { promptTokens: 1, completionTokens: 1 },
+    };
+  },
+};
+
 const dir = mkdtempSync(join(tmpdir(), 'nvr-ai-'));
 const noop = () => undefined;
 const logger = { log: noop, warn: (...a: unknown[]) => console.warn('[warn]', ...a), error: console.error, debug: noop, attention: noop, trace: noop };
@@ -37,7 +56,9 @@ const api = {
   on: noop,
   once: noop,
   emit: noop,
+  notificationManager: { publish: async (n: Record<string, unknown>) => void published.push(n) },
   coreManager: {
+    ...assistant,
     getFFmpegPath: () => new Promise<string>(noop),
     getPluginsByInterface: async (iface: string) => (iface === 'ClipDetection' ? [{ id: 'onnx' }] : iface === 'FaceEmbedding' ? [{ id: 'onnx' }] : []),
   },
@@ -48,7 +69,7 @@ const api = {
     },
   },
 };
-const storage = { values: {}, getValue: async () => undefined, setValue: async () => undefined };
+const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 
 const nvr = new VionNvr(logger as never, api as never, storage as never);
 
@@ -206,5 +227,69 @@ assert.deepEqual(
 assert.ok(existsSync(join(dir, 'faces', 'known')));
 assert.equal(readdirSync(join(dir, 'faces', 'known')).length, (await nvr.getFaceImages('Мария')).length);
 
-console.log('ai.spec: semantic search, re-index and faces OK');
+// --------------------------------------------------------- AI descriptions
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// off by default: nothing is sent to the model
+await nvr.ingestDetectionEvent('cam1', 'end' as never, event('ev-off', 'cam1', 6_000, [], 'person') as never, { scene: jpeg(4) } as never);
+await sleep(50);
+assert.equal(asked.length, 0);
+
+storage.values = { aiDescriptions: true, aiNotify: true, aiMaxPerHour: 2 };
+(nvr as unknown as { cameras: Map<string, unknown> }).cameras.set('cam9', { device: { name: 'Подъезд' }, recorders: new Map(), subscriptions: [] });
+await nvr.ingestDetectionEvent('cam9', 'end' as never, event('ev-courier', 'cam9', 7_000, [], 'person') as never, { scene: jpeg(5), card: jpeg(6) } as never);
+for (let i = 0; i < 50 && !published.length; i++) await sleep(20);
+assert.equal(asked.length, 1);
+assert.equal(asked[0]!.images, 1, 'the segment card goes to the model');
+assert.match(asked[0]!.prompt, /Камера: Подъезд/);
+assert.match(asked[0]!.prompt, /человек/);
+assert.match(asked[0]!.system, /на русском/);
+const described = (await nvr.getEvents({ limit: 50 } as never)).events.find((e) => e.id === 'ev-courier')!;
+assert.equal(described.ai?.title, 'Курьер оставил посылку');
+assert.equal(described.ai?.model, 'qwen2.5-vl');
+assert.equal(published.length, 1);
+assert.equal(published[0]!.title, 'Подъезд: Курьер оставил посылку');
+assert.equal(published[0]!.deepLink, '/cameras/%D0%9F%D0%BE%D0%B4%D1%8A%D0%B5%D0%B7%D0%B4?startTs=7000');
+
+// Russian search finds it by the description (different word forms), with no picture vector at all
+const byText = await nvr.searchEventsByText('курьера с посылкой', 10, 0.5);
+assert.equal(byText[0]?.eventId, 'ev-courier');
+assert.equal(byText[0]?.cameraId, 'cam9');
+// the plain event list search also sees descriptions
+assert.ok((await nvr.getEvents({ limit: 50, search: 'посылку' } as never)).events.some((e) => e.id === 'ev-courier'));
+
+// hybrid: a picture match plus a text match ranks above either alone
+await nvr.ingestDetectionEvent(
+  'cam1',
+  'end' as never,
+  event('ev-van2', 'cam1', 8_000, [{ type: 'clip', label: 'clip', clipEmbedding: vec(0, 0.05, 7), clipEmbeddingModel: 'clip-test', parentTrackId: 1 }]) as never,
+  { card: jpeg(7) } as never,
+);
+for (let i = 0; i < 50 && asked.length < 2; i++) await sleep(20);
+await sleep(30);
+const hybrid = await nvr.searchEventsByText('white van', 10, 0.5);
+const pictureOnly = hybrid.find((r) => r.eventId === 'ev-van2');
+assert.ok(pictureOnly, 'found by picture');
+const both = await nvr.searchEventsByText('фургон', 10, 0);
+assert.equal(both[0]?.eventId, 'ev-van2');
+
+// hourly budget: the third event this hour is not described
+await nvr.ingestDetectionEvent('cam1', 'end' as never, event('ev-over', 'cam1', 9_000, [], 'person') as never, { card: jpeg(8) } as never);
+await sleep(100);
+assert.equal(asked.length, 2);
+
+// not allowed to use the model: nothing is asked, the manual action returns nothing
+allowed = false;
+storage.values = { aiDescriptions: true, aiMaxPerHour: 0 };
+assert.equal(await nvr.describeEvent('ev-over'), undefined);
+assert.equal(asked.length, 2);
+allowed = true;
+const manual = await nvr.describeEvent('ev-over');
+assert.equal(manual?.title, 'Белый фургон у ворот');
+assert.equal(asked.length, 3);
+
+// deleting the event removes it from the text index
+await nvr.deleteEvents(['ev-courier']);
+assert.ok(!(await nvr.searchEventsByText('курьер', 10, 0)).some((r) => r.eventId === 'ev-courier'));
+
+console.log('ai.spec: semantic search, re-index, faces and AI descriptions OK');
 process.exit(0);

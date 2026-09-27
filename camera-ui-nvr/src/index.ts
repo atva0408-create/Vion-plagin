@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { EventDescriber } from './describer.js';
 import { exportClip, writeZip } from './export.js';
 import { FaceStore } from './faces.js';
 import { PlaybackManager } from './playback.js';
@@ -13,6 +14,7 @@ import { SemanticIndex } from './semantic.js';
 import { parseKeyframes, Store } from './store.js';
 
 import type { CameraDevice, DetectionEventType, DeviceStorage, Disposable, JsonSchema, LoggerService, PluginAPI } from '@camera.ui/sdk';
+import type { EventDescription } from './describer.js';
 import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow } from './store.js';
@@ -124,6 +126,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
   private semantic!: SemanticIndex;
   private faces!: FaceStore;
+  private describer!: EventDescriber;
   private readonly proxies = new Map<string, unknown>();
   private clipStatus: ClipReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
   private clipCancel = false;
@@ -234,7 +237,62 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         step: 5,
         store: true,
       },
+      {
+        type: 'boolean',
+        key: 'aiDescriptions',
+        title: 'Описания событий ИИ',
+        description:
+          'После каждого события с человеком, транспортом или животным модель ассистента описывает, что произошло ' +
+          '(«курьер оставил посылку у двери»). Описания видны в записях и ищутся в «ИИ-поиске». ' +
+          'Нужна модель, понимающая картинки (Настройки → Ассистент), и разрешение для ViON NVR.',
+        group: 'AI',
+        defaultValue: false,
+        store: true,
+      },
+      {
+        type: 'boolean',
+        key: 'aiNotify',
+        title: 'Умные уведомления',
+        description:
+          'Отправлять описание события уведомлением («Курьер оставил посылку»). ' +
+          'Чтобы не получать два уведомления, отключите обычные уведомления о детекции у этих камер.',
+        group: 'AI',
+        defaultValue: false,
+        store: true,
+      },
+      {
+        type: 'number',
+        key: 'aiMaxPerHour',
+        title: 'Описаний в час, не больше',
+        description: 'Ограничение расхода модели: события сверх лимита остаются без описания. 0 — без ограничения.',
+        group: 'AI',
+        defaultValue: 60,
+        minimum: 0,
+        maximum: 3600,
+        step: 1,
+        store: true,
+      },
+      {
+        type: 'string',
+        key: 'aiStatus',
+        title: 'Модель',
+        description: 'Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.',
+        group: 'AI',
+        readonly: true,
+        onGet: async () => this.aiStatusText(),
+      },
     ];
+  }
+
+  private async aiStatusText(): Promise<string> {
+    try {
+      const access = await this.api.coreManager.assistantAccess();
+      if (!access.allowed) return 'Не разрешено: Настройки → Ассистент → разрешите модель для ViON NVR';
+      if (access.vision === false) return `${access.model ?? 'модель'}: не понимает картинки — выберите модель с поддержкой изображений`;
+      return `${access.model ?? 'модель ассистента'}${access.vision ? ' · картинки: да' : ''}`;
+    } catch {
+      return 'Модель ассистента недоступна';
+    }
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -331,6 +389,19 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store.setMeta('instance_id', this.instanceId);
     this.semantic = new SemanticIndex(this.store.sql);
     this.faces = new FaceStore(this.store.sql, join(this.dataDir, 'faces'));
+    this.describer = new EventDescriber(this.store.sql, {
+      ask: (request) => this.api.coreManager.assistantAsk(request),
+      access: () => this.api.coreManager.assistantAccess(),
+      pictures: (event) => this.describePictures(event),
+      cameraName: (cameraId) => this.cameras.get(cameraId)?.device.name ?? cameraId,
+      settings: () => {
+        const v = this.storage.values;
+        return { enabled: v.aiDescriptions === true, notify: v.aiNotify === true, maxPerHour: Number(v.aiMaxPerHour ?? 60) };
+      },
+      save: (eventId, description) => this.saveDescription(eventId, description),
+      notify: (event, description, picture) => this.notifyDescription(event, description, picture),
+      log: (level, message) => this.logger[level](message),
+    });
     const stale = this.store.closeStaleActive();
     if (stale) this.logger.log(`Закрыто событий, оставшихся активными после перезапуска: ${stale}`);
     this.playback = new PlaybackManager(this.store, (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)));
@@ -356,6 +427,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   private async stop(): Promise<void> {
+    this.describer?.stop();
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
     this.playback?.stopAll();
@@ -473,6 +545,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
     const data = this.decorate(withoutVectors(merged), existingRow?.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type, data });
+    if (type === 'end') this.describer.offer(withoutVectors(merged));
   }
 
   private async saveAttachments(cameraId: string, event: RecordedEvent, att: EventAttachments): Promise<void> {
@@ -1063,6 +1136,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     try {
       this.semantic.deleteEvents(ids);
       this.faces.deleteForEvents(ids);
+      this.describer.deleteEvents(ids);
     } catch (error) {
       this.logger.warn(`Index cleanup: ${(error as Error).message}`);
     }
@@ -1126,9 +1200,86 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     await this.ready;
     const query = text?.trim();
     if (!query) return [];
+    // hybrid: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions
     const queries = await this.textEmbeddings(query);
-    if (!queries.length) return [];
-    return this.semantic.search(queries, limit, threshold);
+    const visual = queries.length ? this.semantic.search(queries, limit * 2, threshold) : [];
+    const textual = this.describer.search(query, limit * 2);
+    const merged = new Map<string, ClipSearchResult>(visual.map((r) => [r.eventId, r]));
+    for (const t of textual) {
+      const v = merged.get(t.eventId);
+      if (v) merged.set(t.eventId, { ...v, score: Math.min(1, Math.max(v.score, t.score) + 0.15) });
+      else if (t.score >= threshold)
+        merged.set(t.eventId, {
+          eventId: t.eventId,
+          cameraId: t.cameraId,
+          score: Math.round(t.score * 1000) / 1000,
+          timestamp: t.timestamp,
+          label: this.primaryLabel(t.eventId),
+        });
+    }
+    return [...merged.values()].sort((a, b) => b.score - a.score || b.timestamp - a.timestamp).slice(0, limit);
+  }
+
+  private primaryLabel(eventId: string): string {
+    const row = this.store.event(eventId);
+    if (!row) return '';
+    const ev = JSON.parse(row.data) as RecordedEvent;
+    return String((ev.segments?.[0]?.detections?.[0] as { label?: string } | undefined)?.label ?? ev.types?.[0] ?? '');
+  }
+
+  // --------------------------------------------------------- AI descriptions
+
+  /** Describes one event now (UI action "Описать ИИ"), whatever the automatic setting. */
+  public async describeEvent(eventId: string): Promise<EventDescription | undefined> {
+    await this.ready;
+    const row = this.store.event(eventId);
+    if (!row) return undefined;
+    return this.describer.describe(JSON.parse(row.data) as RecordedEvent);
+  }
+
+  /** Up to three pictures of the event: the card of each segment, else the scene. */
+  private describePictures(event: RecordedEvent): Uint8Array[] {
+    const dir = this.thumbDir(event.cameraId, event.id);
+    const out: Uint8Array[] = [];
+    for (let seg = 0; seg < Math.max(1, event.segments?.length ?? 0) && out.length < 3; seg++) {
+      for (const name of [`card-${seg}.jpg`, `strip-${seg}.jpg`]) {
+        try {
+          out.push(new Uint8Array(readFileSync(join(dir, name))));
+          break;
+        } catch {
+          // next candidate
+        }
+      }
+    }
+    if (!out.length) {
+      try {
+        out.push(new Uint8Array(readFileSync(join(dir, 'event.jpg'))));
+      } catch {
+        // no picture: nothing to describe
+      }
+    }
+    return out;
+  }
+
+  private saveDescription(eventId: string, description: EventDescription): void {
+    const row = this.store.event(eventId);
+    if (!row) return;
+    const event = { ...(JSON.parse(row.data) as RecordedEvent), ai: description };
+    this.store.upsertEvent(event);
+    const data = this.decorate(event, row.favorite === 1, true);
+    for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'update', data });
+  }
+
+  private async notifyDescription(event: RecordedEvent, description: EventDescription, picture: Uint8Array | undefined): Promise<void> {
+    const camera = this.cameras.get(event.cameraId)?.device.name ?? event.cameraId;
+    await this.api.notificationManager.publish({
+      title: `${camera}: ${description.title}`,
+      body: description.description,
+      thumbnail: picture,
+      tag: `ai:${event.id}`,
+      deepLink: `/cameras/${encodeURIComponent(camera)}?startTs=${event.startTime}`,
+      data: { cameraId: event.cameraId, eventId: event.id },
+    });
   }
 
   public async getClipReindexStatus(): Promise<ClipReindexStatus> {
@@ -1595,6 +1746,7 @@ function matches(ev: RecordedEvent, opts: GetEventsOptions): boolean {
     const hay = [
       ...(ev.types ?? []),
       ...(ev.segments ?? []).flatMap((s) => [...(s.detections ?? []).map((d) => String(d.label)), ...(s.attributes ?? []).map((a) => String(a.label))]),
+      ...(ev.ai ? [ev.ai.title, ev.ai.description, ...ev.ai.tags] : []),
     ]
       .join(' ')
       .toLowerCase();

@@ -18,6 +18,8 @@ export interface RecordedEvent extends Omit<DetectionEvent, 'segments'> {
   hasRecording?: boolean;
   episodeIds?: string[];
   favorite?: boolean;
+  /** Description by the assistant model (AI descriptions setting). */
+  ai?: { title: string; description: string; tags: string[]; model?: string; at: number };
 }
 
 export interface EventAttachments {
