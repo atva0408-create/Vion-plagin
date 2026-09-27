@@ -209,6 +209,29 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return e.source === 'cloud' ? `ViON Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к ViON Cloud: ${cams}, ${days}`;
   }
 
+  /** Plan limits and which cameras use the recording slots (settings dashboard). */
+  public async getRecordingPlan(): Promise<{
+    source: 'cloud' | 'local' | 'none';
+    planName: string;
+    maxCameras: number;
+    retentionDays: number;
+    recording: string[];
+    overLimit: string[];
+  }> {
+    await this.ready;
+    const e = this.entitlements;
+    const licensed = this.licensedCameraIds();
+    const wanting = [...this.cameras.values()].filter((c) => isRecordingWanted(c.device)).map((c) => c.device.id);
+    return {
+      source: e?.source ?? 'none',
+      planName: e?.plan.name ?? '',
+      maxCameras: e?.nvr.maxCameras ?? 0,
+      retentionDays: e?.nvr.retentionDays ?? 0,
+      recording: wanting.filter((id) => licensed.has(id)),
+      overLimit: wanting.filter((id) => !licensed.has(id)),
+    };
+  }
+
   /** Cameras allowed to record: the first `maxCameras` in the order recording was enabled (persisted). */
   private licensedCameraIds(): Set<string> {
     const wanting = [...this.cameras.values()].filter((c) => isRecordingWanted(c.device)).map((c) => c.device.id);

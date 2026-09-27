@@ -1,7 +1,7 @@
 {
   "displayName": "ViON NVR",
   "name": "@vionvision/camera-ui-nvr",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Видеорегистратор ViON: постоянная запись и запись по событиям, просмотр архива на шкале времени, события и экспорт. Работает полностью на вашем сервере, без внешних аккаунтов.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
