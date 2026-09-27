@@ -17,6 +17,7 @@ from defaults import (
     model_version,
 )
 from inference import OpenVinoBackend
+from trained import is_trained, trained_models
 
 
 class OpenVinoModelManager(BaseModelManager):
@@ -32,6 +33,11 @@ class OpenVinoModelManager(BaseModelManager):
             logger.log(f"Кэш компиляции моделей недоступен ({error})")
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
+        if is_trained(model_name):
+            # an ONNX file downloaded by the ViON server: OpenVINO reads it directly (the "bin" key
+            # points to the same file so nothing is downloaded)
+            path = trained_models.path(model_name)
+            return {"xml": ("", path), "bin": ("", path)}
         xml_rel, bin_rel = self._rel_files(model_name)
         return {
             "xml": (f"{MODEL_BASE_URL}/{xml_rel}", xml_rel),

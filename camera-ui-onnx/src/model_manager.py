@@ -17,6 +17,7 @@ from defaults import (
     model_version,
 )
 from inference import OnnxBackend
+from trained import is_trained, trained_models
 
 # onnxruntime provider list, e.g. ["CUDAExecutionProvider", "CPUExecutionProvider"]
 ProviderList = Sequence[Any]
@@ -44,6 +45,9 @@ class OnnxModelManager(BaseModelManager):
         self._hinted_legacy = False
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
+        if is_trained(model_name):
+            # downloaded by the ViON server; an absolute path makes the base download a no-op
+            return {"model": ("", trained_models.path(model_name))}
         rel = self._rel_path(model_name)
         return {"model": (f"{MODEL_LFS_URL}/{rel}", rel)}
 

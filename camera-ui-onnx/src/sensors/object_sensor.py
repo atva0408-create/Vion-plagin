@@ -11,7 +11,8 @@ from camera_ui_sdk import (
     VideoFrameData,
 )
 
-from defaults import DEFAULT_OBJECT_MODEL, DEFAULT_OPTION, OBJECT_MODELS, resolve_model
+from defaults import DEFAULT_OBJECT_MODEL, DEFAULT_OPTION, OBJECT_MODELS
+from trained import resolve_object_model, trained_models
 
 if TYPE_CHECKING:
     from camera_ui_sdk import CameraDevice, LoggerService
@@ -35,6 +36,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         self._camera = camera
         self._plugin = plugin
         self._logger = logger
+        self._active: str | None = None
 
     @property
     def storage_schema(self) -> list[JsonSchema]:
@@ -43,7 +45,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
                 "type": "string",
                 "key": "model",
                 "title": "Модель",
-                "description": "Модель YOLO для обнаружения объектов",
+                "description": "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.",
                 "group": "Обнаружение объектов",
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
                 "store": True,
@@ -62,20 +64,32 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             },
         ]
 
+    def _wanted_model(self) -> str:
+        return resolve_object_model(self.storage.values.get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+
     @property
     def modelSpec(self) -> ObjectModelSpec:
-        detector = self._plugin.object_detectors.get(
-            resolve_model(self.storage.values.get("model"), DEFAULT_OBJECT_MODEL)
-        )
+        detector = self._plugin.object_detectors.get(self._active or self._wanted_model())
+        width, height = detector.input_size if detector is not None and detector.initialized else (320, 320)
         return {
-            "input": {"width": 320, "height": 320, "format": "rgb"},
+            "input": {"width": width, "height": height, "format": "rgb"},
             **model_runtime((detector, "detect")),
         }
 
     async def detectObjects(self, frame: VideoFrameData) -> ObjectResult:
-        detector = self._plugin.object_detectors.get(
-            resolve_model(self.storage.values.get("model"), DEFAULT_OBJECT_MODEL)
-        )
+        self._plugin.check_trained_models()
+        wanted = self._wanted_model()
+        detector = self._plugin.object_detectors.get(wanted)
+        if detector is None or not detector.initialized:
+            # a newly published model loads in the background; the current one keeps detecting
+            self._plugin.prepare_object_detector(wanted)
+            detector = self._plugin.object_detectors.get(self._active) if self._active else None
+        elif wanted != self._active:
+            previous = self._active
+            self._active = wanted
+            self.updateModelSpec()
+            if previous:
+                self._logger.log(f"Модель объектов: {previous} → {wanted}")
         if detector is None or not detector.initialized:
             return {"detected": False, "detections": []}
         return await detect_objects(detector, frame, self._camera_confidences(0.5))
@@ -84,14 +98,28 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         pass
 
     async def on_start(self) -> None:
-        model_name = resolve_model(self.storage.values.get("model"), DEFAULT_OBJECT_MODEL)
-        await self._plugin.get_object_detector(model_name)
+        model_name = self._wanted_model()
+        try:
+            await self._plugin.get_object_detector(model_name)
+        except Exception as error:
+            if model_name == DEFAULT_OBJECT_MODEL:
+                raise
+            # a broken trained model must not leave the camera without detection
+            self._logger.error(
+                f"Обученная модель {model_name} не загрузилась ({error}), используется стандартная"
+            )
+            model_name = DEFAULT_OBJECT_MODEL
+            await self._plugin.get_object_detector(model_name)
+        self._active = model_name
         self.updateModelSpec()
+        if trained_models.detector_name() == model_name:
+            self._logger.log(f"Используется модель, обученная ViON: {model_name}")
 
     async def _on_change_model(self, new_model: str, _old_model: str) -> None:
         if new_model != _old_model:
-            resolved = resolve_model(new_model, DEFAULT_OBJECT_MODEL)
+            resolved = resolve_object_model(new_model, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
             await self._plugin.get_object_detector(resolved)
+            self._active = resolved
             self.updateModelSpec()
             self._logger.log(f"Модель объектов изменена на {resolved}")
 

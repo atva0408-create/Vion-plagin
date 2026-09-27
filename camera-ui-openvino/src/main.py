@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import time
 from typing import Any
 
 import openvino as ov
@@ -77,12 +78,15 @@ from defaults import (
     resolve_model,
 )
 from model_manager import OpenVinoModelManager
+from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import OpenVinoClipSensor
 from sensors.face_embedder_sensor import OpenVinoFaceEmbedderSensor
 from sensors.face_sensor import OpenVinoFaceSensor
 from sensors.lpd_sensor import OpenVinoLPDSensor
 from sensors.object_sensor import OpenVinoObjectSensor
 from siglip import SiglipEncoder, is_siglip
+from trained import is_trained, resolve_object_model, trained_models
+from trained import model_name as trained_model_name
 
 
 class OpenVinoPlugin(
@@ -113,6 +117,10 @@ class OpenVinoPlugin(
         self.plate_detectors: dict[str, BoxDetector] = {}
         self.ocr_models: dict[str, PlateOcr] = {}
         self.clip_encoders: dict[str, ClipEncoder] = {}
+        self.attribute_backends: dict[str, Any] = {}
+        self._preparing: set[str] = set()
+        self._failed_models: dict[str, float] = {}
+        self._trained_version = -1
 
         self._sensors: dict[str, dict[str, Any]] = {}
 
@@ -210,8 +218,13 @@ class OpenVinoPlugin(
             except Exception:
                 self.object_detectors.pop(model_name, None)
                 raise
-            # OpenVINO IR has no embedded class names; inject the trained labels.
-            detector.labels = {index: str(label) for index, label in OBJECT_LABELS.items()}
+            # OpenVINO IR has no embedded class names; inject the trained labels (a model trained on
+            # ViON Cloud brings its own class list in the manifest, custom classes included)
+            entry = trained_models.entry(model_name) if is_trained(model_name) else None
+            if entry and entry.get("classes"):
+                detector.labels = {index: str(label) for index, label in enumerate(entry["classes"])}
+            else:
+                detector.labels = {index: str(label) for index, label in OBJECT_LABELS.items()}
         else:
             await detector.initialize(model_name)
         return detector
@@ -346,7 +359,7 @@ class OpenVinoPlugin(
     async def testObjectDetection(
         self, image_data: bytes, metadata: ImageMetadata, config: dict[str, Any]
     ) -> ObjectDetectionPluginResponse | None:
-        model_name: str = resolve_model(config.get("model"), DEFAULT_OBJECT_MODEL)
+        model_name: str = resolve_object_model(config.get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -365,7 +378,7 @@ class OpenVinoPlugin(
     async def detectObjects(
         self, frame: VideoFrameData, config: dict[str, Any] | None = None
     ) -> ObjectDetectionPluginResponse | None:
-        model_name = resolve_model((config or {}).get("model"), DEFAULT_OBJECT_MODEL)
+        model_name = resolve_object_model((config or {}).get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -765,6 +778,11 @@ class OpenVinoPlugin(
         await camera.addSensor(clip)
         sensors["clip"] = clip
 
+        # attributes of objects ("с пакетом") by the classifiers trained on ViON Cloud
+        attributes = ViONAttributeSensor(self, camera, self.logger)
+        await camera.addSensor(attributes)
+        sensors["attributes"] = attributes
+
         self._sensors[camera.id] = sensors
 
     def _describe_devices(self) -> list[str]:
@@ -872,6 +890,46 @@ class OpenVinoPlugin(
         await self._reload_models()
         self.logger.success("Модели загружены заново")
 
+    # ---- models trained on ViON Cloud (trained.py) ----
+
+    def prepare_object_detector(self, model_name: str) -> None:
+        """Loads a detector in the background (a newly published trained model); failures are retried
+        after a while instead of on every frame."""
+        if model_name in self._preparing or time.monotonic() < self._failed_models.get(model_name, 0):
+            return
+        self._preparing.add(model_name)
+
+        async def load() -> None:
+            try:
+                await self.get_object_detector(model_name)
+                self.logger.success(f"Загружена модель объектов {model_name}")
+            except Exception as error:
+                self._failed_models[model_name] = time.monotonic() + 600
+                self.logger.error(f"Модель объектов {model_name} не загрузилась: {error}")
+            finally:
+                self._preparing.discard(model_name)
+
+        asyncio.create_task(load())
+
+    def check_trained_models(self) -> None:
+        """Cheap per-frame check: when the manifest changed, the classifier sensors learn the new labels."""
+        trained_models.manifest()
+        if trained_models.version == self._trained_version:
+            return
+        self._trained_version = trained_models.version
+        for sensors in self._sensors.values():
+            attribute = sensors.get("attributes")
+            if attribute is not None:
+                attribute.refresh()
+
+    async def get_attribute_backend(self, entry: dict[str, Any]) -> Any:
+        name = trained_model_name(entry)
+        backend = self.attribute_backends.get(name)
+        if backend is None:
+            backend = await self.model_manager.ensure_backend(name)
+            self.attribute_backends[name] = backend
+        return backend
+
     async def _close_all(self) -> None:
         await asyncio.gather(
             *(d.close() for d in self.object_detectors.values()),
@@ -881,6 +939,9 @@ class OpenVinoPlugin(
             *(e.close() for e in self.clip_encoders.values()),
             *(o.close() for o in self.ocr_models.values()),
         )
+        for backend in self.attribute_backends.values():
+            backend.close()
+        self.attribute_backends.clear()
         self.object_detectors.clear()
         self.face_detectors.clear()
         self.face_embedders.clear()

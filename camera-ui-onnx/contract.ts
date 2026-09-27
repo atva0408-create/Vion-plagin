@@ -11,6 +11,7 @@ export const contract: PluginContract = {
     SensorType.FaceEmbedder,
     SensorType.LicensePlate,
     SensorType.Clip,
+    SensorType.Classifier,
   ],
   consumes: [],
   pythonVersion: '3.11',
