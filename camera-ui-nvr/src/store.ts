@@ -215,6 +215,19 @@ export class Store {
     return this.db.prepare('SELECT * FROM events WHERE start_ms < ? AND favorite = 0 ORDER BY start_ms LIMIT ?').all(cutoffMs, limit) as unknown as EventRow[];
   }
 
+  /** Events still "active" from a previous run (crash, restart): end them at their last update. */
+  public closeStaleActive(): number {
+    const res = this.db
+      .prepare(
+        `UPDATE events SET state = 'ended',
+           end_ms = COALESCE(json_extract(data, '$.lastUpdate'), start_ms),
+           data = json_set(data, '$.state', 'ended', '$.endTime', COALESCE(json_extract(data, '$.lastUpdate'), start_ms))
+         WHERE state = 'active'`,
+      )
+      .run();
+    return Number(res.changes);
+  }
+
   public activeEvents(cameraId: string): EventRow[] {
     return this.db.prepare("SELECT * FROM events WHERE camera_id = ? AND state = 'active'").all(cameraId) as unknown as EventRow[];
   }

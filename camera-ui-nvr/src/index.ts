@@ -228,6 +228,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store = new Store(join(this.dataDir, 'nvr.db'));
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
+    const stale = this.store.closeStaleActive();
+    if (stale) this.logger.log(`Закрыто событий, оставшихся активными после перезапуска: ${stale}`);
     this.playback = new PlaybackManager(this.store, (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)));
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
