@@ -133,7 +133,7 @@ class OnnxModelManager(BaseModelManager):
 
     @staticmethod
     def _rel_path(model_name: str) -> str:
-        if model_name.startswith("clip-") and model_name.endswith(("-vision", "-text")):
+        if model_name.startswith(("clip-", "siglip-")) and model_name.endswith(("-vision", "-text")):
             family, _, tower = model_name.rpartition("-")
             return f"{family}/{tower}.onnx"
         return f"{model_name}/{model_name}.onnx"

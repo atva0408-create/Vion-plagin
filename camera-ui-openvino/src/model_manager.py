@@ -169,7 +169,7 @@ class OpenVinoModelManager(BaseModelManager):
     @staticmethod
     def _rel_files(model_name: str) -> tuple[str, str]:
         # clip families live in one folder per family: <family>/{vision,text}.{xml,bin}
-        if model_name.startswith("clip-") and model_name.endswith(("-vision", "-text")):
+        if model_name.startswith(("clip-", "siglip-")) and model_name.endswith(("-vision", "-text")):
             family, _, tower = model_name.rpartition("-")
             base = f"{family}/{tower}"
         else:

@@ -6,3 +6,5 @@ numpy==2.4.6
 Pillow==12.3.0
 aiohttp==3.14.3
 transformers==5.17.0
+sentencepiece==0.2.2
+protobuf==7.36.2

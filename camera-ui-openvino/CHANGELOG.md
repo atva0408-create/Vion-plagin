@@ -1,3 +1,8 @@
+## [1.3.0]
+
+- **Поиск на русском.** Новая модель поиска «SigLIP мультиязычная»: запросы в «Записях → ИИ-поиск» можно писать на русском (и ещё ~100 языках), без перевода. Модель собирается в зеркало моделей скриптом `deploy/models-mirror/export-siglip.py`, затем выбирается в настройках плагина «Модель CLIP»; после смены модели нажмите «Переиндексировать поиск».
+- Подписи моделей CLIP в настройках (какие понимают только английский).
+
 ## [1.2.16]
 
 **Needs camera.ui 2.2.5.** After the update, pick this plugin as Face Recognition for each camera: camera settings, Plugins, Detections. Faces are detected but not named until then. The plugin downloads its new face models on the first start.

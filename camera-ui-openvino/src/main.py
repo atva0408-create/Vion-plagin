@@ -46,6 +46,7 @@ from camera_ui_sdk import (
 )
 
 from defaults import (
+    CLIP_MODEL_LABELS,
     CLIP_VISION_MODELS,
     DEFAULT_CLIP_VISION,
     DEFAULT_FACE_DETECTOR,
@@ -60,6 +61,7 @@ from defaults import (
     FACE_EMBEDDERS,
     FACE_LANDMARK_MODEL,
     LPD_DETECTOR_MODELS,
+    MODEL_BASE_URL,
     OBJECT_LABELS,
     OBJECT_MODELS,
     OCR_ALPHABET,
@@ -80,6 +82,7 @@ from sensors.face_embedder_sensor import OpenVinoFaceEmbedderSensor
 from sensors.face_sensor import OpenVinoFaceSensor
 from sensors.lpd_sensor import OpenVinoLPDSensor
 from sensors.object_sensor import OpenVinoObjectSensor
+from siglip import SiglipEncoder, is_siglip
 
 
 class OpenVinoPlugin(
@@ -125,7 +128,7 @@ class OpenVinoPlugin(
                 "title": "Модель CLIP (изображения)",
                 "description": "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.",
                 "enum": [DEFAULT_OPTION, *CLIP_VISION_MODELS],
-                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию", **CLIP_MODEL_LABELS},
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
                 "required": True,
@@ -307,7 +310,14 @@ class OpenVinoPlugin(
     async def get_clip_encoder(self, model_name: str) -> ClipEncoder:
         encoder = self.clip_encoders.get(model_name)
         if not encoder:
-            encoder = ClipEncoder(self.model_manager, self.logger, embedding_model=clip_family(model_name))
+            family = clip_family(model_name)
+            encoder = (
+                SiglipEncoder(
+                    self.model_manager, self.logger, embedding_model=family, base_url=MODEL_BASE_URL
+                )
+                if is_siglip(family)
+                else ClipEncoder(self.model_manager, self.logger, embedding_model=family)
+            )
             self.clip_encoders[model_name] = encoder
             try:
                 await encoder.initialize(model_name, clip_text_for(model_name))
@@ -554,7 +564,7 @@ class OpenVinoPlugin(
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *CLIP_VISION_MODELS],
-                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию", **CLIP_MODEL_LABELS},
                 "store": False,
             },
         ]

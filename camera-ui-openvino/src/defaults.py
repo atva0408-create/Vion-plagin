@@ -44,11 +44,14 @@ LPD_DETECTOR_MODELS: dict[str, int] = {
 CLIP_VISION_MODELS: dict[str, int] = {
     "clip-vit-base-patch32-vision": 224,
     "clip-vit-base-patch32-datacomp-vision": 224,
+    # multilingual (Russian and ~100 more languages): queries need no translation
+    "siglip-base-patch16-256-multilingual-vision": 256,
 }
 
 CLIP_TEXT_MODELS: dict[str, int] = {
     "clip-vit-base-patch32-text": 77,
     "clip-vit-base-patch32-datacomp-text": 77,
+    "siglip-base-patch16-256-multilingual-text": 64,
 }
 
 
@@ -120,7 +123,10 @@ STATIC_INPUT_SHAPES: dict[str, list[list[int]]] = {
     FACE_LANDMARK_MODEL: [[1, 3, FACE_LANDMARK_INPUT_SIZE, FACE_LANDMARK_INPUT_SIZE]],
     **{name: [[1, OCR_INPUT_HEIGHT, OCR_INPUT_WIDTH, 3]] for name in OCR_MODELS},
     **{name: [[1, 3, size, size]] for name, size in CLIP_VISION_MODELS.items()},
-    **{name: [[1, tokens], [1, tokens]] for name, tokens in CLIP_TEXT_MODELS.items()},
+    **{
+        name: [[1, tokens]] if name.startswith("siglip") else [[1, tokens], [1, tokens]]
+        for name, tokens in CLIP_TEXT_MODELS.items()
+    },
 }
 
 DEFAULT_OPTION = "default"
@@ -137,6 +143,14 @@ def clip_family(vision_model: str) -> str:
 CLIP_SCORE_BANDS: dict[str, list[float]] = {
     "clip-vit-base-patch32": [0.15, 0.38],
     "clip-vit-base-patch32-datacomp": [0.10, 0.26],
+    # SigLIP cosines are lower (sigmoid loss, bias ~ -12.9, scale ~ 117: p=0.5 at ~0.11)
+    "siglip-base-patch16-256-multilingual": [0.03, 0.15],
+}
+
+CLIP_MODEL_LABELS: dict[str, str] = {
+    "clip-vit-base-patch32-vision": "CLIP ViT-B/32 (английские запросы)",
+    "clip-vit-base-patch32-datacomp-vision": "CLIP ViT-B/32 DataComp (английские запросы)",
+    "siglip-base-patch16-256-multilingual-vision": "SigLIP мультиязычная (запросы на русском)",
 }
 
 
