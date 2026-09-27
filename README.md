@@ -10,9 +10,9 @@ All plugins are published under the `@vionvision` npm scope.
 
 ## Model downloads
 
-Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, Hailo, YAMNet) download their models on first use.
-Set `VION_MODELS_HOST` (for example `https://models.vionvision.tech`) to serve them from your own mirror;
-the path layout is `/<version>/<backend>/...`, identical to the upstream host.
+Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, YAMNet) download their models on first use.
+They come from the ViON mirror `https://models.vionvision.tech` (see `deploy/models-mirror` in the VIONN- repo);
+set `VION_MODELS_HOST` to use another mirror. The path layout is `/<version>/<backend>/...`, identical to the upstream host.
 
 ## Upstream
 
@@ -31,7 +31,6 @@ git fetch upstream && git merge upstream/main
 | [Coral](camera-ui-coral)               | `@vionvision/camera-ui-coral`        |
 | [CoreML](camera-ui-coreml)             | `@vionvision/camera-ui-coreml`       |
 | [Eufy](camera-ui-eufy)                 | `@vionvision/camera-ui-eufy`         |
-| [Hailo](camera-ui-hailo)               | `@vionvision/camera-ui-hailo`        |
 | [HomeKit](camera-ui-homekit)           | `@vionvision/camera-ui-homekit`      |
 | [NCNN](camera-ui-ncnn)                 | `@vionvision/camera-ui-ncnn`         |
 | [ONNX](camera-ui-onnx)                 | `@vionvision/camera-ui-onnx`         |

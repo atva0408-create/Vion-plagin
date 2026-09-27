@@ -40,7 +40,6 @@ const directories = [
   '../camera-ui-coral',
   '../camera-ui-coreml',
   '../camera-ui-eufy',
-  '../camera-ui-hailo',
   '../camera-ui-homeassistant',
   '../camera-ui-homekit',
   '../camera-ui-ncnn',

@@ -44,15 +44,6 @@
     "screenshots": [],
     "protocolLevel": 1
   },
-  "@vionvision/camera-ui-hailo": {
-    "displayName": "Hailo",
-    "category": "ai-model",
-    "featured": false,
-    "tagline": "Hailo Edge AI (HailoRT) detection backend for ViON.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-hailo/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
   "@vionvision/camera-ui-homeassistant": {
     "displayName": "Home Assistant",
     "category": "automation",

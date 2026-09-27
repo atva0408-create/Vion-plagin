@@ -26,7 +26,6 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-coral': 'ai-model',
   'camera-ui-coreml': 'ai-model',
   'camera-ui-eufy': 'camera-source',
-  'camera-ui-hailo': 'ai-model',
   'camera-ui-homekit': 'automation',
   'camera-ui-ncnn': 'ai-model',
   'camera-ui-onnx': 'ai-model',

@@ -7,8 +7,8 @@ from camera_ui_ml import Normalize
 
 model_version = "v1"
 
-# override with VION_MODELS_HOST to serve models from your own mirror
-_MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.cameraui.com").rstrip("/")
+# ViON models mirror (deploy/models-mirror in VIONN-); VION_MODELS_HOST points to another one
+_MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.vionvision.tech").rstrip("/")
 MODEL_BASE_URL = f"{_MODELS_HOST}/{model_version}/coreml"
 MODEL_LFS_URL = MODEL_BASE_URL
 

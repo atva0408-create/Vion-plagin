@@ -13,9 +13,6 @@ eufy:
 homeassistant:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-homeassistant/**'
-hailo:
-  - changed-files:
-      - any-glob-to-any-file: 'camera-ui-hailo/**'
 homekit:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-homekit/**'
