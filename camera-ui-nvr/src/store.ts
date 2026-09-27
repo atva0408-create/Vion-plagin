@@ -78,6 +78,11 @@ export class Store {
     this.db.close();
   }
 
+  /** The database, shared with the semantic index and the face store. */
+  public get sql(): DatabaseSync {
+    return this.db;
+  }
+
   // --- meta ---
   public meta(key: string): string | undefined {
     return (this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined)?.value;

@@ -24,7 +24,8 @@ export interface EventAttachments {
   scene?: Uint8Array;
   strip?: Uint8Array;
   card?: Uint8Array;
-  attributes?: Record<string, Uint8Array>;
+  /** One crop per attribute of the current segment (server), or crops keyed by thumbnail key. */
+  attributes?: (Uint8Array | null | undefined)[] | Record<string, Uint8Array>;
   [key: string]: unknown;
 }
 

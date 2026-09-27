@@ -1,16 +1,20 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { exportClip, writeZip } from './export.js';
+import { FaceStore } from './faces.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
+import { SemanticIndex } from './semantic.js';
 import { parseKeyframes, Store } from './store.js';
 
 import type { CameraDevice, DetectionEventType, DeviceStorage, Disposable, JsonSchema, LoggerService, PluginAPI } from '@camera.ui/sdk';
+import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
+import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow } from './store.js';
 import type {
   DetectionEventMessage,
@@ -52,9 +56,83 @@ interface Entitlements {
 }
 
 const ENTITLEMENTS_INTERVAL_MS = 10 * 60_000;
+const PLUGIN_CALL_TIMEOUT_MS = 30_000;
+
+interface FaceEmbedder {
+  embedFaceImages(images: Uint8Array[], config?: Record<string, unknown>): Promise<({ embedding: number[]; embeddingModel: string; quality?: number } | undefined)[]>;
+}
+
+interface FacesReindexStatus {
+  running: boolean;
+  embeddingModel?: string;
+  total: number;
+  done: number;
+  skipped: number;
+  skippedNames?: string[];
+  error?: string;
+}
+
+interface FacesRescanStatus {
+  running: boolean;
+  total: number;
+  done: number;
+  matched?: number;
+}
+
+interface FaceAttribute {
+  type?: string;
+  label?: string;
+  confidence?: number;
+  embedding?: number[];
+  embeddingModel?: string;
+  clipEmbedding?: number[];
+  clipEmbeddingModel?: string;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms = PLUGIN_CALL_TIMEOUT_MS): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('plugin call timed out')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/** Thumbnail key the UI expects for an attribute crop: `<seg>:face.<i>`, `<seg>:plate:<text>`, `<seg>:<type>:<label>`. */
+function attributeKey(seg: number, index: number, attribute: FaceAttribute | undefined): string {
+  if (attribute?.type === 'face') return `${seg}:face.${index}`;
+  if (attribute?.type === 'license_plate') return `${seg}:plate:${attribute.label ?? ''}`;
+  return `${seg}:${attribute?.type ?? 'attr'}:${attribute?.label ?? index}`;
+}
+
+/** Vectors live in their own tables; the stored (and UI-bound) event JSON stays lean. */
+function withoutVectors(event: RecordedEvent): RecordedEvent {
+  return {
+    ...event,
+    segments: (event.segments ?? []).map((segment) => ({
+      ...segment,
+      attributes: (segment.attributes ?? []).map((a) => {
+        const { embedding: _e, clipEmbedding: _c, ...rest } = a as FaceAttribute & Record<string, unknown>;
+        return rest;
+      }),
+    })),
+  };
+}
 
 export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
+  private semantic!: SemanticIndex;
+  private faces!: FaceStore;
+  private readonly proxies = new Map<string, unknown>();
+  private clipStatus: ClipReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
+  private clipCancel = false;
+  private readonly clipListeners = new Set<(s: ClipReindexStatus) => void>();
+  private facesReindexStatus: FacesReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
+  private facesReindexCancel = false;
+  private readonly facesReindexListeners = new Set<(s: FacesReindexStatus) => void>();
+  private rescanStatus: FacesRescanStatus = { running: false, total: 0, done: 0 };
+  private readonly rescanListeners = new Set<(s: FacesRescanStatus) => void>();
   private playback!: PlaybackManager;
   private ffmpegPath = 'ffmpeg';
   private readonly cameras = new Map<string, ManagedCamera>();
@@ -251,6 +329,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store = new Store(join(this.dataDir, 'nvr.db'));
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
+    this.semantic = new SemanticIndex(this.store.sql);
+    this.faces = new FaceStore(this.store.sql, join(this.dataDir, 'faces'));
     const stale = this.store.closeStaleActive();
     if (stale) this.logger.log(`Закрыто событий, оставшихся активными после перезапуска: ${stale}`);
     this.playback = new PlaybackManager(this.store, (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)));
@@ -380,8 +460,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     await this.ready;
     const existingRow = this.store.event(event.id);
     const merged = existingRow ? mergeEvent(JSON.parse(existingRow.data) as RecordedEvent, event) : { ...event, cameraId };
-    this.store.upsertEvent(merged);
     if (attachments) await this.saveAttachments(cameraId, merged, attachments);
+    this.indexEvent(merged, attachments);
+    this.store.upsertEvent(withoutVectors(merged));
 
     // event-mode recorders run until the post-buffer after the last update
     const managed = this.cameras.get(cameraId);
@@ -390,7 +471,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       for (const rec of managed.recorders.values()) rec.trigger(type === 'end' ? untilUs : untilUs + 30_000_000);
     }
 
-    const data = this.decorate(merged, existingRow?.favorite === 1, true);
+    const data = this.decorate(withoutVectors(merged), existingRow?.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type, data });
   }
 
@@ -402,8 +483,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (att.scene) writes.push(writeFile(join(dir, 'event.jpg'), att.scene));
     if (att.strip) writes.push(writeFile(join(dir, `strip-${seg}.jpg`), att.strip));
     if (att.card) writes.push(writeFile(join(dir, `card-${seg}.jpg`), att.card));
-    for (const [key, data] of Object.entries(att.attributes ?? {})) {
-      if (data instanceof Uint8Array) writes.push(writeFile(join(dir, `attr-${key.replace(/[^\w.-]/g, '_')}.jpg`), data));
+    const attrs = (event.segments[seg]?.attributes ?? []) as FaceAttribute[];
+    const crops: [string, unknown][] = Array.isArray(att.attributes)
+      ? att.attributes.map((data, i) => [attributeKey(seg, i, attrs[i]), data])
+      : Object.entries(att.attributes ?? {});
+    for (const [key, data] of crops) {
+      if (data instanceof Uint8Array && data.length) writes.push(writeFile(join(dir, `attr-${encodeURIComponent(key)}.jpg`), data));
     }
     await Promise.all(writes);
   }
@@ -477,7 +562,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (name === 'event') result.event = data;
       else if (name.startsWith('strip-')) result.strips[name.slice(6)] = data;
       else if (name.startsWith('card-')) result.cards[name.slice(5)] = data;
-      else if (name.startsWith('attr-')) result.attributes[name.slice(5)] = data;
+      else if (name.startsWith('attr-')) result.attributes[safeDecode(name.slice(5))] = data;
     }
     return result;
   }
@@ -492,6 +577,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       await rm(this.thumbDir(row.camera_id, id), { recursive: true, force: true });
       deleted.push(id);
     }
+    this.forgetEvents(deleted);
     if (deleted.length) for (const cb of this.deletedListeners) this.safeCall(this.deletedListeners, cb, deleted);
   }
 
@@ -875,6 +961,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         this.store.deleteEvent(row.id);
         await rm(this.thumbDir(row.camera_id, row.id), { recursive: true, force: true });
       }
+      this.forgetEvents(expired.map((e) => e.id));
       if (expired.length)
         for (const cb of this.deletedListeners)
           this.safeCall(
@@ -920,72 +1007,478 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return 0;
   }
 
-  public async matchFaces(embeddings: number[][]): Promise<null[]> {
-    return embeddings.map(() => null);
+  // ------------------------------------------------------ indexing (CLIP, faces)
+
+  /** Files the event's CLIP vectors and face vectors; unmatched faces go to the unknown list. */
+  private indexEvent(event: RecordedEvent, att?: EventAttachments): void {
+    try {
+      this.semantic.ingest(event);
+    } catch (error) {
+      this.logger.warn(`Semantic index: ${(error as Error).message}`);
+    }
+    const current = event.segmentIndex ?? Math.max(0, event.segments.length - 1);
+    event.segments.forEach((segment, seg) => {
+      (segment.attributes ?? []).forEach((raw, attr) => {
+        const a = raw as FaceAttribute;
+        if (a.type !== 'face' || !a.embedding?.length || !a.embeddingModel) return;
+        try {
+          const sighting = { eventId: event.id, seg, attr };
+          this.faces.recordSighting(sighting, a.embeddingModel, a.embedding, a.confidence);
+          if (a.label && a.label !== 'unknown') return;
+          const crop = seg === current ? this.cropAt(att, attr) : undefined;
+          this.faces.addUnknown({
+            cameraId: event.cameraId,
+            eventId: event.id,
+            seg,
+            attr,
+            ts: (segment as { firstSeen?: number }).firstSeen ?? event.startTime,
+            model: a.embeddingModel,
+            embedding: a.embedding,
+            confidence: a.confidence,
+            jpeg: crop ?? this.readAttributeCrop(event.cameraId, event.id, `${seg}:face.${attr}`),
+          });
+        } catch (error) {
+          this.logger.warn(`Face index: ${(error as Error).message}`);
+        }
+      });
+    });
   }
 
-  public async listKnownFaces(): Promise<never[]> {
-    return [];
+  private cropAt(att: EventAttachments | undefined, index: number): Uint8Array | undefined {
+    const crops = att?.attributes;
+    const data = Array.isArray(crops) ? crops[index] : undefined;
+    return data instanceof Uint8Array && data.length ? data : undefined;
   }
 
-  public async getUnknownFaces(): Promise<never[]> {
-    return [];
+  private readAttributeCrop(cameraId: string, eventId: string, key: string): Uint8Array | undefined {
+    try {
+      return new Uint8Array(readFileSync(join(this.thumbDir(cameraId, eventId), `attr-${encodeURIComponent(key)}.jpg`)));
+    } catch {
+      return undefined;
+    }
   }
 
-  public async listUnknownFaceMeta(): Promise<never[]> {
-    return [];
+  private forgetEvents(ids: string[]): void {
+    if (!ids.length) return;
+    try {
+      this.semantic.deleteEvents(ids);
+      this.faces.deleteForEvents(ids);
+    } catch (error) {
+      this.logger.warn(`Index cleanup: ${(error as Error).message}`);
+    }
   }
 
-  public async listIgnoredFaces(): Promise<never[]> {
-    return [];
+  /** RPC proxies of the plugins implementing an interface (CLIP, face embedding), cached per plugin. */
+  private async pluginProxies<T>(iface: string): Promise<T[]> {
+    const rpc = (this.api as unknown as { proxy?: { createProxy<P>(namespace: string): P } }).proxy;
+    if (!rpc) return [];
+    const infos = await this.api.coreManager.getPluginsByInterface(iface as never);
+    return infos.map((info) => {
+      const key = `${iface}:${info.id}`;
+      let proxy = this.proxies.get(key) as T | undefined;
+      if (!proxy) {
+        proxy = rpc.createProxy<T>(`plugin.${info.id}.child.rpc`);
+        this.proxies.set(key, proxy);
+      }
+      return proxy;
+    });
   }
 
-  public async listIgnoredFaceMeta(): Promise<never[]> {
-    return [];
+  private async textEmbeddings(text: string): Promise<TextEmbedding[]> {
+    const out: TextEmbedding[] = [];
+    for (const encoder of await this.pluginProxies<ClipEncoder>('ClipDetection')) {
+      try {
+        const many = await withTimeout(encoder.getTextEmbeddings!(text));
+        if (Array.isArray(many) && many.length) {
+          out.push(...many);
+          continue;
+        }
+      } catch {
+        // older plugins only serve one model
+      }
+      try {
+        const one = await withTimeout(encoder.getTextEmbedding(text));
+        if (one?.embedding?.length) out.push(one);
+      } catch (error) {
+        this.logger.warn(`CLIP text embedding failed: ${(error as Error).message}`);
+      }
+    }
+    return out;
   }
 
-  public async getUnknownFaceThumbnails(): Promise<Record<string, Uint8Array>> {
-    return {};
+  /** Relabels one face attribute of a stored event and tells the UI. */
+  private relabelFace(s: FaceSighting, name: string): boolean {
+    const row = this.store.event(s.eventId);
+    if (!row) return false;
+    const event = JSON.parse(row.data) as RecordedEvent;
+    const attribute = event.segments?.[s.seg]?.attributes?.[s.attr] as FaceAttribute | undefined;
+    if (!attribute || attribute.type !== 'face') return false;
+    attribute.label = name;
+    this.store.upsertEvent(event);
+    const data = this.decorate(event, row.favorite === 1, true);
+    for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'update', data });
+    return true;
   }
 
-  public async getIgnoredFaceThumbnails(): Promise<Record<string, Uint8Array>> {
-    return {};
+  // ------------------------------------------------------------ semantic search
+
+  public async searchEventsByText(text: string, limit = 50, threshold = 0): Promise<ClipSearchResult[]> {
+    await this.ready;
+    const query = text?.trim();
+    if (!query) return [];
+    const queries = await this.textEmbeddings(query);
+    if (!queries.length) return [];
+    return this.semantic.search(queries, limit, threshold);
   }
 
-  public async getFaceImages(): Promise<never[]> {
-    return [];
+  public async getClipReindexStatus(): Promise<ClipReindexStatus> {
+    return { ...this.clipStatus };
   }
 
-  public async reassignEventFace(): Promise<number> {
-    return 0;
+  public async startClipReindex(): Promise<ClipReindexStatus> {
+    await this.ready;
+    if (!this.clipStatus.running) void this.runClipReindex();
+    return { ...this.clipStatus };
   }
 
-  public async getFacesRescanStatus(): Promise<{ running: boolean; total: number; done: number }> {
-    return { running: false, total: 0, done: 0 };
+  public async cancelClipReindex(): Promise<void> {
+    this.clipCancel = true;
   }
 
-  public async getFacesReindexStatus(): Promise<{ running: boolean; total: number; done: number; skipped: number }> {
-    return { running: false, total: 0, done: 0, skipped: 0 };
+  public async onClipReindex(callback: (status: ClipReindexStatus) => void): Promise<Unsubscribe> {
+    this.clipListeners.add(callback);
+    return () => this.clipListeners.delete(callback);
   }
 
-  public async getClipReindexStatus(): Promise<{ running: boolean; total: number; done: number; skipped: number }> {
-    return { running: false, total: 0, done: 0, skipped: 0 };
+  private emitClip(patch: Partial<ClipReindexStatus>): void {
+    this.clipStatus = { ...this.clipStatus, ...patch };
+    for (const cb of this.clipListeners) this.safeCall(this.clipListeners, cb, { ...this.clipStatus });
   }
 
-  public async searchEventsByText(): Promise<never[]> {
-    return [];
+  /** Embeds the stored pictures of events that have no vector of the current CLIP model yet. */
+  private async runClipReindex(): Promise<void> {
+    this.clipCancel = false;
+    this.emitClip({ running: true, total: 0, done: 0, skipped: 0, error: undefined });
+    try {
+      const [encoder] = await this.pluginProxies<ClipEncoder>('ClipDetection');
+      if (!encoder) throw new Error('Нет плагина с CLIP (ONNX, OpenVINO или CoreML)');
+      const model = (await withTimeout(encoder.getTextEmbedding('a photo'))).embeddingModel;
+
+      const pending: { id: string; cameraId: string; startTime: number; label: string }[] = [];
+      let skipped = 0;
+      for (let before: number | undefined; ; ) {
+        const rows = this.store.events({ before, limit: 500 });
+        if (!rows.length) break;
+        for (const row of rows) {
+          if (this.semantic.hasVectors(row.id, model)) {
+            skipped++;
+            continue;
+          }
+          const ev = JSON.parse(row.data) as RecordedEvent;
+          const label = String((ev.segments?.[0]?.detections?.[0] as { label?: string } | undefined)?.label ?? ev.types?.[0] ?? '');
+          pending.push({ id: row.id, cameraId: row.camera_id, startTime: row.start_ms, label });
+        }
+        before = rows[rows.length - 1]!.start_ms;
+        if (rows.length < 500) break;
+      }
+      this.emitClip({ total: pending.length + skipped, done: skipped, skipped });
+
+      for (let i = 0; i < pending.length && !this.clipCancel; i += 8) {
+        const batch = pending.slice(i, i + 8);
+        const pictures = batch.map((e) => this.eventPicture(e.cameraId, e.id));
+        const usable = batch.filter((_, j) => pictures[j]);
+        const images = pictures.filter((p): p is Uint8Array => !!p);
+        let results: Awaited<ReturnType<NonNullable<ClipEncoder['embedImages']>>> = [];
+        if (images.length) results = (await withTimeout(encoder.embedImages!(images), 120_000)) ?? [];
+        usable.forEach((e, j) => {
+          const vector = results[j]?.embeddings?.[0]?.embedding;
+          if (vector?.length) this.semantic.addScene(e, results[j]!.embeddingModel, vector);
+          else skipped++;
+        });
+        skipped += batch.length - usable.length;
+        this.emitClip({ done: Math.min(this.clipStatus.total, skipped + i + batch.length), skipped });
+      }
+      this.emitClip({ running: false });
+    } catch (error) {
+      this.emitClip({ running: false, error: (error as Error).message });
+    }
   }
 
-  public async onFacesRescan(): Promise<Unsubscribe> {
-    return () => undefined;
+  /** The best stored picture of an event: a segment card, else the scene. */
+  private eventPicture(cameraId: string, eventId: string): Uint8Array | undefined {
+    const dir = this.thumbDir(cameraId, eventId);
+    for (const name of ['card-0.jpg', 'strip-0.jpg', 'event.jpg']) {
+      try {
+        return new Uint8Array(readFileSync(join(dir, name)));
+      } catch {
+        // next candidate
+      }
+    }
+    return undefined;
   }
 
-  public async onFacesReindex(): Promise<Unsubscribe> {
-    return () => undefined;
+  // --------------------------------------------------------------------- faces
+
+  public async matchFaces(embeddings: number[][], embeddingModel: string, sensitivity = 'balanced'): Promise<(FaceMatchResult | null)[]> {
+    await this.ready;
+    return this.faces.match(embeddings, embeddingModel, sensitivity);
   }
 
-  public async onClipReindex(): Promise<Unsubscribe> {
-    return () => undefined;
+  public async enrollFace(name: string, imageData: Uint8Array): Promise<void> {
+    await this.ready;
+    const [embedder] = await this.pluginProxies<FaceEmbedder>('FaceEmbedding');
+    if (!embedder) throw new Error('Нет плагина распознавания лиц (ONNX, OpenVINO, CoreML или NCNN)');
+    const [result] = await withTimeout(embedder.embedFaceImages([imageData]));
+    if (!result?.embedding?.length) throw new Error('На фото не найдено лицо');
+    this.faces.enroll(name, result.embeddingModel, result.embedding, imageData, result.quality);
+  }
+
+  public async enrollFromEvent(name: string, unknownFaceId: string): Promise<void> {
+    await this.enrollCluster(name, [unknownFaceId]);
+  }
+
+  public async enrollCluster(name: string, faceIds: string[]): Promise<void> {
+    await this.ready;
+    for (const sighting of this.faces.enrollUnknown(name, faceIds)) this.relabelFace(sighting, name.trim());
+  }
+
+  public async listKnownFaces(): Promise<FaceProfile[]> {
+    await this.ready;
+    return this.faces.listKnown();
+  }
+
+  public async deleteFace(name: string): Promise<void> {
+    await this.ready;
+    this.faces.deleteFace(name);
+  }
+
+  public async getFaceImages(name: string): Promise<FaceImageData[]> {
+    await this.ready;
+    return this.faces.images(name);
+  }
+
+  public async removeFaceImage(name: string, imageId: string): Promise<void> {
+    await this.ready;
+    this.faces.removeImage(name, imageId);
+  }
+
+  public async getUnknownFaces(limit = 500): Promise<UnknownFace[]> {
+    await this.ready;
+    return this.faces.listUnknown(limit, true, true);
+  }
+
+  public async listUnknownFaceMeta(limit = 500): Promise<UnknownFace[]> {
+    await this.ready;
+    return this.faces.listUnknown(limit, false, false);
+  }
+
+  public async getUnknownFaceThumbnails(unknownFaceIds: string[]): Promise<Record<string, Uint8Array>> {
+    await this.ready;
+    return this.faces.thumbnails(unknownFaceIds);
+  }
+
+  public async deleteUnknownFace(unknownFaceId: string): Promise<void> {
+    await this.deleteUnknownFaces([unknownFaceId]);
+  }
+
+  public async deleteUnknownFaces(unknownFaceIds: string[]): Promise<void> {
+    await this.ready;
+    this.faces.deleteUnknown(unknownFaceIds);
+  }
+
+  public async deleteAllUnknownFaces(): Promise<void> {
+    await this.ready;
+    this.faces.deleteUnknown(this.faces.idsWhere('all'));
+  }
+
+  public async deleteUnknownFacesByCluster(clusterId: string): Promise<void> {
+    await this.ready;
+    this.faces.deleteUnknown(this.faces.idsWhere({ cluster: clusterId }));
+  }
+
+  public async deleteUngroupedUnknownFaces(): Promise<void> {
+    await this.ready;
+    this.faces.deleteUnknown(this.faces.idsWhere('ungrouped'));
+  }
+
+  public async removeFromCluster(unknownFaceId: string): Promise<void> {
+    await this.removeFacesFromCluster([unknownFaceId]);
+  }
+
+  public async removeFacesFromCluster(unknownFaceIds: string[]): Promise<void> {
+    await this.ready;
+    this.faces.removeFromCluster(unknownFaceIds);
+  }
+
+  public async ignoreUnknownFaces(unknownFaceIds: string[]): Promise<void> {
+    await this.ready;
+    this.faces.ignore(unknownFaceIds);
+  }
+
+  public async ignoreUnknownFacesByCluster(clusterId: string): Promise<void> {
+    await this.ready;
+    this.faces.ignore(this.faces.idsWhere({ cluster: clusterId }));
+  }
+
+  public async listIgnoredFaces(): Promise<IgnoredFace[]> {
+    await this.ready;
+    return this.faces.listIgnored(true);
+  }
+
+  public async listIgnoredFaceMeta(): Promise<IgnoredFace[]> {
+    await this.ready;
+    return this.faces.listIgnored(false);
+  }
+
+  public async getIgnoredFaceThumbnails(ignoredFaceIds: string[]): Promise<Record<string, Uint8Array>> {
+    await this.ready;
+    return this.faces.thumbnails(ignoredFaceIds);
+  }
+
+  public async deleteIgnoredFaces(ignoredFaceIds: string[]): Promise<void> {
+    await this.ready;
+    this.faces.deleteUnknown(ignoredFaceIds);
+  }
+
+  /**
+   * The user corrected who a face in an event is. The new name also learns from that face, so the
+   * same person is recognised next time; clearing the name puts nobody's face back into the unknown list.
+   */
+  public async reassignEventFace(eventId: string, segIndex: number, oldName: string, newName: string, options?: { attrIndex?: number }): Promise<number> {
+    await this.ready;
+    const row = this.store.event(eventId);
+    if (!row) return 0;
+    const event = JSON.parse(row.data) as RecordedEvent;
+    const attrs = (event.segments?.[segIndex]?.attributes ?? []) as FaceAttribute[];
+    const indices =
+      options?.attrIndex !== undefined ? [options.attrIndex] : attrs.flatMap((a, i) => (a.type === 'face' && (a.label ?? 'unknown') === (oldName || 'unknown') ? [i] : []));
+    const name = newName?.trim() || 'unknown';
+    let changed = 0;
+    for (const attr of indices) {
+      const sighting = { eventId, seg: segIndex, attr };
+      if (!this.relabelFace(sighting, name)) continue;
+      changed++;
+      const seen = this.faces.sighting(sighting);
+      if (name !== 'unknown' && seen) {
+        this.faces.enroll(name, seen.model, seen.vec, this.readAttributeCrop(row.camera_id, eventId, `${segIndex}:face.${attr}`), seen.confidence);
+        this.faces.deleteUnknownAt([sighting]);
+      } else if (name === 'unknown' && seen) {
+        this.faces.addUnknown({
+          cameraId: row.camera_id,
+          eventId,
+          seg: segIndex,
+          attr,
+          ts: row.start_ms,
+          model: seen.model,
+          embedding: Array.from(seen.vec),
+          confidence: seen.confidence,
+          jpeg: this.readAttributeCrop(row.camera_id, eventId, `${segIndex}:face.${attr}`),
+        });
+      }
+    }
+    return changed;
+  }
+
+  /** Re-matches the unknown faces against the enrolled people (after enrolling someone new). */
+  public async rescanFaces(): Promise<number> {
+    await this.ready;
+    const found = this.faces.rescan();
+    for (const s of found) this.relabelFace(s, s.identity);
+    this.faces.deleteUnknownAt(found);
+    return found.length;
+  }
+
+  public async getFacesRescanStatus(): Promise<FacesRescanStatus> {
+    return { ...this.rescanStatus };
+  }
+
+  public async startFacesRescan(): Promise<FacesRescanStatus> {
+    await this.ready;
+    if (this.rescanStatus.running) return { ...this.rescanStatus };
+    const emit = (patch: Partial<FacesRescanStatus>) => {
+      this.rescanStatus = { ...this.rescanStatus, ...patch };
+      for (const cb of this.rescanListeners) this.safeCall(this.rescanListeners, cb, { ...this.rescanStatus });
+    };
+    emit({ running: true, total: 1, done: 0, matched: 0 });
+    setImmediate(() => {
+      void this.rescanFaces()
+        .then((matched) => emit({ running: false, done: 1, matched }))
+        .catch(() => emit({ running: false, done: 1 }));
+    });
+    return { ...this.rescanStatus };
+  }
+
+  public async onFacesRescan(callback: (status: FacesRescanStatus) => void): Promise<Unsubscribe> {
+    this.rescanListeners.add(callback);
+    return () => this.rescanListeners.delete(callback);
+  }
+
+  public async getFacesReindexStatus(): Promise<FacesReindexStatus> {
+    return { ...this.facesReindexStatus };
+  }
+
+  public async startFacesReindex(): Promise<FacesReindexStatus> {
+    await this.ready;
+    if (!this.facesReindexStatus.running) void this.runFacesReindex();
+    return { ...this.facesReindexStatus };
+  }
+
+  public async cancelFacesReindex(): Promise<void> {
+    this.facesReindexCancel = true;
+  }
+
+  public async onFacesReindex(callback: (status: FacesReindexStatus) => void): Promise<Unsubscribe> {
+    this.facesReindexListeners.add(callback);
+    return () => this.facesReindexListeners.delete(callback);
+  }
+
+  /** After a face-model change: embeds the enrolled pictures with the current model (old vectors stay). */
+  private async runFacesReindex(): Promise<void> {
+    const emit = (patch: Partial<FacesReindexStatus>) => {
+      this.facesReindexStatus = { ...this.facesReindexStatus, ...patch };
+      for (const cb of this.facesReindexListeners) this.safeCall(this.facesReindexListeners, cb, { ...this.facesReindexStatus });
+    };
+    this.facesReindexCancel = false;
+    emit({ running: true, total: 0, done: 0, skipped: 0, skippedNames: [], error: undefined, embeddingModel: undefined });
+    try {
+      const [embedder] = await this.pluginProxies<FaceEmbedder>('FaceEmbedding');
+      if (!embedder) throw new Error('Нет плагина распознавания лиц');
+      const pictures = this.faces.knownPictures();
+      emit({ total: pictures.length });
+      let model: string | undefined;
+      const skippedNames = new Set<string>();
+      let done = 0;
+      let skipped = 0;
+      // names re-embedded in this run; a name that already had the new model before is left alone
+      const touched = new Set<string>();
+      for (const picture of pictures) {
+        if (this.facesReindexCancel) break;
+        done++;
+        if (!picture.jpeg || (model && (picture.model === model || (!touched.has(picture.name) && this.faces.nameHasModel(picture.name, model))))) {
+          if (!picture.jpeg) {
+            skipped++;
+            skippedNames.add(picture.name);
+          }
+          emit({ done, skipped, skippedNames: [...skippedNames] });
+          continue;
+        }
+        const [result] = await withTimeout(embedder.embedFaceImages([picture.jpeg]));
+        if (!result?.embedding?.length) {
+          skipped++;
+          skippedNames.add(picture.name);
+        } else {
+          model = result.embeddingModel;
+          if (result.embeddingModel !== picture.model && (touched.has(picture.name) || !this.faces.nameHasModel(picture.name, result.embeddingModel))) {
+            this.faces.addModelVector(picture.id, picture.name, result.embeddingModel, result.embedding);
+            touched.add(picture.name);
+          }
+        }
+        emit({ done, skipped, skippedNames: [...skippedNames], embeddingModel: model });
+      }
+      emit({ running: false });
+    } catch (error) {
+      emit({ running: false, error: (error as Error).message });
+    }
   }
 
   // ----------------------------------------------------------------- helpers
@@ -1069,6 +1562,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch {
       set.delete(cb);
     }
+  }
+}
+
+function safeDecode(key: string): string {
+  try {
+    return decodeURIComponent(key);
+  } catch {
+    return key;
   }
 }
 
