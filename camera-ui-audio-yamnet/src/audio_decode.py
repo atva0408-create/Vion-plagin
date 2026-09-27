@@ -65,7 +65,7 @@ def _decode_pcm(data: bytes, bits_per_sample: int) -> np.ndarray[Any, Any]:
     elif bits_per_sample == 32:
         return np.frombuffer(data, dtype=np.int32).astype(np.float32) / 2147483648.0
     else:
-        raise ValueError(f"Unsupported PCM bit depth: {bits_per_sample}")
+        raise ValueError(f"Неподдерживаемая разрядность PCM: {bits_per_sample}")
 
 
 def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
@@ -74,11 +74,11 @@ def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
     Supports PCM (8/16/24/32-bit), IEEE float (32/64-bit), A-law, and mu-law.
     """
     if len(data) < 12:
-        raise ValueError("Data too short to be a valid WAV file")
+        raise ValueError("Слишком мало данных для корректного WAV-файла")
 
     riff, _, wave = struct.unpack_from("<4sI4s", data, 0)
     if riff != b"RIFF" or wave != b"WAVE":
-        raise ValueError("Not a valid WAV file")
+        raise ValueError("Некорректный WAV-файл")
 
     fmt_code = 0
     channels = 0
@@ -93,7 +93,7 @@ def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
 
         if chunk_id == b"fmt ":
             if chunk_size < 16:
-                raise ValueError("Invalid fmt chunk")
+                raise ValueError("Некорректный блок fmt")
             fmt_code, channels, sample_rate, _, _, bits_per_sample = struct.unpack_from(
                 "<HHIIHH", data, offset
             )
@@ -105,7 +105,7 @@ def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
             offset += 1
 
     if not audio_data:
-        raise ValueError("No audio data found in WAV file")
+        raise ValueError("В WAV-файле нет аудиоданных")
 
     if fmt_code == _FMT_PCM:
         waveform = _decode_pcm(audio_data, bits_per_sample)
@@ -115,7 +115,7 @@ def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
         elif bits_per_sample == 64:
             waveform = np.frombuffer(audio_data, dtype=np.float64).astype(np.float32)
         else:
-            raise ValueError(f"Unsupported float bit depth: {bits_per_sample}")
+            raise ValueError(f"Неподдерживаемая разрядность float: {bits_per_sample}")
     elif fmt_code == _FMT_ALAW:
         raw = np.frombuffer(audio_data, dtype=np.uint8)
         waveform = _ALAW_TABLE[raw].astype(np.float32) / 32768.0
@@ -123,7 +123,7 @@ def decode_wav(data: bytes) -> tuple[np.ndarray[Any, Any], int]:
         raw = np.frombuffer(audio_data, dtype=np.uint8)
         waveform = _ULAW_TABLE[raw].astype(np.float32) / 32768.0
     else:
-        raise ValueError(f"Unsupported WAV format code: {fmt_code}")
+        raise ValueError(f"Неподдерживаемый код формата WAV: {fmt_code}")
 
     if channels > 1:
         waveform = waveform.reshape(-1, channels).mean(axis=1)

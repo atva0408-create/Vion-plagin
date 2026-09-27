@@ -54,10 +54,10 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             {
                 "type": "string",
                 "key": "device",
-                "title": "OpenCL Device",
+                "title": "Устройство OpenCL",
                 "description": (
-                    "Which OpenCL device runs motion detection (platform:device). "
-                    + (self._device_summary or "No OpenCL device detected.")
+                    "Какое устройство OpenCL выполняет обнаружение движения (платформа:устройство). "
+                    + (self._device_summary or "Устройство OpenCL не обнаружено.")
                 ),
                 "enum": self._device_options,
                 "store": True,
@@ -89,7 +89,7 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
         sensor = OpenCLMotionSensor(camera, device_selector=self._device_selector)
 
         if not sensor.isAvailable:
-            self.logger.error("OpenCL is not available on this system")
+            self.logger.error("OpenCL недоступен в этой системе")
             return
 
         await camera.addSensor(sensor)
@@ -101,8 +101,8 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             {
                 "type": "number",
                 "key": "area",
-                "title": "Area",
-                "description": "Minimum size of detected motion (pixels)",
+                "title": "Площадь",
+                "description": "Минимальный размер обнаруженного движения (в пикселях)",
                 "store": False,
                 "defaultValue": DEFAULT_AREA,
                 "minimum": 10,
@@ -113,8 +113,8 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             {
                 "type": "number",
                 "key": "threshold",
-                "title": "Threshold",
-                "description": "Sensitivity of motion detection (higher = less sensitive)",
+                "title": "Порог",
+                "description": "Чувствительность обнаружения движения (чем больше, тем ниже чувствительность)",
                 "store": False,
                 "defaultValue": DEFAULT_THRESHOLD,
                 "minimum": 0,
@@ -125,8 +125,8 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             {
                 "type": "number",
                 "key": "blur",
-                "title": "Blur",
-                "description": "Gaussian blur radius to reduce noise",
+                "title": "Размытие",
+                "description": "Радиус размытия по Гауссу для подавления шума",
                 "store": False,
                 "defaultValue": DEFAULT_BLUR,
                 "minimum": 1,
@@ -137,8 +137,8 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             {
                 "type": "number",
                 "key": "dilation",
-                "title": "Dilation",
-                "description": "Expansion of detected motion areas",
+                "title": "Расширение",
+                "description": "Расширение областей обнаруженного движения",
                 "store": False,
                 "defaultValue": DEFAULT_DILT,
                 "minimum": 1,
@@ -154,7 +154,7 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
         self, video_data: bytes, config: dict[str, Any]
     ) -> MotionDetectionPluginResponse:
         if self.motion_detection_running:
-            raise Exception("Motion detection already running")
+            raise Exception("Обнаружение движения уже выполняется")
 
         self.motion_detection_running = True
 
@@ -256,7 +256,7 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
                     if os.path.exists(temp_file):
                         os.unlink(temp_file)
                 except Exception as e:
-                    self.logger.error(f"Error cleaning up {temp_file}: {e}")
+                    self.logger.error(f"Ошибка удаления {temp_file}: {e}")
 
     async def detectMotion(
         self, frames: list[VideoFrameData], config: dict[str, Any] | None = None
@@ -341,13 +341,13 @@ class OpenCL(BasePlugin, MotionDetectionInterface):
             platforms = []
         if not platforms:
             self.logger.warn(
-                "No OpenCL platform found — install an OpenCL ICD / GPU driver, motion detection cannot start"
+                "Платформа OpenCL не найдена: установите OpenCL ICD / драйвер GPU, иначе обнаружение движения не запустится"
             )
             return
         described = "; ".join(
-            f"{p.name}: {', '.join(d.name for d in p.get_devices()) or 'no devices'}" for p in platforms
+            f"{p.name}: {', '.join(d.name for d in p.get_devices()) or 'нет устройств'}" for p in platforms
         )
-        self.logger.log(f"Available OpenCL devices: {described}")
+        self.logger.log(f"Доступные устройства OpenCL: {described}")
 
 
 def __main__() -> type[OpenCL]:

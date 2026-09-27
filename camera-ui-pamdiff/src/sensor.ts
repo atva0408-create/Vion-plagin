@@ -36,8 +36,8 @@ export class PamDiffMotionSensor extends MotionDetectorSensor<PamDiffStorageValu
       {
         type: 'number',
         key: 'difference',
-        title: 'Motion Difference',
-        description: 'Per-pixel color change needed to count as motion.',
+        title: 'Разница движения',
+        description: 'Изменение цвета пикселя, необходимое для обнаружения движения.',
         defaultValue: DEFAULT_DIFFERENCE,
         minimum: 1,
         maximum: 255,
@@ -51,8 +51,8 @@ export class PamDiffMotionSensor extends MotionDetectorSensor<PamDiffStorageValu
       {
         type: 'number',
         key: 'percentage',
-        title: 'Motion Percent',
-        description: 'Share of changed pixels needed to trigger motion.',
+        title: 'Процент движения',
+        description: 'Доля изменившихся пикселей, необходимая для срабатывания движения.',
         defaultValue: DEFAULT_PERCENTAGE,
         minimum: 0,
         maximum: 100,
@@ -66,11 +66,12 @@ export class PamDiffMotionSensor extends MotionDetectorSensor<PamDiffStorageValu
       {
         type: 'string',
         key: 'mode',
-        title: 'Motion Mode',
-        description: 'Color space used for detection (gray is faster).',
+        title: 'Режим обнаружения',
+        description: 'Цветовое пространство для обнаружения (оттенки серого работают быстрее).',
         defaultValue: DEFAULT_MODE,
         store: true,
         enum: ['gray', 'rgb'],
+        enumLabels: { gray: 'Оттенки серого', rgb: 'RGB' },
         required: true,
         onSet: async () => {
           this.reconfigure();
@@ -79,8 +80,8 @@ export class PamDiffMotionSensor extends MotionDetectorSensor<PamDiffStorageValu
       {
         type: 'button',
         key: 'default',
-        title: 'Default Settings',
-        description: 'Restore the default detection values.',
+        title: 'Сбросить настройки',
+        description: 'Восстановить значения обнаружения по умолчанию.',
         color: 'danger',
         onSet: async () => {
           await this.resetToDefaults();

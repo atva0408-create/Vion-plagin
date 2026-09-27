@@ -42,9 +42,9 @@ class CoralObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             {
                 "type": "string",
                 "key": "model",
-                "title": "Model",
-                "description": "YOLO model for object detection",
-                "group": "Object Detection",
+                "title": "Модель",
+                "description": "Модель YOLO для обнаружения объектов",
+                "group": "Обнаружение объектов",
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
@@ -54,9 +54,9 @@ class CoralObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all settings to their default values",
-                "group": "Object Detection",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки к значениям по умолчанию",
+                "group": "Обнаружение объектов",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
@@ -93,11 +93,11 @@ class CoralObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             resolved = resolve_model(new_model, DEFAULT_OBJECT_MODEL)
             await self._plugin.get_object_detector(resolved)
             self.updateModelSpec()
-            self._logger.log(f"Object model changed to {resolved}")
+            self._logger.log(f"Модель объектов изменена на {resolved}")
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self._logger.log("Settings reset to defaults")
+        self._logger.log("Настройки сброшены к значениям по умолчанию")
 
     def _camera_confidences(self, fallback: float) -> dict[str, float] | float:
         per_label = self._camera.detectionSettings["object"].get("confidences")

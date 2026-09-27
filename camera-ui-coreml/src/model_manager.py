@@ -63,7 +63,7 @@ class CoreMlModelManager(BaseModelManager):
         mode = self._get_compute_units()
         units = _COMPUTE_UNITS.get(mode, ct.ComputeUnit.ALL)
         model, spec = await asyncio.to_thread(self._load_model, model_name, pkg_path, units)
-        self.logger.success(f"Loaded model: {model_name} ({mode})")
+        self.logger.success(f"Модель загружена: {model_name} ({mode})")
         return CoreMlBackend(model, spec, _DEVICE_LABELS.get(mode, mode))
 
     def _load_model(self, model_name: str, pkg_path: str, compute_units: Any) -> tuple[Any, Any]:
@@ -88,5 +88,5 @@ class CoreMlModelManager(BaseModelManager):
             shutil.copytree(model.get_compiled_model_path(), tmp_path)
             os.rename(tmp_path, compiled_path)
         except Exception as error:
-            self.logger.log(f"Could not persist compiled model ({error})")
+            self.logger.log(f"Не удалось сохранить скомпилированную модель ({error})")
         return model, spec

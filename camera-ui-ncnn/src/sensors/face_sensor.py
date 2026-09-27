@@ -47,9 +47,9 @@ class NCNNFaceSensor(FaceDetectorSensor["FaceStorageValues"]):
             {
                 "type": "string",
                 "key": "detector_model",
-                "title": "Detector Model",
-                "description": "Face detection model",
-                "group": "Face Detection",
+                "title": "Модель детектора",
+                "description": "Модель обнаружения лиц",
+                "group": "Обнаружение лиц",
                 "enum": [DEFAULT_OPTION, *FACE_DETECTOR_MODELS],
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
@@ -59,9 +59,9 @@ class NCNNFaceSensor(FaceDetectorSensor["FaceStorageValues"]):
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all settings to their default values",
-                "group": "Face Detection",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки к значениям по умолчанию",
+                "group": "Обнаружение лиц",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
@@ -100,11 +100,11 @@ class NCNNFaceSensor(FaceDetectorSensor["FaceStorageValues"]):
             resolved = resolve_model(new_model, DEFAULT_FACE_DETECTOR)
             await self._plugin.get_face_detector(resolved)
             self.updateModelSpec()
-            self._logger.log(f"Face detector changed to {resolved}")
+            self._logger.log(f"Детектор лиц изменён на {resolved}")
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self._logger.log("Settings reset to defaults")
+        self._logger.log("Настройки сброшены к значениям по умолчанию")
 
     def _camera_confidence(self, fallback: float) -> float:
         settings = self._camera.detectionSettings.get("face") or {}

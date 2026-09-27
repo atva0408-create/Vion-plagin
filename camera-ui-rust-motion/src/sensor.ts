@@ -41,8 +41,8 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'number',
         key: 'area',
-        title: 'Area',
-        description: 'Smallest combined size of nearby changed regions that counts as motion.',
+        title: 'Площадь',
+        description: 'Минимальный суммарный размер соседних изменившихся областей, считающийся движением.',
         store: true,
         defaultValue: DEFAULT_MOTION_AREA,
         minimum: 10,
@@ -53,8 +53,8 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'number',
         key: 'threshold',
-        title: 'Threshold',
-        description: 'Brightness change needed to mark a pixel as changed.',
+        title: 'Порог',
+        description: 'Изменение яркости, при котором пиксель считается изменившимся.',
         store: true,
         defaultValue: DEFAULT_THRESHOLD,
         minimum: 1,
@@ -65,8 +65,8 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'number',
         key: 'blurRadius',
-        title: 'Blur Radius',
-        description: 'Smoothing applied before detection to reduce noise.',
+        title: 'Радиус размытия',
+        description: 'Сглаживание перед обнаружением для снижения шума.',
         store: true,
         defaultValue: DEFAULT_BLUR_RADIUS,
         minimum: 1,
@@ -77,8 +77,8 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'number',
         key: 'dilationSize',
-        title: 'Dilation Size',
-        description: 'Merges nearby changed pixels into one region.',
+        title: 'Размер расширения',
+        description: 'Объединяет соседние изменившиеся пиксели в одну область.',
         store: true,
         defaultValue: DEFAULT_DILATION_SIZE,
         minimum: 1,
@@ -89,8 +89,10 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'number',
         key: 'referenceHold',
-        title: 'Reference Hold',
-        description: 'Seconds the comparison image is kept. Higher values catch very slow movement, lower values keep motion boxes closer to the current position.',
+        title: 'Удержание эталона',
+        description:
+          'Сколько секунд хранится эталонный кадр для сравнения. ' +
+          'Большие значения улавливают очень медленное движение, меньшие — держат рамки движения ближе к текущему положению.',
         store: true,
         defaultValue: DEFAULT_REFERENCE_HOLD,
         minimum: 1,
@@ -101,8 +103,8 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'button',
         key: 'default',
-        title: 'Default Settings',
-        description: 'Restore the default detection values.',
+        title: 'Сбросить настройки',
+        description: 'Восстановить значения обнаружения по умолчанию.',
         color: 'danger',
         onSet: async () => {
           await this.resetToDefaults();
@@ -111,7 +113,7 @@ export class RustMotionSensor extends MotionDetectorSensor<RustMotionStorageValu
       {
         type: 'boolean',
         key: 'defaults2',
-        title: 'Defaults migrated',
+        title: 'Настройки по умолчанию перенесены',
         description: '',
         hidden: true,
         store: true,

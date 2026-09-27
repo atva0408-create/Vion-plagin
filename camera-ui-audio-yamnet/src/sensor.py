@@ -72,7 +72,7 @@ class YAMNetAudioSensor(AudioDetectorSensor):
 
         if detections:
             det_str = ", ".join(f"{d.get('attribute', d['label'])}={d['confidence']:.3f}" for d in detections)
-            self._logger.log(f"Audio detected: [{det_str}]")
+            self._logger.log(f"Обнаружен звук: [{det_str}]")
 
         return {
             "detected": len(detections) > 0,
@@ -91,7 +91,7 @@ class YAMNetAudioSensor(AudioDetectorSensor):
             await self._detector.initialize()
             self.updateModelSpec()
         except Exception as e:
-            self._logger.error(f"Failed to initialize audio detector: {e}")
+            self._logger.error(f"Не удалось инициализировать аудиодетектор: {e}")
 
     async def on_stop(self) -> None:
         if self._detector:

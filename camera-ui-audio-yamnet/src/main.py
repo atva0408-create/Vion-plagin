@@ -60,8 +60,8 @@ class YAMNetPlugin(BasePlugin, AudioDetectionInterface):
             {
                 "type": "string",
                 "key": "listen_labels",
-                "title": "Listen Labels",
-                "description": "Sounds to detect",
+                "title": "Отслеживаемые звуки",
+                "description": "Звуки для обнаружения",
                 "defaultValue": DEFAULT_LISTEN_LABELS,
                 "enum": DEFAULT_LISTEN_LABELS,
                 "multiple": True,
@@ -70,9 +70,9 @@ class YAMNetPlugin(BasePlugin, AudioDetectionInterface):
             {
                 "type": "number",
                 "key": "threshold",
-                "title": "Confidence Threshold",
-                "description": "Minimum confidence for detections (0-1)",
-                "group": "Detection",
+                "title": "Порог уверенности",
+                "description": "Минимальная уверенность для срабатывания (0–1)",
+                "group": "Обнаружение",
                 "store": False,
                 "defaultValue": DEFAULT_THRESHOLD,
                 "minimum": 0.1,

@@ -83,117 +83,122 @@ class OpenCV(BasePlugin, MotionDetectionInterface):
             {
                 "type": "string",
                 "key": "motion_detector",
-                "title": "Motion Detector",
-                "description": "Select the motion detection model to use",
+                "title": "Детектор движения",
+                "description": "Выберите модель обнаружения движения",
                 "enum": ["Frame Difference", "Background Substraction", "Default"],
+                "enumLabels": {
+                    "Frame Difference": "Разность кадров",
+                    "Background Substraction": "Вычитание фона",
+                    "Default": "Стандартный",
+                },
                 "store": False,
                 "defaultValue": DEFAULT_MODEL,
                 "required": True,
-                "group": "Manage",
+                "group": "Управление",
             },
             {
                 "type": "number",
                 "key": "default_area",
-                "title": "Area",
-                "description": "Minimum size of detected motion (pixels)",
+                "title": "Площадь",
+                "description": "Минимальный размер обнаруженного движения (в пикселях)",
                 "store": False,
                 "defaultValue": DEFAULT_AREA,
                 "minimum": 10,
                 "maximum": 1000,
                 "step": 1,
                 "required": True,
-                "group": "Default",
+                "group": "Стандартный",
             },
             {
                 "type": "number",
                 "key": "default_threshold",
-                "title": "Threshold",
-                "description": "Sensitivity of motion detection (higher = less sensitive)",
+                "title": "Порог",
+                "description": "Чувствительность обнаружения движения (чем больше, тем ниже чувствительность)",
                 "store": False,
                 "defaultValue": DEFAULT_THRESHOLD,
                 "minimum": 1,
                 "maximum": 255,
                 "step": 1,
                 "required": True,
-                "group": "Default",
+                "group": "Стандартный",
             },
             {
                 "type": "number",
                 "key": "default_blur",
-                "title": "Blur",
-                "description": "Gaussian blur radius to reduce noise",
+                "title": "Размытие",
+                "description": "Радиус размытия по Гауссу для подавления шума",
                 "store": False,
                 "defaultValue": DEFAULT_BLUR,
                 "minimum": 1,
                 "maximum": 21,
                 "step": 2,
                 "required": True,
-                "group": "Default",
+                "group": "Стандартный",
             },
             {
                 "type": "number",
                 "key": "default_dilation_size",
-                "title": "Dilation",
-                "description": "Expansion of detected motion areas",
+                "title": "Расширение",
+                "description": "Расширение областей обнаруженного движения",
                 "store": False,
                 "defaultValue": DEFAULT_DILT,
                 "minimum": 1,
                 "maximum": 21,
                 "step": 2,
                 "required": True,
-                "group": "Default",
+                "group": "Стандартный",
             },
             {
                 "type": "number",
                 "key": "background_substraction_area",
-                "title": "Area",
-                "description": "Minimum size of detected motion (pixels)",
+                "title": "Площадь",
+                "description": "Минимальный размер обнаруженного движения (в пикселях)",
                 "store": False,
                 "defaultValue": DEFAULT_AREA_BS,
                 "minimum": 10,
                 "maximum": 1000,
                 "step": 1,
                 "required": True,
-                "group": "Background Substraction",
+                "group": "Вычитание фона",
             },
             {
                 "type": "number",
                 "key": "background_substraction_var_threshold",
-                "title": "Threshold",
-                "description": "Sensitivity of motion detection (higher = less sensitive)",
+                "title": "Порог",
+                "description": "Чувствительность обнаружения движения (чем больше, тем ниже чувствительность)",
                 "store": False,
                 "defaultValue": DEFAULT_VAR_THRESHOLD_BS,
                 "minimum": 4,
                 "maximum": 200,
                 "step": 1,
                 "required": True,
-                "group": "Background Substraction",
+                "group": "Вычитание фона",
             },
             {
                 "type": "number",
                 "key": "background_substraction_learning_rate",
-                "title": "Learning Rate",
-                "description": "Speed of background model adaptation (0-1, -1 for auto)",
+                "title": "Скорость обучения",
+                "description": "Скорость адаптации модели фона (0–1, -1 — автоматически)",
                 "store": False,
                 "defaultValue": DEFAULT_LEARNING_RATE,
                 "minimum": -1,
                 "maximum": 1,
                 "step": 0.01,
                 "required": True,
-                "group": "Background Substraction",
+                "group": "Вычитание фона",
             },
             {
                 "type": "number",
                 "key": "frame_difference_area",
-                "title": "Area",
-                "description": "Minimum size of detected motion (pixels)",
+                "title": "Площадь",
+                "description": "Минимальный размер обнаруженного движения (в пикселях)",
                 "store": False,
                 "defaultValue": DEFAULT_AREA_FD,
                 "minimum": 10,
                 "maximum": 1000,
                 "step": 1,
                 "required": True,
-                "group": "Frame Difference",
+                "group": "Разность кадров",
             },
         ]
 
@@ -203,7 +208,7 @@ class OpenCV(BasePlugin, MotionDetectionInterface):
         self, video_data: bytes, config: dict[str, Any]
     ) -> MotionDetectionPluginResponse:
         if self.motion_detection_running:
-            raise Exception("Motion detection already running")
+            raise Exception("Обнаружение движения уже выполняется")
 
         self.motion_detection_running = True
 
@@ -233,7 +238,7 @@ class OpenCV(BasePlugin, MotionDetectionInterface):
 
             executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="OpenCV")
             detector_model = config.get("motion_detector", "Default")
-            self.logger.log(f"Using detector model: {detector_model}")
+            self.logger.log(f"Используется модель детектора: {detector_model}")
 
             detections: list[Detection] = []
 
@@ -359,7 +364,7 @@ class OpenCV(BasePlugin, MotionDetectionInterface):
                     if os.path.exists(temp_file):
                         os.unlink(temp_file)
                 except Exception as e:
-                    self.logger.error(f"Error cleaning up {temp_file}: {e}")
+                    self.logger.error(f"Ошибка удаления {temp_file}: {e}")
 
     async def detectMotion(
         self, frames: list[VideoFrameData], config: dict[str, Any] | None = None

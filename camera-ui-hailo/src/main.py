@@ -59,16 +59,17 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "device_id",
-                "title": "Hailo Device",
+                "title": "Устройство Hailo",
                 "description": (
-                    "Which Hailo device runs inference when several are installed. "
+                    "Какое устройство Hailo выполняет инференс, если их установлено несколько. "
                     + (
-                        f"Detected: {', '.join(self._device_ids)}."
+                        f"Обнаружены: {', '.join(self._device_ids)}."
                         if self._device_ids
-                        else "No Hailo device detected."
+                        else "Устройство Hailo не обнаружено."
                     )
                 ),
                 "enum": ["auto", *self._device_ids],
+                "enumLabels": {"auto": "Авто"},
                 "store": True,
                 "defaultValue": "auto",
                 "onSet": self._on_device_change,
@@ -76,8 +77,8 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "active_hardware",
-                "title": "Active Hardware",
-                "description": "Hardware currently running inference across loaded models.",
+                "title": "Активное оборудование",
+                "description": "Оборудование, на котором сейчас выполняется инференс загруженных моделей.",
                 "readonly": True,
                 "store": False,
                 "onGet": self._active_hardware,
@@ -85,16 +86,16 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all plugin settings to their default values",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки плагина к значениям по умолчанию",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
             {
                 "type": "button",
                 "key": "redownload_models",
-                "title": "Re-download Models",
-                "description": "Clear the local model cache and download the latest models again.",
+                "title": "Скачать модели заново",
+                "description": "Очистить локальный кэш моделей и заново скачать актуальные модели.",
                 "onSet": self._redownload_models,
             },
         ]
@@ -132,11 +133,12 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "model",
-                "title": "Model",
-                "description": "YOLO model for testing",
+                "title": "Модель",
+                "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -196,7 +198,7 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
             if detector.backend is not None
         ]
         if not backends:
-            return "No models loaded yet"
+            return "Модели ещё не загружены"
         return ", ".join(dict.fromkeys(backends))
 
     def _resolve_device_id(self) -> str | None:
@@ -206,7 +208,7 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
     async def _on_device_change(self, new_value: object, old_value: object) -> None:
         if new_value == old_value:
             return
-        self.logger.log(f"Hailo device changed ({old_value} -> {new_value}); reloading models")
+        self.logger.log(f"Устройство Hailo изменено ({old_value} -> {new_value}); перезагрузка моделей")
         await self._reload_models()
 
     async def _reload_models(self) -> None:
@@ -221,13 +223,13 @@ class HailoPlugin(BasePlugin, ObjectDetectionInterface):
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self.logger.log("Settings reset to defaults")
+        self.logger.log("Настройки сброшены к значениям по умолчанию")
 
     async def _redownload_models(self, _new: object = None, _old: object = None) -> None:
-        self.logger.log("Re-downloading models (clearing cache)...")
+        self.logger.log("Повторная загрузка моделей (очистка кэша)...")
         shutil.rmtree(self.model_manager.model_path, ignore_errors=True)
         await self._reload_models()
-        self.logger.success("Models re-downloaded")
+        self.logger.success("Модели загружены заново")
 
     async def _close_all(self) -> None:
         await asyncio.gather(*(d.close() for d in self.object_detectors.values()))

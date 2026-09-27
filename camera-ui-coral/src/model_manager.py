@@ -39,7 +39,7 @@ class CoralModelManager(BaseModelManager):
         interpreter, device = await asyncio.to_thread(
             self._build, paths["cpu"], paths["edgetpu"], use_edgetpu, self._get_device()
         )
-        self.logger.success(f"Loaded model: {model_name} ({device})")
+        self.logger.success(f"Модель загружена: {model_name} ({device})")
         return CoralBackend(interpreter, device)
 
     def _build(
@@ -55,7 +55,7 @@ class CoralModelManager(BaseModelManager):
                 self._warmup(interpreter)
                 return interpreter, f"Edge TPU (Coral, {device})" if device else "Edge TPU (Coral)"
             except Exception as error:
-                self.logger.warn(f"Edge TPU unavailable ({error}); falling back to CPU")
+                self.logger.warn(f"Edge TPU недоступен ({error}); переключение на CPU")
 
         interpreter = Interpreter(model_path=cpu_path)
         interpreter.allocate_tensors()

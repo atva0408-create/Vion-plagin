@@ -12,7 +12,7 @@ def create_program(device_selector: str | None = None) -> tuple[Any, Any, Any]:
     platforms = cast(Any, cl.get_platforms())
 
     if len(platforms) == 0:
-        raise RuntimeError("Failed to find any OpenCL platforms.")
+        raise RuntimeError("Не найдено ни одной платформы OpenCL.")
 
     device = None
     if device_selector and device_selector != "auto":
@@ -28,7 +28,7 @@ def create_program(device_selector: str | None = None) -> tuple[Any, Any, Any]:
         if len(devices) == 0:
             devices = platforms[0].get_devices(cl.device_type.CPU)
             if len(devices) == 0:
-                raise RuntimeError("Could not find OpenCL GPU or CPU device.")
+                raise RuntimeError("Не найдено устройство OpenCL (GPU или CPU).")
         device = devices[0]
 
     context = cast(Any, cl.Context([device]))

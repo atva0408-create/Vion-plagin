@@ -81,7 +81,7 @@ class NCNNPlugin(
     def __init__(self, logger: LoggerService, api: PluginAPI, storage: DeviceStorage[Any]) -> None:
         super().__init__(logger, api, storage)
         gpus = gpu_count()
-        self.logger.log(f"Available devices: CPU{f', Vulkan GPU x{gpus}' if gpus > 0 else ''}")
+        self.logger.log(f"Доступные устройства: CPU{f', Vulkan GPU x{gpus}' if gpus > 0 else ''}")
         self.model_manager = NcnnModelManager(
             api.storagePath,
             logger,
@@ -106,9 +106,10 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "face_embedder_model",
-                "title": "Face Embedding Model",
-                "description": "Model that turns a face into a vector, shared by every camera. Changing it means the enrolled faces are embedded again.",
+                "title": "Модель эмбеддингов лиц",
+                "description": "Модель, преобразующая лицо в вектор, общая для всех камер. После её смены эмбеддинги сохранённых лиц будут пересчитаны.",
                 "enum": [DEFAULT_OPTION, *FACE_EMBEDDER_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
                 "required": True,
@@ -117,10 +118,10 @@ class NCNNPlugin(
             {
                 "type": "boolean",
                 "key": "use_vulkan",
-                "title": "Use Vulkan (GPU)",
+                "title": "Использовать Vulkan (GPU)",
                 "description": (
-                    "Run inference on the GPU via Vulkan when available; falls back to CPU otherwise. "
-                    f"Vulkan GPU detected on this system: {'yes' if gpu_count() > 0 else 'no'}."
+                    "Выполнять инференс на GPU через Vulkan, если он доступен; иначе используется CPU. "
+                    f"Vulkan GPU в этой системе: {'обнаружен' if gpu_count() > 0 else 'не обнаружен'}."
                 ),
                 "store": True,
                 "defaultValue": DEFAULT_USE_VULKAN,
@@ -129,12 +130,13 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "vulkan_device",
-                "title": "Vulkan Device",
+                "title": "Устройство Vulkan",
                 "description": (
-                    "Which Vulkan GPU runs inference on multi-GPU systems. "
-                    + ("; ".join(f"{i}: {name}" for i, name in gpu_devices()) or "No Vulkan GPU detected.")
+                    "Какой Vulkan GPU выполняет инференс в системах с несколькими GPU. "
+                    + ("; ".join(f"{i}: {name}" for i, name in gpu_devices()) or "Vulkan GPU не обнаружен.")
                 ),
                 "enum": ["auto", *[str(i) for i, _ in gpu_devices()]],
+                "enumLabels": {"auto": "Авто"},
                 "store": True,
                 "defaultValue": "auto",
                 "onSet": self._on_vulkan_change,
@@ -142,8 +144,8 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "active_hardware",
-                "title": "Active Hardware",
-                "description": "Hardware currently running inference across loaded models.",
+                "title": "Активное оборудование",
+                "description": "Оборудование, на котором сейчас выполняется инференс загруженных моделей.",
                 "readonly": True,
                 "store": False,
                 "onGet": self._active_hardware,
@@ -151,16 +153,16 @@ class NCNNPlugin(
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all plugin settings to their default values",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки плагина к значениям по умолчанию",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
             {
                 "type": "button",
                 "key": "redownload_models",
-                "title": "Re-download Models",
-                "description": "Clear the local model cache and download the latest models again.",
+                "title": "Скачать модели заново",
+                "description": "Очистить локальный кэш моделей и заново скачать актуальные модели.",
                 "onSet": self._redownload_models,
             },
         ]
@@ -291,11 +293,12 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "model",
-                "title": "Model",
-                "description": "YOLO model for testing",
+                "title": "Модель",
+                "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -344,11 +347,12 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "detector_model",
-                "title": "Detector Model",
-                "description": "Face detection model for testing",
+                "title": "Модель детектора",
+                "description": "Модель обнаружения лиц для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *FACE_DETECTOR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -419,21 +423,23 @@ class NCNNPlugin(
             {
                 "type": "string",
                 "key": "detector_model",
-                "title": "Detector Model",
-                "description": "YOLOv9 model for plate detection testing",
+                "title": "Модель детектора",
+                "description": "Модель YOLOv9 для тестирования обнаружения номерных знаков",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *LPD_DETECTOR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
             {
                 "type": "string",
                 "key": "ocr_model",
-                "title": "OCR Model",
-                "description": "CCT model for plate text recognition testing",
+                "title": "Модель OCR",
+                "description": "Модель CCT для тестирования распознавания текста номеров",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OCR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -520,18 +526,19 @@ class NCNNPlugin(
         for sensors in self._sensors.values():
             if (embedder := sensors.get("faceEmbedder")) is not None:
                 embedder.updateModelSpec()
-        self.logger.log(f"Face embedding model changed to {resolved}")
+        self.logger.log(f"Модель эмбеддингов лиц изменена на {resolved}")
 
     async def faceEmbeddingSettings(self) -> list[JsonSchema] | None:
         return [
             {
                 "type": "string",
                 "key": "embedder_model",
-                "title": "Recognition Model",
-                "description": "Face recognition model for testing",
+                "title": "Модель распознавания",
+                "description": "Модель распознавания лиц для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *FACE_EMBEDDER_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -588,7 +595,7 @@ class NCNNPlugin(
             if detector.backend is not None
         ]
         if not backends:
-            return "No models loaded yet"
+            return "Модели ещё не загружены"
         return ", ".join(dict.fromkeys(backends))
 
     def _resolve_use_vulkan(self) -> bool:
@@ -607,7 +614,7 @@ class NCNNPlugin(
     async def _on_vulkan_change(self, new_value: object, old_value: object) -> None:
         if new_value == old_value:
             return
-        self.logger.log(f"Vulkan setting changed ({old_value} -> {new_value}); reloading models")
+        self.logger.log(f"Настройка Vulkan изменена ({old_value} -> {new_value}); перезагрузка моделей")
         await self._reload_models()
 
     async def _reload_models(self) -> None:
@@ -635,13 +642,13 @@ class NCNNPlugin(
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self.logger.log("Settings reset to defaults")
+        self.logger.log("Настройки сброшены к значениям по умолчанию")
 
     async def _redownload_models(self, _new: object = None, _old: object = None) -> None:
-        self.logger.log("Re-downloading models (clearing cache)...")
+        self.logger.log("Повторная загрузка моделей (очистка кэша)...")
         shutil.rmtree(self.model_manager.model_path, ignore_errors=True)
         await self._reload_models()
-        self.logger.success("Models re-downloaded")
+        self.logger.success("Модели загружены заново")
 
     async def _close_all(self) -> None:
         await asyncio.gather(

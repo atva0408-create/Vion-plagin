@@ -62,7 +62,7 @@ class HailoModelManager(BaseModelManager):
         device_id = self._get_device_id()
         device = _ARCH_DISPLAY.get(arch, arch) + (f" ({device_id})" if device_id else "")
         backend = await asyncio.to_thread(HailoBackend, paths["hef"], device, device_id)
-        self.logger.success(f"Loaded model: {model_name} ({device})")
+        self.logger.success(f"Модель загружена: {model_name} ({device})")
         return backend
 
     async def _ensure_arch(self) -> None:
@@ -73,6 +73,6 @@ class HailoModelManager(BaseModelManager):
     async def _detect_arch_async(self) -> None:
         self._arch = await asyncio.to_thread(_detect_arch)
         if self._arch is None:
-            self.logger.warn(f"Could not detect Hailo device; assuming {_DEFAULT_ARCH}")
+            self.logger.warn(f"Не удалось определить устройство Hailo; предполагается {_DEFAULT_ARCH}")
         else:
-            self.logger.log(f"Available devices: {_ARCH_DISPLAY.get(self._arch, self._arch)}")
+            self.logger.log(f"Доступные устройства: {_ARCH_DISPLAY.get(self._arch, self._arch)}")

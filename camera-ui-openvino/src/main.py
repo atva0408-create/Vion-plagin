@@ -93,7 +93,7 @@ class OpenVinoPlugin(
     def __init__(self, logger: LoggerService, api: PluginAPI, storage: DeviceStorage[Any]) -> None:
         super().__init__(logger, api, storage)
         self._core = ov.Core()
-        self.logger.log(f"Available devices: {', '.join(self._describe_devices())}")
+        self.logger.log(f"Доступные устройства: {', '.join(self._describe_devices())}")
 
         # enumerated once: indexed devices (GPU.0, GPU.1, NPU variants) join the
         # static options so multi-GPU boxes can pin a specific card
@@ -122,9 +122,10 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "clip_vision_model",
-                "title": "CLIP Vision Model",
-                "description": "CLIP model for semantic-search embeddings, shared by every camera. Changing it requires reindexing the recordings.",
+                "title": "Модель CLIP (изображения)",
+                "description": "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.",
                 "enum": [DEFAULT_OPTION, *CLIP_VISION_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
                 "required": True,
@@ -133,9 +134,10 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "face_embedder_model",
-                "title": "Face Embedding Model",
-                "description": "Model that turns a face into a vector, shared by every camera. Changing it means the enrolled faces are embedded again.",
+                "title": "Модель эмбеддингов лиц",
+                "description": "Модель, преобразующая лицо в вектор, общая для всех камер. После её смены эмбеддинги сохранённых лиц будут пересчитаны.",
                 "enum": [DEFAULT_OPTION, *FACE_EMBEDDER_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": True,
                 "defaultValue": DEFAULT_OPTION,
                 "required": True,
@@ -144,12 +146,12 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "device",
-                "title": "Device",
+                "title": "Устройство",
                 "description": (
-                    "OpenVINO inference device. 'Default' auto-detects (NPU/GPU/CPU); "
-                    "AUTO lets OpenVINO choose; CPU/GPU/NPU force a specific device. "
-                    "Indexed entries (e.g. GPU.0, GPU.1) pin one card on multi-GPU systems. "
-                    f"Available on this system: {', '.join(self._core.available_devices)}."
+                    "Устройство инференса OpenVINO. 'Default' — автоопределение (NPU/GPU/CPU); "
+                    "AUTO — выбор за OpenVINO; CPU/GPU/NPU — принудительно конкретное устройство. "
+                    "Варианты с индексом (например, GPU.0, GPU.1) закрепляют одну карту в системах с несколькими GPU. "
+                    f"Доступно в этой системе: {', '.join(self._core.available_devices)}."
                 ),
                 "enum": self._device_options,
                 "store": True,
@@ -160,8 +162,8 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "active_hardware",
-                "title": "Active Hardware",
-                "description": "Device currently running inference across loaded models.",
+                "title": "Активное оборудование",
+                "description": "Устройство, на котором сейчас выполняется инференс загруженных моделей.",
                 "readonly": True,
                 "store": False,
                 "onGet": self._active_hardware,
@@ -169,16 +171,16 @@ class OpenVinoPlugin(
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all plugin settings to their default values",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки плагина к значениям по умолчанию",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
             {
                 "type": "button",
                 "key": "redownload_models",
-                "title": "Re-download Models",
-                "description": "Clear the local model cache and download the latest models again.",
+                "title": "Скачать модели заново",
+                "description": "Очистить локальный кэш моделей и заново скачать актуальные модели.",
                 "onSet": self._redownload_models,
             },
         ]
@@ -321,11 +323,12 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "model",
-                "title": "Model",
-                "description": "YOLO model for testing",
+                "title": "Модель",
+                "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -374,11 +377,12 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "detector_model",
-                "title": "Detector Model",
-                "description": "Face detection model for testing",
+                "title": "Модель детектора",
+                "description": "Модель обнаружения лиц для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *FACE_DETECTOR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -449,21 +453,23 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "detector_model",
-                "title": "Detector Model",
-                "description": "YOLOv9 model for plate detection testing",
+                "title": "Модель детектора",
+                "description": "Модель YOLOv9 для тестирования обнаружения номерных знаков",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *LPD_DETECTOR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
             {
                 "type": "string",
                 "key": "ocr_model",
-                "title": "OCR Model",
-                "description": "CCT model for plate text recognition testing",
+                "title": "Модель OCR",
+                "description": "Модель CCT для тестирования распознавания текста номеров",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OCR_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -543,11 +549,12 @@ class OpenVinoPlugin(
             {
                 "type": "string",
                 "key": "vision_model",
-                "title": "Vision Model",
-                "description": "CLIP vision model for testing",
+                "title": "Модель изображений",
+                "description": "Модель CLIP (изображения) для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *CLIP_VISION_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -678,18 +685,19 @@ class OpenVinoPlugin(
         for sensors in self._sensors.values():
             if (embedder := sensors.get("faceEmbedder")) is not None:
                 embedder.updateModelSpec()
-        self.logger.log(f"Face embedding model changed to {resolved}")
+        self.logger.log(f"Модель эмбеддингов лиц изменена на {resolved}")
 
     async def faceEmbeddingSettings(self) -> list[JsonSchema] | None:
         return [
             {
                 "type": "string",
                 "key": "embedder_model",
-                "title": "Recognition Model",
-                "description": "Face recognition model for testing",
+                "title": "Модель распознавания",
+                "description": "Модель распознавания лиц для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *FACE_EMBEDDER_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -722,7 +730,7 @@ class OpenVinoPlugin(
         for sensors in self._sensors.values():
             if (clip := sensors.get("clip")) is not None:
                 clip.updateModelSpec()
-        self.logger.log(f"CLIP vision model changed to {resolved}")
+        self.logger.log(f"Модель CLIP (изображения) изменена на {resolved}")
 
     async def _add_sensors(self, camera: CameraDevice) -> None:
         sensors: dict[str, Any] = {}
@@ -756,7 +764,7 @@ class OpenVinoPlugin(
                 driver = self._core.get_property(device, "GPU_DRIVER_VERSION")
             except Exception:
                 driver = ""
-            described.append(f"{device} (driver {driver})" if driver else device)
+            described.append(f"{device} (драйвер {driver})" if driver else device)
         return described
 
     def _active_hardware(self) -> str:
@@ -774,7 +782,7 @@ class OpenVinoPlugin(
         ]
         backends += [enc.vision.device for enc in self.clip_encoders.values() if enc.vision is not None]
         if not backends:
-            return "No models loaded yet"
+            return "Модели ещё не загружены"
         return ", ".join(dict.fromkeys(backends))
 
     def _resolve_device(self) -> str:
@@ -816,7 +824,7 @@ class OpenVinoPlugin(
     async def _on_device_change(self, new_value: object, old_value: object) -> None:
         if new_value == old_value:
             return
-        self.logger.log(f"Device setting changed ({old_value} -> {new_value}); reloading models")
+        self.logger.log(f"Устройство изменено ({old_value} -> {new_value}); перезагрузка моделей")
         await self._reload_models()
 
     async def _reload_models(self) -> None:
@@ -846,13 +854,13 @@ class OpenVinoPlugin(
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self.logger.log("Settings reset to defaults")
+        self.logger.log("Настройки сброшены к значениям по умолчанию")
 
     async def _redownload_models(self, _new: object = None, _old: object = None) -> None:
-        self.logger.log("Re-downloading models (clearing cache)...")
+        self.logger.log("Повторная загрузка моделей (очистка кэша)...")
         shutil.rmtree(self.model_manager.model_path, ignore_errors=True)
         await self._reload_models()
-        self.logger.success("Models re-downloaded")
+        self.logger.success("Модели загружены заново")
 
     async def _close_all(self) -> None:
         await asyncio.gather(
@@ -876,9 +884,9 @@ class OpenVinoPlugin(
     async def _preload_clip(self) -> None:
         try:
             await self.get_clip_encoder(self.clip_model())
-            self.logger.log("CLIP models preloaded")
+            self.logger.log("Модели CLIP предзагружены")
         except Exception as e:
-            self.logger.error(f"Failed to preload CLIP models: {e}")
+            self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
 
     async def _on_shutdown(self) -> None:
         for sensors in self._sensors.values():

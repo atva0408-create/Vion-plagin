@@ -59,7 +59,9 @@ class OnnxModelManager(BaseModelManager):
     async def build_backend(self, model_name: str, paths: Mapping[str, str]) -> InferenceBackend:
         sessions = await asyncio.to_thread(self._build_sessions, paths["model"])
         active = sessions[0].get_providers()
-        self.logger.success(f"Loaded model: {model_name} ({active[0] if active else 'CPUExecutionProvider'})")
+        self.logger.success(
+            f"Модель загружена: {model_name} ({active[0] if active else 'CPUExecutionProvider'})"
+        )
         return OnnxBackend(sessions)
 
     def _build_sessions(self, path: str) -> list[Any]:
@@ -76,7 +78,7 @@ class OnnxModelManager(BaseModelManager):
         except Exception as error:
             if providers == ["CPUExecutionProvider"]:
                 raise
-            self.logger.warn(f"Accelerated provider unavailable ({error}); falling back to CPU")
+            self.logger.warn(f"Ускоренный провайдер недоступен ({error}); переключение на CPU")
             self._hint_legacy(providers)
             return self._create_cpu_session(path)
 
@@ -89,21 +91,22 @@ class OnnxModelManager(BaseModelManager):
         self._hinted_legacy = True
         if LEGACY_RUNTIME:
             self.logger.warn(
-                "CUDA detection with this plugin needs the CUDA 12 libraries: in Docker use the "
-                "ghcr.io/cameraui/camera.ui:nvidia-cuda12 image. On CUDA 13 (:nvidia image) install "
-                "the regular ONNX plugin instead"
+                "Для распознавания на CUDA этому плагину нужны библиотеки CUDA 12: в Docker используйте "
+                "образ ViON с поддержкой NVIDIA (CUDA 12). Для CUDA 13 (образ ViON с поддержкой NVIDIA "
+                "(CUDA)) установите вместо него обычный плагин ONNX"
             )
             return
         if "TensorrtExecutionProvider" in names:
             self.logger.warn(
-                "TensorRT needs the TensorRT 10 libraries: in Docker use the "
-                "ghcr.io/cameraui/camera.ui:nvidia-tensorrt image, elsewhere install TensorRT 10 yourself"
+                "Для TensorRT нужны библиотеки TensorRT 10: в Docker используйте образ ViON с поддержкой "
+                "NVIDIA (TensorRT), в остальных случаях установите TensorRT 10 самостоятельно"
             )
             return
         self.logger.warn(
-            "CUDA detection needs the CUDA 13 libraries and an NVIDIA driver 580 or newer: in Docker "
-            "use the ghcr.io/cameraui/camera.ui:nvidia image. Stuck on CUDA 12 or a GPU before "
-            "GTX 1650 (Maxwell, Pascal, Volta)? Use the :nvidia-cuda12 image with the ONNX Legacy plugin"
+            "Для распознавания на CUDA нужны библиотеки CUDA 13 и драйвер NVIDIA 580 или новее: в Docker "
+            "используйте образ ViON с поддержкой NVIDIA (CUDA). Если доступна только CUDA 12 или GPU "
+            "старше GTX 1650 (Maxwell, Pascal, Volta), используйте образ ViON с поддержкой NVIDIA "
+            "(CUDA 12) вместе с плагином ONNX Legacy"
         )
 
     def _create_cpu_session(self, path: str) -> Any:

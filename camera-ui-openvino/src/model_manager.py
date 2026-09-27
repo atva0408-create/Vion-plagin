@@ -29,7 +29,7 @@ class OpenVinoModelManager(BaseModelManager):
             cache_dir = self.compile_cache_dir(f"openvino-{ov.__version__.split('-')[0]}")
             self._core.set_property({"CACHE_DIR": cache_dir})
         except Exception as error:
-            logger.log(f"Model compile cache unavailable ({error})")
+            logger.log(f"Кэш компиляции моделей недоступен ({error})")
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         xml_rel, bin_rel = self._rel_files(model_name)
@@ -49,7 +49,7 @@ class OpenVinoModelManager(BaseModelManager):
 
     async def build_backend(self, model_name: str, paths: Mapping[str, str]) -> InferenceBackend:
         compiled, used = await asyncio.to_thread(self._compile, model_name, paths["xml"], self._get_device())
-        self.logger.success(f"Loaded model: {model_name} ({used})")
+        self.logger.success(f"Модель загружена: {model_name} ({used})")
         return OpenVinoBackend(compiled, asyncio.get_running_loop(), used)
 
     def _compile(self, model_name: str, xml_path: str, device: str) -> tuple[Any, str]:
@@ -68,7 +68,7 @@ class OpenVinoModelManager(BaseModelManager):
             candidates = [self._without_npu(dev) for dev in candidates]
             if candidates[0] != device:
                 self.logger.log(
-                    f"{model_name} has dynamic input shapes, excluding NPU: {device} -> {candidates[0]}"
+                    f"{model_name} имеет динамические входные размеры, NPU исключён: {device} -> {candidates[0]}"
                 )
         tried: list[str] = []
         for dev in candidates:
@@ -78,7 +78,7 @@ class OpenVinoModelManager(BaseModelManager):
             result = self._compile_on(model, model_name, dev, config)
             if result is not None:
                 return result
-        raise RuntimeError(f"Could not compile model on any device (tried {tried})")
+        raise RuntimeError(f"Не удалось скомпилировать модель ни на одном устройстве (опробованы: {tried})")
 
     def _compile_on(
         self, model: ov.Model, model_name: str, device: str, config: dict[str, str]
@@ -98,7 +98,7 @@ class OpenVinoModelManager(BaseModelManager):
                 compiled = self._core.compile_model(model, device, attempt)
                 used = self._describe_device(compiled, device)
                 if precision is not None:
-                    self.logger.log(f"{device} needed {precision} for {model_name}")
+                    self.logger.log(f"{device}: для {model_name} потребовалась точность {precision}")
                 return compiled, used
             except Exception as error:
                 failure = error
@@ -110,7 +110,7 @@ class OpenVinoModelManager(BaseModelManager):
         detail = str(error).strip() if error else ""
         reason = next(
             (line.strip() for line in reversed(detail.splitlines()) if line.strip()),
-            "no reason given",
+            "причина не указана",
         )
 
         if device in self._failed_devices:
@@ -118,11 +118,13 @@ class OpenVinoModelManager(BaseModelManager):
             return
 
         self._failed_devices.add(device)
-        self.logger.warn(f"{device} cannot compile {model_name}, using the next device instead: {reason}")
+        self.logger.warn(
+            f"{device} не может скомпилировать {model_name}, используется следующее устройство: {reason}"
+        )
         # on Linux old Intel GPUs are covered by the legacy compute libs (the docker
         # image ships them), only Windows drivers can't be helped from outside
         if "GPU" in device and sys.platform == "win32" and not LEGACY_RUNTIME:
-            self.logger.warn("Intel GPUs up to 10th gen Core work with the OpenVino Legacy plugin instead")
+            self.logger.warn("Для GPU Intel до 10-го поколения Core используйте плагин OpenVino Legacy")
         self.logger.debug(detail)
 
     def _make_static(self, model_name: str, model: ov.Model) -> None:
@@ -132,7 +134,9 @@ class OpenVinoModelManager(BaseModelManager):
         try:
             model.reshape(dict(enumerate(shapes)))
         except Exception as error:
-            self.logger.log(f"Could not pin {model_name} to static input shapes ({error})")
+            self.logger.log(
+                f"Не удалось зафиксировать статические входные размеры для {model_name} ({error})"
+            )
 
     def _without_npu(self, device: str) -> str:
         prefix, _, listing = device.partition(":")

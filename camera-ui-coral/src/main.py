@@ -39,18 +39,18 @@ def _edgetpu_status() -> str:
     nodes = sorted(glob.glob("/dev/apex_*"))
     lib = ctypes.util.find_library("edgetpu")
     if nodes and lib:
-        return f"Edge TPU ready ({', '.join(nodes)})"
+        return f"Edge TPU готов ({', '.join(nodes)})"
     if nodes:
-        return f"Edge TPU present ({', '.join(nodes)}) but the libedgetpu runtime is missing"
+        return f"Edge TPU найден ({', '.join(nodes)}), но отсутствует среда выполнения libedgetpu"
     if lib:
-        return "runtime installed, no PCIe Edge TPU visible (USB Corals are probed at model load)"
-    return "no Edge TPU runtime or device found"
+        return "среда выполнения установлена, но PCIe Edge TPU не виден (USB Coral проверяются при загрузке модели)"
+    return "среда выполнения или устройство Edge TPU не найдены"
 
 
 class CoralPlugin(BasePlugin, ObjectDetectionInterface):
     def __init__(self, logger: LoggerService, api: PluginAPI, storage: DeviceStorage[Any]) -> None:
         super().__init__(logger, api, storage)
-        self.logger.log(f"Available devices: CPU ({_edgetpu_status()})")
+        self.logger.log(f"Доступные устройства: CPU ({_edgetpu_status()})")
         self.model_manager = CoralModelManager(
             api.storagePath, logger, self._resolve_use_edgetpu, self._resolve_device
         )
@@ -66,10 +66,10 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "boolean",
                 "key": "use_edgetpu",
-                "title": "Use Edge TPU (Coral)",
+                "title": "Использовать Edge TPU (Coral)",
                 "description": (
-                    "Run inference on a Coral Edge TPU when available; falls back to CPU otherwise. "
-                    f"Status: {_edgetpu_status()}."
+                    "Выполнять инференс на Coral Edge TPU, если он доступен; иначе используется CPU. "
+                    f"Состояние: {_edgetpu_status()}."
                 ),
                 "store": True,
                 "defaultValue": DEFAULT_USE_EDGETPU,
@@ -78,10 +78,10 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "device",
-                "title": "Edge TPU Device",
+                "title": "Устройство Edge TPU",
                 "description": (
-                    'Which Edge TPU to use when several are attached: "usb", "pci", ":0", ":1" or "usb:0". '
-                    "Empty uses the first available."
+                    'Какой Edge TPU использовать, если подключено несколько: "usb", "pci", ":0", ":1" или "usb:0". '
+                    "Если пусто, используется первый доступный."
                 ),
                 "store": True,
                 "defaultValue": "",
@@ -90,8 +90,8 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "active_hardware",
-                "title": "Active Hardware",
-                "description": "Hardware currently running inference across loaded models.",
+                "title": "Активное оборудование",
+                "description": "Оборудование, на котором сейчас выполняется инференс загруженных моделей.",
                 "readonly": True,
                 "store": False,
                 "onGet": self._active_hardware,
@@ -99,16 +99,16 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "button",
                 "key": "reset_defaults",
-                "title": "Reset to Defaults",
-                "description": "Reset all plugin settings to their default values",
+                "title": "Сбросить настройки",
+                "description": "Сбросить все настройки плагина к значениям по умолчанию",
                 "color": "danger",
                 "onSet": self._reset_settings,
             },
             {
                 "type": "button",
                 "key": "redownload_models",
-                "title": "Re-download Models",
-                "description": "Clear the local model cache and download the latest models again.",
+                "title": "Скачать модели заново",
+                "description": "Очистить локальный кэш моделей и заново скачать актуальные модели.",
                 "onSet": self._redownload_models,
             },
         ]
@@ -147,11 +147,12 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             {
                 "type": "string",
                 "key": "model",
-                "title": "Model",
-                "description": "YOLO model for testing",
+                "title": "Модель",
+                "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
                 "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
                 "store": False,
             },
         ]
@@ -211,7 +212,7 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
             if detector.backend is not None
         ]
         if not backends:
-            return "No models loaded yet"
+            return "Модели ещё не загружены"
         return ", ".join(dict.fromkeys(backends))
 
     def _resolve_use_edgetpu(self) -> bool:
@@ -224,7 +225,7 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
     async def _on_edgetpu_change(self, new_value: object, old_value: object) -> None:
         if new_value == old_value:
             return
-        self.logger.log(f"Edge TPU setting changed ({old_value} -> {new_value}); reloading models")
+        self.logger.log(f"Настройка Edge TPU изменена ({old_value} -> {new_value}); перезагрузка моделей")
         await self._reload_models()
 
     async def _reload_models(self) -> None:
@@ -241,13 +242,13 @@ class CoralPlugin(BasePlugin, ObjectDetectionInterface):
 
     async def _reset_settings(self) -> None:
         await reset_stored_settings(self.storage)
-        self.logger.log("Settings reset to defaults")
+        self.logger.log("Настройки сброшены к значениям по умолчанию")
 
     async def _redownload_models(self, _new: object = None, _old: object = None) -> None:
-        self.logger.log("Re-downloading models (clearing cache)...")
+        self.logger.log("Повторная загрузка моделей (очистка кэша)...")
         shutil.rmtree(self.model_manager.model_path, ignore_errors=True)
         await self._reload_models()
-        self.logger.success("Models re-downloaded")
+        self.logger.success("Модели загружены заново")
 
     async def _close_all(self) -> None:
         await asyncio.gather(*(d.close() for d in self.object_detectors.values()))

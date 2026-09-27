@@ -101,9 +101,9 @@ class AudioDetector:
 
             self.load_ms = round((time.monotonic() - started) * 1000)
             self.initialized = True
-            self.logger.log(f"YAMNet model loaded ({len(self.labels)} classes)")
+            self.logger.log(f"Модель YAMNet загружена (классов: {len(self.labels)})")
         except Exception as e:
-            self.logger.error(f"Failed to initialize YAMNet: {e}")
+            self.logger.error(f"Не удалось инициализировать YAMNet: {e}")
         finally:
             self._init_task = None
 
@@ -188,11 +188,11 @@ class AudioDetector:
         os.makedirs(os.path.dirname(fullpath), exist_ok=True)
 
         short_name = os.path.basename(filename)
-        self.logger.log(f"Downloading {short_name}...")
+        self.logger.log(f"Загрузка {short_name}...")
 
         async with aiohttp.ClientSession() as session, session.get(url) as response:
             if response.status < 200 or response.status >= 300:
-                raise Exception(f"Error downloading {url}: {response.status}")
+                raise Exception(f"Ошибка загрузки {url}: {response.status}")
 
             total_size = int(response.headers.get("content-length", 0))
             downloaded = 0
@@ -208,9 +208,9 @@ class AudioDetector:
                             percent = min(100, (downloaded * 100) // total_size)
                             if percent >= last_percent + 25 and percent <= 100:
                                 last_percent = (percent // 25) * 25
-                                self.logger.log(f"Downloading {short_name}... {last_percent}%")
+                                self.logger.log(f"Загрузка {short_name}... {last_percent}%")
 
             size_mb = downloaded / (1024 * 1024)
-            self.logger.log(f"Downloaded {short_name} ({size_mb:.1f} MB)")
+            self.logger.log(f"Загружено: {short_name} ({size_mb:.1f} МБ)")
 
         os.rename(tmp, fullpath)

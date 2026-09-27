@@ -55,7 +55,7 @@ class NcnnModelManager(BaseModelManager):
             if use_vulkan
             else "CPU"
         )
-        self.logger.success(f"Loaded model: {model_name} ({device})")
+        self.logger.success(f"Модель загружена: {model_name} ({device})")
         return NcnnBackend(net, size, device)
 
     @staticmethod
