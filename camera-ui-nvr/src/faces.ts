@@ -131,7 +131,7 @@ export class FaceStore {
   // ------------------------------------------------------------------ matching
 
   public match(embeddings: number[][], model: string, sensitivity = 'balanced'): (FaceMatchResult | null)[] {
-    const threshold = SENSITIVITY[sensitivity] ?? SENSITIVITY.balanced!;
+    const threshold = SENSITIVITY[sensitivity] ?? SENSITIVITY.balanced;
     const known = this.knownVectors(model);
     return embeddings.map((embedding) => {
       if (!embedding?.length || !known.length) return null;
@@ -158,7 +158,9 @@ export class FaceStore {
     const now = Date.now();
     const clean = name.trim();
     if (!clean) throw new Error('Face name is empty');
-    this.db.prepare('INSERT INTO faces (name, created_at, updated_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at').run(clean, now, now);
+    this.db
+      .prepare('INSERT INTO faces (name, created_at, updated_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at')
+      .run(clean, now, now);
     const id = randomUUID();
     this.db
       .prepare('INSERT INTO face_images (id, name, model, vec, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -222,7 +224,9 @@ export class FaceStore {
   /** Adds a vector for another model to an enrolled picture (kept alongside the old one). */
   public addModelVector(sourceId: string, name: string, model: string, embedding: number[]): void {
     const id = randomUUID();
-    this.db.prepare('INSERT INTO face_images (id, name, model, vec, confidence, created_at) VALUES (?, ?, ?, ?, NULL, ?)').run(id, name, model, toBlob(normalize(embedding)), Date.now());
+    this.db
+      .prepare('INSERT INTO face_images (id, name, model, vec, confidence, created_at) VALUES (?, ?, ?, ?, NULL, ?)')
+      .run(id, name, model, toBlob(normalize(embedding)), Date.now());
     const jpeg = this.read(join(this.knownDir, `${sourceId}.jpg`));
     if (jpeg) writeFileSync(join(this.knownDir, `${id}.jpg`), jpeg);
   }
@@ -246,8 +250,7 @@ export class FaceStore {
 
   public sighting(s: FaceSighting): { model: string; vec: Float32Array; confidence?: number } | undefined {
     const row = this.db.prepare('SELECT model, vec, confidence FROM face_sightings WHERE event_id = ? AND seg = ? AND attr = ?').get(s.eventId, s.seg, s.attr) as
-      | { model: string; vec: Uint8Array; confidence: number | null }
-      | undefined;
+      { model: string; vec: Uint8Array; confidence: number | null } | undefined;
     return row ? { model: row.model, vec: fromBlob(row.vec), confidence: row.confidence ?? undefined } : undefined;
   }
 
@@ -267,8 +270,7 @@ export class FaceStore {
   }): boolean {
     const vec = normalize(face.embedding);
     const existing = this.db.prepare('SELECT id FROM unknown_faces WHERE event_id = ? AND seg = ? AND attr = ?').get(face.eventId, face.seg, face.attr) as
-      | { id: string }
-      | undefined;
+      { id: string } | undefined;
     if (existing) {
       if (face.jpeg?.length && !existsSync(this.unknownPath(existing.id))) writeFileSync(this.unknownPath(existing.id), face.jpeg);
       return false;
@@ -295,9 +297,7 @@ export class FaceStore {
 
     const id = randomUUID();
     this.db
-      .prepare(
-        'INSERT INTO unknown_faces (id, camera_id, event_id, seg, attr, ts, model, vec, confidence, cluster_id, ignored) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-      )
+      .prepare('INSERT INTO unknown_faces (id, camera_id, event_id, seg, attr, ts, model, vec, confidence, cluster_id, ignored) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)')
       .run(id, face.cameraId, face.eventId, face.seg, face.attr, face.ts, face.model, toBlob(vec), face.confidence ?? null, cluster);
     if (face.jpeg?.length) writeFileSync(this.unknownPath(id), face.jpeg);
     this.trimUnknown();
@@ -412,7 +412,7 @@ export class FaceStore {
       );
       matches.forEach((m, i) => {
         if (!m) return;
-        const r = list[i]!;
+        const r = list[i];
         found.push({ eventId: r.event_id, seg: r.seg, attr: r.attr, identity: m.identity });
       });
     }

@@ -16,9 +16,9 @@ export function fromBlob(blob: Uint8Array): Float32Array {
 export function normalize(vector: number[] | Float32Array): Float32Array {
   const out = Float32Array.from(vector);
   let norm = 0;
-  for (let i = 0; i < out.length; i++) norm += out[i]! * out[i]!;
+  for (let i = 0; i < out.length; i++) norm += out[i] * out[i];
   norm = Math.sqrt(norm);
-  if (norm > 0) for (let i = 0; i < out.length; i++) out[i] = out[i]! / norm;
+  if (norm > 0) for (let i = 0; i < out.length; i++) out[i] = out[i] / norm;
   return out;
 }
 
@@ -26,6 +26,6 @@ export function normalize(vector: number[] | Float32Array): Float32Array {
 export function dot(a: Float32Array, b: Float32Array): number {
   const n = Math.min(a.length, b.length);
   let s = 0;
-  for (let i = 0; i < n; i++) s += a[i]! * b[i]!;
+  for (let i = 0; i < n; i++) s += a[i] * b[i];
   return s;
 }

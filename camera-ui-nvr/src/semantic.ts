@@ -139,7 +139,8 @@ export class SemanticIndex {
         const score = Math.max(0, Math.min(1, (raw - band[0]) / (band[1] - band[0] || 1)));
         if (score < threshold) continue;
         const prev = best.get(e.eventId);
-        if (!prev || score > prev.score) best.set(e.eventId, { eventId: e.eventId, cameraId: e.cameraId, score: Math.round(score * 1000) / 1000, timestamp: e.ts, label: e.label });
+        if (!prev || score > prev.score)
+          best.set(e.eventId, { eventId: e.eventId, cameraId: e.cameraId, score: Math.round(score * 1000) / 1000, timestamp: e.ts, label: e.label });
       }
     }
     return [...best.values()].sort((a, b) => b.score - a.score || b.timestamp - a.timestamp).slice(0, limit);
@@ -157,7 +158,9 @@ export class SemanticIndex {
         label: string;
         vec: Uint8Array;
       }[];
-      entries = new Map(rows.map((r) => [`${r.event_id}/${r.seg}/${r.attr}`, { eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) }]));
+      entries = new Map(
+        rows.map((r) => [`${r.event_id}/${r.seg}/${r.attr}`, { eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) }]),
+      );
       this.cache.set(model, entries);
     }
     return entries.values();

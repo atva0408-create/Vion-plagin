@@ -1112,7 +1112,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!row) return false;
     const event = JSON.parse(row.data) as RecordedEvent;
     const attribute = event.segments?.[s.seg]?.attributes?.[s.attr] as FaceAttribute | undefined;
-    if (!attribute || attribute.type !== 'face') return false;
+    if (attribute?.type !== 'face') return false;
     attribute.label = name;
     this.store.upsertEvent(event);
     const data = this.decorate(event, row.favorite === 1, true);
@@ -1166,7 +1166,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
       const pending: { id: string; cameraId: string; startTime: number; label: string }[] = [];
       let skipped = 0;
-      for (let before: number | undefined; ; ) {
+      for (let before: number | undefined; ;) {
         const rows = this.store.events({ before, limit: 500 });
         if (!rows.length) break;
         for (const row of rows) {
@@ -1178,7 +1178,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           const label = String((ev.segments?.[0]?.detections?.[0] as { label?: string } | undefined)?.label ?? ev.types?.[0] ?? '');
           pending.push({ id: row.id, cameraId: row.camera_id, startTime: row.start_ms, label });
         }
-        before = rows[rows.length - 1]!.start_ms;
+        before = rows[rows.length - 1].start_ms;
         if (rows.length < 500) break;
       }
       this.emitClip({ total: pending.length + skipped, done: skipped, skipped });
@@ -1351,7 +1351,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const event = JSON.parse(row.data) as RecordedEvent;
     const attrs = (event.segments?.[segIndex]?.attributes ?? []) as FaceAttribute[];
     const indices =
-      options?.attrIndex !== undefined ? [options.attrIndex] : attrs.flatMap((a, i) => (a.type === 'face' && (a.label ?? 'unknown') === (oldName || 'unknown') ? [i] : []));
+      options?.attrIndex !== undefined
+        ? [options.attrIndex]
+        : attrs.flatMap((a, i) => (a.type === 'face' && (a.label ?? 'unknown') === (oldName || 'unknown') ? [i] : []));
     const name = newName?.trim() || 'unknown';
     let changed = 0;
     for (const attr of indices) {
