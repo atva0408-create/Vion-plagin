@@ -39,6 +39,7 @@ import type {
   EventAttachments,
   EventTrace,
   GetEventsOptions,
+  ManualRecording,
   NvrFeatures,
   NvrFrame,
   NvrPlaybackCallbacks,
@@ -72,6 +73,9 @@ const EPISODE_SWEEP_MS = 60_000;
 /** An episode clip starts a little before the camera saw the visit and ends a little after (as in the player). */
 const EPISODE_HEAD_MS = 1500;
 const EPISODE_TAIL_MS = 2000;
+/** A recording started by hand runs this long unless told otherwise, and never longer than the maximum. */
+const MANUAL_DEFAULT_MIN = 5;
+const MANUAL_MAX_MIN = 120;
 /** Keyframes per trace-frames call (thumbnail strip), GOP frames per exact frame. */
 const TRACE_MAX_TARGETS = 60;
 
@@ -190,6 +194,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly systemListeners = new Set<(e: SystemEvent) => void>();
   private readonly stateListeners = new Map<string, Set<(s: RecordingState) => void>>();
   private readonly systemEvents: SystemEvent[] = [];
+  private readonly manual = new Map<string, { startedAt: number; untilMs: number; timer: NodeJS.Timeout }>();
+  private readonly manualListeners = new Set<(s: ManualRecording) => void>();
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginStorageValues>) {
     super(logger, api, storage);
@@ -489,6 +495,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
     clearInterval(this.episodeTimer);
+    for (const m of this.manual.values()) clearTimeout(m.timer);
     this.playback?.stopAll();
     await Promise.all([...this.cameras.keys()].map((id) => this.releaseCamera(id)));
     this.store?.close();
@@ -516,6 +523,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const managed = this.cameras.get(cameraId);
     if (!managed) return;
     this.cameras.delete(cameraId);
+    this.endManual(cameraId);
     for (const s of managed.subscriptions) s.dispose();
     await Promise.all([...managed.recorders.values()].map((r) => r.stop()));
   }
@@ -585,9 +593,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         onStateChange: (recording) => this.emitRecordingState(device.id, recording),
         onSegment: () => undefined,
       });
+      const manual = this.manual.get(device.id);
+      if (manual) rec.setManual(manual.untilMs * 1000);
       managed.recorders.set(role, rec);
       if (!this.paused) rec.start();
     }
+    // recording switched off or to «Постоянно»: a manual recording has nothing left to do
+    if (this.manual.has(device.id) && (!managed.recorders.size || mode === 'continuous')) this.endManual(device.id);
   }
 
   // ------------------------------------------------------------- detections
@@ -619,7 +631,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
     // event-mode recorders run until the post-buffer after the last update
     const managed = this.cameras.get(cameraId);
-    if (managed) {
+    // «По запросу» records only when started by hand: detections are stored but do not start it
+    if (managed && managed.device.recordingSettings?.mode !== 'adhoc') {
       const untilUs = (Date.now() + this.setting.postBufferSeconds * 1000) * 1000;
       for (const rec of managed.recorders.values()) rec.trigger(type === 'end' ? untilUs : untilUs + 30_000_000);
     }
@@ -1287,7 +1300,64 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** What this NVR supports beyond the basics; the UI hides the rest. */
   public async getNvrFeatures(): Promise<NvrFeatures> {
-    return { episodes: true, exportQuality: true };
+    return { episodes: true, exportQuality: true, manualRecording: true };
+  }
+
+  // -------------------------------------------------------- manual recording
+
+  /**
+   * Starts recording a camera by hand, or extends a running manual recording, for `minutes` (default 5, at most
+   * 120). A «Постоянно» camera already records: nothing changes and the answer says it is not a manual recording.
+   */
+  public async nvrStartRecording(cameraId: string, minutes?: number): Promise<ManualRecording> {
+    await this.ready;
+    const managed = this.cameras.get(cameraId);
+    if (!managed) throw new Error('This camera is not recorded by ViON NVR');
+    if (!managed.recorders.size) throw new Error(managed.overLimit ? 'No free recording slot in the plan' : 'Recording is off for this camera');
+    if (effectiveMode(managed.device.recordingSettings?.mode) === 'continuous') return { cameraId, active: false };
+
+    const span = Math.min(Math.max(Math.round(Number(minutes) || MANUAL_DEFAULT_MIN), 1), MANUAL_MAX_MIN);
+    const untilMs = Date.now() + span * 60_000;
+    const previous = this.manual.get(cameraId);
+    if (previous) clearTimeout(previous.timer);
+    const timer = setTimeout(() => this.endManual(cameraId), untilMs - Date.now());
+    timer.unref?.();
+    this.manual.set(cameraId, { startedAt: previous?.startedAt ?? Date.now(), untilMs, timer });
+    for (const rec of managed.recorders.values()) rec.setManual(untilMs * 1000);
+    const state = this.manualState(cameraId);
+    for (const cb of this.manualListeners) this.safeCall(this.manualListeners, cb, state);
+    return state;
+  }
+
+  public async nvrStopRecording(cameraId: string): Promise<ManualRecording> {
+    await this.ready;
+    this.endManual(cameraId);
+    return this.manualState(cameraId);
+  }
+
+  public async getManualRecording(cameraId: string): Promise<ManualRecording> {
+    await this.ready;
+    return this.manualState(cameraId);
+  }
+
+  public async onManualRecording(callback: (state: ManualRecording) => void): Promise<Unsubscribe> {
+    return this.subscribe(this.manualListeners, callback);
+  }
+
+  private manualState(cameraId: string): ManualRecording {
+    const m = this.manual.get(cameraId);
+    return m ? { cameraId, active: true, startedAt: m.startedAt, untilMs: m.untilMs } : { cameraId, active: false };
+  }
+
+  /** Ends a manual recording (stop, time up, camera gone); what detections asked for keeps recording. */
+  private endManual(cameraId: string): void {
+    const m = this.manual.get(cameraId);
+    if (!m) return;
+    clearTimeout(m.timer);
+    this.manual.delete(cameraId);
+    for (const rec of this.cameras.get(cameraId)?.recorders.values() ?? []) rec.setManual(0);
+    const state = this.manualState(cameraId);
+    for (const cb of this.manualListeners) this.safeCall(this.manualListeners, cb, state);
   }
 
   // ---------------------------------------------------------------- episodes
@@ -2144,8 +2214,8 @@ function isRecordingWanted(device: CameraDevice): boolean {
 }
 
 /**
- * How the recorder runs for a camera's recording mode. `adhoc` (manual start) has no trigger in ViON
- * and is no longer offered; cameras still set to it record like «по событию» instead of not at all.
+ * How the recorder runs for a camera's recording mode. `adhoc` («По запросу») runs like «по событию» (the
+ * pre-buffer is kept) but only a manual start records: detections do not trigger it (ingestNow).
  */
 function effectiveMode(mode: string | undefined): 'continuous' | 'event' | undefined {
   if (mode === 'continuous') return 'continuous';

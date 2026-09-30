@@ -76,6 +76,16 @@ export interface NvrFeatures {
   episodes: boolean;
   /** Export honours «Качество» (best/smallest stream). */
   exportQuality: boolean;
+  /** Recording can be started and stopped by hand (`nvrStartRecording`), for «По запросу» and «По событию» cameras. */
+  manualRecording: boolean;
+}
+
+/** A recording started by hand; `untilMs` is when it ends by itself. */
+export interface ManualRecording {
+  cameraId: string;
+  active: boolean;
+  startedAt?: number;
+  untilMs?: number;
 }
 
 export interface GetEventsOptions {

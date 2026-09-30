@@ -121,7 +121,7 @@ assert.equal(episodeMessages().at(-1)?.data.id, 's1-door', 'the message carries 
 const listed = await nvr.getEpisodes({ startMs: scene(0, -60), endMs: scene(0, 120) });
 assert.equal(listed.episodes.length, 1);
 assert.equal(listed.episodes[0].id, live.id);
-assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true });
+assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true });
 
 // the same update again changes nothing: nothing is sent
 const before = episodeMessages().length;

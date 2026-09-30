@@ -78,6 +78,8 @@ export class Recorder {
   private ring: Gop[] = [];
   private segment: OpenSegment | undefined;
   private recordUntilUs = 0;
+  /** Recording started by hand; kept apart from `recordUntilUs` so stopping it never cuts a detection's recording. */
+  private manualUntilUs = 0;
   private triggeredAtUs = 0;
   private recording = false;
   /** Last GOP written to a closed segment: the pre-buffer of the next one must not repeat it. */
@@ -130,6 +132,12 @@ export class Recorder {
   public trigger(untilUs: number): void {
     if (!this.segment && !this.triggeredAtUs) this.triggeredAtUs = Date.now() * 1000;
     this.recordUntilUs = Math.max(this.recordUntilUs, untilUs);
+  }
+
+  /** Records until `untilUs` whatever the detections say; 0 ends the manual recording (detections keep theirs). */
+  public setManual(untilUs: number): void {
+    if (untilUs > 0 && !this.segment && !this.triggeredAtUs) this.triggeredAtUs = Date.now() * 1000;
+    this.manualUntilUs = untilUs;
   }
 
   public async stop(): Promise<void> {
@@ -312,7 +320,7 @@ export class Recorder {
     }
     this.gop = { tsUs, packets: [], bytes: 0 };
 
-    const wantRecord = this.opts.mode === 'continuous' || tsUs < this.recordUntilUs;
+    const wantRecord = this.opts.mode === 'continuous' || tsUs < this.recordUntilUs || tsUs < this.manualUntilUs;
     if (this.segment) {
       const age = tsUs - this.segment.startUs;
       if (!wantRecord) {
