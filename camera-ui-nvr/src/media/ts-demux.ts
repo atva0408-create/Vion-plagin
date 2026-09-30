@@ -2,6 +2,7 @@
  * Minimal MPEG-TS demuxer for recorded video: finds the video PID through PAT/PMT, reassembles PES
  * packets into access units (Annex-B for H.264/HEVC, exactly what the browser's VideoDecoder expects
  * without a `description`) and reports keyframes and the byte offset each access unit starts at.
+ * AAC audio (stream type 0x0F, ADTS) found in the same program is split into single ADTS frames.
  */
 
 export const TS_PACKET = 188;
@@ -19,25 +20,43 @@ export interface AccessUnit {
   offset: number;
 }
 
+/** One ADTS frame (header included, which is what the browser's AudioDecoder reads without a `description`). */
+export interface AudioUnit {
+  data: Buffer;
+  /** Presentation timestamp in 90 kHz ticks (33 bit, not unwrapped), advanced per frame inside a PES. */
+  pts: number;
+  offset: number;
+  sampleRate: number;
+  channels: number;
+}
+
 const STREAM_TYPES: Record<number, VideoCodec> = { 0x1b: 'h264', 0x24: 'h265' };
+/** MPEG-4 audio sampling frequency index -> Hz (ISO 14496-3). */
+const ADTS_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
 export class TsDemuxer {
   public videoPid = -1;
   public codec: VideoCodec | undefined;
+  /** PID of the first AAC (ADTS) stream, -1 when the program has none. */
+  public audioPid = -1;
 
   private pmtPid = -1;
   private pes: Buffer[] = [];
   private pesOffset = 0;
+  private audioPes: Buffer[] = [];
+  private audioPesOffset = 0;
   private remainder: Buffer = Buffer.alloc(0);
   private position = 0;
 
   constructor(
     private readonly onAccessUnit: (au: AccessUnit) => void,
-    known?: { videoPid: number; codec: VideoCodec },
+    known?: { videoPid: number; codec: VideoCodec; audioPid?: number },
+    private readonly onAudioUnit?: (au: AudioUnit) => void,
   ) {
     if (known) {
       this.videoPid = known.videoPid;
       this.codec = known.codec;
+      if (known.audioPid !== undefined) this.audioPid = known.audioPid;
     }
   }
 
@@ -71,6 +90,7 @@ export class TsDemuxer {
   /** Emits the last pending access unit (end of file). */
   public flush(): void {
     this.emitPes();
+    this.emitAudioPes();
   }
 
   private packet(pkt: Buffer, offset: number): void {
@@ -92,6 +112,12 @@ export class TsDemuxer {
         this.pesOffset = offset;
       }
       if (pusi || this.pes.length) this.pes.push(Buffer.from(payload));
+    } else if (pid === this.audioPid && this.onAudioUnit) {
+      if (pusi) {
+        this.emitAudioPes();
+        this.audioPesOffset = offset;
+      }
+      if (pusi || this.audioPes.length) this.audioPes.push(Buffer.from(payload));
     }
   }
 
@@ -122,6 +148,7 @@ export class TsDemuxer {
         this.videoPid = pid;
         this.codec = codec;
       }
+      if (type === 0x0f && this.audioPid < 0) this.audioPid = pid;
       i += 5 + esInfo;
     }
   }
@@ -141,6 +168,32 @@ export class TsDemuxer {
     const data = pes.subarray(9 + headerLength);
     if (!data.length) return;
     this.onAccessUnit({ data, pts, keyframe: isKeyframe(data, this.codec ?? 'h264'), offset: this.pesOffset });
+  }
+
+  private emitAudioPes(): void {
+    if (!this.audioPes.length) return;
+    const pes = Buffer.concat(this.audioPes);
+    this.audioPes = [];
+    if (pes.length < 9 || pes[0] !== 0 || pes[1] !== 0 || pes[2] !== 1 || !(pes[7] & 0x80)) return;
+
+    const firstPts = readTimestamp(pes, 9);
+    const data = pes.subarray(9 + pes[8]);
+    // one PES carries several ADTS frames; every frame is 1024 samples long
+    let frame = 0;
+    for (let i = 0; i + 7 <= data.length;) {
+      if (data[i] !== 0xff || (data[i + 1] & 0xf0) !== 0xf0) {
+        i++; // lost sync: look for the next header
+        continue;
+      }
+      const length = ((data[i + 3] & 0x03) << 11) | (data[i + 4] << 3) | (data[i + 5] >> 5);
+      const sampleRate = ADTS_RATES[(data[i + 2] >> 2) & 0x0f];
+      if (length < 7 || i + length > data.length || !sampleRate) break;
+      const channels = ((data[i + 2] & 0x01) << 2) | (data[i + 3] >> 6);
+      const pts = (firstPts + Math.round((frame * 1024 * 90000) / sampleRate)) % 2 ** 33;
+      this.onAudioUnit?.({ data: data.subarray(i, i + length), pts, offset: this.audioPesOffset, sampleRate, channels });
+      frame++;
+      i += length;
+    }
   }
 }
 

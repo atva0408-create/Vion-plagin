@@ -16,6 +16,8 @@ export interface SegmentRow {
   width: number;
   height: number;
   video_pid: number;
+  /** PID of the recorded AAC stream, -1 for a segment without sound (also every segment recorded before sound existed). */
+  audio_pid: number;
   /** JSON array of [byteOffset, tsUs] for every keyframe. */
   keyframes: string;
 }
@@ -74,6 +76,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS event_trace (event_id TEXT NOT NULL, t_ms INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS event_trace_event ON event_trace (event_id, t_ms);
     `);
+    // databases created before recorded sound have no such column
+    const columns = this.db.prepare('PRAGMA table_info(segments)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'audio_pid')) this.db.exec('ALTER TABLE segments ADD COLUMN audio_pid INTEGER NOT NULL DEFAULT -1');
   }
 
   public close(): void {
@@ -98,10 +103,10 @@ export class Store {
   public addSegment(row: Omit<SegmentRow, 'id'>): number {
     const res = this.db
       .prepare(
-        `INSERT INTO segments (camera_id, role, start_us, end_us, path, bytes, codec, codec_string, width, height, video_pid, keyframes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO segments (camera_id, role, start_us, end_us, path, bytes, codec, codec_string, width, height, video_pid, audio_pid, keyframes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(row.camera_id, row.role, row.start_us, row.end_us, row.path, row.bytes, row.codec, row.codec_string, row.width, row.height, row.video_pid, row.keyframes);
+      .run(row.camera_id, row.role, row.start_us, row.end_us, row.path, row.bytes, row.codec, row.codec_string, row.width, row.height, row.video_pid, row.audio_pid, row.keyframes);
     return Number(res.lastInsertRowid);
   }
 

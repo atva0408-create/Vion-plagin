@@ -19,6 +19,11 @@ export interface RecorderOptions {
   tsUrl?: string;
   /** Fallback: RTSP restream copied to MPEG-TS by ffmpeg. */
   rtspUrl: string;
+  /**
+   * Record sound. go2rtc's own MPEG-TS carries only AAC, and cameras mostly send G.711, so with sound
+   * on the stream always goes through ffmpeg, which turns any audio into AAC.
+   */
+  audio?: boolean;
   ffmpegPath: string;
   dir: string;
   store: Store;
@@ -110,7 +115,10 @@ export class Recorder {
   }
 
   public update(opts: Partial<RecorderOptions>): void {
-    const restart = (opts.rtspUrl !== undefined && opts.rtspUrl !== this.opts.rtspUrl) || (opts.tsUrl !== undefined && opts.tsUrl !== this.opts.tsUrl);
+    const restart =
+      (opts.rtspUrl !== undefined && opts.rtspUrl !== this.opts.rtspUrl) ||
+      (opts.tsUrl !== undefined && opts.tsUrl !== this.opts.tsUrl) ||
+      (opts.audio !== undefined && opts.audio !== this.opts.audio);
     this.opts = { ...this.opts, ...opts };
     if (restart) {
       this.proc?.kill('SIGKILL');
@@ -135,7 +143,7 @@ export class Recorder {
 
   private spawn(): void {
     if (this.stopped) return;
-    if (this.opts.tsUrl) {
+    if (this.opts.tsUrl && !this.opts.audio) {
       this.fetchTs(this.opts.tsUrl);
       return;
     }
@@ -153,9 +161,10 @@ export class Recorder {
       this.opts.rtspUrl,
       '-map',
       '0:v:0',
-      '-c',
-      'copy',
-      '-an',
+      ...(this.opts.audio
+        ? // `?`: a camera without a microphone still records its video
+          ['-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '64k']
+        : ['-c', 'copy', '-an']),
       '-f',
       'mpegts',
       '-mpegts_flags',
@@ -264,9 +273,10 @@ export class Recorder {
       this.pmtPacket = pkt;
       return;
     }
-    if (pid !== this.demux.videoPid || !this.demux.codec) return;
+    const audio = this.opts.audio === true && pid === this.demux.audioPid;
+    if ((pid !== this.demux.videoPid && !audio) || !this.demux.codec) return;
 
-    if (pusi) {
+    if (pusi && !audio) {
       const pes = payloadOf(pkt);
       const pts = pes && pes[7] & 0x80 ? readPts(pes, 9) : undefined;
       const esStart = pes ? 9 + pes[8] : 0;
@@ -358,6 +368,7 @@ export class Recorder {
       width: this.codec.width,
       height: this.codec.height,
       video_pid: this.demux.videoPid,
+      audio_pid: this.opts.audio ? this.demux.audioPid : -1,
       keyframes: '[]',
     });
     this.segment = { id, path, stream, startUs, endUs: startUs, bytes: 0, keyframes: [], lastFlush: Date.now() };

@@ -147,7 +147,7 @@ export interface NvrFrame {
 }
 
 export interface NvrPlaybackCallbacks {
-  onReady(payload: { sessionId: string; videoCodec: string; codecString: string; width: number; height: number; role?: string }): void;
+  onReady(payload: { sessionId: string; videoCodec: string; codecString: string; width: number; height: number; role?: string; audio?: boolean }): void;
   onVideo(payload: { frame: Uint8Array; ts: number; keyframe?: boolean }): void;
   onBatch?(payload: { items: { frame: Uint8Array; ts: number; audio?: boolean }[] }): void;
   onAudio?(payload: { frame: Uint8Array; ts: number }): void;

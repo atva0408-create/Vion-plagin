@@ -30,7 +30,8 @@ export async function exportClip(opts: {
     // one frame per interval, played at 30 fps
     args.push('-vf', `fps=1/${opts.timelapseIntervalSec},setpts=N/30/TB`, '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
   } else {
-    args.push('-map', '0:v:0', '-c', 'copy');
+    // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
+    args.push('-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
   }
   args.push('-movflags', '+faststart', out);
 

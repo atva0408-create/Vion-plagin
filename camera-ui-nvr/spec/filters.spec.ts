@@ -191,6 +191,7 @@ const seg = (role: string, bytes: number) =>
     width: 1920,
     height: 1080,
     video_pid: 256,
+    audio_pid: -1,
     keyframes: '[[0,1000000000]]',
   });
 seg('high', 60_000_000);

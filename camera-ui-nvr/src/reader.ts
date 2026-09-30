@@ -13,6 +13,8 @@ export interface Frame {
   data: Buffer;
   tsUs: number;
   keyframe: boolean;
+  /** An ADTS frame of the recorded sound; only produced when `readFrames` is asked for audio. */
+  audio?: boolean;
 }
 
 const CHUNK = 256 * 1024;
@@ -32,7 +34,7 @@ export function keyframeAtOrBefore(segment: SegmentRow, tsUs: number): Keyframe 
  * Streams the access units of a segment starting at a keyframe offset. With `follow`, keeps tailing
  * the file while it is still being written (live tip).
  */
-export async function *readFrames(segment: SegmentRow, from: Keyframe, opts: { follow?: () => boolean; signal?: AbortSignal } = {}): AsyncGenerator<Frame> {
+export async function *readFrames(segment: SegmentRow, from: Keyframe, opts: { follow?: () => boolean; signal?: AbortSignal; audio?: boolean } = {}): AsyncGenerator<Frame> {
   const kfs = parseKeyframes(segment.keyframes);
   const kfByOffset = new Map(kfs.map((k) => [k.offset, k.tsUs]));
   let base: { pts: number; us: number } | undefined;
@@ -56,7 +58,17 @@ export async function *readFrames(segment: SegmentRow, from: Keyframe, opts: { f
       }
       queue.push({ data, tsUs, keyframe: au.keyframe });
     },
-    { videoPid: segment.video_pid, codec: segment.codec },
+    { videoPid: segment.video_pid, codec: segment.codec, audioPid: opts.audio && segment.audio_pid >= 0 ? segment.audio_pid : undefined },
+    opts.audio
+      ? (au) => {
+          // sound before the first video frame read has no place on the timeline yet
+          if (!base) return;
+          const tsUs = base.us + Math.round((ptsDelta(base.pts, au.pts) / 90) * 1000);
+          // and sound that belongs before the keyframe playback starts from would play ahead of the picture
+          if (tsUs < from.tsUs) return;
+          queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+        }
+      : undefined,
   );
 
   let fh: FileHandle;

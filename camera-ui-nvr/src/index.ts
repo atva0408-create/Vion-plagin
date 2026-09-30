@@ -269,6 +269,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       },
       {
         type: 'boolean',
+        key: 'recordAudio',
+        title: 'Записывать звук',
+        description:
+          'Звук с камер сохраняется в архиве и слышен при просмотре и в экспортированном видео. Работает, только если камера ' +
+          'отдаёт звук (в её собственных настройках он должен быть включён). Запись со звуком идёт через ffmpeg: он переводит ' +
+          'любой звук в AAC. Запись звука регулируется законом: предупредите людей, которых он касается.',
+        group: 'Storage',
+        defaultValue: false,
+        store: true,
+        // recorders read the flag when they are built
+        onSet: async () => this.syncAll(),
+      },
+      {
+        type: 'boolean',
         key: 'aiDescriptions',
         title: 'Описания событий ИИ',
         description:
@@ -511,7 +525,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const roles: Role[] = rs.sources?.length ? rs.sources : ['high'];
       for (const role of roles) {
         const source = role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
-        if (source) wanted.set(role, { rtspUrl: source.generateRTSPUrl({ video: true, audio: false, timeout: 15 }), tsUrl: go2rtcTsUrl(source.urls?.snapshot?.jpeg) });
+        if (source) wanted.set(role, { rtspUrl: source.generateRTSPUrl({ video: true, audio: this.storage.values.recordAudio === true, timeout: 15 }), tsUrl: go2rtcTsUrl(source.urls?.snapshot?.jpeg) });
       }
     }
 
@@ -528,6 +542,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         preBufferSec: Math.min(60, Math.max(0, Number(rs.preBuffer) || 0)),
         postBufferSec: s.postBufferSeconds,
         segmentSec: s.segmentSeconds,
+        audio: this.storage.values.recordAudio === true,
       };
       const existing = managed.recorders.get(role);
       if (existing) {
@@ -870,8 +885,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   // ---------------------------------------------------------------- playback
 
-  public nvrPlayback(cameraId: string, tsUs: number, _videoOnly: boolean, sourceRole: string, callbacks: NvrPlaybackCallbacks): AsyncGenerator<void> {
-    return this.playback.play(cameraId, tsUs, this.resolveRole(cameraId, sourceRole), callbacks);
+  public nvrPlayback(cameraId: string, tsUs: number, videoOnly: boolean, sourceRole: string, callbacks: NvrPlaybackCallbacks): AsyncGenerator<void> {
+    return this.playback.play(cameraId, tsUs, this.resolveRole(cameraId, sourceRole), callbacks, { audio: !videoOnly });
   }
 
   public async nvrPlaybackCmd(sessionId: string, cmd: { cmd: 'pause' | 'resume' | 'speed'; speed?: number }): Promise<void> {

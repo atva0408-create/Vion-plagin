@@ -47,13 +47,14 @@ export class PlaybackManager {
     this.sessions.clear();
   }
 
-  public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks): AsyncGenerator<void> {
+  public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks, opts: { audio?: boolean } = {}): AsyncGenerator<void> {
     const sessionId = randomUUID();
     const session: Session = { paused: false, speed: 1, epoch: 0, abort: new AbortController() };
     this.sessions.set(sessionId, session);
-    const call = <K extends 'onReady' | 'onVideo' | 'onNoData'>(method: K, payload: Parameters<NvrPlaybackCallbacks[K]>[0]) => {
+    const call = <K extends 'onReady' | 'onVideo' | 'onAudio' | 'onNoData'>(method: K, payload: Parameters<NonNullable<NvrPlaybackCallbacks[K]>>[0]) => {
       try {
-        (cb[method] as (p: typeof payload) => void)(payload);
+        // onAudio is optional: a client without sound support simply gets none
+        (cb[method] as ((p: typeof payload) => void) | undefined)?.(payload);
       } catch {
         session.abort.abort();
       }
@@ -73,14 +74,18 @@ export class PlaybackManager {
       let from = keyframeAtOrBefore(segment, tsUs);
 
       while (segment && from && !session.abort.signal.aborted) {
-        const key = `${segment.codec_string}|${segment.width}x${segment.height}`;
+        // `recorded` tells the client the archive has sound (so it can offer the switch); the frames themselves
+        // go only to a client that asked for them, a wall of cameras would throw them away
+        const recorded = segment.audio_pid >= 0;
+        const sendAudio = recorded && opts.audio !== false;
+        const key = `${segment.codec_string}|${segment.width}x${segment.height}|${recorded}`;
         if (key !== readyKey) {
           readyKey = key;
-          call('onReady', { sessionId, videoCodec: segment.codec, codecString: segment.codec_string, width: segment.width, height: segment.height, role });
+          call('onReady', { sessionId, videoCodec: segment.codec, codecString: segment.codec_string, width: segment.width, height: segment.height, role, audio: recorded });
         }
 
         const current = segment;
-        for await (const frame of readFrames(current, from, { follow: () => this.isLive(current.id), signal: session.abort.signal })) {
+        for await (const frame of readFrames(current, from, { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio })) {
           // frames before the target only prime the decoder: send them without pacing
           if (frame.tsUs >= tsUs) {
             while (session.paused && !session.abort.signal.aborted) {
@@ -93,6 +98,10 @@ export class PlaybackManager {
             if (aheadUs > LEAD_US) await sleep((aheadUs - LEAD_US) / 1000);
           }
           if (session.abort.signal.aborted) return;
+          if (frame.audio) {
+            call('onAudio', { frame: frame.data, ts: frame.tsUs });
+            continue;
+          }
           call('onVideo', { frame: frame.data, ts: frame.tsUs, keyframe: frame.keyframe });
           lastTs = Math.max(lastTs, frame.tsUs);
           if (++sent % YIELD_EVERY === 0) yield;
