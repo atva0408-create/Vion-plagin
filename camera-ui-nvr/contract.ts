@@ -7,7 +7,8 @@ export const contract: PluginContract = {
   role: PluginRole.Hub,
   provides: [],
   consumes: [],
-  interfaces: [PluginInterface.NVR],
+  // AssistantTools: the archive for the assistant (src/assistant.ts)
+  interfaces: [PluginInterface.NVR, PluginInterface.AssistantTools],
   capabilities: [PluginCapability.PublishNotifications],
 };
 

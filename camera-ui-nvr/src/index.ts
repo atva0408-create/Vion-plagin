@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { readdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
 import { exportClip, writeZip } from './export.js';
 import { FaceStore } from './faces.js';
@@ -14,7 +15,19 @@ import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
 import { parseKeyframes, Store } from './store.js';
 
-import type { CameraDevice, DetectionEventType, DeviceStorage, Disposable, JsonSchema, LoggerService, PluginAPI } from '@camera.ui/sdk';
+import type {
+  AssistantToolContext,
+  AssistantToolResult,
+  AssistantToolSpec,
+  CameraDevice,
+  DetectionEventType,
+  DeviceStorage,
+  Disposable,
+  JsonSchema,
+  LoggerService,
+  PluginAPI,
+} from '@camera.ui/sdk';
+import type { AssistantHost } from './assistant.js';
 import type { EventDescription } from './describer.js';
 import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
@@ -1368,6 +1381,30 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const data = this.decorate(event, row.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'update', data });
     return true;
+  }
+
+  // ------------------------------------------------------------ assistant tools
+
+  public assistantTools(): AssistantToolSpec[] {
+    return ASSISTANT_TOOLS;
+  }
+
+  public async callAssistantTool(name: string, input: Record<string, unknown>, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+    await this.ready;
+    return callAssistantTool(this.assistantHost(), name, input ?? {}, ctx);
+  }
+
+  private assistantHost(): AssistantHost {
+    return {
+      events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
+      event: (eventId) => {
+        const row = this.store.event(eventId);
+        return row ? this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1) : undefined;
+      },
+      cameras: () => [...this.cameras.values()].map((c) => ({ id: c.device.id, name: c.device.name })),
+      search: (text, limit) => this.searchEventsByText(text, limit),
+      picture: async (event) => (await this.getEventThumbnails(event.cameraId, event.startTime, event.id)).event,
+    };
   }
 
   // ------------------------------------------------------------ semantic search
