@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 
@@ -38,6 +39,57 @@ export async function exportClip(opts: {
   await run(opts.ffmpegPath, args);
   const { size } = await stat(out);
   return { path: out, size, durationMs: Math.round(durationSec * 1000) };
+}
+
+const TILE_W = 480;
+const TILE_H = 270;
+
+/**
+ * One JPEG of up to four pictures: two side by side, three or four in a 2×2 grid (an empty cell stays black).
+ * Each picture keeps its proportions inside its cell. A single picture is returned as it is.
+ */
+export async function mosaic(ffmpegPath: string, pictures: Uint8Array[]): Promise<Uint8Array> {
+  const used = pictures.slice(0, 4);
+  if (used.length === 0) throw new Error('No pictures for a mosaic');
+  if (used.length === 1) return used[0];
+  const dir = await mkdtemp(join(tmpdir(), 'nvr-mosaic-'));
+  try {
+    const inputs: string[] = [];
+    for (const [i, picture] of used.entries()) {
+      const path = join(dir, `${i}.jpg`);
+      await writeFile(path, picture);
+      inputs.push('-i', path);
+    }
+    const fit = `scale=${TILE_W}:${TILE_H}:force_original_aspect_ratio=decrease,pad=${TILE_W}:${TILE_H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
+    const cells = used.map((_, i) => `[${i}:v]${fit}[c${i}]`);
+    let layout: string;
+    if (used.length === 2) {
+      layout = '[c0][c1]hstack=inputs=2[out]';
+    } else {
+      if (used.length === 3) cells.push(`color=c=black:s=${TILE_W}x${TILE_H}:d=1,setsar=1[c3]`);
+      layout = '[c0][c1]hstack=inputs=2[top];[c2][c3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[out]';
+    }
+    const out = join(dir, 'mosaic.jpg');
+    await run(ffmpegPath, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      ...inputs,
+      '-filter_complex',
+      [...cells, layout].join(';'),
+      '-map',
+      '[out]',
+      '-frames:v',
+      '1',
+      '-q:v',
+      '4',
+      out,
+    ]);
+    return new Uint8Array(await readFile(out));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 function run(bin: string, args: string[]): Promise<void> {

@@ -81,7 +81,15 @@ export class PlaybackManager {
         const key = `${segment.codec_string}|${segment.width}x${segment.height}|${recorded}`;
         if (key !== readyKey) {
           readyKey = key;
-          call('onReady', { sessionId, videoCodec: segment.codec, codecString: segment.codec_string, width: segment.width, height: segment.height, role, audio: recorded });
+          call('onReady', {
+            sessionId,
+            videoCodec: segment.codec,
+            codecString: segment.codec_string,
+            width: segment.width,
+            height: segment.height,
+            role,
+            audio: recorded,
+          });
         }
 
         const current = segment;

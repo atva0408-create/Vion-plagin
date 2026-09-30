@@ -37,6 +37,15 @@ export interface EventRow {
   favorite: number;
 }
 
+export interface EpisodeRow {
+  id: string;
+  start_ms: number;
+  end_ms: number;
+  favorite: number;
+  /** JSON of the stored episode (episodes.ts `StoredEpisode`). */
+  data: string;
+}
+
 export class Store {
   private readonly db: DatabaseSync;
 
@@ -75,6 +84,20 @@ export class Store {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS event_trace (event_id TEXT NOT NULL, t_ms INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS event_trace_event ON event_trace (event_id, t_ms);
+      CREATE TABLE IF NOT EXISTS episodes (
+        id TEXT PRIMARY KEY,
+        start_ms INTEGER NOT NULL,
+        end_ms INTEGER NOT NULL,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        data TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS episodes_time ON episodes (start_ms);
+      CREATE TABLE IF NOT EXISTS episode_members (
+        episode_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        PRIMARY KEY (episode_id, event_id)
+      );
+      CREATE INDEX IF NOT EXISTS episode_members_event ON episode_members (event_id);
     `);
     // databases created before recorded sound have no such column
     const columns = this.db.prepare('PRAGMA table_info(segments)').all() as { name: string }[];
@@ -106,7 +129,21 @@ export class Store {
         `INSERT INTO segments (camera_id, role, start_us, end_us, path, bytes, codec, codec_string, width, height, video_pid, audio_pid, keyframes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(row.camera_id, row.role, row.start_us, row.end_us, row.path, row.bytes, row.codec, row.codec_string, row.width, row.height, row.video_pid, row.audio_pid, row.keyframes);
+      .run(
+        row.camera_id,
+        row.role,
+        row.start_us,
+        row.end_us,
+        row.path,
+        row.bytes,
+        row.codec,
+        row.codec_string,
+        row.width,
+        row.height,
+        row.video_pid,
+        row.audio_pid,
+        row.keyframes,
+      );
     return Number(res.lastInsertRowid);
   }
 
@@ -267,7 +304,61 @@ export class Store {
   }
 
   public eventsBefore(cutoffMs: number, limit: number): EventRow[] {
-    return this.db.prepare('SELECT * FROM events WHERE start_ms < ? AND favorite = 0 ORDER BY start_ms LIMIT ?').all(cutoffMs, limit) as unknown as EventRow[];
+    // a favorite episode keeps its events like a favorite event keeps itself; excluded here rather than
+    // skipped by the caller, which would page over the same kept rows forever
+    return this.db
+      .prepare(
+        `SELECT * FROM events WHERE start_ms < ? AND favorite = 0
+           AND id NOT IN (SELECT m.event_id FROM episode_members m JOIN episodes e ON e.id = m.episode_id WHERE e.favorite = 1)
+         ORDER BY start_ms LIMIT ?`,
+      )
+      .all(cutoffMs, limit) as unknown as EventRow[];
+  }
+
+  // --- episodes ---
+  public upsertEpisode(row: EpisodeRow, eventIds: string[]): void {
+    this.db
+      .prepare(
+        `INSERT INTO episodes (id, start_ms, end_ms, favorite, data) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET start_ms = excluded.start_ms, end_ms = excluded.end_ms, data = excluded.data`,
+      )
+      .run(row.id, row.start_ms, row.end_ms, row.favorite, row.data);
+    this.db.prepare('DELETE FROM episode_members WHERE episode_id = ?').run(row.id);
+    const add = this.db.prepare('INSERT OR IGNORE INTO episode_members (episode_id, event_id) VALUES (?, ?)');
+    for (const eventId of eventIds) add.run(row.id, eventId);
+  }
+
+  public episode(id: string): EpisodeRow | undefined {
+    return (this.db.prepare('SELECT * FROM episodes WHERE id = ?').get(id) ?? undefined) as EpisodeRow | undefined;
+  }
+
+  /** Episodes overlapping [fromMs, toMs], newest first. */
+  public episodes(opts: { fromMs: number; toMs: number; limit: number; favoritesOnly?: boolean }): EpisodeRow[] {
+    return this.db
+      .prepare(`SELECT * FROM episodes WHERE end_ms >= ? AND start_ms <= ? ${opts.favoritesOnly ? 'AND favorite = 1' : ''} ORDER BY start_ms DESC LIMIT ?`)
+      .all(opts.fromMs, opts.toMs, opts.limit) as unknown as EpisodeRow[];
+  }
+
+  /** Episodes ending at or after `sinceMs` (the ones still open when the NVR restarted). */
+  public episodesEndingAfter(sinceMs: number): EpisodeRow[] {
+    return this.db.prepare('SELECT * FROM episodes WHERE end_ms >= ? ORDER BY start_ms').all(sinceMs) as unknown as EpisodeRow[];
+  }
+
+  public episodeIdsOfEvents(eventIds: string[]): string[] {
+    if (!eventIds.length) return [];
+    const query = this.db.prepare('SELECT DISTINCT episode_id FROM episode_members WHERE event_id = ?');
+    const ids = new Set<string>();
+    for (const eventId of eventIds) for (const row of query.all(eventId) as { episode_id: string }[]) ids.add(row.episode_id);
+    return [...ids];
+  }
+
+  public setEpisodeFavorite(id: string, favorite: boolean, data: string): void {
+    this.db.prepare('UPDATE episodes SET favorite = ?, data = ? WHERE id = ?').run(favorite ? 1 : 0, data, id);
+  }
+
+  public deleteEpisode(id: string): void {
+    this.db.prepare('DELETE FROM episode_members WHERE episode_id = ?').run(id);
+    this.db.prepare('DELETE FROM episodes WHERE id = ?').run(id);
   }
 
   /** Events still "active" from a previous run (crash, restart): end them at their last update. */

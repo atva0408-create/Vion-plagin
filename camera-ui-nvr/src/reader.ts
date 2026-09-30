@@ -34,7 +34,11 @@ export function keyframeAtOrBefore(segment: SegmentRow, tsUs: number): Keyframe 
  * Streams the access units of a segment starting at a keyframe offset. With `follow`, keeps tailing
  * the file while it is still being written (live tip).
  */
-export async function *readFrames(segment: SegmentRow, from: Keyframe, opts: { follow?: () => boolean; signal?: AbortSignal; audio?: boolean } = {}): AsyncGenerator<Frame> {
+export async function *readFrames(
+  segment: SegmentRow,
+  from: Keyframe,
+  opts: { follow?: () => boolean; signal?: AbortSignal; audio?: boolean } = {},
+): AsyncGenerator<Frame> {
   const kfs = parseKeyframes(segment.keyframes);
   const kfByOffset = new Map(kfs.map((k) => [k.offset, k.tsUs]));
   let base: { pts: number; us: number } | undefined;

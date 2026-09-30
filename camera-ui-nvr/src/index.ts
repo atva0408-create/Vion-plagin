@@ -6,7 +6,8 @@ import { join } from 'node:path';
 
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
-import { exportClip, writeZip } from './export.js';
+import { Episodes } from './episodes.js';
+import { exportClip, mosaic, writeZip } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
 import { PlaybackManager } from './playback.js';
@@ -29,6 +30,7 @@ import type {
 } from '@camera.ui/sdk';
 import type { AssistantHost } from './assistant.js';
 import type { EventDescription } from './describer.js';
+import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
 import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow, SegmentRow } from './store.js';
@@ -66,6 +68,10 @@ const PAGE_SCAN_ROWS = 20_000;
 const STATS_SCAN_ROWS = 100_000;
 const STATS_CAP = 5000;
 const TRACE_PAGE = 60;
+const EPISODE_SWEEP_MS = 60_000;
+/** An episode clip starts a little before the camera saw the visit and ends a little after (as in the player). */
+const EPISODE_HEAD_MS = 1500;
+const EPISODE_TAIL_MS = 2000;
 /** Keyframes per trace-frames call (thumbnail strip), GOP frames per exact frame. */
 const TRACE_MAX_TARGETS = 60;
 
@@ -154,6 +160,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private semantic!: SemanticIndex;
   private faces!: FaceStore;
   private describer!: EventDescriber;
+  private episodes!: Episodes;
+  private episodeTimer: NodeJS.Timeout | undefined;
   private readonly proxies = new Map<string, unknown>();
   private clipStatus: ClipReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
   private clipCancel = false;
@@ -448,6 +456,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     });
     const stale = this.store.closeStaleActive();
     if (stale) this.logger.log(`Закрыто событий, оставшихся активными после перезапуска: ${stale}`);
+    this.episodes = new Episodes(this.store, { cameraName: (cameraId) => this.cameras.get(cameraId)?.device.name ?? cameraId, newId: () => randomUUID() });
+    this.episodes.restore((eventId) => {
+      const row = this.store.event(eventId);
+      return row ? (JSON.parse(row.data) as RecordedEvent) : undefined;
+    });
     this.playback = new PlaybackManager(this.store, (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)));
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
@@ -466,6 +479,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     void this.refreshEntitlements();
     this.entitlementsTimer = setInterval(() => void this.refreshEntitlements(), ENTITLEMENTS_INTERVAL_MS);
     this.retentionTimer = setInterval(() => void this.enforceRetention(), RETENTION_INTERVAL_MS);
+    this.episodeTimer = setInterval(() => this.episodes.sweep(Date.now()), EPISODE_SWEEP_MS);
     void this.enforceRetention();
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
   }
@@ -474,6 +488,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.describer?.stop();
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
+    clearInterval(this.episodeTimer);
     this.playback?.stopAll();
     await Promise.all([...this.cameras.keys()].map((id) => this.releaseCamera(id)));
     this.store?.close();
@@ -525,7 +540,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const roles: Role[] = rs.sources?.length ? rs.sources : ['high'];
       for (const role of roles) {
         const source = role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
-        if (source) wanted.set(role, { rtspUrl: source.generateRTSPUrl({ video: true, audio: this.storage.values.recordAudio === true, timeout: 15 }), tsUrl: go2rtcTsUrl(source.urls?.snapshot?.jpeg) });
+        if (source)
+          wanted.set(role, {
+            rtspUrl: source.generateRTSPUrl({ video: true, audio: this.storage.values.recordAudio === true, timeout: 15 }),
+            tsUrl: go2rtcTsUrl(source.urls?.snapshot?.jpeg),
+          });
       }
     }
 
@@ -607,7 +626,18 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
     const data = this.decorate(withoutVectors(merged), existingRow?.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type, data });
+    this.offerToEpisodes(data);
     if (type === 'end') this.describer.offer(withoutVectors(merged));
+  }
+
+  /** Episodes are a view over the events: a failure there must never lose or delay an event. */
+  private offerToEpisodes(event: RecordedEvent): void {
+    try {
+      const episode = this.episodes.offer(event);
+      if (episode) for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'episode', data: event, episode });
+    } catch (error) {
+      this.logger.warn(`Episodes: ${(error as Error).message}`);
+    }
   }
 
   private async saveAttachments(cameraId: string, event: RecordedEvent, att: EventAttachments): Promise<void> {
@@ -1257,31 +1287,127 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** What this NVR supports beyond the basics; the UI hides the rest. */
   public async getNvrFeatures(): Promise<NvrFeatures> {
-    return { episodes: false, exportQuality: true };
+    return { episodes: true, exportQuality: true };
   }
 
-  // --------------------------------------------- not implemented yet (stubs)
+  // ---------------------------------------------------------------- episodes
 
-  public async getEpisodes(): Promise<{ episodes: never[]; hasMore: boolean }> {
-    return { episodes: [], hasMore: false };
+  public async getEpisodes(
+    opts: { startMs?: number; endMs?: number; limit?: number; favoritesOnly?: boolean } = {},
+  ): Promise<{ episodes: RecordedEpisode[]; hasMore: boolean }> {
+    await this.ready;
+    return this.episodes.list(opts ?? {});
   }
 
-  public async getEpisodeMosaic(): Promise<undefined> {
-    return undefined;
+  /** The pictures of up to four of the episode's events, cameras first, in one JPEG; cached until the members change. */
+  public async getEpisodeMosaic(episodeId: string): Promise<Uint8Array | undefined> {
+    await this.ready;
+    const episode = this.episodes.get(episodeId);
+    if (!episode) return undefined;
+    const members = [...new Map(episode.members.map((m) => [m.cameraId, m])).values(), ...episode.members].filter(
+      (m, i, all) => all.findIndex((x) => x.eventId === m.eventId) === i,
+    );
+    const key = members
+      .slice(0, 4)
+      .map((m) => m.eventId)
+      .join('|');
+    const dir = join(this.dataDir, 'episodes', episodeId);
+    try {
+      if (readFileSync(join(dir, 'mosaic.key'), 'utf8') === key) return new Uint8Array(readFileSync(join(dir, 'mosaic.jpg')));
+    } catch {
+      // not made yet, or the members changed since
+    }
+    const pictures: Uint8Array[] = [];
+    for (const member of members) {
+      if (pictures.length === 4) break;
+      const picture = await this.memberPicture(member.eventId);
+      if (picture) pictures.push(picture);
+    }
+    if (!pictures.length) return undefined;
+    try {
+      const jpeg = await mosaic(this.ffmpegPath, pictures);
+      mkdirSync(dir, { recursive: true });
+      await writeFile(join(dir, 'mosaic.jpg'), jpeg);
+      await writeFile(join(dir, 'mosaic.key'), key);
+      return jpeg;
+    } catch (error) {
+      // a card still gets a picture when ffmpeg cannot compose one
+      this.logger.warn(`Episode mosaic: ${(error as Error).message}`);
+      return pictures[0];
+    }
   }
 
-  public async getEpisodeTrace(): Promise<null> {
-    return null;
+  public async getEpisodeTrace(episodeId: string): Promise<EpisodeTrace | null> {
+    await this.ready;
+    return this.episodes.trace(episodeId);
   }
 
-  public async getEpisodeTraceImages(): Promise<never[]> {
-    return [];
+  /** The picture of every event of the episode, in its order, with the camera and the time into the visit. */
+  public async getEpisodeTraceImages(episodeId: string): Promise<{ note: string; data?: Uint8Array }[]> {
+    await this.ready;
+    const trace = this.episodes.trace(episodeId);
+    const episode = this.episodes.get(episodeId);
+    if (!trace || !episode) return [];
+    return Promise.all(episode.members.map(async (member, i) => ({ note: trace.images[i]?.note ?? member.cameraId, data: await this.memberPicture(member.eventId) })));
   }
 
-  public async setEpisodeFavorite(): Promise<void> {}
+  public async setEpisodeFavorite(episodeId: string, favorite: boolean): Promise<void> {
+    await this.ready;
+    const episode = this.episodes.setFavorite(episodeId, favorite === true);
+    if (!episode) return;
+    // other open views learn it the way they learn any episode change
+    const row = this.store.event(episode.members[0]?.eventId ?? '');
+    if (row) {
+      const data = this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1);
+      for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'episode', data, episode });
+    }
+  }
 
-  public async nvrExportEpisode(): Promise<never> {
-    throw new Error('Episodes are not supported yet');
+  /** The episode's recordings in the player's order: one MP4, or a ZIP with one MP4 per camera block. */
+  public async nvrExportEpisode(episodeId: string): Promise<{ url: string; filename: string }> {
+    await this.ready;
+    const episode = this.episodes.get(episodeId);
+    if (!episode) throw new Error('Episode not found');
+    const told = (episode.blocks ?? []).filter((b) => !b.secondAngle && b.endMs > b.startMs);
+    const blocks = told.length ? told : episode.members.map((m) => ({ cameraId: m.cameraId, startMs: m.firstSeen, endMs: m.lastSeen }));
+    const outDir = join(this.dataDir, 'exports', randomUUID());
+    const parts: { path: string; name: string }[] = [];
+    for (const block of blocks) {
+      const startUs = (block.startMs - EPISODE_HEAD_MS) * 1000;
+      const endUs = (block.endMs + EPISODE_TAIL_MS) * 1000;
+      const segments = this.exportSegments(block.cameraId, startUs, endUs);
+      if (!segments.length) continue;
+      const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs)}.mp4`;
+      const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments, startUs, endUs, outDir, filename: name });
+      parts.push({ path: res.path, name });
+    }
+    if (!parts.length) throw new Error('No recordings for this episode');
+    if (parts.length === 1) {
+      const dl = await this.api.downloadManager.createDownload({
+        filePath: parts[0].path,
+        filename: parts[0].name,
+        mimeType: 'video/mp4',
+        ttlMs: 3 * 3600_000,
+        cleanup: 'on-expiry',
+      });
+      return { url: dl.url, filename: parts[0].name };
+    }
+    const filename = `vion-episode_${fileStamp(episode.startTime * 1000)}.zip`;
+    const zipPath = join(outDir, filename);
+    await writeZip(zipPath, parts);
+    await Promise.all(parts.map((p) => rm(p.path, { force: true })));
+    const dl = await this.api.downloadManager.createDownload({ filePath: zipPath, filename, mimeType: 'application/zip', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
+    return { url: dl.url, filename };
+  }
+
+  private async memberPicture(eventId: string): Promise<Uint8Array | undefined> {
+    const row = this.store.event(eventId);
+    if (!row) return undefined;
+    try {
+      return (await this.getEventThumbnails(row.camera_id, row.start_ms, eventId)).event;
+    } catch {
+      return undefined;
+    }
   }
 
   // ------------------------------------------------------ indexing (CLIP, faces)
@@ -1344,6 +1470,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Index cleanup: ${(error as Error).message}`);
     }
+    // on its own: a failed index cleanup must not leave episodes pointing at deleted events
+    try {
+      for (const episodeId of this.episodes.forgetEvents(ids)) {
+        void rm(join(this.dataDir, 'episodes', episodeId), { recursive: true, force: true }).catch((error: Error) => this.logger.warn(`Episode files: ${error.message}`));
+      }
+    } catch (error) {
+      this.logger.warn(`Episode cleanup: ${(error as Error).message}`);
+    }
   }
 
   /** RPC proxies of the plugins implementing an interface (CLIP, face embedding), cached per plugin. */
@@ -1395,6 +1529,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store.upsertEvent(event);
     const data = this.decorate(event, row.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'update', data });
+    // a name is an identity: an open episode may now read «Иван: …» or take this event in
+    this.offerToEpisodes(data);
     return true;
   }
 
@@ -1496,6 +1632,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store.upsertEvent(event);
     const data = this.decorate(event, row.favorite === 1, true);
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type: 'update', data });
+    // the description comes after the event ended; the episode's text quotes it
+    this.offerToEpisodes(data);
   }
 
   private async notifyDescription(event: RecordedEvent, description: EventDescription, picture: Uint8Array | undefined): Promise<void> {
