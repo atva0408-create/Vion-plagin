@@ -1,13 +1,13 @@
 # Home Assistant
 
-Imports Home Assistant devices into camera.ui. Motion, occupancy, contact, doorbell, smoke, leak, gas, CO and other supported entities become camera.ui sensors that you can assign to cameras, use as detection triggers, or watch on the dashboard. Locks, garage doors, alarm panels, switches, lights and sirens come in as controls: switching them in camera.ui switches them in Home Assistant. Home Assistant notify services (companion app, TTS, Telegram, ...) can be added as notification targets under Settings > Notifications, so camera.ui alerts reach every channel Home Assistant knows.
+Imports Home Assistant devices into ViON. Motion, occupancy, contact, doorbell, smoke, leak, gas, CO and other supported entities become ViON sensors that you can assign to cameras, use as detection triggers, or watch on the dashboard. Locks, garage doors, alarm panels, switches, lights and sirens come in as controls: switching them in ViON switches them in Home Assistant. Home Assistant notify services (companion app, TTS, Telegram, ...) can be added as notification targets under Settings > Notifications, so ViON alerts reach every channel Home Assistant knows.
 
 ## Setup
 
-Create a long-lived access token in Home Assistant (Profile > Security) and enter it together with your Home Assistant URL in the plugin settings. When camera.ui runs as the Home Assistant add-on, no configuration is needed, the plugin connects through the supervisor automatically.
+Create a long-lived access token in Home Assistant (Profile > Security) and enter it together with your Home Assistant URL in the plugin settings. When ViON runs as the Home Assistant add-on, no configuration is needed, the plugin connects through the supervisor automatically.
 
 ## What gets imported
 
-Every entity with a supported device class is imported automatically. Unsupported device classes are skipped. Entities that camera.ui itself exports to Home Assistant are never re-imported. Use the Excluded Entities setting to keep specific entities out.
+Every entity with a supported device class is imported automatically. Unsupported device classes are skipped. Entities that ViON itself exports to Home Assistant are never re-imported. Use the Excluded Entities setting to keep specific entities out.
 
 Imported sensors show up in the Sensors view. Assigning one to a camera makes it a detection trigger for that camera, exactly like a native sensor.

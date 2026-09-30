@@ -1,6 +1,6 @@
 # ONNX Legacy
 
-ONNX Runtime detection backend for camera.ui. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
+ONNX Runtime detection backend for ViON. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
 
 The same detection plugin as [ONNX](https://github.com/atva0408-create/Vion-plagin/blob/main/camera-ui-onnx/README.md), pinned to onnxruntime-gpu 1.26, the last release built on CUDA 12.
 

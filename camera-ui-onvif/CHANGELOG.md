@@ -1,3 +1,7 @@
+## [1.2.7]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [1.2.6]
 
 - A camera that was unreachable when camera.ui started now comes back on its own

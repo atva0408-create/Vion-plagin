@@ -1,3 +1,7 @@
+## [2.0.4]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [2.0.3]
 
 - The HomeBase T9000 is recognized as a HomeBase. It showed up as a camera before, without guard mode, and the cameras behind it did not find their station

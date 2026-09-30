@@ -1,3 +1,3 @@
 # OpenCL Motion
 
-GPU-accelerated motion detection for camera.ui using OpenCL.
+GPU-accelerated motion detection for ViON using OpenCL.

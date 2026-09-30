@@ -1,7 +1,7 @@
 {
   "displayName": "Home Assistant",
   "name": "@vionvision/camera-ui-homeassistant",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Импортирует датчики Home Assistant в ViON: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками ViON, которые могут запускать обнаружение на камерах.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
@@ -50,7 +50,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-homeassistant#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "home-assistant",
     "sensors",
     "smart-home"

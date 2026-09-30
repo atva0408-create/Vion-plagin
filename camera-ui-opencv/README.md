@@ -1,3 +1,3 @@
 # OpenCV Motion
 
-Motion detection for camera.ui using OpenCV.
+Motion detection for ViON using OpenCV.

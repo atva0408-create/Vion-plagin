@@ -1,3 +1,3 @@
 # Pam Diff
 
-Pixel-based motion detection for camera.ui using the pam-diff algorithm on ffmpeg PAM frames.
+Pixel-based motion detection for ViON using the pam-diff algorithm on ffmpeg PAM frames.

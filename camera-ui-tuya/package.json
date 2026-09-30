@@ -1,7 +1,7 @@
 {
   "displayName": "Tuya",
   "name": "@vionvision/camera-ui-tuya",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Подключает камеры Tuya / Smart Life к ViON: поиск устройств и прямой эфир.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
@@ -46,7 +46,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-tuya#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "cameras",
     "tuya"
   ],

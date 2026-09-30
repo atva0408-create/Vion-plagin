@@ -1,6 +1,6 @@
 # Eufy
 
-Integrates Eufy cameras, doorbells and HomeBases into camera.ui. Cameras stream over P2P, or over RTSP where the camera offers it, with two-way audio on cameras that have a speaker. Motion, people, vehicles, pets, sounds, doorbell presses and the battery arrive as camera sensors, and spotlight, siren, pan and tilt and the camera switch show up as controls. Eufy entry, motion, leak, smoke and CO sensors, locks and the guard mode and siren of a HomeBase can be adopted on the Sensors page.
+Integrates Eufy cameras, doorbells and HomeBases into ViON. Cameras stream over P2P, or over RTSP where the camera offers it, with two-way audio on cameras that have a speaker. Motion, people, vehicles, pets, sounds, doorbell presses and the battery arrive as camera sensors, and spotlight, siren, pan and tilt and the camera switch show up as controls. Eufy entry, motion, leak, smoke and CO sensors, locks and the guard mode and siren of a HomeBase can be adopted on the Sensors page.
 
 ## Setup
 

@@ -1,7 +1,7 @@
 {
   "displayName": "WASM Motion",
   "name": "@vionvision/camera-ui-wasm-motion",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Детектор движения для ViON в виде модуля WebAssembly. Переносимый попиксельный анализ движения без зависимостей.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",
@@ -56,7 +56,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-wasm-motion#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "wasm",
     "motion",
     "detection"

@@ -1,3 +1,7 @@
+## [1.0.2]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 # Changelog
 
 ## [1.0.1]

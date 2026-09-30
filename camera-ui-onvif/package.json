@@ -1,7 +1,7 @@
 {
   "displayName": "Onvif",
   "name": "@vionvision/camera-ui-onvif",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Интеграция ONVIF для ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "type": "module",
@@ -49,7 +49,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-onvif#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "onvif",
     "ptz",
     "motion",

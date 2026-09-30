@@ -1,3 +1,7 @@
+## [1.2.7]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [1.2.6]
 
 - Updated camera.ui engine

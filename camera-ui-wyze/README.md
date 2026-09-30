@@ -1,3 +1,3 @@
 # Wyze
 
-Integrates Wyze cameras into camera.ui, with device discovery, live streaming and motion events.
+Integrates Wyze cameras into ViON, with device discovery, live streaming and motion events.

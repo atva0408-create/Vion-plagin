@@ -1,7 +1,7 @@
 {
   "displayName": "OpenCL",
   "name": "@vionvision/camera-ui-opencl",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Детектор движения для ViON с ускорением на видеокарте через OpenCL.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/main.py",
@@ -36,7 +36,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-opencl#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "motion",
     "opencl",
     "detection"

@@ -1,3 +1,7 @@
+## [1.2.12]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [1.2.11]
 
 **Needs camera.ui 2.2.5.** After the update, pick this plugin as Face Recognition for each camera: camera settings, Plugins, Detections. Faces are detected but not named until then. The plugin downloads its new face models on the first start.

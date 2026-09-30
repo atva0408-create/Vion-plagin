@@ -1,3 +1,7 @@
+## [1.3.3]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [1.3.2]
 
 - **Remote live view stays clean.** Encrypted video packets could end up larger than the size the Home app asked for, so the picture got more and more corrupted when watching away from home.

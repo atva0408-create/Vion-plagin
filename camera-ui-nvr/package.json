@@ -1,7 +1,7 @@
 {
   "displayName": "ViON NVR",
   "name": "@vionvision/camera-ui-nvr",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Видеорегистратор ViON: постоянная запись и запись по событиям, просмотр архива на шкале времени, события и экспорт. Работает полностью на вашем сервере, без внешних аккаунтов.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -46,7 +46,7 @@
   "cpu": [],
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-nvr#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "nvr",
     "recording"
   ],

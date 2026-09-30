@@ -1,3 +1,7 @@
+## [1.2.13]
+
+- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+
 ## [1.2.12]
 
 - **The model always reads the picture it was given.** The picture could be overwritten in memory before the model read it, so an object or a face could be missed or scored wrong.

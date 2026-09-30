@@ -1,7 +1,7 @@
 {
   "displayName": "Reolink",
   "name": "@vionvision/camera-ui-reolink",
-  "version": "1.2.25",
+  "version": "1.2.26",
   "description": "Подключает камеры и звонки Reolink к ViON по родному протоколу Baichuan: поиск устройств, прямой эфир, двусторонний звук, события движения, ИИ-объектов, батареи и звонка.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/main.go",
@@ -39,7 +39,7 @@
   },
   "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-reolink#readme",
   "keywords": [
-    "camera-ui-plugin",
+    "vion-plugin",
     "reolink",
     "baichuan"
   ],
