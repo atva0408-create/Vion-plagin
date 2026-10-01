@@ -50,6 +50,7 @@ jobs:
             camera-ui-apple-llm: ['camera-ui-apple-llm/**']
             camera-ui-homeassistant: ['camera-ui-homeassistant/**']
             camera-ui-homekit: ['camera-ui-homekit/**']
+            camera-ui-nvr: ['camera-ui-nvr/**']
             camera-ui-onvif: ['camera-ui-onvif/**']
             camera-ui-ring: ['camera-ui-ring/**']
             camera-ui-pamdiff: ['camera-ui-pamdiff/**']
@@ -90,6 +91,13 @@ jobs:
 
       - name: Check the store of ready-made automations
         run: node scripts/automations.ts --check
+
+      # catalog.ts prints with chalk and runs through tsx: unlike the two checks above it needs the root packages
+      - name: Install the script dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check the plugin catalog
+        run: npm run catalog -- --check
 
   node-plugins:
     needs: changes

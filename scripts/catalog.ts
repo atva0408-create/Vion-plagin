@@ -169,7 +169,22 @@ function buildEntry(folder: string): { name: string; entry: CatalogEntry } {
   return { name, entry };
 }
 
+/**
+ * What --check compares. `protocolLevel` is the one field that does not come from the repository: it is read from a
+ * plugin's built bundle (bundle/package.json) and, for the external plugins, from the npm registry. A checkout in CI
+ * has neither, so the field is left out on both sides: a catalog that is stale only in protocolLevel passes the check.
+ */
+function differences(committed: CatalogEntry, written: CatalogEntry): string[] {
+  const [before, after] = [committed, written] as unknown as Record<string, unknown>[];
+  const fields = new Set([...Object.keys(before), ...Object.keys(after)]);
+  fields.delete('protocolLevel');
+  return [...fields]
+    .filter((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]))
+    .map((field) => `${field} is ${JSON.stringify(before[field])}, scripts/catalog.ts writes ${JSON.stringify(after[field])}`);
+}
+
 async function main(): Promise<void> {
+  const check = process.argv.includes('--check');
   const folders = discoverPlugins();
   if (!folders.length) {
     console.error('\r\n', chalk.bgRed.bold(' ERROR '), chalk.red('No camera-ui-* plugins found.'));
@@ -183,7 +198,8 @@ async function main(): Promise<void> {
   }
 
   for (const [name, entry] of Object.entries(EXTERNAL_PLUGINS)) {
-    const registryLevel = await fetchExternalProtocolLevel(name);
+    // --check does not compare protocolLevel, so it has nothing to ask the registry for
+    const registryLevel = check ? undefined : await fetchExternalProtocolLevel(name);
     catalog[name] = registryLevel !== undefined ? { ...entry, protocolLevel: registryLevel } : entry;
   }
 
@@ -193,6 +209,31 @@ async function main(): Promise<void> {
   }
 
   const outPath = resolve(ROOT, 'catalog.json');
+
+  if (check) {
+    const committed: Record<string, CatalogEntry> = existsSync(outPath) ? JSON.parse(readFileSync(outPath, 'utf-8')) : {};
+    const problems: string[] = [];
+    for (const [name, entry] of Object.entries(sorted)) {
+      if (!committed[name]) {
+        problems.push(`${name} is missing`);
+        continue;
+      }
+      for (const difference of differences(committed[name], entry)) problems.push(`${name}: ${difference}`);
+    }
+    for (const name of Object.keys(committed)) {
+      if (!sorted[name]) problems.push(`${name} belongs to no plugin`);
+    }
+    if (problems.length) {
+      console.error('catalog.json is not what scripts/catalog.ts writes:');
+      for (const problem of problems) console.error(`  - ${problem}`);
+      // without the bundles the script would write a catalog with no protocolLevel at all
+      console.error('\nRun `npm run catalog` with the plugins bundled (protocolLevel is read from the bundles) and commit the result.');
+      process.exit(1);
+    }
+    console.log(`catalog.json describes ${Object.keys(sorted).length} plugin(s)`);
+    return;
+  }
+
   writeFileSync(outPath, JSON.stringify(sorted, null, 2) + '\n');
 
   console.log(chalk.cyan(`\r\nWrote ${chalk.bold(String(Object.keys(sorted).length))} plugins to catalog.json\r\n`));
