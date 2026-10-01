@@ -1,13 +1,24 @@
 # Home Assistant
 
-Imports Home Assistant devices into ViON. Motion, occupancy, contact, doorbell, smoke, leak, gas, CO and other supported entities become ViON sensors that you can assign to cameras, use as detection triggers, or watch on the dashboard. Locks, garage doors, alarm panels, switches, lights and sirens come in as controls: switching them in ViON switches them in Home Assistant. Home Assistant notify services (companion app, TTS, Telegram, ...) can be added as notification targets under Settings > Notifications, so ViON alerts reach every channel Home Assistant knows.
+Brings the devices of your Home Assistant into ViON and delivers ViON notifications through Home Assistant.
 
-## Setup
+## What it does
 
-Create a long-lived access token in Home Assistant (Profile > Security) and enter it together with your Home Assistant URL in the plugin settings. When ViON runs as the Home Assistant add-on, no configuration is needed, the plugin connects through the supervisor automatically.
+- Lists the usable Home Assistant entities in the Discovered section of the Sensors page, with name, type and room; you add the ones you want
+- Turns motion, occupancy, contact, doorbell, smoke, leak, gas, carbon monoxide and other supported entities into ViON sensors you can assign to cameras as detection triggers
+- Brings in locks, garage doors, alarm panels, switches, lights and sirens as controls: switching them in ViON switches them in Home Assistant
+- Offers the notify services of Home Assistant (companion app, Telegram and others) as notification targets under Settings > Notifications
+- Keeps a sensor with its camera assignments when the entity is renamed in Home Assistant, and marks it as removed when the entity is deleted
+- Never offers entities that ViON itself passed on to Home Assistant
 
-## What gets imported
+## What you need
 
-Every entity with a supported device class is imported automatically. Unsupported device classes are skipped. Entities that ViON itself exports to Home Assistant are never re-imported. Use the Excluded Entities setting to keep specific entities out.
+- A long-lived access token, created in your Home Assistant profile under Security
+- Nothing to enter when ViON runs as a Home Assistant add-on: the plugin connects by itself
+- For pictures in notifications and for opening an event by tapping its notification: the ViON integration for Home Assistant
 
-Imported sensors show up in the Sensors view. Assigning one to a camera makes it a detection trigger for that camera, exactly like a native sensor.
+## Settings
+
+- **Home Assistant URL**: the address of your Home Assistant including the port
+- **Access Token**: the long-lived access token
+- **Excluded Entities**: comma-separated entity IDs that should not be offered for adding

@@ -1,9 +1,9 @@
 {
   "displayName": "Ring",
   "name": "@vionvision/camera-ui-ring",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Подключает камеры и звонки Ring к ViON: поиск устройств, прямой эфир, события движения, батареи, подсветки, сирены и звонка.",
-  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
+  "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

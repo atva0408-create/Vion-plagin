@@ -6,7 +6,7 @@ const config: CameraUiBuildOptions = {
   input: ['src/index.ts'],
   mode: mode === 'development' ? 'development' : 'production',
   external: ['@camera.ui/rust-detector'],
-  additionalFiles: [],
+  additionalFiles: ['i18n'],
 };
 
 export default config;

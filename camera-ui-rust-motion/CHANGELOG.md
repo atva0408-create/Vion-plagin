@@ -1,65 +1,70 @@
+## [1.2.7]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.6]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.4]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.3]
 
-- Small and slow movement is detected reliably now, day and night. The detector briefly holds its comparison image, so slow movement adds up instead of slipping below the threshold. Nearby changed regions count as one movement, so a distant animal is one hit instead of a few specks. A camera move or a sudden exposure change resets the detector instead of lighting up the whole picture.
-- New Reference Hold setting: how many seconds the comparison image is kept. Higher catches slower movement, lower keeps boxes closer to the current position.
-- The Area setting changed its meaning with this and applies to the combined size of nearby regions. All installations are moved to the new defaults once; your own tuning stays untouched after that.
+- Small and slow movement is now detected reliably, by day and at night. The detector keeps its comparison image for a short time, so slow movement adds up instead of staying below the threshold. Changed regions close to each other count as one movement, so a distant animal is one detection instead of a few specks. A camera move or a sudden change of exposure resets the detector instead of marking the whole picture.
+- New setting Reference Hold: how many seconds the comparison image is kept. Higher values catch slower movement, lower values keep the boxes closer to the current position.
+- The Area setting has changed its meaning with this and applies to the combined size of nearby regions. All installations are moved to the new default values once; your own adjustments stay untouched after that.
 
 ## [1.2.2]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.1]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.0]
 
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.4]
 
-- Cleanup
+- Internal improvements
 
 ## [1.1.3]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.1]
 
-- Fix resetting the sensor to defaults not persisting the area, threshold, blur radius, and dilation size values, because the storage writes were not awaited; defaults are now saved reliably
+- Fixed: Reset settings did not save the default values of Area, Threshold, Blur Radius and Dilation Size. They are now saved reliably.
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release

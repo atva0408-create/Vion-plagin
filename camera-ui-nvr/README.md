@@ -1,39 +1,23 @@
 # ViON NVR
 
-Собственный видеорегистратор ViON: запись камер, архив, таймлайн, события и экспорт.
-Работает полностью на вашем сервере, без внешних аккаунтов и лицензионных серверов.
+ViON's own video recorder: it records your cameras and keeps the archive on your own server.
 
-## Возможности (v0.1)
+## What it does
 
-- Запись без перекодирования (копия потока go2rtc в MPEG-TS), файлы по 60 с, индекс ключевых кадров.
-- Режимы камеры: **постоянно**, **по событию** с предзаписью (pre-buffer из настроек камеры)
-  и дозаписью после события, или **по запросу** — пишет только после ручного старта.
-- Ручная запись («Записать» у камеры или действие автоматизации): 1–120 минут, по умолчанию 5, для камер
-  «по событию» и «по запросу»; остановка не обрывает запись, начатую детекцией.
-- Таймлайн: сегменты, покрытие по потокам (high/mid/low), календарь дней с записью, живой край.
-- Воспроизведение в интерфейсе ViON: поток кадров H.264/H.265 в браузер (WebCodecs), пауза и скорость,
-  перемотка по ключевым кадрам, превью при наведении.
-- События детекции от сервера: хранение, миниатюры, фильтры, избранное, удаление, тепловая карта.
-- Экспорт отрезка в MP4 (без перекодирования), таймлапс, пакетный экспорт нескольких камер в ZIP.
-- Хранение: срок хранения, лимит архива (ГБ), защита минимального свободного места,
-  статистика диска и по камерам.
+- Records each camera continuously, on event (with the seconds before and after it) or on request: a manual recording runs 1 to 120 minutes, 5 by default.
+- Shows the archive on a timeline with a calendar of recorded days, pause, speed and preview pictures.
+- Keeps detection events with thumbnails, filters, favorites and a heatmap.
+- Joins events of one visit from several cameras into an episode, for example a person walking from the gate to the door.
+- Exports a section as MP4, as a timelapse, or several cameras at once as a ZIP file.
+- Can have the assistant model describe events: you find them by text in "AI Search" and get the description as a notification.
 
-## Эпизоды
+## What you need
 
-События разных камер, относящиеся к одному визиту, склеиваются в эпизод: человек прошёл от ворот к двери,
-машина въехала и встала на парковку. Склейка идёт по правилам, без модели:
+- The ViON Cloud plan of the server owner decides how many cameras may record and how long the archive is kept. A server not linked to ViON Cloud uses its local limits.
+- For AI descriptions: an assistant model that understands pictures (Settings → Assistant) and permission for ViON NVR.
 
-- тот же класс объекта (человек, транспорт, животное) на **другой** камере не позже 45 с после предыдущей
-  или одновременно с ней (пересекающиеся зоны обзора);
-- тот же номер или то же узнанное лицо в пределах 10 минут — на любой камере, в том числе на той же;
-- эпизод — это минимум две камеры; в одном эпизоде не больше 24 событий и 15 минут, чтобы оживлённый вход не
-  слипался в одну историю на весь день; события «только движение» не участвуют.
+## Settings
 
-Каждая связь хранится с причиной («человек на «Входная дверь» через 20 с после «Въезд»») — это и показывает
-трассировка эпизода. Название и описание собираются из камер, классов, номеров и ИИ-описаний событий.
-Скачивание эпизода — MP4 или ZIP с клипом на каждый блок камер; избранный эпизод сохраняет свои события от
-автоочистки, как избранное событие.
-
-## Хранилище
-
-`<storage>/recordings/<cameraId>/<YYYY-MM-DD>/<startMs>-<role>.ts`, индекс — `<storage>/nvr.db` (SQLite).
+- "Keep recordings, days": older video and events are deleted automatically; not longer than the plan allows.
+- "Archive limit, GB" and "Minimum free space, %": when the archive exceeds the limit or less space is free, the oldest recordings are deleted.
+- "Record audio": saves the sound of the cameras in the archive; off by default.

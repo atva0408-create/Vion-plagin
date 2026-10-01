@@ -6,7 +6,7 @@ const config: CameraUiBuildOptions = {
   input: ['src/index.ts'],
   mode: mode === 'development' ? 'development' : 'production',
   external: [],
-  additionalFiles: [],
+  additionalFiles: ['i18n'],
   language: 'go',
   go: {
     cgoEnabled: '0',

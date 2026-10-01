@@ -1,56 +1,61 @@
+## [1.2.7]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.6]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.4]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.3]
 
-- Updated camera.ui engine and deps
+- Compatibility update for the current ViON version
 
 ## [1.2.1]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.0]
 
-- The port field now enforces the valid range (1-65535)
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- The port field now accepts only valid port numbers (1 to 65535)
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.3]
 
-- Cleanup
+- Internal improvements
 
 ## [1.1.2]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release

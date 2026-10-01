@@ -10,6 +10,10 @@ const config: CameraUiBuildOptions = {
       source: 'media',
       target: 'media',
     },
+    {
+      source: 'i18n',
+      target: 'i18n',
+    },
   ],
 };
 

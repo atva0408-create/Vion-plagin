@@ -1,0 +1,59 @@
+## [1.2.17]
+
+- Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche
+
+## [1.2.16]
+
+- Kompatibilitätsupdate für die aktuelle ViON-Version
+
+## [1.2.15]
+
+- Erfordert ViON 2.2.5 oder neuer
+- **Wählen Sie nach dem Update dieses Plugin für die Gesichtswiedererkennung jeder Kamera aus** (Kameraeinstellungen, „Plugins“, „Erkennungen“). Bis dahin werden Gesichter erkannt, aber nicht benannt. Seine neuen Gesichtsmodelle lädt das Plugin beim ersten Start herunter.
+- **Die Gesichtswiedererkennung ist jetzt ein eigener Sensor und richtet das Gesicht vor dem Wiedererkennen aus.** Sie erkennt deutlich mehr Personen wieder, und ein Gesicht von der Seite oder steil von oben erhält keinen Namen statt eines falschen. Das Wiedererkennungsmodell wird einmal für das ganze Plugin festgelegt; die gespeicherten Bilder der Personen verarbeitet ViON von selbst neu.
+- Kompatibilitätsupdate für die aktuelle ViON-Version
+
+## [1.2.14]
+
+- Kompatibilitätsupdate für die aktuelle ViON-Version
+
+## [1.2.13]
+
+- **TensorRT ist nach einem Modell- oder Plugin-Update schneller bereit.** Die Messwerte der vorherigen Vorbereitung bleiben erhalten und werden wiederverwendet.
+- Kleinere Fehlerbehebungen
+
+## [1.2.12]
+
+- **Lässt sich CUDA nicht laden, nennt das Protokoll jetzt das passende Docker-Image.** Dieses Plugin benötigt die CUDA-12-Bibliotheken: das ViON-Image mit NVIDIA-Unterstützung (CUDA 12). Mit CUDA 13, also dem ViON-Image mit NVIDIA-Unterstützung (CUDA), verwenden Sie das reguläre ONNX-Plugin.
+
+## [1.2.11]
+
+- **Kennzeichen werden wieder gelesen.** Jede Lesung wurde als unlesbar bewertet und verworfen, bevor sie ein Ereignis erreichte, ganz gleich, was die Kamera sah. Falls Sie die Lesekonfidenz in den Kameraeinstellungen gesenkt haben, um das zu umgehen, stellen Sie sie wieder zurück.
+
+## [1.2.9]
+
+- Das CLIP-Modell für die semantische Suche ist jetzt eine einzige Plugin-Einstellung statt einer Auswahl je Kamera
+- Die Objekterkennung richtet sich nach den Konfidenzwerten je Typ (Person, Fahrzeug, Tier) aus den Kameraeinstellungen
+
+## [1.2.8]
+
+- Die Konfidenzschwellen wurden aus den Plugin-Einstellungen entfernt. Objekt-, Gesichts- und Kennzeichenerkennung verwenden jetzt die Werte aus den Erkennungseinstellungen der Kamera; sie werden also an einer Stelle festgelegt, und eine Änderung wirkt sofort.
+- Das Plugin meldet, welches Modell geladen ist und auf welchem Gerät es läuft, sodass ViON dies in den Metriken der Kamera anzeigen kann
+
+## [1.2.6]
+
+- Kompatibilitätsupdate für die aktuelle ViON-Version
+
+## [1.2.5]
+
+- **Das empfohlene Modell für die Gesichtserkennung hat sich geändert.** Hinter der Option „Standard“ steht jetzt ein stärkeres Modell: In Testaufnahmen findet es in 82 % der Bilder ein Gesicht, in denen das bisherige 30 % schaffte, und es hält einen Hinterkopf nicht mehr für ein Gesicht. Ihre aktuelle Auswahl bleibt unverändert. Neue Installationen erhalten es sofort; in einer bestehenden wählen Sie „Standard“ in der Modellliste oder verwenden „Einstellungen zurücksetzen“. Eine Gesichtsprüfung kostet dann etwa doppelt so viel Rechenleistung und läuft nur, wenn eine Person gesehen wurde.
+
+## [1.2.4]
+
+- **Eine Schaltfläche „Einstellungen zurücksetzen“ in jedem Einstellungsbereich.** Ein Klick setzt alle Werte des Bereichs auf die Standardwerte zurück, einschließlich der Modelle.
+- **Eine neue Auswahl „Standard“ in jeder Modellliste.** Sie folgt dem empfohlenen Modell für die jeweilige Aufgabe, sodass Plugin-Updates die Wahl automatisch verbessern können. Wer ein bestimmtes Modell wählt, legt es weiterhin fest. Bestehende Installationen behalten ihre aktuelle Auswahl.
+- **Fünf neue Modelle für die Gesichtserkennung.** Kleine und mittlere Größen sowie 640-px-Varianten jeder Größe (t, s, m). Die 640-px-Modelle finden kleine und weit entfernte Gesichter, die das 320-px-Standardmodell übersieht, bei höherem Rechenaufwand. Das Standardmodell bleibt unverändert.
+
+## [1.2.3]
+
+- Erste Veröffentlichung. Dieselben Funktionen wie das ONNX-Plugin, aber auf CUDA 12. Das reguläre Plugin ist auf CUDA 13 umgestiegen, das NVIDIA-Grafikkarten vor der GTX 1650 (Maxwell, Pascal, Volta) nicht mehr unterstützt; mit diesem Plugin arbeiten sie weiter auf der GPU. Es ist auch für Systeme gedacht, die bei einem installierten CUDA 12 bleiben.

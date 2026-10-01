@@ -1,0 +1,13 @@
+{
+  "Детектор движения для ViON в виде модуля WebAssembly. Переносимый попиксельный анализ движения без зависимостей.": "Bewegungserkennung für ViON, die auf jedem System ohne zusätzliche Komponenten läuft.",
+  "Площадь": "Fläche",
+  "Минимальный размер области, считающийся движением.": "Mindestgröße eines Bereichs, der als Bewegung gilt.",
+  "Порог": "Schwellenwert",
+  "Изменение яркости, при котором пиксель считается изменившимся.": "Helligkeitsänderung, ab der ein Pixel als verändert gilt.",
+  "Радиус размытия": "Weichzeichnungsradius",
+  "Сглаживание перед обнаружением для снижения шума.": "Glättung vor der Erkennung, um Rauschen zu verringern.",
+  "Размер расширения": "Ausdehnungsgröße",
+  "Объединяет соседние изменившиеся пиксели в одну область.": "Fasst benachbarte veränderte Pixel zu einem Bereich zusammen.",
+  "Сбросить настройки": "Einstellungen zurücksetzen",
+  "Восстановить значения обнаружения по умолчанию.": "Standardwerte der Erkennung wiederherstellen."
+}

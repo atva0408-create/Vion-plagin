@@ -1,9 +1,9 @@
 {
   "displayName": "Pam Diff",
   "name": "@vionvision/camera-ui-pamdiff",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Попиксельный детектор движения для ViON: алгоритм pam-diff на кадрах PAM из ffmpeg.",
-  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
+  "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

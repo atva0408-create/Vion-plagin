@@ -1,0 +1,13 @@
+{
+  "Встроенная модель Apple как модель ассистента ViON, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.": "Apple's built-in model as a model for the ViON assistant, with tools and pictures. Runs right on the Mac, without keys and without a cloud.",
+  "Ask for structured answers": "Ask for structured answers",
+  "Apple refuses plain answers about people at doors, gates and windows. With this on, every answer is requested as structured output, which the model answers. Off only to see the raw refusals.": "Apple refuses plain answers about people at doors, gates and windows. With this on, every answer is requested in a structured form, which the model does answer. Turn it off only to see the refusals themselves.",
+  "Relaxed safety filter": "Relaxed safety filter",
+  "Uses the permissive guardrail level of the model, which refuses fewer everyday camera scenes.": "Uses the more permissive safety level of the model, which refuses fewer everyday camera scenes.",
+  "Context window (tokens)": "Context window (tokens)",
+  "How much the model can hold. Raise it after a system update that brings a larger window, ViON plans the conversation with this number.": "How much the model can hold at once. Raise it after a system update that brings a larger window: ViON plans the conversation with this number.",
+  "Let the model use tools": "Let the model use tools",
+  "The assistant can look at events, cameras and sensors through this model. ViON fits the tool list to the small context window. Off makes it a plain chat model.": "The assistant can look at events, cameras and sensors through this model. ViON fits the tool list to the small context window. Off makes it a plain chat model.",
+  "Send pictures to the model": "Send pictures to the model",
+  "The model looks at event pictures instead of reading only the text around them. Needs macOS 27; on macOS 26 no pictures are sent.": "The model looks at event pictures instead of reading only the text around them. Needs macOS 27; on macOS 26 no pictures are sent."
+}

@@ -14,6 +14,31 @@ Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, YAMNet) download their 
 They come from the ViON mirror `https://models.vionvision.tech` (see `deploy/models-mirror` in the VIONN- repo);
 set `VION_MODELS_HOST` to use another mirror. The path layout is `/<version>/<backend>/...`, identical to the upstream host.
 
+## Translations
+
+The ViON interface exists in English, Russian and German, and every plugin ships its own texts in all three:
+
+| File                                                | What it is                                                                        |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `README.md`, `CHANGELOG.md`                         | Description page and list of changes, in English, written for the customer        |
+| `i18n/README.<lang>.md`, `i18n/CHANGELOG.<lang>.md` | The same pages in the other languages                                             |
+| `i18n/<lang>.json`                                  | Settings texts: `{ "<text as the code writes it>": "<text in that language>" }`  |
+
+`i18n` is listed in `additionalFiles` of `cameraui.config.ts`, so it is part of the bundle. The server serves the
+pages in the language of the interface and translates the settings forms through the dictionaries; a text without a
+translation is shown the way the code writes it. Pages carry no links and no web addresses: the reader is a customer
+inside the product.
+
+After adding or changing a setting:
+
+```sh
+npm run i18n -- --sync   # adds the new texts to i18n/*.json with empty values, drops the removed ones
+npm run i18n             # lists what is not translated yet; CI runs the same check
+```
+
+A text several plugins share must be translated the same way in each of them. A file whose `description` fields are
+read by a model rather than by people (tool and answer schemas) is excluded with the comment `i18n-skip-file`.
+
 ## Upstream
 
 Based on [camera.ui plugins](https://github.com/cameraui/plugins) by seydx (MIT), used with the author's permission.

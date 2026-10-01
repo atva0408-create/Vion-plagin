@@ -1,0 +1,16 @@
+{
+  "Обнаружение движения для ViON через SMTP. Небольшой SMTP-сервер превращает письма-оповещения камер в события движения.": "Bewegungserkennung für ViON über SMTP. Ein kleiner SMTP-Server macht aus den E-Mail-Benachrichtigungen der Kameras Bewegungsereignisse.",
+  "Port": "Port",
+  "Port the SMTP server listens on.": "Port, auf dem der SMTP-Server E-Mails annimmt.",
+  "Disable TLS": "TLS deaktivieren",
+  "Turn off STARTTLS for cameras that don't support it.": "STARTTLS für Kameras abschalten, die es nicht unterstützen.",
+  "Email Address": "E-Mail-Adresse",
+  "The email address that triggers motion. The SMTP server accepts any username and domain.": "E-Mail-Adresse, die Bewegung auslöst. Der SMTP-Server akzeptiert beliebige Benutzernamen und Domains.",
+  "camera@vion.local": "camera@vion.local",
+  "Motion On Text": "Text für Bewegungsbeginn",
+  "Text pattern that triggers motion. Leave empty to trigger on any email.": "Text in der E-Mail, der Bewegung auslöst. Leer lassen, um bei jeder E-Mail auszulösen.",
+  "motion detected": "motion detected",
+  "Motion Off Text": "Text für Bewegungsende",
+  "Text pattern that clears motion state.": "Text in der E-Mail, der die Bewegung beendet.",
+  "motion cleared": "motion cleared"
+}

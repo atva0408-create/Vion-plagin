@@ -2,6 +2,7 @@
 // gateway, Ollama, OpenRouter…). Only ended events with objects are described, one at a time and
 // within an hourly budget, so a busy camera never floods the model. The text is indexed for
 // full-text search (hybrid with the CLIP vectors) and can be sent as a "smart" notification.
+// i18n-skip-file: the schema descriptions below are read by the model, not shown in the interface.
 
 import type { DatabaseSync } from 'node:sqlite';
 import type { RecordedEvent } from './types.js';

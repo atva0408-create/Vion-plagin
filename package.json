@@ -10,6 +10,7 @@
     "bundle": "cross-env MODE=development tsx ./scripts/bundle.ts",
     "catalog": "tsx ./scripts/catalog.ts",
     "format": "tsx ./scripts/format.ts",
+    "i18n": "tsx ./scripts/i18n.ts",
     "install-updates": "npm i --save && tsx ./scripts/install.ts",
     "labels": "bash ./.github/scripts/create-labels.sh",
     "lint": "tsx ./scripts/lint.ts",

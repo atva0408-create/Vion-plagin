@@ -6,6 +6,7 @@ const config: CameraUiBuildOptions = {
   input: ['src/index.ts'],
   mode: mode === 'development' ? 'development' : 'production',
   external: [],
+  additionalFiles: ['i18n'],
 };
 
 export default config;

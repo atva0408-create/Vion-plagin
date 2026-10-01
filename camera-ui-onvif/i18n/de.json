@@ -1,0 +1,19 @@
+{
+  "Интеграция ONVIF для ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.": "Bindet ONVIF-Kameras in ViON ein: Kamerasuche, PTZ-Steuerung sowie Bewegungs-, Objekt-, Geräusch- und Gesichtsereignisse der Kamera.",
+  "Username": "Benutzername",
+  "Username for the camera's ONVIF account.": "Benutzername des ONVIF-Kontos der Kamera.",
+  "Password": "Passwort",
+  "Password for the camera's ONVIF account.": "Passwort des ONVIF-Kontos der Kamera.",
+  "URL": "URL",
+  "Device address, e.g. http://192.168.1.100": "Adresse des Geräts, z. B. http://192.168.1.100",
+  "Reconnect": "Neu verbinden",
+  "Reconnect to the camera.": "Verbindung zur Kamera neu aufbauen.",
+  "Event Topics": "Ereignisthemen",
+  "Camera event topics that feed this sensor.": "Ereignisthemen der Kamera, die diesen Sensor auslösen.",
+  "Axes": "Achsen",
+  "Movement axes reported by the camera.": "Von der Kamera gemeldete Bewegungsachsen.",
+  "Move Support": "Bewegungsarten",
+  "Move commands the camera accepts.": "Bewegungsbefehle, die die Kamera annimmt.",
+  "Presets": "Presets",
+  "Presets discovered on the camera.": "Auf der Kamera gefundene Presets."
+}

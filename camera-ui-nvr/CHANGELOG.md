@@ -1,85 +1,86 @@
-# История изменений
+## [0.10.2]
 
-## 0.10.1
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
 
-- Пакет помечен ключевым словом `vion-plugin` вместо прежнего.
+## [0.10.1]
 
-## 0.10.0
+- Compatibility update for the current ViON version
 
-- Запись по запросу. `nvrStartRecording(cameraId, minutes?)` начинает или продлевает ручную запись (по умолчанию 5 минут, от 1 до 120), `nvrStopRecording` останавливает её, `getManualRecording`/`onManualRecording` отдают состояние; `getNvrFeatures()` сообщает `manualRecording: true`. Предзапись камеры попадает в начало файла. Камера «Постоянно» и так пишет — ручная запись для неё не заводится; камера без записи или сверх лимита тарифа получает ошибку.
-- Режим «По запросу» (`adhoc`) снова работает: камера держит предзапись, но пишет только после ручного старта — детекции сохраняются как события, но запись не запускают. Раньше такая камера писала как «По событию».
-- Ручное окно хранится в рекордере отдельно от записи по детекциям: остановка вручную не обрывает то, что попросила детекция. Окно переносится на пересоздаваемые рекордеры (смена потоков) и заканчивается, если запись камеры выключили или перевели в «Постоянно». Перезапуск NVR ручную запись завершает.
+## [0.10.0]
 
-## 0.9.0
+- Recording on request. A recording can be started by hand or by an automation, extended while it runs and stopped at any time: 5 minutes by default, from 1 to 120. The pre-recording of the camera goes into the beginning of the recording. A camera in "Continuous" mode records anyway and gets no manual recording; a camera with recording turned off or above the plan limit reports an error
+- The "On request" mode works again: the camera keeps its pre-recording but records only after a manual start. Detections are saved as events and do not start a recording. Before, such a camera recorded as in "On event" mode
+- A manual recording is kept apart from recording started by detections: stopping it by hand does not cut off what a detection asked for. It carries over when the streams of the camera change and ends when recording of the camera is turned off or switched to "Continuous". A restart of the NVR ends a manual recording
 
-- Эпизоды: события разных камер одного визита склеиваются в эпизод по правилам — тот же класс объекта на другой камере не позже 45 с (или одновременно), тот же номер или узнанное лицо в пределах 10 минут. Не меньше двух камер, не больше 24 событий и 15 минут; события «только движение» не участвуют. `getNvrFeatures()` сообщает `episodes: true`, и интерфейс показывает «Записи → Показать → Эпизоды». Раньше методы эпизодов были заглушками.
-- Эпизод приходит в интерфейс сразу, как только появилась вторая камера (сообщение `episode`), и обновляется, пока визит продолжается; неизменившееся обновление не отправляется. После перезапуска NVR незакрытый эпизод продолжается.
-- Плеер эпизода получает блоки камер: где объект видят две камеры сразу, первая остаётся основной, вторая — «второй ракурс».
-- Трассировка эпизода: каждая связь с причиной, участники с классами и номерами/лицами, кадр каждого события. Мозаика карточки — до четырёх кадров (ffmpeg), кэшируется, пока состав не изменится.
-- Скачивание эпизода: MP4 или ZIP с клипом на каждый блок камер. Избранный эпизод сохраняет свои события от автоочистки. Удалённое событие уходит из эпизода, название пересобирается; эпизод с одной камерой удаляется вместе с файлами мозаики.
+## [0.9.0]
 
-## 0.8.0
+- Episodes. Events of one visit from different cameras are joined into an episode by fixed rules: the same kind of object on another camera no later than 45 seconds afterwards (or at the same time), the same license plate or recognized face within 10 minutes. At least two cameras, at most 24 events and 15 minutes; events with motion only do not take part. The interface shows them under Recordings → Show → Episodes
+- An episode reaches the interface as soon as the second camera joins and is updated while the visit goes on. After a restart of the NVR an unfinished episode continues
+- The episode player shows blocks of cameras: where two cameras see the object at once, the first stays the main one and the second becomes the "Second angle"
+- Episode trace: every link with its reason, the participants with their kinds and license plates or faces, and a picture of each event. The mosaic of the episode card has up to four pictures
+- Episode download: MP4, or ZIP with a clip for each block of cameras. A favorite episode protects its events from automatic cleanup. A deleted event leaves the episode and the title is rebuilt; an episode left with one camera is deleted
 
-- Звук в архиве. Новая настройка «Записывать звук» (по умолчанию выключена): запись идёт через ffmpeg, который переводит звук камеры (чаще всего G.711) в AAC; камера без микрофона по-прежнему пишет видео. Раньше звук отбрасывался при записи (`-an`, пакеты звука не сохранялись).
-- Воспроизведение отдаёт звук клиенту, который его запросил (`onAudio`), `onReady` сообщает, что в записи есть звук (`audio`). Клиент «только видео» (стена камер) звук не получает.
-- Экспорт сохраняет звук в MP4 (AAC), у записей без звука файл остаётся без него. В таймлапсе звука нет.
-- В базе у сегментов появилась колонка `audio_pid`; старые базы дополняются сами, старые записи читаются как записи без звука.
+## [0.8.0]
 
-## 0.7.0
+- Sound in the archive. New setting "Record audio" (off by default): the sound of the camera (most often G.711) is converted to AAC while recording; a camera without a microphone still records video. Before, sound was dropped when recording
+- Playback plays the sound of recordings that have it. Views that show video only (the camera wall) get no sound
+- Export keeps the sound in the MP4 (AAC); for recordings without sound the file stays without it. A timelapse has no sound
+- Existing archives are updated by themselves; older recordings are read as recordings without sound
 
-- Инструменты ассистента: ViON NVR объявляет интерфейс `AssistantTools` и даёт ассистенту архив только на чтение — `query_events` (события за период с отбором по камере, объекту, номеру, узнанному лицу), `summarize_day` (итоги одного или нескольких дней в часовом поясе пользователя, главные события по времени), `search_events_by_text` (поиск по описанию), `list_plates` (прочитанные номера) и `get_event_image` (кадр события). Раньше список был пуст (`tools: []`), и навыки ассистента «итоги дня», «найти событие», «номера» не работали.
-- Номера сравниваются без пробелов, дефисов и регистра («К 178 УС 77» и «к178ус77» — один номер); неузнанное лицо («unknown») не выдаётся за человека.
+## [0.7.0]
 
-## 0.6.0
+- Assistant tools. The ViON assistant gets read-only access to the archive: the events of a period filtered by camera, object, license plate or recognized face; a summary of one or several days in the time zone of the user, with the main events in order of time; search by description; the license plates that were read; the picture of an event. Before, the assistant could not sum up a day, find an event or list license plates
+- License plates are compared without spaces, hyphens and letter case ("К 178 УС 77" and "к178ус77" are the same plate); an unrecognized face is not presented as a person
 
-- Фильтры записей работают: «Триггеры» (в том числе метки звука), «Атрибуты» (лицо, номерной знак), «Другое» и переключатели «И/ИЛИ» между группами; «И» связывает сильнее «ИЛИ». Порог уверенности больше не отбрасывает события без оценённых обнаружений (датчики, звонок). Выборочный фильтр находит события и за пределами последних сотен записей.
-- Статистика событий действительно считает до 5000 событий и число сегментов.
-- Трассировка обнаружения: тики трассировки от сервера сохраняются вместе с событием (и удаляются вместе с ним), `getEventTrace`/`getEventTraceOffset` отдают их постранично, `nvrTraceFrames` — кадры из записи на моменты тиков (ближайшие по времени).
-- Экспорт учитывает «Качество»: «Лучшее качество» — поток с наибольшим разрешением, «Минимальный размер файлов» — с наименьшим (из записанных в выбранном отрезке).
-- Режим записи «По запросу» (`adhoc`) не имел запуска и ничего не записывал: такие камеры теперь пишут «по событию».
-- `getNvrFeatures()` сообщает интерфейсу, что поддерживается (эпизоды — нет, качество экспорта — да), и интерфейс не предлагает лишнего.
+## [0.6.0]
 
-## 0.5.2
+- The recording filters work: "Triggers" (including sound labels), "Attributes" (face, license plate), "Other" and the "AND/OR" switches between the groups; "AND" binds more strongly than "OR". The confidence threshold no longer drops events without rated detections (sensors, doorbell). A selective filter also finds events beyond the latest few hundred recordings
+- The event statistics really count up to 5000 events and the number of segments
+- Detection trace: the steps of a detection are saved with the event (and deleted with it) and shown page by page, with pictures from the recording at those moments (the nearest in time)
+- Export respects "Quality": "Best quality" takes the stream with the highest resolution, "Smallest files" the one with the lowest (of those recorded in the chosen section)
+- The "On request" recording mode had no way to start and recorded nothing: such cameras now record "on event"
+- The interface is told what the recorder supports (episodes: not yet, export quality: yes) and does not offer more than that
 
-- Воспроизведение у «живого» края больше не обрывается на смене сегмента: ключевые кадры нового сегмента попадают в индекс сразу, а не через 4 с.
-- Обновления одного события обрабатываются по очереди: «конец» события больше не затирается запоздавшим обновлением с картинками (события не зависают «активными»).
-- Режим «по событию»: предзапись нового сегмента не повторяет кадры предыдущего.
-- Ошибка записи на диск (нет места, сбой диска) больше не роняет плагин: сегмент закрывается, запись продолжается со следующего ключевого кадра.
-- После переподключения камеры с другим кодеком, разрешением или PID запись продолжается (раньше останавливалась до перезапуска).
-- Статистика событий считает до 5000 событий (раньше обрезалась на 500).
-- Очистка архива снова удаляет сначала файл, потом запись индекса: при ошибке удаления файл не теряется.
+## [0.5.2]
 
-## 0.5.1
+- Playback at the live edge no longer breaks off when a new recording file starts: the new file can be played at once instead of 4 seconds later
+- Updates of one event are handled in order: the end of an event is no longer overwritten by a late update with pictures (events do not stay "active" forever)
+- "On event" mode: the pre-recording of a new file does not repeat pictures of the previous one
+- A disk write error (no space, disk failure) no longer stops the plugin: the file is closed and recording continues with the next full picture
+- After a camera reconnects with a different video format or resolution, recording continues (before, it stopped until a restart)
+- The event statistics count up to 5000 events (before, they were cut off at 500)
+- Archive cleanup: when a recording file cannot be deleted, it stays listed and the cleanup tries again, instead of leaving behind a file nobody knows about
 
-- Воспроизведение события, которое началось чуть раньше записи (камера ещё подключалась, длинный интервал ключевых кадров), начинается с первого записанного кадра вместо «Нет записи».
-- Сегмент, удалённый очисткой архива во время просмотра, пропускается, а не обрывает воспроизведение ошибкой; очистка сначала убирает сегмент из индекса, затем файл.
+## [0.5.1]
 
-## 0.5.0
+- Playback of an event that began slightly before the recording (the camera was still connecting, long interval between full pictures) starts from the first recorded picture instead of "No recording"
+- A recording file removed by archive cleanup while it is being watched is skipped and no longer ends playback with an error
 
-- Описания событий ИИ (настройка «Описания событий ИИ»): после события с человеком, транспортом или животным модель ассистента описывает, что произошло, по кадрам события. Работает с любой моделью ассистента ViON, понимающей картинки (OpenAI-совместимый шлюз, Ollama, OpenRouter и др.); лимит описаний в час.
-- Гибридный ИИ-поиск: векторы картинок (CLIP/SigLIP) + полнотекстовый поиск по описаниям (русские словоформы).
-- Умные уведомления: описание приходит уведомлением («Подъезд: Курьер оставил посылку»).
-- `describeEvent(eventId)` — описать событие по запросу.
+## [0.5.0]
 
-## 0.4.0
+- AI event descriptions (setting "AI event descriptions"): after an event with a person, vehicle or animal the assistant model describes what happened from the pictures of the event. Works with any assistant model of ViON that understands pictures (OpenAI-compatible gateway, Ollama, OpenRouter and others); there is a limit of descriptions per hour
+- Combined AI search: by the content of pictures (CLIP/SigLIP) and by the text of the descriptions, Russian word forms included
+- Smart notifications: the description arrives as a notification ("Entrance: Courier left a parcel")
+- An event can be described on request
 
-- Семантический поиск по событиям: CLIP-векторы объектов индексируются, запрос текстом кодируется плагином CLIP (ONNX, OpenVINO, CoreML); переиндексация старых событий по их картинкам.
-- Лица: база знакомых людей (несколько фото на человека), сопоставление при детекции, незнакомые лица с группировкой похожих, игнор, исправление имени в событии обучает систему, повторное сопоставление.
-- Векторы хранятся в отдельных таблицах и больше не уходят в интерфейс вместе с событиями.
-- Миниатюры лиц и номеров сохраняются под ключами, которые ждёт интерфейс (раньше не отображались).
+## [0.4.0]
 
-## 0.3.0
+- Search in events by meaning: the pictures of detected objects are indexed, and a text query is matched against them with the help of the CLIP plugin (ONNX, OpenVINO, CoreML); older events can be indexed again from their pictures
+- Faces: a database of known people (several photos per person), matching at detection, unknown faces with grouping of similar ones, ignoring faces, correcting a name in an event teaches the system, repeated matching
+- The search data is stored separately and is no longer sent to the interface together with the events
+- Thumbnails of faces and license plates are displayed (before, they were not shown)
 
-- `getRecordingPlan()`: тариф, лимиты и камеры, занимающие слоты записи (панель в настройках записей).
-- События, оставшиеся активными после перезапуска, закрываются при старте.
-- Встроен в сервер ViON: ставится и обновляется вместе с ним, без реестра.
+## [0.3.0]
 
-## 0.2.0
+- The recording settings show the plan, its limits and the cameras that take up the recording slots
+- Events that were left active after a restart are closed at startup
+- Built into the ViON server: installed and updated together with it
 
-- Лимиты тарифа ViON Cloud: число камер с записью и максимальный срок архива (сервер без облака — локальные лимиты).
-- Тариф показан в настройках записи.
+## [0.2.0]
 
-## 0.1.0
+- Limits of the ViON Cloud plan: the number of cameras with recording and the longest archive period (a server without the cloud uses local limits)
+- The plan is shown in the recording settings
 
-- Первая версия ViON NVR: постоянная запись и запись по событию, таймлайн, воспроизведение,
-  события, экспорт MP4/ZIP, срок хранения и лимиты диска.
+## [0.1.0]
+
+- First version of ViON NVR: continuous recording and recording on event, timeline, playback, events, MP4/ZIP export, retention period and disk limits

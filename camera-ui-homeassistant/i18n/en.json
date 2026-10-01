@@ -1,0 +1,11 @@
+{
+  "Импортирует датчики Home Assistant в ViON: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками ViON, которые могут запускать обнаружение на камерах.": "Imports Home Assistant sensors into ViON: motion, occupancy, contact, doorbell, smoke, leak and others become ViON sensors that can trigger detection on cameras.",
+  "Debug": "Debug",
+  "Enable debug mode": "Enable debug mode",
+  "Home Assistant URL": "Home Assistant URL",
+  "For example http://homeassistant.local:8123. Leave empty when ViON runs as Home Assistant add-on.": "For example http://homeassistant.local:8123. Leave empty when ViON runs as a Home Assistant add-on.",
+  "Access Token": "Access Token",
+  "Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as Home Assistant add-on.": "Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as a Home Assistant add-on.",
+  "Excluded Entities": "Excluded Entities",
+  "Comma-separated entity ids that should not be offered for adoption.": "Comma-separated entity IDs that should not be offered for adding."
+}

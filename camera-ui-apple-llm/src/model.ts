@@ -3,6 +3,7 @@ export const MODEL_NAME = 'Apple on-device';
 export const CONTEXT_TOKENS = 8192;
 export const RECHECK_MS = 30_000;
 
+// i18n-skip-file: the schema description is read by the model, not shown in the interface.
 export const ANSWER_SCHEMA = {
   type: 'object',
   properties: { answer: { type: 'string', description: 'The answer, in the language of the question' } },

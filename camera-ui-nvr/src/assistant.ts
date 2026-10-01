@@ -2,6 +2,7 @@
 // the license plates read and an event's picture. The server's skills and the daily recap already name
 // them (nvr__query_events, nvr__summarize_day...); without them the assistant has no way into the archive.
 // Everything here reads; nothing deletes or changes events.
+// i18n-skip-file: the descriptions below are read by the model, not shown in the interface.
 
 import type { AssistantToolContext, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
 import type { ClipSearchResult } from './semantic.js';

@@ -4,7 +4,7 @@ const mode = process.env.MODE || 'production';
 
 const config: CameraUiBuildOptions = {
   input: ['src/index.ts'],
-  additionalFiles: ['helper/bin/apple-llm-helper'],
+  additionalFiles: ['helper/bin/apple-llm-helper', 'i18n'],
   mode: mode === 'development' ? 'development' : 'production',
 };
 

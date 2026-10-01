@@ -75,6 +75,19 @@ jobs:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: node .github/scripts/select-plugins.mjs
 
+  # Every plugin carries its texts in the languages of the ViON interface (scripts/i18n.ts says what and where).
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Check translations
+        run: node scripts/i18n.ts
+
   node-plugins:
     needs: changes
     if: needs.changes.outputs.node != '[]'

@@ -1,9 +1,9 @@
 {
   "displayName": "OpenVino",
   "name": "@vionvision/camera-ui-openvino",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Детектор OpenVINO для ViON, оптимизированный для оборудования Intel. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP.",
-  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
+  "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
   "type": "module",
   "scripts": {

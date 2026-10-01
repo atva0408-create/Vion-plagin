@@ -1,79 +1,83 @@
+## [1.2.8]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.7]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.6]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.4]
 
-- The sensor settings are gone: the plugin always listens for the standard camera.ui sounds, and the confidence comes from the camera's audio confidence setting
-- Detections use the standard camera.ui labels; unmapped YAMNet classes no longer leak through as raw class names
+- The sensor settings are gone: the plugin always listens for the standard ViON sounds, and the confidence comes from the camera's "Audio Confidence" setting
+- Detected sounds are reported under the standard ViON names; sounds without such a name no longer appear under internal names
 
 ## [1.2.3]
 
-- The plugin reports which model it loaded and which device it runs on, so camera.ui can show it in the camera metrics.
+- The plugin reports which model it loaded and which hardware it runs on, so ViON can show this in the camera metrics
 
 ## [1.2.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.2.1]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.0]
 
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.6]
 
-- Raise the default confidence threshold to 0.7, the old default let through almost every noise
-- Report one sound once, a bark no longer counts as both Bark and Dog
+- The default confidence threshold was raised to 0.7; the previous default let almost every noise through
+- A sound is reported once: a bark no longer counts as both a bark and a dog
 
 ## [1.1.5]
 
-- Exclude downloaded models from backups
+- Downloaded models are no longer included in backups
 
 ## [1.1.4]
 
-- Cleanup
+- Internal improvements
 
 ## [1.1.3]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.1]
 
-- Load classifier labels off the event loop, alongside the model, so plugin startup no longer blocks
-- Update camera.ui SDK
-- Bump camera.ui engine to v2.0.5
+- Starting the plugin no longer stalls while the list of sound names is loaded
+- Compatibility update for the current ViON version
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release

@@ -1,0 +1,13 @@
+{
+  "Попиксельный детектор движения для ViON: алгоритм pam-diff на кадрах PAM из ffmpeg.": "Bewegungserkennung für ViON durch pixelweisen Bildvergleich.",
+  "Разница движения": "Bewegungsdifferenz",
+  "Изменение цвета пикселя, необходимое для обнаружения движения.": "Farbänderung eines Pixels, die für die Bewegungserkennung nötig ist.",
+  "Процент движения": "Bewegungsanteil in Prozent",
+  "Доля изменившихся пикселей, необходимая для срабатывания движения.": "Anteil veränderter Pixel, ab dem Bewegung ausgelöst wird.",
+  "Режим обнаружения": "Erkennungsmodus",
+  "Цветовое пространство для обнаружения (оттенки серого работают быстрее).": "Farbraum für die Erkennung (Graustufen sind schneller).",
+  "Оттенки серого": "Graustufen",
+  "RGB": "RGB",
+  "Сбросить настройки": "Einstellungen zurücksetzen",
+  "Восстановить значения обнаружения по умолчанию.": "Standardwerte der Erkennung wiederherstellen."
+}

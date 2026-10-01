@@ -1,0 +1,17 @@
+{
+  "Подключает камеры Wyze к ViON: поиск устройств, прямой эфир и события движения.": "Connects Wyze cameras to ViON: device discovery, live view and motion events.",
+  "Email": "Email",
+  "Wyze account email": "Email of your Wyze account",
+  "Password": "Password",
+  "Wyze account password": "Password of your Wyze account",
+  "API ID": "API ID",
+  "Wyze Developer API ID (from developer.wyze.com)": "Wyze Developer API ID (from developer.wyze.com)",
+  "API Key": "API Key",
+  "Wyze Developer API Key (from developer.wyze.com)": "Wyze Developer API Key (from developer.wyze.com)",
+  "Access Token": "Access Token",
+  "Wyze API Access Token": "Wyze API Access Token",
+  "Refresh Token": "Refresh Token",
+  "Wyze API Refresh Token": "Wyze API Refresh Token",
+  "Login": "Log In",
+  "Login to Wyze": "Log in to Wyze"
+}

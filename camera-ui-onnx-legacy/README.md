@@ -1,16 +1,26 @@
 # ONNX Legacy
 
-ONNX Runtime detection backend for ViON. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
+Object, face and license plate detection for older NVIDIA graphics cards and for systems that stay on CUDA 12. With the regular ONNX plugin, detection on these cards silently moves to the processor.
 
-The same detection plugin as [ONNX](https://github.com/atva0408-create/Vion-plagin/blob/main/camera-ui-onnx/README.md), pinned to onnxruntime-gpu 1.26, the last release built on CUDA 12.
+## What it does
 
-CUDA 13 dropped support for NVIDIA architectures before Turing. The regular ONNX plugin runs on the CUDA 13 line, so on those cards detection silently falls back to the CPU. This plugin stays on the CUDA 12 build, which still carries kernels for them.
+- Object detection: people, vehicles and animals
+- Face detection and face recognition
+- Finds license plates and reads their text
+- AI search by description
 
-## When to use it
+## What you need
 
-Install this plugin instead of the regular ONNX plugin if:
+- Use it instead of the regular ONNX plugin if your NVIDIA card is older than a GTX 1650: Maxwell (GTX 700/900 series), Pascal (GTX 10 series, Quadro P400 to P4000, Tesla P4/P40/P100) or Volta (Titan V, Tesla V100)
+- Or if you want to keep an installed CUDA 12
+- CUDA 12.x, cuDNN 9.x for CUDA 12 and NVIDIA driver 525 or newer
+- Linux or Windows
+- On a GTX 1650 or newer, use the regular ONNX plugin: it works with CUDA 13, supports the RTX 50 series natively and keeps receiving fixes
 
-- your NVIDIA GPU is older than a GTX 1650: Maxwell (GTX 700/900 series), Pascal (GTX 10 series, Quadro P400 to P4000, Tesla P4/P40/P100) or Volta (Titan V, Tesla V100)
-- or your system has a CUDA 12 toolkit installed that you don't want to upgrade
+## Settings
 
-It needs CUDA 12.x and cuDNN 9.x for CUDA 12 installed, with NVIDIA driver 525 or newer. On a GTX 1650 or newer, use the regular ONNX plugin: it runs on CUDA 13, supports the RTX 50 series natively and keeps getting runtime fixes.
+- "Execution Provider": 'auto' uses CUDA on Linux and Windows (x86_64), otherwise the processor; with 'tensorrt' (NVIDIA TensorRT) the first start takes longer. If it fails, the processor takes over.
+- "CUDA Device IDs": which graphics cards to use, for example "0,1"
+- "CLIP Model (Images)": the AI search model for all cameras. After changing it, reindex the recordings.
+- "Face Recognition Model": one model for all cameras. After a change the saved faces are processed again.
+- Per camera: the models for object detection, face detection and license plates. "Default" follows the recommended model.

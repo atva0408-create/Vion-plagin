@@ -1,93 +1,97 @@
+## [1.2.12]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.11]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.10]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.9]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.8]
 
-- Minor bugfixes
+- Minor fixes
 
 ## [1.2.7]
 
-- Updated deps
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Object detection follows the per-type confidence values (person, vehicle, animal) from the camera settings
+- Object detection follows the confidence values set per object type (person, vehicle, animal) in the camera settings
 
 ## [1.2.4]
 
-- The confidence threshold is gone from the plugin settings. Object detection now uses the value from the camera's detection settings, so it is set in one place and a change takes effect right away.
-- The plugin reports which model it loaded and which device it runs on, so camera.ui can show it in the camera metrics.
+- The confidence threshold is no longer in the plugin settings. Object detection now uses the value from the camera's detection settings, so it is set in one place and a change takes effect right away
+- The plugin reports which model it loaded and which hardware it runs on, so ViON can show this in the camera metrics
 
 ## [1.2.2]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.1]
 
-- **A "Reset to Defaults" button in every settings section.** One click puts all values of that section back to the defaults, models included.
-- **A new "default" choice in the model dropdown.** It follows the recommended model, so plugin updates can improve the pick automatically. Choosing a concrete model still pins it. Existing setups keep their current selection.
+- **A "Reset settings" button in every settings section.** One click puts all values of that section back to the defaults, models included.
+- **A new "Default" choice in the model list.** It follows the recommended model, so plugin updates can improve the choice automatically. Choosing a specific model still keeps that model. Existing setups keep their current selection.
 
 ## [1.2.0]
 
-- Fixed the "Re-download Models" button doing nothing. Pressing it failed with a handler error in the log.
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- Fixed the "Download models again" button, which did nothing when pressed
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.6]
 
-- Pick which Edge TPU runs inference when several are attached. A new device option accepts usb, pci or an index like :0. Empty keeps the previous behavior (first available).
+- You can choose which Edge TPU runs the detection when several are connected. The new "Edge TPU device" setting accepts "usb", "pci" or a number such as ":0". Leaving it empty keeps the previous behavior (the first available one)
 
 ## [1.1.5]
 
-- Exclude downloaded models from backups
+- Downloaded models are no longer included in backups
 
 ## [1.1.4]
 
-- Cleanup
+- Internal improvements
 
 ## [1.1.3]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.1]
 
-- Log the model name when a detector starts loading and surface initialization failures instead of swallowing them; a failed load is now rolled back so it can be retried
-- Model reloads no longer abort the whole batch when a single model fails to load
-- Update camera.ui SDK
-- Bump camera.ui engine to v2.0.5
+- The log names the model when it starts loading, and a model that fails to load is now reported instead of failing silently; loading it can then be tried again
+- When one model fails to load during a reload, the other models are still loaded
+- Compatibility update for the current ViON version
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.4]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release

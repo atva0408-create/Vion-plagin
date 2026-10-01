@@ -1,0 +1,15 @@
+{
+  "Детектор движения для ViON с ускорением на видеокарте через OpenCL.": "Motion detection for ViON that runs on the graphics card.",
+  "Устройство OpenCL": "OpenCL Device",
+  "Площадь": "Area",
+  "Минимальный размер обнаруженного движения (в пикселях)": "Minimum size of detected motion (in pixels)",
+  "Порог": "Threshold",
+  "Чувствительность обнаружения движения (чем больше, тем ниже чувствительность)": "Motion detection sensitivity (the higher the value, the lower the sensitivity)",
+  "Размытие": "Blur",
+  "Радиус размытия по Гауссу для подавления шума": "Gaussian blur radius for noise reduction",
+  "Расширение": "Dilation",
+  "Расширение областей обнаруженного движения": "Enlarges the areas of detected motion",
+  "Чувствительность обнаружения движения (0–1, чем больше, тем ниже чувствительность)": "Motion detection sensitivity (0–1, the higher the value, the lower the sensitivity)",
+  "Сбросить настройки": "Reset settings",
+  "Сбросить настройки обнаружения движения к значениям по умолчанию": "Reset the motion detection settings to their default values"
+}

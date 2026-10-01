@@ -1,0 +1,16 @@
+{
+  "Нативный детектор движения для ViON на Rust с низкой нагрузкой на процессор.": "Bewegungserkennung für ViON mit geringer Prozessorlast.",
+  "Площадь": "Fläche",
+  "Минимальный суммарный размер соседних изменившихся областей, считающийся движением.": "Mindestgesamtgröße benachbarter veränderter Bereiche, die als Bewegung gilt.",
+  "Порог": "Schwellenwert",
+  "Изменение яркости, при котором пиксель считается изменившимся.": "Helligkeitsänderung, ab der ein Pixel als verändert gilt.",
+  "Радиус размытия": "Weichzeichnungsradius",
+  "Сглаживание перед обнаружением для снижения шума.": "Glättung vor der Erkennung, um Rauschen zu verringern.",
+  "Размер расширения": "Ausdehnungsgröße",
+  "Объединяет соседние изменившиеся пиксели в одну область.": "Fasst benachbarte veränderte Pixel zu einem Bereich zusammen.",
+  "Удержание эталона": "Haltezeit des Vergleichsbilds",
+  "Сколько секунд хранится эталонный кадр для сравнения. Большие значения улавливают очень медленное движение, меньшие — держат рамки движения ближе к текущему положению.": "Wie viele Sekunden das Vergleichsbild behalten wird. Höhere Werte erfassen sehr langsame Bewegung, niedrigere halten die Bewegungsrahmen näher an der aktuellen Position.",
+  "Сбросить настройки": "Einstellungen zurücksetzen",
+  "Восстановить значения обнаружения по умолчанию.": "Standardwerte der Erkennung wiederherstellen.",
+  "Настройки по умолчанию перенесены": "Standardwerte übernommen"
+}

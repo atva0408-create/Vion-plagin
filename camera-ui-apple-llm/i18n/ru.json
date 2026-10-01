@@ -1,0 +1,13 @@
+{
+  "Встроенная модель Apple как модель ассистента ViON, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.": "Встроенная модель Apple как модель ассистента ViON, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.",
+  "Ask for structured answers": "Запрашивать структурированные ответы",
+  "Apple refuses plain answers about people at doors, gates and windows. With this on, every answer is requested as structured output, which the model answers. Off only to see the raw refusals.": "Apple отказывается отвечать обычным текстом о людях у дверей, ворот и окон. Когда настройка включена, каждый ответ запрашивается в структурированном виде, и модель отвечает. Выключайте, только чтобы увидеть сами отказы.",
+  "Relaxed safety filter": "Смягчённый фильтр безопасности",
+  "Uses the permissive guardrail level of the model, which refuses fewer everyday camera scenes.": "Использует более мягкий уровень защитных ограничений модели: она реже отказывается описывать обычные сцены с камер.",
+  "Context window (tokens)": "Окно контекста (токены)",
+  "How much the model can hold. Raise it after a system update that brings a larger window, ViON plans the conversation with this number.": "Сколько текста модель удерживает за раз. Увеличьте после обновления системы, которое расширяет окно: по этому числу ViON планирует разговор.",
+  "Let the model use tools": "Разрешить модели использовать инструменты",
+  "The assistant can look at events, cameras and sensors through this model. ViON fits the tool list to the small context window. Off makes it a plain chat model.": "Через эту модель ассистент может обращаться к событиям, камерам и датчикам. ViON подбирает список инструментов под небольшое окно контекста. Если выключить, модель только ведёт разговор.",
+  "Send pictures to the model": "Отправлять изображения модели",
+  "The model looks at event pictures instead of reading only the text around them. Needs macOS 27; on macOS 26 no pictures are sent.": "Модель смотрит на кадры событий, а не только читает текст о них. Нужна macOS 27; на macOS 26 изображения не отправляются."
+}

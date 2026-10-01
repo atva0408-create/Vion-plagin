@@ -1,64 +1,68 @@
+## [1.2.7]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.6]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.4]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.3]
 
-- Updated camera.ui engine and deps
+- Compatibility update for the current ViON version
 
 ## [1.2.1]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.0]
 
-- Blur in the test form only steps through odd values now, matching what the detector accepts
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- In the motion detection test, Blur now moves only through odd values, the only ones the detector accepts
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.4]
 
-- **The Threshold slider for the Background Substraction detector now works.** It never had any effect before, apart from the maximum position, which silently switched motion detection off completely. If you had it at maximum, detection starts working again. The slider resets to a value that matches the previous detection behaviour.
-- **The Dilation setting on the Default detector now works.** It never had any effect before. It resets to a value that matches the previous detection behaviour, so nothing changes until you move it.
-- **The Learning Rate setting now applies to the motion test panel and to motion automation nodes.** Both ignored it and ran a fixed value. Background Substraction results there will shift, and now match what the camera does live.
+- The Threshold setting of the Background Subtraction method now works. Before, it had no effect except at its maximum, where it silently switched motion detection off completely. If you had it at maximum, detection works again. The setting is reset to a value that matches the previous detection behavior.
+- The Dilation setting of the Default method now works. Before, it had no effect. It is reset to a value that matches the previous detection behavior, so nothing changes until you move it.
+- The Learning Rate setting now also applies in the motion detection test and in automations. Both ignored it and used a fixed value. Background Subtraction results there will shift and now match what the camera does live.
 
 ## [1.1.3]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.1]
 
-- Run frame-difference, background-subtraction, and default motion detection off the event loop via the thread pool executor, keeping the async pipeline responsive
-- Update camera.ui SDK
-- Bump camera.ui engine to v2.0.5
+- The plugin stays responsive while it analyzes the picture, with all three detection methods
+- Compatibility update for the current ViON version
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release

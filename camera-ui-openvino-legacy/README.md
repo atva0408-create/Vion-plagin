@@ -1,13 +1,25 @@
 # OpenVino Legacy
 
-OpenVino detection backend for ViON, optimized for Intel hardware. Runs object detection, face detection and recognition, license plate recognition with OCR, and CLIP semantic embeddings.
+Object, face and license plate detection for older Intel graphics. With the regular OpenVino plugin these chips cannot load the models, and every model silently moves to the processor.
 
-The same detection plugin as [OpenVino](https://github.com/atva0408-create/Vion-plagin/blob/main/camera-ui-openvino/README.md), pinned to the older OpenVINO 2024.6 runtime.
+## What it does
 
-Newer OpenVINO releases generate GPU code that the drivers of older Intel chips can no longer build. On those machines the regular plugin logs `CL_BUILD_PROGRAM_FAILURE` and every model silently falls back to the CPU. The 2024.6 runtime still compiles for these GPUs.
+- Object detection: people, vehicles and animals
+- Face detection and face recognition
+- Finds license plates and reads their text
+- AI search by description
 
-## When to use it
+## What you need
 
-Install this plugin instead of the regular OpenVino plugin if your Intel GPU is 10th gen Core or older (Gen9/Gen11 graphics, for example HD/UHD Graphics 610 to 630). On 11th gen and newer (Iris Xe, Arc) use the regular plugin, the newer runtime is faster there and keeps getting fixes.
+- Use it instead of the regular OpenVino plugin if your Intel graphics is 10th gen Core or older (Gen9/Gen11 graphics, for example HD/UHD Graphics 610 to 630)
+- It mainly matters on Windows, where the part these chips depend on belongs to the graphics driver and cannot be updated separately
+- On Linux with the ViON Docker image it is usually not needed: the image already contains what older Intel graphics needs
+- On 11th gen Core and newer (Iris Xe, Arc), use the regular OpenVino plugin: it is faster there and keeps receiving fixes
 
-On Linux with the ViON Docker image this is usually not needed: the image ships a legacy compute stack for old Intel GPUs. It mainly matters on Windows, where the OpenCL compiler is part of the graphics driver and cannot be updated separately.
+## Settings
+
+- "Device": 'Default' finds the device itself (NPU, GPU or CPU); AUTO lets OpenVINO choose; CPU, GPU and NPU force one device; numbered entries such as GPU.0 and GPU.1 select one of several cards.
+- "Active Hardware": shows the device the models currently run on
+- "CLIP Model (Images)": the AI search model for all cameras. After changing it, reindex the recordings.
+- "Face Recognition Model": one model for all cameras. After a change the saved faces are processed again.
+- Per camera: the models for object detection, face detection and license plates. "Default" follows the recommended model.

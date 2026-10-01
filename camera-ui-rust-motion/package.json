@@ -1,9 +1,9 @@
 {
   "displayName": "Rust Motion",
   "name": "@vionvision/camera-ui-rust-motion",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Нативный детектор движения для ViON на Rust с низкой нагрузкой на процессор.",
-  "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
+  "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

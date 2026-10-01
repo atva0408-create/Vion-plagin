@@ -1,0 +1,18 @@
+{
+  "Детектор на Coral Edge TPU (TFLite) для ViON. Распознавание объектов на Coral Edge TPU с запасным режимом на CPU.": "Coral Edge TPU (TFLite) detection for ViON. Object detection on a Coral Edge TPU, with the CPU as a fallback.",
+  "Использовать Edge TPU (Coral)": "Use Edge TPU (Coral)",
+  "Устройство Edge TPU": "Edge TPU device",
+  "Какой Edge TPU использовать, если подключено несколько: \"usb\", \"pci\", \":0\", \":1\" или \"usb:0\". Если пусто, используется первый доступный.": "Which Edge TPU to use when several are connected: \"usb\", \"pci\", \":0\", \":1\" or \"usb:0\". When empty, the first available one is used.",
+  "Активное оборудование": "Active Hardware",
+  "Оборудование, на котором сейчас выполняется инференс загруженных моделей.": "Hardware the loaded models are currently running on.",
+  "Сбросить настройки": "Reset settings",
+  "Сбросить все настройки плагина к значениям по умолчанию": "Reset all plugin settings to their defaults",
+  "Скачать модели заново": "Re-download Models",
+  "Очистить локальный кэш моделей и заново скачать актуальные модели.": "Delete the downloaded models and download the current ones again.",
+  "Модель": "Model",
+  "Модель YOLO для тестирования": "YOLO model for testing",
+  "По умолчанию": "Default",
+  "Модель YOLO для обнаружения объектов": "YOLO model for object detection",
+  "Обнаружение объектов": "Object Detection",
+  "Сбросить все настройки к значениям по умолчанию": "Reset all settings to their defaults"
+}

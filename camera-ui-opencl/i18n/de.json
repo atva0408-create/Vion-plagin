@@ -1,0 +1,15 @@
+{
+  "Детектор движения для ViON с ускорением на видеокарте через OpenCL.": "Bewegungserkennung für ViON, die auf der Grafikkarte läuft.",
+  "Устройство OpenCL": "OpenCL-Gerät",
+  "Площадь": "Fläche",
+  "Минимальный размер обнаруженного движения (в пикселях)": "Mindestgröße der erkannten Bewegung (in Pixeln)",
+  "Порог": "Schwellenwert",
+  "Чувствительность обнаружения движения (чем больше, тем ниже чувствительность)": "Empfindlichkeit der Bewegungserkennung (je höher der Wert, desto geringer die Empfindlichkeit)",
+  "Размытие": "Weichzeichnung",
+  "Радиус размытия по Гауссу для подавления шума": "Radius der Gaußschen Weichzeichnung zur Rauschunterdrückung",
+  "Расширение": "Ausdehnung",
+  "Расширение областей обнаруженного движения": "Dehnt die Bereiche der erkannten Bewegung aus",
+  "Чувствительность обнаружения движения (0–1, чем больше, тем ниже чувствительность)": "Empfindlichkeit der Bewegungserkennung (0–1, je höher der Wert, desto geringer die Empfindlichkeit)",
+  "Сбросить настройки": "Einstellungen zurücksetzen",
+  "Сбросить настройки обнаружения движения к значениям по умолчанию": "Einstellungen der Bewegungserkennung auf die Standardwerte zurücksetzen"
+}

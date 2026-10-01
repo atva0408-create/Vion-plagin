@@ -1,70 +1,74 @@
+## [1.2.7]
+
+- The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
+
 ## [1.2.6]
 
-- Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)
+- Compatibility update for the current ViON version
 
 ## [1.2.5]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.4]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.3]
 
-- Updated camera.ui engine and deps
+- Compatibility update for the current ViON version
 
 ## [1.2.1]
 
-- Updated camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.2.0]
 
-- Blur and dilation in the test form only step through odd values now, matching what the detector accepts
-- Bump camera.ui SDK, requires camera.ui 2.0.23 or newer
+- In the motion detection test, Blur and Dilation now move only through odd values, the only ones the detector accepts
+- Compatibility update for the current ViON version
+- Requires ViON 2.0.23 or newer
 
 ## [1.1.5]
 
-- Pick which OpenCL device runs motion detection. A new device option lists every detected platform and device, so multi-GPU systems can put motion on the integrated GPU. Auto keeps the previous behavior (first GPU).
+- You can now choose which OpenCL device runs motion detection. The new OpenCL Device setting lists every detected device, so systems with several graphics cards can run motion detection on the integrated one. 'auto' keeps the previous behavior and uses the first graphics card.
 
 ## [1.1.4]
 
-- Cleanup
+- Internal improvements
 
 ## [1.1.3]
 
-- Bump camera.ui engine and SDK
+- Compatibility update for the current ViON version
 
 ## [1.1.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.1.1]
 
-- Run OpenCL detector initialization and per-frame motion processing off the event loop via the thread pool executor, keeping the async pipeline responsive
-- Update camera.ui SDK
-- Bump camera.ui engine to v2.0.5
+- The plugin stays responsive while it starts the detector and analyzes the picture
+- Compatibility update for the current ViON version
 
 ## [1.1.0]
 
-- Bump camera.ui engine to v2
+- Compatibility update for the current ViON version
 
 ## [1.0.4]
 
-- Bump camera.ui engine
+- Compatibility update for the current ViON version
 
 ## [1.0.3]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.2]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.1]
 
-- Bugfixes and improvements
+- Bug fixes and improvements
 
 ## [1.0.0]
 
-- Initial Release
+- First release
