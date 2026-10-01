@@ -39,6 +39,17 @@ npm run i18n             # lists what is not translated yet; CI runs the same ch
 A text several plugins share must be translated the same way in each of them. A file whose `description` fields are
 read by a model rather than by people (tool and answer schemas) is excluded with the comment `i18n-skip-file`.
 
+## Ready-made automations
+
+`automations/catalog.json` and `automations/blueprints/` are the store of ready-made automations the ViON
+interface offers under Automations. They are generated from the templates in `scripts/automations.ts`, where every
+template carries its texts in all languages of the interface:
+
+```sh
+npm run automations            # writes the catalog and one blueprint per template and language
+npm run automations -- --check # what CI runs: the files are what the script writes
+```
+
 ## Upstream
 
 Based on [camera.ui plugins](https://github.com/cameraui/plugins) by seydx (MIT), used with the author's permission.

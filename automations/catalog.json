@@ -1,0 +1,237 @@
+{
+  "person-alert": {
+    "title": "Person at the camera",
+    "description": "Sends a notification with a picture when the camera sees a person.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "person",
+      "snapshot"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/person-alert.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Человек у камеры",
+        "description": "Присылает уведомление со снимком, когда камера видит человека.",
+        "blueprint": "blueprints/person-alert.ru.json"
+      },
+      "de": {
+        "title": "Person an der Kamera",
+        "description": "Sendet eine Benachrichtigung mit Bild, wenn die Kamera eine Person sieht.",
+        "blueprint": "blueprints/person-alert.de.json"
+      }
+    }
+  },
+  "night-person-alert": {
+    "title": "Person at night",
+    "description": "Sends an urgent notification with a picture when the camera sees a person between 22:00 and 06:00. Change the hours in the time condition.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "person",
+      "night",
+      "snapshot"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/night-person-alert.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Человек ночью",
+        "description": "Присылает срочное уведомление со снимком, когда камера видит человека с 22:00 до 06:00. Часы меняются в условии по времени.",
+        "blueprint": "blueprints/night-person-alert.ru.json"
+      },
+      "de": {
+        "title": "Person in der Nacht",
+        "description": "Sendet eine dringende Benachrichtigung mit Bild, wenn die Kamera zwischen 22:00 und 06:00 Uhr eine Person sieht. Die Uhrzeiten ändern Sie in der Zeitbedingung.",
+        "blueprint": "blueprints/night-person-alert.de.json"
+      }
+    }
+  },
+  "vehicle-alert": {
+    "title": "Vehicle at the camera",
+    "description": "Sends a notification with a picture when the camera sees a vehicle.",
+    "category": "detection",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "vehicle",
+      "snapshot"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/vehicle-alert.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Машина у камеры",
+        "description": "Присылает уведомление со снимком, когда камера видит машину.",
+        "blueprint": "blueprints/vehicle-alert.ru.json"
+      },
+      "de": {
+        "title": "Fahrzeug an der Kamera",
+        "description": "Sendet eine Benachrichtigung mit Bild, wenn die Kamera ein Fahrzeug sieht.",
+        "blueprint": "blueprints/vehicle-alert.de.json"
+      }
+    }
+  },
+  "alarm-sound": {
+    "title": "Alarming sound",
+    "description": "Sends a critical notification when the camera hears breaking glass, a scream, a gunshot, an alarm, a siren or a smoke alarm.",
+    "category": "detection",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "sound",
+      "alarm"
+    ],
+    "requiredPlugins": [
+      "AudioDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/alarm-sound.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Тревожный звук",
+        "description": "Присылает критическое уведомление, когда камера слышит звон стекла, крик, выстрел, сигнализацию, сирену или пожарный извещатель.",
+        "blueprint": "blueprints/alarm-sound.ru.json"
+      },
+      "de": {
+        "title": "Alarmierendes Geräusch",
+        "description": "Sendet eine kritische Benachrichtigung, wenn die Kamera Glasbruch, einen Schrei, einen Schuss, einen Alarm, eine Sirene oder einen Rauchmelder hört.",
+        "blueprint": "blueprints/alarm-sound.de.json"
+      }
+    }
+  },
+  "camera-offline": {
+    "title": "Camera went offline",
+    "description": "Sends a notification when any camera stops responding.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "camera",
+      "offline"
+    ],
+    "blueprint": "blueprints/camera-offline.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Камера отключилась",
+        "description": "Присылает уведомление, когда любая камера перестаёт отвечать.",
+        "blueprint": "blueprints/camera-offline.ru.json"
+      },
+      "de": {
+        "title": "Kamera ist offline",
+        "description": "Sendet eine Benachrichtigung, wenn eine Kamera nicht mehr antwortet.",
+        "blueprint": "blueprints/camera-offline.de.json"
+      }
+    }
+  },
+  "camera-online": {
+    "title": "Camera is back online",
+    "description": "Sends a notification when a camera answers again after it was offline.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "camera",
+      "online"
+    ],
+    "blueprint": "blueprints/camera-online.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Камера снова на связи",
+        "description": "Присылает уведомление, когда камера снова отвечает после отключения.",
+        "blueprint": "blueprints/camera-online.ru.json"
+      },
+      "de": {
+        "title": "Kamera ist wieder online",
+        "description": "Sendet eine Benachrichtigung, wenn eine Kamera nach einem Ausfall wieder antwortet.",
+        "blueprint": "blueprints/camera-online.de.json"
+      }
+    }
+  },
+  "daily-picture": {
+    "title": "Daily picture",
+    "description": "Sends a picture of the camera every day at 09:00. Change the time in the schedule.",
+    "category": "schedule",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "schedule",
+      "snapshot"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/daily-picture.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Ежедневный снимок",
+        "description": "Каждый день в 09:00 присылает снимок с камеры. Время меняется в расписании.",
+        "blueprint": "blueprints/daily-picture.ru.json"
+      },
+      "de": {
+        "title": "Tägliches Bild",
+        "description": "Sendet jeden Tag um 09:00 Uhr ein Bild der Kamera. Die Uhrzeit ändern Sie im Zeitplan.",
+        "blueprint": "blueprints/daily-picture.de.json"
+      }
+    }
+  },
+  "plugin-error": {
+    "title": "A plugin stopped with an error",
+    "description": "Sends a notification when a plugin stops with an error, so a detector or a camera source does not stay down unnoticed.",
+    "category": "utility",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "plugin",
+      "error"
+    ],
+    "blueprint": "blueprints/plugin-error.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Плагин остановился с ошибкой",
+        "description": "Присылает уведомление, когда плагин останавливается с ошибкой: детектор или источник камер не останется неработающим незаметно.",
+        "blueprint": "blueprints/plugin-error.ru.json"
+      },
+      "de": {
+        "title": "Ein Plugin wurde mit einem Fehler beendet",
+        "description": "Sendet eine Benachrichtigung, wenn ein Plugin mit einem Fehler beendet wird, damit ein Detektor oder eine Kameraquelle nicht unbemerkt ausfällt.",
+        "blueprint": "blueprints/plugin-error.de.json"
+      }
+    }
+  }
+}

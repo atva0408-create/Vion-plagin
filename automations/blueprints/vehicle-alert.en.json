@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "name": "Vehicle at the camera",
+  "description": "Sends a notification with a picture when the camera sees a vehicle.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Camera"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "segment-start"
+        ],
+        "detectionLabels": [
+          "vehicle"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Vehicle: {{event.cameraName}}",
+        "body": "The camera sees a vehicle.",
+        "severity": "info",
+        "deepLink": "",
+        "targets": [],
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-snapshot",
+      "source": "trigger",
+      "target": "snapshot"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

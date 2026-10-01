@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "name": "Camera went offline",
+  "description": "Sends a notification when any camera stops responding.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-system",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-system",
+        "category": "camera",
+        "eventType": "camera:disconnected",
+        "targetId": ""
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Camera offline: {{system.cameraName}}",
+        "body": "The camera stopped responding. Check its power and network.",
+        "severity": "warn",
+        "deepLink": "",
+        "targets": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-notify",
+      "source": "trigger",
+      "target": "notify"
+    }
+  ]
+}

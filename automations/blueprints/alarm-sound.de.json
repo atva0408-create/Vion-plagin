@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "name": "Alarmierendes Geräusch",
+  "description": "Sendet eine kritische Benachrichtigung, wenn die Kamera Glasbruch, einen Schrei, einen Schuss, einen Alarm, eine Sirene oder einen Rauchmelder hört.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Kamera"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "start",
+          "update"
+        ],
+        "detectionLabels": [
+          "audio"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [
+          "glass_break",
+          "scream",
+          "gunshot",
+          "alarm",
+          "siren",
+          "smoke_alarm"
+        ],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Alarmierendes Geräusch: {{event.cameraName}}",
+        "body": "Die Kamera hat ein alarmierendes Geräusch gehört. Prüfen Sie das Livebild.",
+        "severity": "critical",
+        "deepLink": "",
+        "targets": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-notify",
+      "source": "trigger",
+      "target": "notify"
+    }
+  ]
+}

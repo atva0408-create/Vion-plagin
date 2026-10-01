@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "name": "Daily picture",
+  "description": "Sends a picture of the camera every day at 09:00. Change the time in the schedule.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Camera"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-schedule",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-schedule",
+        "cron": "0 9 * * *"
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Daily picture",
+        "body": "This is what the camera sees now.",
+        "severity": "info",
+        "deepLink": "",
+        "targets": [],
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-snapshot",
+      "source": "trigger",
+      "target": "snapshot"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

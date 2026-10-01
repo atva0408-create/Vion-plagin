@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "name": "Человек ночью",
+  "description": "Присылает срочное уведомление со снимком, когда камера видит человека с 22:00 до 06:00. Часы меняются в условии по времени.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Камера"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "segment-start"
+        ],
+        "detectionLabels": [
+          "person"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "night",
+      "type": "condition-time",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "condition-time",
+        "startTime": "22:00",
+        "endTime": "06:00",
+        "days": []
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 864
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Человек ночью: {{event.cameraName}}",
+        "body": "Камера видит человека в нерабочее время.",
+        "severity": "warn",
+        "deepLink": "",
+        "targets": [],
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-night",
+      "source": "trigger",
+      "target": "night"
+    },
+    {
+      "id": "e-night-true-snapshot",
+      "source": "night",
+      "target": "snapshot",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

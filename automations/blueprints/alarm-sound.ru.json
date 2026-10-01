@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "name": "Тревожный звук",
+  "description": "Присылает критическое уведомление, когда камера слышит звон стекла, крик, выстрел, сигнализацию, сирену или пожарный извещатель.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Камера"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "start",
+          "update"
+        ],
+        "detectionLabels": [
+          "audio"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [
+          "glass_break",
+          "scream",
+          "gunshot",
+          "alarm",
+          "siren",
+          "smoke_alarm"
+        ],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Тревожный звук: {{event.cameraName}}",
+        "body": "Камера услышала тревожный звук. Проверьте прямой эфир.",
+        "severity": "critical",
+        "deepLink": "",
+        "targets": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-notify",
+      "source": "trigger",
+      "target": "notify"
+    }
+  ]
+}

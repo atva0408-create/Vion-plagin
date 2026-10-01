@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "name": "Ежедневный снимок",
+  "description": "Каждый день в 09:00 присылает снимок с камеры. Время меняется в расписании.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Камера"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-schedule",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-schedule",
+        "cron": "0 9 * * *"
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Ежедневный снимок",
+        "body": "Так сейчас выглядит то, что видит камера.",
+        "severity": "info",
+        "deepLink": "",
+        "targets": [],
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-snapshot",
+      "source": "trigger",
+      "target": "snapshot"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

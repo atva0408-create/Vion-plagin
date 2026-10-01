@@ -88,6 +88,9 @@ jobs:
       - name: Check translations
         run: node scripts/i18n.ts
 
+      - name: Check the store of ready-made automations
+        run: node scripts/automations.ts --check
+
   node-plugins:
     needs: changes
     if: needs.changes.outputs.node != '[]'

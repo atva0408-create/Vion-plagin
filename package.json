@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "audit": "npm audit fix && tsx ./scripts/audit.ts",
+    "automations": "tsx ./scripts/automations.ts",
     "build": "tsx ./scripts/build.ts",
     "bundle": "cross-env MODE=development tsx ./scripts/bundle.ts",
     "catalog": "tsx ./scripts/catalog.ts",

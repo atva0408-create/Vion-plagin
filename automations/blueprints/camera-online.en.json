@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "name": "Camera is back online",
+  "description": "Sends a notification when a camera answers again after it was offline.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-system",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-system",
+        "category": "camera",
+        "eventType": "camera:connected",
+        "targetId": ""
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Camera online: {{system.cameraName}}",
+        "body": "The camera answers again.",
+        "severity": "info",
+        "deepLink": "",
+        "targets": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-notify",
+      "source": "trigger",
+      "target": "notify"
+    }
+  ]
+}
