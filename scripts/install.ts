@@ -52,6 +52,7 @@ const directories = [
   '../camera-ui-homeassistant',
   '../camera-ui-homekit',
   '../camera-ui-ncnn',
+  '../camera-ui-nvr',
   '../camera-ui-onnx',
   '../camera-ui-onnx-legacy',
   '../camera-ui-onvif',

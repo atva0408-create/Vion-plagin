@@ -13,6 +13,7 @@ labels=(
   "homeassistant|c5def5|Changes to the Home Assistant plugin"
   "homekit|c5def5|Changes to the HomeKit plugin"
   "ncnn|c5def5|Changes to the NCNN plugin"
+  "nvr|c5def5|Changes to the NVR plugin"
   "onnx|c5def5|Changes to the ONNX plugin"
   "onnx-legacy|c5def5|Changes to the ONNX Legacy plugin"
   "onvif|c5def5|Changes to the ONVIF plugin"

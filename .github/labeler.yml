@@ -19,6 +19,9 @@ homekit:
 ncnn:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-ncnn/**'
+nvr:
+  - changed-files:
+      - any-glob-to-any-file: 'camera-ui-nvr/**'
 onnx:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-onnx/**'

@@ -13,7 +13,6 @@ dist
 bundle
 coverage
 *.local
-test
 __pycache__
 .dockerignore
 python-*

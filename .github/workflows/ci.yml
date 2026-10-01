@@ -127,6 +127,21 @@ jobs:
       - name: Lint
         run: npm --prefix ${{ matrix.plugin }} run lint
 
+      # The recorder's specs cut and join real video: they need ffmpeg with libx264, which Ubuntu's package has
+      - name: Install ffmpeg
+        if: matrix.plugin == 'camera-ui-nvr'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # The specs run through tsx, a dependency of the repository root and not of the plugin: npm finds it in the
+      # node_modules/.bin of the parent directory, without this step the test stops at "tsx: not found"
+      - name: Install the script dependencies
+        if: matrix.plugin == 'camera-ui-nvr'
+        run: npm ci --ignore-scripts
+
+      - name: Test
+        if: matrix.plugin == 'camera-ui-nvr'
+        run: npm --prefix ${{ matrix.plugin }} test
+
   go-plugins:
     needs: changes
     if: needs.changes.outputs.go != '[]'
