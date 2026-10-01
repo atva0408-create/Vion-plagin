@@ -1,7 +1,7 @@
 {
   "displayName": "Apple LLM",
   "name": "@vionvision/camera-ui-apple-llm",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Встроенная модель Apple как модель ассистента ViON, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.",
   "author": "seydx (https://github.com/atva0408-create/Vion-plagin)",
   "main": "./bundle/dist/index.js",

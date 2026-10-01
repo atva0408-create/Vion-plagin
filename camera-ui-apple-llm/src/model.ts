@@ -9,6 +9,15 @@ export const ANSWER_SCHEMA = {
   required: ['answer'],
 } as const;
 
+/**
+ * Whether the helper hands pictures to the model. Only its macOS 27 code does (helper/main.swift), and only that
+ * code reports `contextSize` in its status. On macOS 26 the pictures were dropped without a word while the model was
+ * announced as seeing: asked to describe an event, it made a description up from the detector's labels.
+ */
+export function takesPictures(status: { available: boolean; contextSize?: number }): boolean {
+  return status.available && status.contextSize !== undefined;
+}
+
 export function unavailableReason(reason: string): string {
   switch (reason) {
     case 'license':

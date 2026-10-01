@@ -1,3 +1,7 @@
+## [1.0.3]
+
+- The model is offered as seeing pictures only on macOS 27, where the helper can pass them on. On macOS 26 it was announced as seeing, got no pictures and described events from the detector's labels alone
+
 ## [1.0.2]
 
 - Marked as a ViON plugin (`vion-plugin` keyword instead of the upstream one)

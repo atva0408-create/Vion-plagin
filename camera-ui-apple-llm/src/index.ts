@@ -1,7 +1,7 @@
 import { API_EVENT, ServicePlugin } from '@camera.ui/sdk';
 
 import { generate, status, stop } from './helper.js';
-import { ANSWER_SCHEMA, CONTEXT_TOKENS, MODEL_ID, MODEL_NAME, RECHECK_MS, unavailableReason } from './model.js';
+import { ANSWER_SCHEMA, CONTEXT_TOKENS, MODEL_ID, MODEL_NAME, RECHECK_MS, takesPictures, unavailableReason } from './model.js';
 
 import type {
   AssistantModelChunk,
@@ -24,6 +24,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
   private checkedAt = 0;
   private reason = '';
   private contextSize = 0;
+  private pictures = false;
   private variant = '';
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginStorageValues>) {
@@ -78,7 +79,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
         type: 'boolean',
         key: 'sendImages',
         title: 'Send pictures to the model',
-        description: 'The model looks at event pictures instead of reading only the text around them.',
+        description: 'The model looks at event pictures instead of reading only the text around them. Needs macOS 27; on macOS 26 no pictures are sent.',
         store: true,
         defaultValue: true,
       },
@@ -93,7 +94,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
         id: MODEL_ID,
         name: this.variant || MODEL_NAME,
         contextTokens: await this.contextTokens(),
-        vision: await this.storage.getValue('sendImages', true),
+        vision: await this.sendsPictures(),
         toolCalling: await this.storage.getValue('useTools', true),
         structuredOutput: true,
         toolRouting: true,
@@ -118,7 +119,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
     const chunks = generate(
       {
         system: [...localeInstructions(ctx.language), ...request.system],
-        messages: (await this.storage.getValue('sendImages', true)) ? request.messages : request.messages.map(withoutImages),
+        messages: (await this.sendsPictures()) ? request.messages : request.messages.map(withoutImages),
         tools,
         outputSchema: request.outputSchema ?? (wrap ? ANSWER_SCHEMA : undefined),
         maxOutputTokens: request.maxOutputTokens,
@@ -147,10 +148,16 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
     this.ready = result.available;
     this.reason = result.reason;
     this.contextSize = result.contextSize ?? this.contextSize;
+    this.pictures = takesPictures(result);
     this.variant = result.variant ?? this.variant;
     if (this.ready) this.logger.log('Apple on-device model is ready');
     else this.logger.debug(`The on-device model is not usable: ${unavailableReason(result.reason)}`);
     return this.ready;
+  }
+
+  /** The setting, and a helper that can pass pictures on (macOS 27): the model must not be announced as seeing otherwise. */
+  private async sendsPictures(): Promise<boolean> {
+    return this.pictures && (await this.storage.getValue('sendImages', true));
   }
 
   private async contextTokens(): Promise<number> {
