@@ -100,6 +100,8 @@ export default class TuyaPlugin extends BasePlugin<TuyaConfig> implements Discov
         store: true,
         defaultValue: 'West America',
         enum: AVAILABLE_REGIONS.map((region) => region.description),
+        // the value stays the English name, stored configurations hold it; only a label is translated by the interface
+        enumLabels: Object.fromEntries(AVAILABLE_REGIONS.map((region) => [region.description, region.description])),
         onSet: this.scheduleConnect.bind(this),
       },
       {
