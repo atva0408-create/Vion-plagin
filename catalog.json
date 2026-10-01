@@ -1,76 +1,4 @@
 {
-  "@vionvision/camera-ui-nvr": {
-    "displayName": "ViON NVR",
-    "category": "recording",
-    "featured": true,
-    "tagline": "Видеорегистратор ViON: запись, архив, таймлайн, события и экспорт.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-nvr/logo.png",
-    "screenshots": [],
-    "protocolLevel": 2
-  },
-  "@vionvision/camera-ui-audio-yamnet": {
-    "displayName": "YAMNet Audio Detection",
-    "category": "detection",
-    "featured": false,
-    "tagline": "Audio event detection for ViON.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-audio-yamnet/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-coral": {
-    "displayName": "Coral",
-    "category": "ai-model",
-    "featured": false,
-    "tagline": "Coral Edge TPU (TFLite) detection backend for ViON.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coral/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-coreml": {
-    "displayName": "CoreML",
-    "category": "ai-model",
-    "featured": true,
-    "tagline": "Apple CoreML detection backend for ViON.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coreml/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-eufy": {
-    "displayName": "Eufy",
-    "category": "camera-source",
-    "featured": false,
-    "tagline": "Integrates Eufy security cameras and doorbells into ViON, with device discovery, live streaming, and motion, object, battery and doorbell events.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-eufy/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-homeassistant": {
-    "displayName": "Home Assistant",
-    "category": "automation",
-    "featured": true,
-    "tagline": "Imports Home Assistant devices into ViON: motion, contacts, doorbells and more become detection triggers, locks, lights and alarms become controls.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homeassistant/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-homekit": {
-    "displayName": "HomeKit",
-    "category": "automation",
-    "featured": true,
-    "tagline": "Exposes ViON cameras and sensors to Apple HomeKit: cameras stream and record via HomeKit Secure Video, sensors appear as accessories in the Home app.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homekit/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
-  "@vionvision/camera-ui-ncnn": {
-    "displayName": "NCNN",
-    "category": "ai-model",
-    "featured": false,
-    "tagline": "NCNN detection backend for ViON.",
-    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-ncnn/logo.png",
-    "screenshots": [],
-    "protocolLevel": 1
-  },
   "@camera.ui/camera-ui-nvr": {
     "displayName": "NVR",
     "category": "recording",
@@ -78,141 +6,466 @@
     "tagline": "Manage and store video recordings from your cameras.",
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/external-logos/camera-ui-nvr.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-audio-yamnet": {
+    "displayName": "YAMNet Audio Detection",
+    "category": "detection",
+    "featured": false,
+    "tagline": "Audio detection for ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "Audio detection for ViON."
+      },
+      "ru": {
+        "tagline": "Обнаружение звуков для ViON."
+      },
+      "de": {
+        "tagline": "Geräuscherkennung für ViON."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-audio-yamnet/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-coral": {
+    "displayName": "Coral",
+    "category": "ai-model",
+    "featured": false,
+    "tagline": "Coral Edge TPU (TFLite) detection for ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "Coral Edge TPU (TFLite) detection for ViON."
+      },
+      "ru": {
+        "tagline": "Обнаружение на Coral Edge TPU (TFLite) для ViON."
+      },
+      "de": {
+        "tagline": "Erkennung mit Coral Edge TPU (TFLite) für ViON."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coral/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-coreml": {
+    "displayName": "CoreML",
+    "category": "ai-model",
+    "featured": true,
+    "tagline": "Apple CoreML detection for ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "Apple CoreML detection for ViON."
+      },
+      "ru": {
+        "tagline": "Обнаружение на Apple CoreML для ViON."
+      },
+      "de": {
+        "tagline": "Erkennung mit Apple CoreML für ViON."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coreml/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-eufy": {
+    "displayName": "Eufy",
+    "category": "camera-source",
+    "featured": false,
+    "tagline": "Connects Eufy cameras, doorbells, HomeBases and sensors to ViON: device discovery, live view, two-way audio, detection events and camera controls.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Eufy cameras, doorbells, HomeBases and sensors to ViON: device discovery, live view, two-way audio, detection events and camera controls."
+      },
+      "ru": {
+        "tagline": "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к ViON: поиск устройств, прямой эфир, двусторонний звук, события обнаружения и управление камерами."
+      },
+      "de": {
+        "tagline": "Bindet Kameras, Türklingeln, HomeBases und Sensoren von Eufy in ViON ein: Gerätesuche, Livebild, Gegensprechen, Erkennungsereignisse und Kamerasteuerung."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-eufy/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-homeassistant": {
+    "displayName": "Home Assistant",
+    "category": "automation",
+    "featured": true,
+    "tagline": "Imports Home Assistant sensors into ViON: motion, occupancy, contact, doorbell, smoke, leak and others become ViON sensors that can trigger detection on cameras.",
+    "i18n": {
+      "en": {
+        "tagline": "Imports Home Assistant sensors into ViON: motion, occupancy, contact, doorbell, smoke, leak and others become ViON sensors that can trigger detection on cameras."
+      },
+      "ru": {
+        "tagline": "Импортирует датчики Home Assistant в ViON: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками ViON, которые могут запускать обнаружение на камерах."
+      },
+      "de": {
+        "tagline": "Importiert Sensoren aus Home Assistant in ViON: Bewegung, Anwesenheit, Kontakte, Türklingeln, Rauch, Wasserlecks und weitere werden zu ViON-Sensoren, die die Erkennung an Kameras auslösen können."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homeassistant/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-homekit": {
+    "displayName": "HomeKit",
+    "category": "automation",
+    "featured": true,
+    "tagline": "Brings ViON cameras and sensors to Apple HomeKit: cameras stream and record through HomeKit Secure Video, sensors appear as accessories in the Home app.",
+    "i18n": {
+      "en": {
+        "tagline": "Brings ViON cameras and sensors to Apple HomeKit: cameras stream and record through HomeKit Secure Video, sensors appear as accessories in the Home app."
+      },
+      "ru": {
+        "tagline": "Открывает камеры и датчики ViON для Apple HomeKit: камеры транслируют и записывают через HomeKit Secure Video, датчики появляются как аксессуары в приложении «Дом»."
+      },
+      "de": {
+        "tagline": "Bringt ViON-Kameras und -Sensoren in Apple HomeKit: Kameras übertragen und zeichnen über HomeKit Secure Video auf, Sensoren erscheinen als Geräte in der Home-App."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homekit/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-ncnn": {
+    "displayName": "NCNN",
+    "category": "ai-model",
+    "featured": false,
+    "tagline": "NCNN detection for ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "NCNN detection for ViON."
+      },
+      "ru": {
+        "tagline": "Обнаружение на NCNN для ViON."
+      },
+      "de": {
+        "tagline": "Erkennung mit NCNN für ViON."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-ncnn/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-nvr": {
+    "displayName": "ViON NVR",
+    "category": "recording",
+    "featured": true,
+    "tagline": "The ViON video recorder: continuous and event recording, the archive on a timeline, events and export.",
+    "i18n": {
+      "en": {
+        "tagline": "The ViON video recorder: continuous and event recording, the archive on a timeline, events and export."
+      },
+      "ru": {
+        "tagline": "Видеорегистратор ViON: постоянная запись и запись по событиям, просмотр архива на шкале времени, события и экспорт."
+      },
+      "de": {
+        "tagline": "Der Videorekorder von ViON: durchgehende Aufzeichnung und Aufzeichnung bei Ereignissen, das Archiv auf einer Zeitleiste, Ereignisse und Export."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-nvr/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-onnx": {
     "displayName": "ONNX",
     "category": "ai-model",
     "featured": true,
-    "tagline": "ONNX Runtime detection backend for ViON.",
+    "tagline": "ONNX Runtime detector for ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "ONNX Runtime detector for ViON."
+      },
+      "ru": {
+        "tagline": "Детектор ONNX Runtime для ViON."
+      },
+      "de": {
+        "tagline": "ONNX-Runtime-Detektor für ViON."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onnx/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-onnx-legacy": {
     "displayName": "ONNX Legacy",
     "category": "ai-model",
     "featured": false,
-    "tagline": "ONNX backend on the CUDA 12 runtime, for NVIDIA GPUs before the GTX 1650.",
+    "tagline": "ONNX Runtime detector for ViON on the older CUDA 12.",
+    "i18n": {
+      "en": {
+        "tagline": "ONNX Runtime detector for ViON on the older CUDA 12."
+      },
+      "ru": {
+        "tagline": "Детектор ONNX Runtime для ViON на более старой CUDA 12."
+      },
+      "de": {
+        "tagline": "ONNX-Runtime-Detektor für ViON mit dem älteren CUDA 12."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onnx-legacy/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-onvif": {
     "displayName": "Onvif",
     "category": "camera-source",
     "featured": false,
-    "tagline": "ONVIF integration for ViON.",
+    "tagline": "Connects ONVIF cameras to ViON: camera discovery, PTZ control, and motion, object, sound and face events reported by the camera.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects ONVIF cameras to ViON: camera discovery, PTZ control, and motion, object, sound and face events reported by the camera."
+      },
+      "ru": {
+        "tagline": "Подключает камеры ONVIF к ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц от камеры."
+      },
+      "de": {
+        "tagline": "Bindet ONVIF-Kameras in ViON ein: Kamerasuche, PTZ-Steuerung sowie Bewegungs-, Objekt-, Geräusch- und Gesichtsereignisse der Kamera."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onvif/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-opencl": {
     "displayName": "OpenCL",
     "category": "ai-model",
     "featured": false,
-    "tagline": "GPU-accelerated motion detection for ViON using OpenCL.",
+    "tagline": "Motion detection for ViON that runs on the graphics card.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON that runs on the graphics card."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON, работающее на видеокарте."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON, die auf der Grafikkarte läuft."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-opencl/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-opencv": {
     "displayName": "OpenCV",
     "category": "ai-model",
     "featured": false,
-    "tagline": "Motion detection for ViON using OpenCV.",
+    "tagline": "Motion detection for ViON with a choice of three detection methods.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON with a choice of three detection methods."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON с выбором из трёх способов обнаружения."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON mit drei Erkennungsverfahren zur Auswahl."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-opencv/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-openvino": {
     "displayName": "OpenVino",
     "category": "ai-model",
     "featured": true,
-    "tagline": "OpenVINO detection backend for ViON, optimized for Intel hardware.",
+    "tagline": "OpenVINO detector for ViON, optimized for Intel hardware.",
+    "i18n": {
+      "en": {
+        "tagline": "OpenVINO detector for ViON, optimized for Intel hardware."
+      },
+      "ru": {
+        "tagline": "Детектор OpenVINO для ViON, оптимизированный для оборудования Intel."
+      },
+      "de": {
+        "tagline": "OpenVINO-Detektor für ViON, optimiert für Intel-Hardware."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-openvino/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-openvino-legacy": {
     "displayName": "OpenVino Legacy",
     "category": "ai-model",
     "featured": false,
-    "tagline": "OpenVINO backend with the older 2024.6 runtime, for Intel GPUs up to 10th gen Core on Windows.",
+    "tagline": "OpenVINO detector for ViON on the older OpenVINO 2024.6.",
+    "i18n": {
+      "en": {
+        "tagline": "OpenVINO detector for ViON on the older OpenVINO 2024.6."
+      },
+      "ru": {
+        "tagline": "Детектор OpenVINO для ViON на более старой версии OpenVINO 2024.6."
+      },
+      "de": {
+        "tagline": "OpenVINO-Detektor für ViON mit dem älteren OpenVINO 2024.6."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-openvino-legacy/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-pamdiff": {
     "displayName": "Pam Diff",
     "category": "detection",
     "featured": false,
-    "tagline": "Pixel-based motion detection for ViON using the pam-diff algorithm on ffmpeg PAM frames.",
+    "tagline": "Motion detection for ViON that compares the picture pixel by pixel.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON that compares the picture pixel by pixel."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON: попиксельное сравнение кадров."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON durch pixelweisen Bildvergleich."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-pamdiff/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-reolink": {
     "displayName": "Reolink",
     "category": "camera-source",
     "featured": false,
-    "tagline": "Integrates Reolink cameras and doorbells into ViON via the native Baichuan protocol, with device discovery, live streaming, two-way audio, and motion, AI object, battery and doorbell events.",
+    "tagline": "Connects Reolink cameras and doorbells to ViON over Reolink's own Baichuan protocol: device discovery, live view, two-way audio, and motion, object, battery and doorbell events.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Reolink cameras and doorbells to ViON over Reolink's own Baichuan protocol: device discovery, live view, two-way audio, and motion, object, battery and doorbell events."
+      },
+      "ru": {
+        "tagline": "Подключает камеры и дверные звонки Reolink к ViON по собственному протоколу Reolink (Baichuan): поиск устройств, прямой эфир, двусторонний звук, события движения, объектов, батареи и звонка."
+      },
+      "de": {
+        "tagline": "Bindet Kameras und Türklingeln von Reolink über das Reolink-eigene Baichuan-Protokoll in ViON ein: Gerätesuche, Livebild, Gegensprechen sowie Ereignisse zu Bewegung, Objekten, Akku und Klingel."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-reolink/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-ring": {
     "displayName": "Ring",
     "category": "camera-source",
     "featured": false,
-    "tagline": "Integrates Ring cameras and doorbells into ViON, with device discovery, live streaming, and motion, battery, light, siren and doorbell events.",
+    "tagline": "Connects Ring cameras and doorbells to ViON: device discovery, live view, and motion, battery, light, siren and doorbell events.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Ring cameras and doorbells to ViON: device discovery, live view, and motion, battery, light, siren and doorbell events."
+      },
+      "ru": {
+        "tagline": "Подключает камеры и дверные звонки Ring к ViON: поиск устройств, прямой эфир, события движения, батареи, подсветки, сирены и звонка."
+      },
+      "de": {
+        "tagline": "Verbindet Kameras und Türklingeln von Ring mit ViON: Gerätesuche, Livebild sowie Ereignisse für Bewegung, Akku, Licht, Sirene und Klingel."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-ring/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-rust-motion": {
     "displayName": "Rust Motion",
     "category": "detection",
     "featured": true,
-    "tagline": "Native motion detection for ViON, powered by a Rust detector for low CPU usage.",
+    "tagline": "Motion detection for ViON with low load on the processor.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON with low load on the processor."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON с низкой нагрузкой на процессор."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON mit geringer Prozessorlast."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-rust-motion/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-smtp": {
     "displayName": "SMTP",
     "category": "detection",
     "featured": false,
     "tagline": "Motion detection for ViON via SMTP.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON via SMTP."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON через SMTP."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON über SMTP."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-smtp/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-tuya": {
     "displayName": "Tuya",
     "category": "camera-source",
     "featured": false,
-    "tagline": "Integrates Tuya / Smart Life cameras into ViON, with device discovery and live streaming.",
+    "tagline": "Connects Tuya / Smart Life cameras to ViON: device discovery and live view.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Tuya / Smart Life cameras to ViON: device discovery and live view."
+      },
+      "ru": {
+        "tagline": "Подключает камеры Tuya / Smart Life к ViON: поиск устройств и прямой эфир."
+      },
+      "de": {
+        "tagline": "Verbindet Kameras von Tuya / Smart Life mit ViON: Gerätesuche und Livebild."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-tuya/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-wasm-motion": {
     "displayName": "WASM Motion",
     "category": "detection",
     "featured": false,
-    "tagline": "Motion detection for ViON running as a WebAssembly module.",
+    "tagline": "Motion detection for ViON that works on any system without extra components.",
+    "i18n": {
+      "en": {
+        "tagline": "Motion detection for ViON that works on any system without extra components."
+      },
+      "ru": {
+        "tagline": "Обнаружение движения для ViON, которое работает в любой системе без дополнительных компонентов."
+      },
+      "de": {
+        "tagline": "Bewegungserkennung für ViON, die auf jedem System ohne zusätzliche Komponenten läuft."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-wasm-motion/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   },
   "@vionvision/camera-ui-wyze": {
     "displayName": "Wyze",
     "category": "camera-source",
     "featured": false,
-    "tagline": "Integrates Wyze cameras into ViON, with device discovery, live streaming and motion events.",
+    "tagline": "Connects Wyze cameras to ViON: device discovery, live view and motion events.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Wyze cameras to ViON: device discovery, live view and motion events."
+      },
+      "ru": {
+        "tagline": "Подключает камеры Wyze к ViON: поиск устройств, прямой эфир и события движения."
+      },
+      "de": {
+        "tagline": "Bindet Wyze-Kameras in ViON ein: Gerätesuche, Livebild und Bewegungsereignisse."
+      }
+    },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-wyze/logo.png",
     "screenshots": [],
-    "protocolLevel": 1
+    "protocolLevel": 2
   }
 }

@@ -3,6 +3,8 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { LANGUAGES } from './i18n.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
@@ -15,7 +17,10 @@ interface CatalogEntry {
   displayName?: string;
   category: Category;
   featured: boolean;
+  /** English; servers older than the translations read only this one. */
   tagline: string;
+  /** The same line in every language of the interface, from the plugin's own translations (i18n/<lang>.json). */
+  i18n?: Record<string, { tagline: string }>;
   logo?: string;
   screenshots: string[];
   protocolLevel?: number;
@@ -26,13 +31,17 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-coral': 'ai-model',
   'camera-ui-coreml': 'ai-model',
   'camera-ui-eufy': 'camera-source',
+  'camera-ui-homeassistant': 'automation',
   'camera-ui-homekit': 'automation',
   'camera-ui-ncnn': 'ai-model',
+  'camera-ui-nvr': 'recording',
   'camera-ui-onnx': 'ai-model',
+  'camera-ui-onnx-legacy': 'ai-model',
   'camera-ui-onvif': 'camera-source',
   'camera-ui-opencl': 'ai-model',
   'camera-ui-opencv': 'ai-model',
   'camera-ui-openvino': 'ai-model',
+  'camera-ui-openvino-legacy': 'ai-model',
   'camera-ui-pamdiff': 'detection',
   'camera-ui-reolink': 'camera-source',
   'camera-ui-ring': 'camera-source',
@@ -43,7 +52,15 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-wyze': 'camera-source',
 };
 
-const FEATURED = new Set<string>(['camera-ui-homekit', 'camera-ui-rust-motion', 'camera-ui-coreml', 'camera-ui-openvino', 'camera-ui-onnx']);
+const FEATURED = new Set<string>([
+  'camera-ui-homeassistant',
+  'camera-ui-homekit',
+  'camera-ui-nvr',
+  'camera-ui-rust-motion',
+  'camera-ui-coreml',
+  'camera-ui-openvino',
+  'camera-ui-onnx',
+]);
 
 // Official plugins published to npm but sourced from a separate repo, so unavailable
 // when this script runs. Their metadata is maintained here by hand; protocolLevel is
@@ -60,7 +77,8 @@ const EXTERNAL_PLUGINS: Record<string, CatalogEntry> = {
   },
 };
 
-const DRAFT_PLUGINS = new Set<string>([]);
+// Not in the registry yet, so not in the store: apple-llm is built on macOS only.
+const DRAFT_PLUGINS = new Set<string>(['camera-ui-apple-llm']);
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif']);
 
@@ -123,17 +141,26 @@ async function fetchExternalProtocolLevel(name: string): Promise<number | undefi
   }
 }
 
+/** The plugin's one-line description in `language`: its package description through its own dictionary. */
+function describe(dir: string, description: string, language: string): string {
+  const dictionaryPath = resolve(dir, 'i18n', `${language}.json`);
+  const translated = existsSync(dictionaryPath) ? JSON.parse(readFileSync(dictionaryPath, 'utf-8'))[description] : undefined;
+  return firstSentence(typeof translated === 'string' && translated.trim() ? translated : description);
+}
+
 function buildEntry(folder: string): { name: string; entry: CatalogEntry } {
   const dir = resolve(ROOT, folder);
   const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf-8'));
   const name: string = pkg.name;
   const protocolLevel = readProtocolLevel(dir);
+  const taglines = Object.fromEntries(LANGUAGES.map((language) => [language, { tagline: describe(dir, pkg.description, language) }]));
 
   const entry: CatalogEntry = {
     ...(pkg.displayName ? { displayName: pkg.displayName as string } : {}),
     category: CATEGORY_OVERRIDES[folder] ?? deriveCategory(dir),
     featured: FEATURED.has(folder),
-    tagline: firstSentence(pkg.description),
+    tagline: taglines[LANGUAGES[0]].tagline,
+    i18n: taglines,
     ...(existsSync(resolve(dir, 'logo.png')) ? { logo: `${RAW_BASE}/${folder}/logo.png` } : {}),
     screenshots: collectScreenshots(folder, dir),
     ...(protocolLevel !== undefined ? { protocolLevel } : {}),
