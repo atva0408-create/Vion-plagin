@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- Die Beispiele in den Feldern „Text für Bewegungsbeginn“ und „Text für Bewegungsende“ werden auf Russisch und Deutsch angezeigt
+
 ## [1.2.7]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

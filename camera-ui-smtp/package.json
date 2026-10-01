@@ -1,7 +1,7 @@
 {
   "displayName": "SMTP",
   "name": "@vionvision/camera-ui-smtp",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Обнаружение движения для ViON через SMTP. Небольшой SMTP-сервер превращает письма-оповещения камер в события движения.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

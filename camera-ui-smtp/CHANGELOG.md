@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- The examples in the "Motion On Text" and "Motion Off Text" fields are shown in Russian and German
+
 ## [1.2.7]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
