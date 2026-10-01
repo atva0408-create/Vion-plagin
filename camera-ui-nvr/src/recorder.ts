@@ -2,10 +2,11 @@ import { spawn } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { createWriteStream, mkdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { probeCodec } from './media/codec.js';
-import { isKeyframe, ptsDelta, TS_PACKET, TsDemuxer } from './media/ts-demux.js';
+import { keyframeStart, ptsDelta, TS_PACKET, TsDemuxer } from './media/ts-demux.js';
 
 import type { ChildProcess } from 'node:child_process';
 import type { WriteStream } from 'node:fs';
@@ -51,9 +52,24 @@ interface OpenSegment {
   bytes: number;
   keyframes: [number, number][];
   lastFlush: number;
+  /** The last write of the index row failed (said once, not at every flush). */
+  indexFailed?: boolean;
+}
+
+/** A video frame whose picture NAL has not arrived yet: its packets in arrival order, the sound between them included. */
+interface HeldFrame {
+  packets: Buffer[];
+  /** The last bytes seen of the frame: a start code may be split between two packets. */
+  tail: Buffer;
+  tsUs: number | undefined;
 }
 
 const FLUSH_MS = 4000;
+/** Video that runs this long without a keyframe is reported: nothing can start or be cut until one comes. */
+const NO_KEYFRAME_WARN_MS = 30_000;
+/** A frame waits for its picture NAL no longer than this many TS packets (~750 KiB, far more than any parameter sets and SEI). */
+const HELD_MAX_PACKETS = 4096;
+const EMPTY = Buffer.alloc(0);
 
 /**
  * Records one camera stream tier. ffmpeg copies the go2rtc RTSP restream into MPEG-TS (no transcode);
@@ -74,6 +90,10 @@ export class Recorder {
   private pending = Buffer.alloc(0);
 
   private anchor: { pts: number; us: number } | undefined;
+  private held: HeldFrame | undefined;
+  /** When the last keyframe came, or the first frame of a stream that has had none yet. */
+  private keyframeMs: number | undefined;
+  private keyframeWarned = false;
   private gop: Gop | undefined;
   private ring: Gop[] = [];
   private segment: OpenSegment | undefined;
@@ -228,7 +248,7 @@ export class Recorder {
   }
 
   private onStreamEnd(reason: string, startedAt: number): void {
-    void this.closeSegment();
+    this.closeSegmentSoon();
     this.resetStream();
     if (this.stopped) return;
     if (Date.now() - startedAt > 60_000) this.backoffMs = 2000;
@@ -240,6 +260,8 @@ export class Recorder {
   private resetStream(): void {
     this.pending = Buffer.alloc(0);
     this.anchor = undefined;
+    this.held = undefined;
+    this.keyframeMs = undefined;
     this.gop = undefined;
     this.ring = [];
     // the next connection may carry another codec, resolution or PID (camera reconfigured, fallback
@@ -285,10 +307,12 @@ export class Recorder {
     if ((pid !== this.demux.videoPid && !audio) || !this.demux.codec) return;
 
     if (pusi && !audio) {
+      // the frame before this one ended without a picture (parameter sets or SEI alone): it starts nothing
+      this.release(false);
+      this.watchKeyframes();
       const pes = payloadOf(pkt);
       const pts = pes && pes[7] & 0x80 ? readPts(pes, 9) : undefined;
-      const esStart = pes ? 9 + pes[8] : 0;
-      const keyframe = pes ? isKeyframe(pes.subarray(esStart), this.demux.codec) : false;
+      let frameUs: number | undefined;
 
       if (pts !== undefined) {
         const now = Date.now() * 1000;
@@ -299,17 +323,64 @@ export class Recorder {
           this.anchor = { pts, us: now };
           tsUs = now;
         }
-        if (keyframe) this.onKeyframe(tsUs);
+        frameUs = tsUs;
+      }
+      if (pes) {
+        this.held = { packets: [], tail: EMPTY, tsUs: frameUs };
+        this.hold(pkt, pes.subarray(9 + pes[8]));
+        return;
       }
     }
+    if (this.held) this.hold(pkt, audio ? undefined : tsPayload(pkt));
+    else this.keep(pkt);
+  }
 
+  /**
+   * A keyframe is told by its picture NAL, and cameras send parameter sets and SEI in front of it (an SEI with every
+   * frame on Hikvision and Dahua, VPS/SPS/PPS with HEVC) that fill the first TS packet and more. Looking at the first
+   * packet alone found no keyframe in such a stream, ever: nothing was recorded while the log looked healthy. So the
+   * packets of a frame wait here until its picture NAL has arrived, which for most frames is their first packet; a
+   * GOP and a segment still start with the first packet of the keyframe, where the index and the reader expect it.
+   */
+  private hold(pkt: Buffer, es: Buffer | undefined): void {
+    const held = this.held!;
+    held.packets.push(pkt);
+    const data = es && (held.tail.length ? Buffer.concat([held.tail, es]) : es);
+    const keyframe = data ? keyframeStart(data, this.demux.codec!) : undefined;
+    if (keyframe !== undefined) this.release(keyframe);
+    // bounded: when the video stalls inside such a frame and the sound goes on, the packets must not pile up without end
+    else if (held.packets.length >= HELD_MAX_PACKETS) this.release(false);
+    else if (data) held.tail = data.subarray(Math.max(0, data.length - 3));
+  }
+
+  private release(keyframe: boolean): void {
+    const held = this.held;
+    if (!held) return;
+    this.held = undefined;
+    if (keyframe && held.tsUs !== undefined) this.onKeyframe(held.tsUs);
+    for (const pkt of held.packets) this.keep(pkt);
+  }
+
+  private keep(pkt: Buffer): void {
     if (!this.gop) return; // wait for the first keyframe
     this.gop.packets.push(pkt);
     this.gop.bytes += TS_PACKET;
     if (this.segment) this.write(pkt);
   }
 
+  /** Called for every video frame. Says once per recorder that the video has no keyframes: the log looks healthy otherwise. */
+  private watchKeyframes(): void {
+    if (this.keyframeWarned) return;
+    const now = Date.now();
+    this.keyframeMs ??= now;
+    if (now - this.keyframeMs <= NO_KEYFRAME_WARN_MS) return;
+    this.keyframeWarned = true;
+    const what = `no keyframe in the video for ${NO_KEYFRAME_WARN_MS / 1000} s: a recording starts and a file is cut only at a keyframe`;
+    this.opts.log('warn', `${this.label} ${what} (check the keyframe interval of the camera)`);
+  }
+
   private onKeyframe(tsUs: number): void {
+    this.keyframeMs = Date.now();
     if (this.gop) {
       this.ring.push(this.gop);
       const keepUs = Math.max(this.opts.preBufferSec, 1) * 1_000_000 + 4_000_000;
@@ -324,9 +395,9 @@ export class Recorder {
     if (this.segment) {
       const age = tsUs - this.segment.startUs;
       if (!wantRecord) {
-        void this.closeSegment();
+        this.closeSegmentSoon();
       } else if (age >= this.opts.segmentSec * 1_000_000) {
-        void this.closeSegment().then(() => undefined);
+        this.closeSegmentSoon();
         this.openSegment(tsUs, []);
       } else {
         this.segment.keyframes.push([this.segment.bytes, tsUs]);
@@ -364,21 +435,29 @@ export class Recorder {
     const stream = createWriteStream(path);
     // without a listener a write error (ENOSPC, EIO) is an uncaught exception that kills the plugin
     stream.on('error', (error) => this.onWriteError(stream, error));
-    const id = this.opts.store.addSegment({
-      camera_id: this.opts.cameraId,
-      role: this.opts.role,
-      start_us: startUs,
-      end_us: startUs,
-      path,
-      bytes: 0,
-      codec: this.codec.codec,
-      codec_string: this.codec.codecString,
-      width: this.codec.width,
-      height: this.codec.height,
-      video_pid: this.demux.videoPid,
-      audio_pid: this.opts.audio ? this.demux.audioPid : -1,
-      keyframes: '[]',
-    });
+    let id: number;
+    try {
+      id = this.opts.store.addSegment({
+        camera_id: this.opts.cameraId,
+        role: this.opts.role,
+        start_us: startUs,
+        end_us: startUs,
+        path,
+        bytes: 0,
+        codec: this.codec.codec,
+        codec_string: this.codec.codecString,
+        width: this.codec.width,
+        height: this.codec.height,
+        video_pid: this.demux.videoPid,
+        audio_pid: this.opts.audio ? this.demux.audioPid : -1,
+        keyframes: '[]',
+      });
+    } catch (error) {
+      // no row, no segment: the file must not stay open and on disk, or every keyframe adds one more while the database fails
+      stream.once('close', () => void rm(path, { force: true }).catch((e: Error) => this.opts.log('error', `${this.label} cannot remove ${path}: ${e.message}`)));
+      stream.destroy();
+      throw error;
+    }
     this.segment = { id, path, stream, startUs, endUs: startUs, bytes: 0, keyframes: [], lastFlush: Date.now() };
     this.write(this.patPacket);
     this.write(this.pmtPacket);
@@ -389,7 +468,7 @@ export class Recorder {
     if (this.gop) this.segment.keyframes.push([this.segment.bytes, this.gop.tsUs]);
     // index the first keyframes now: playback and scrub reaching a brand-new segment (rollover at the
     // live tip) must not see an empty index until the first periodic flush
-    this.opts.store.updateSegment(id, this.segment.endUs, this.segment.bytes, JSON.stringify(this.segment.keyframes));
+    this.saveIndex(this.segment);
     this.setRecording(true);
     this.opts.onSegment();
   }
@@ -419,8 +498,28 @@ export class Recorder {
     if (Date.now() - seg.lastFlush > FLUSH_MS) {
       seg.lastFlush = Date.now();
       seg.endUs = Math.max(seg.endUs, Date.now() * 1000 - 500_000);
-      this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
+      this.saveIndex(seg);
     }
+  }
+
+  /**
+   * Writes the index row of an open segment. The database can fail (SQLITE_FULL on a full disk, an I/O error) and
+   * this runs in the `data` handler of the stream: an exception there is uncaught and ends the plugin process, and
+   * with it the recording of every camera. The file keeps recording and the next flush writes the row again.
+   */
+  private saveIndex(seg: OpenSegment): void {
+    try {
+      this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
+      seg.indexFailed = false;
+    } catch (error) {
+      if (!seg.indexFailed) this.opts.log('error', `${this.label} cannot update the index: ${(error as Error).message}`);
+      seg.indexFailed = true;
+    }
+  }
+
+  /** Closes the segment without waiting for it: a rejection nobody awaits ends the process, so a failure is logged here. */
+  private closeSegmentSoon(): void {
+    this.closeSegment().catch((error: Error) => this.opts.log('error', `${this.label} closing a segment failed: ${error.message}`));
   }
 
   private async closeSegment(): Promise<void> {
@@ -430,10 +529,15 @@ export class Recorder {
     seg.endUs = Math.max(seg.endUs, Date.now() * 1000);
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     await new Promise<void>((resolve) => seg.stream.end(() => resolve()));
-    if (seg.keyframes.length === 0) {
-      this.opts.store.deleteSegment(seg.id);
-    } else {
-      this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
+    try {
+      if (seg.keyframes.length === 0) {
+        this.opts.store.deleteSegment(seg.id);
+      } else {
+        this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
+      }
+    } catch (error) {
+      // the recorder goes on: the row keeps what the last flush wrote, the rest of this file is not in the archive
+      this.opts.log('error', `${this.label} cannot save the index of ${seg.path}: ${(error as Error).message}`);
     }
     if (!this.segment) this.setRecording(false);
     this.opts.onSegment();
@@ -451,13 +555,18 @@ export class Recorder {
   }
 }
 
-function payloadOf(pkt: Buffer): Buffer | undefined {
+function tsPayload(pkt: Buffer): Buffer | undefined {
   const afc = (pkt[3] >> 4) & 0x3;
   let p = 4;
   if (afc === 2 || afc === 3) p += 1 + pkt[4];
   if (afc === 0 || afc === 2 || p >= TS_PACKET) return undefined;
-  const payload = pkt.subarray(p);
-  return payload.length >= 9 && payload[0] === 0 && payload[1] === 0 && payload[2] === 1 ? payload : undefined;
+  return pkt.subarray(p);
+}
+
+/** The payload of a packet that starts a PES. */
+function payloadOf(pkt: Buffer): Buffer | undefined {
+  const payload = tsPayload(pkt);
+  return payload && payload.length >= 9 && payload[0] === 0 && payload[1] === 0 && payload[2] === 1 ? payload : undefined;
 }
 
 function readPts(b: Buffer, i: number): number {

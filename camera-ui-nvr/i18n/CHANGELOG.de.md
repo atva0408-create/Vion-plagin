@@ -1,3 +1,18 @@
+## [0.10.3]
+
+- Kameras, die vor jedem Schlüsselbild einen langen Header senden (viele Modelle von Hikvision und Dahua, H.265-Streams), werden aufgezeichnet. Eine solche Kamera konnte gar nichts aufzeichnen, während das Protokoll unauffällig aussah. Das Protokoll meldet jetzt, wenn eine Kamera Video ohne Schlüsselbilder sendet
+- Eine volle oder fehlerhafte Festplatte stoppt nicht mehr die Aufzeichnung aller Kameras auf einmal: Die Aufzeichnung läuft weiter, und der Index des Archivs holt auf
+- Ein exportierter Clip, der über eine Pause in der Aufzeichnung läuft, endet dort, wo es verlangt wurde, und meldet seine tatsächliche Länge. Pausen von mehr als 2 Sekunden kommen nicht in den Clip
+- Ein Export, der für eine ZIP-Datei zu groß ist, wird sofort mit Begründung abgelehnt, und ein fehlgeschlagener Export hinterlässt keine Dateien auf der Archivfestplatte
+- „Aufzeichnen“ wird mit einer Erklärung abgelehnt, solange die Aufzeichnung wegen fehlenden Speicherplatzes pausiert
+- Eine Kamera, die zwei Streams aufzeichnet, springt nicht mehr auf „zeichnet nicht auf“, wenn sich einer von ihnen neu verbindet
+- Kameras im Modus „Auf Anfrage“ werden in der Speicherstatistik mit diesem Modus angezeigt
+- Die Ansicht „Episoden“ zeigt die tatsächliche Anzahl der Episoden
+- Ereignisse, die im selben Augenblick auf mehreren Kameras stattfanden, werden beim Nachladen der Liste nicht mehr übersprungen
+- Die Einstellung „Länge einer Aufzeichnungsdatei“ wirkt sofort
+- KI-Beschreibungen: Das Stundenlimit verbrauchen nur Ereignisse, die tatsächlich an das Modell gesendet wurden
+- Das Aufräumen eines großen Archivs nach dem Größenlimit ist deutlich schneller
+
 ## [0.10.2]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

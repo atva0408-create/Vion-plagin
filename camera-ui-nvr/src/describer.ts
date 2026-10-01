@@ -95,6 +95,8 @@ export class EventDescriber {
   private running = false;
   private readonly recent: number[] = [];
   private stopped = false;
+  /** The "not allowed" warning was given; said again only after the permission came and went. */
+  private deniedWarned = false;
 
   constructor(
     private readonly db: DatabaseSync,
@@ -119,7 +121,10 @@ export class EventDescriber {
     const labels = labelsOf(event);
     if (!labels.some((l) => OBJECT_LABELS.has(l))) return;
     if (this.queue.some((e) => e.id === event.id)) return;
-    if (this.queue.length >= QUEUE_LIMIT) this.queue.shift();
+    if (this.queue.length >= QUEUE_LIMIT) {
+      const dropped = this.queue.shift()!;
+      this.deps.log('warn', `AI descriptions: more than ${QUEUE_LIMIT} events are waiting for the model, event ${dropped.id} stays without a description`);
+    }
     this.queue.push(event);
     void this.drain();
   }
@@ -142,20 +147,23 @@ export class EventDescriber {
           break;
         }
         const event = this.queue.shift()!;
-        this.recent.push(Date.now());
-        await this.describe(event).catch((error: unknown) => this.deps.log('warn', `AI description failed: ${(error as Error).message}`));
+        await this.describe(event, true).catch((error: unknown) => this.deps.log('warn', `AI description failed: ${(error as Error).message}`));
       }
     } finally {
       this.running = false;
     }
   }
 
-  public async describe(event: RecordedEvent): Promise<EventDescription | undefined> {
+  /** `budgeted`: the call to the model counts towards the hourly limit (automatic descriptions; one asked for by hand does not). */
+  public async describe(event: RecordedEvent, budgeted = false): Promise<EventDescription | undefined> {
     const access = await this.deps.access();
     if (!access.allowed) {
-      this.deps.log('warn', 'AI descriptions: NVR is not allowed to use the assistant model (Settings → Assistant → plugins)');
+      // once, not for every event of a busy camera
+      if (!this.deniedWarned) this.deps.log('warn', 'AI descriptions: NVR is not allowed to use the assistant model (Settings → Assistant → plugins)');
+      this.deniedWarned = true;
       return undefined;
     }
+    this.deniedWarned = false;
     const pictures = this.deps.pictures(event).slice(0, 3);
     if (!pictures.length) return undefined;
     const language = access.language ?? 'ru';
@@ -172,6 +180,8 @@ export class EventDescriber {
       .filter(Boolean)
       .join('\n');
 
+    // counted here, where the model is really called: an event without permission or pictures must not use the limit up
+    if (budgeted) this.recent.push(Date.now());
     const result = await this.deps.ask({
       system: systemPrompt(language),
       prompt,

@@ -236,6 +236,18 @@ export function isKeyframe(data: Buffer, codec: VideoCodec): boolean {
   return false;
 }
 
+/**
+ * Whether the access unit that starts with `data` is a keyframe, told by its first picture NAL; undefined while
+ * `data` ends before that NAL: the parameter sets and SEI in front of a picture can fill more than one TS packet.
+ */
+export function keyframeStart(data: Buffer, codec: VideoCodec): boolean | undefined {
+  for (const nal of nalUnits(data)) {
+    const t = nalType(nal, codec);
+    if (codec === 'h264' ? t >= 1 && t <= 5 : t < 32) return codec === 'h264' ? t === 5 : t >= 16 && t <= 21;
+  }
+  return undefined;
+}
+
 /** 33-bit PTS difference in ticks, tolerant of a single wrap-around. */
 export function ptsDelta(from: number, to: number): number {
   const WRAP = 2 ** 33;

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
 import { Episodes } from './episodes.js';
-import { exportClip, mosaic, writeZip } from './export.js';
+import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
 import { PlaybackManager } from './playback.js';
@@ -280,6 +280,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         maximum: 600,
         step: 5,
         store: true,
+        // running recorders keep the length they were built with until they are synced
+        onSet: async () => this.syncAll(),
       },
       {
         type: 'boolean',
@@ -590,7 +592,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           if (level === 'warn' || level === 'error')
             this.pushSystemEvent({ type: 'stream', severity: level === 'error' ? 'error' : 'warning', cameraId: device.id, message });
         },
-        onStateChange: (recording) => this.emitRecordingState(device.id, recording),
+        // the camera records while any of its streams does: the low stream dropping must not report «stopped»
+        onStateChange: () =>
+          this.emitRecordingState(
+            device.id,
+            [...(this.cameras.get(device.id)?.recorders.values() ?? [])].some((r) => r.isRecording),
+          ),
         onSegment: () => undefined,
       });
       const manual = this.manual.get(device.id);
@@ -712,7 +719,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * confidence, search, hidden types; see filter.ts). A selective filter may need many rows for one
    * page, so rows are read in large batches. Once the page has results, the scan stops after
    * `scanRows` rows and reports `hasMore`: the next page continues before its last event. An empty
-   * page never reports `hasMore` (the client would ask for the same page again).
+   * page never reports `hasMore` (the client would ask for the same page again). The client continues
+   * with `before` = the start of the last event it got, so a page never ends between events that started
+   * in the same millisecond: it takes them all, even past `limit`.
    */
   private queryEvents(cameraIds: string[] | undefined, opts: GetEventsOptions, limit: number, scanRows: number): { events: RecordedEvent[]; hasMore: boolean } {
     const batch = Math.min(Math.max(limit * 2 + 1, 200), 2000);
@@ -720,6 +729,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const out: RecordedEvent[] = [];
     let before = opts.before;
     let scanned = 0;
+    let lastMs: number | undefined;
     for (;;) {
       const rows = this.store.events({
         cameraIds,
@@ -737,8 +747,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         // the recording lookup costs a query: only for events the other filters let through
         const ev = this.decorate(raw, row.favorite === 1, withRecording);
         if (opts.hasRecording && !ev.hasRecording) continue;
+        if (out.length >= limit && row.start_ms !== lastMs) return { events: out, hasMore: true };
         out.push(ev);
-        if (out.length > limit) return { events: out.slice(0, limit), hasMore: true };
+        lastMs = row.start_ms;
       }
       scanned += rows.length;
       if (rows.length < batch) return { events: out, hasMore: false };
@@ -759,7 +770,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       for (const t of ev.types ?? []) byType[t] = (byType[t] ?? 0) + 1;
       segments += Math.max(1, ev.segments?.length ?? 0);
     }
-    return { total: events.length, segments, episodes: 0, byType, capped: hasMore };
+    // the episodes of the same cameras and time range, as the page lists them: an episode belongs to the range while
+    // it ends in it, the event filters (types, search…) do not apply to episodes
+    const episodes = this.store.episodeCount({
+      fromMs: Math.max(Number(opts.startMs) || 0, Number(opts.startedSinceMs) || 0),
+      toMs: Number(opts.endMs) || Number.MAX_SAFE_INTEGER,
+      favoritesOnly: opts.favoritesOnly,
+      cameraIds: cameraIds?.length ? cameraIds : undefined,
+    });
+    return { total: events.length, segments, episodes, byType, capped: hasMore };
   }
 
   public async getEventThumbnails(
@@ -1101,42 +1120,59 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     timelapseIntervalSec?: number;
   }): Promise<{ url: string; filename: string }> {
     await this.ready;
+    // several files leave as one ZIP, which holds 4 GB at most: said now, not after every file was cut. The estimate is
+    // the size the export dialog shows. A timelapse is a small part of the recordings it is made of, so its files are
+    // measured when they exist (writeZip).
+    if (!request.timelapseIntervalSec) {
+      const estimate = await this.nvrExportEstimate(request);
+      if (estimate.files.length > 1 && estimate.totalBytes >= ZIP_MAX_BYTES) throw zipTooLarge(estimate.totalBytes);
+    }
     const outDir = join(this.dataDir, 'exports', randomUUID());
-    const parts: { path: string; name: string }[] = [];
-    for (const cameraId of request.cameras) {
-      for (const slice of request.slices) {
-        const segments = this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality);
-        if (!segments.length) continue;
-        const name = `${this.cameraSlug(cameraId)}_${fileStamp(slice.startUs)}.mp4`;
-        const res = await exportClip({
-          ffmpegPath: this.ffmpegPath,
-          segments,
-          startUs: slice.startUs,
-          endUs: slice.endUs,
-          outDir,
-          filename: name,
-          timelapseIntervalSec: request.timelapseIntervalSec,
-        });
-        parts.push({ path: res.path, name });
+    try {
+      const parts: { path: string; name: string }[] = [];
+      for (const cameraId of request.cameras) {
+        for (const slice of request.slices) {
+          const segments = this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality);
+          if (!segments.length) continue;
+          const name = `${this.cameraSlug(cameraId)}_${fileStamp(slice.startUs)}.mp4`;
+          const res = await exportClip({
+            ffmpegPath: this.ffmpegPath,
+            segments,
+            startUs: slice.startUs,
+            endUs: slice.endUs,
+            outDir,
+            filename: name,
+            timelapseIntervalSec: request.timelapseIntervalSec,
+          });
+          parts.push({ path: res.path, name });
+        }
       }
+      if (!parts.length) throw new Error('No recordings in the selected range');
+      if (parts.length === 1) {
+        const dl = await this.api.downloadManager.createDownload({
+          filePath: parts[0].path,
+          filename: parts[0].name,
+          mimeType: 'video/mp4',
+          ttlMs: 3 * 3600_000,
+          cleanup: 'on-expiry',
+        });
+        return { url: dl.url, filename: parts[0].name };
+      }
+      const filename = `vion-export_${fileStamp(Date.now() * 1000)}.zip`;
+      const zipPath = join(outDir, filename);
+      await writeZip(zipPath, parts);
+      await Promise.all(parts.map((p) => rm(p.path, { force: true })));
+      const dl = await this.api.downloadManager.createDownload({ filePath: zipPath, filename, mimeType: 'application/zip', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
+      return { url: dl.url, filename };
+    } catch (error) {
+      await this.removeExportDir(outDir);
+      throw error;
     }
-    if (!parts.length) throw new Error('No recordings in the selected range');
-    if (parts.length === 1) {
-      const dl = await this.api.downloadManager.createDownload({
-        filePath: parts[0].path,
-        filename: parts[0].name,
-        mimeType: 'video/mp4',
-        ttlMs: 3 * 3600_000,
-        cleanup: 'on-expiry',
-      });
-      return { url: dl.url, filename: parts[0].name };
-    }
-    const filename = `vion-export_${fileStamp(Date.now() * 1000)}.zip`;
-    const zipPath = join(outDir, filename);
-    await writeZip(zipPath, parts);
-    await Promise.all(parts.map((p) => rm(p.path, { force: true })));
-    const dl = await this.api.downloadManager.createDownload({ filePath: zipPath, filename, mimeType: 'application/zip', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
-    return { url: dl.url, filename };
+  }
+
+  /** A failed export leaves nothing behind: the files cut before the failure would stay on the archive disk for good. */
+  private async removeExportDir(outDir: string): Promise<void> {
+    await rm(outDir, { recursive: true, force: true }).catch((error: Error) => this.logger.warn(`Export cleanup: ${error.message}`));
   }
 
   /**
@@ -1176,7 +1212,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay,
         daysCount: Math.max(1, Math.round((new Date(newestDay).getTime() - new Date(oldestDay).getTime()) / 86_400_000) + 1),
         bandwidthMBh: Math.round((row.bytes / 1024 ** 2 / hours) * 10) / 10,
-        recordingMode: effectiveMode(managed?.device.recordingSettings?.mode) ?? 'off',
+        recordingMode: shownMode(managed?.device.recordingSettings?.mode),
         isRecording: recorders.some((r) => r.isRecording),
       };
     }
@@ -1188,7 +1224,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay: '',
         daysCount: 0,
         bandwidthMBh: 0,
-        recordingMode: effectiveMode(managed.device.recordingSettings?.mode) ?? 'off',
+        recordingMode: shownMode(managed.device.recordingSettings?.mode),
         isRecording: [...managed.recorders.values()].some((r) => r.isRecording),
       };
     }
@@ -1223,10 +1259,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
       // quota and free-space guard: drop the oldest files first
       const GB = 1024 ** 3;
+      // summed once and kept up to date below: a SUM over every segment for each deleted file made a big cleanup quadratic
+      let usedBytes = s.quotaGB > 0 ? this.store.totalBytes() : 0;
       for (let guard = 0; guard < 10_000; guard++) {
         const fs = await statfs(this.recordingsDir);
         const freePct = (fs.bavail / fs.blocks) * 100;
-        const overQuota = s.quotaGB > 0 && this.store.totalBytes() > s.quotaGB * GB;
+        const overQuota = s.quotaGB > 0 && usedBytes > s.quotaGB * GB;
         if (!overQuota && freePct >= s.minFreePercent) break;
         const [oldest] = this.store.oldestSegments(1);
         if (!oldest || this.isLiveSegment(oldest.id)) {
@@ -1240,6 +1278,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
         await rm(oldest.path, { force: true });
         this.store.deleteSegment(oldest.id);
+        usedBytes -= oldest.bytes;
         removed++;
       }
       if (this.paused) {
@@ -1314,6 +1353,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const managed = this.cameras.get(cameraId);
     if (!managed) throw new Error('This camera is not recorded by ViON NVR');
     if (!managed.recorders.size) throw new Error(managed.overLimit ? 'No free recording slot in the plan' : 'Recording is off for this camera');
+    // the disk guard stopped every recorder: a manual window would be answered as active and write nothing
+    if (this.paused) throw new Error('Recording is paused: not enough free disk space');
     if (effectiveMode(managed.device.recordingSettings?.mode) === 'continuous') return { cameraId, active: false };
 
     const span = Math.min(Math.max(Math.round(Number(minutes) || MANUAL_DEFAULT_MIN), 1), MANUAL_MAX_MIN);
@@ -1441,33 +1482,38 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const told = (episode.blocks ?? []).filter((b) => !b.secondAngle && b.endMs > b.startMs);
     const blocks = told.length ? told : episode.members.map((m) => ({ cameraId: m.cameraId, startMs: m.firstSeen, endMs: m.lastSeen }));
     const outDir = join(this.dataDir, 'exports', randomUUID());
-    const parts: { path: string; name: string }[] = [];
-    for (const block of blocks) {
-      const startUs = (block.startMs - EPISODE_HEAD_MS) * 1000;
-      const endUs = (block.endMs + EPISODE_TAIL_MS) * 1000;
-      const segments = this.exportSegments(block.cameraId, startUs, endUs);
-      if (!segments.length) continue;
-      const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs)}.mp4`;
-      const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments, startUs, endUs, outDir, filename: name });
-      parts.push({ path: res.path, name });
+    try {
+      const parts: { path: string; name: string }[] = [];
+      for (const block of blocks) {
+        const startUs = (block.startMs - EPISODE_HEAD_MS) * 1000;
+        const endUs = (block.endMs + EPISODE_TAIL_MS) * 1000;
+        const segments = this.exportSegments(block.cameraId, startUs, endUs);
+        if (!segments.length) continue;
+        const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs)}.mp4`;
+        const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments, startUs, endUs, outDir, filename: name });
+        parts.push({ path: res.path, name });
+      }
+      if (!parts.length) throw new Error('No recordings for this episode');
+      if (parts.length === 1) {
+        const dl = await this.api.downloadManager.createDownload({
+          filePath: parts[0].path,
+          filename: parts[0].name,
+          mimeType: 'video/mp4',
+          ttlMs: 3 * 3600_000,
+          cleanup: 'on-expiry',
+        });
+        return { url: dl.url, filename: parts[0].name };
+      }
+      const filename = `vion-episode_${fileStamp(episode.startTime * 1000)}.zip`;
+      const zipPath = join(outDir, filename);
+      await writeZip(zipPath, parts);
+      await Promise.all(parts.map((p) => rm(p.path, { force: true })));
+      const dl = await this.api.downloadManager.createDownload({ filePath: zipPath, filename, mimeType: 'application/zip', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
+      return { url: dl.url, filename };
+    } catch (error) {
+      await this.removeExportDir(outDir);
+      throw error;
     }
-    if (!parts.length) throw new Error('No recordings for this episode');
-    if (parts.length === 1) {
-      const dl = await this.api.downloadManager.createDownload({
-        filePath: parts[0].path,
-        filename: parts[0].name,
-        mimeType: 'video/mp4',
-        ttlMs: 3 * 3600_000,
-        cleanup: 'on-expiry',
-      });
-      return { url: dl.url, filename: parts[0].name };
-    }
-    const filename = `vion-episode_${fileStamp(episode.startTime * 1000)}.zip`;
-    const zipPath = join(outDir, filename);
-    await writeZip(zipPath, parts);
-    await Promise.all(parts.map((p) => rm(p.path, { force: true })));
-    const dl = await this.api.downloadManager.createDownload({ filePath: zipPath, filename, mimeType: 'application/zip', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
-    return { url: dl.url, filename };
   }
 
   private async memberPicture(eventId: string): Promise<Uint8Array | undefined> {
@@ -2221,6 +2267,11 @@ function effectiveMode(mode: string | undefined): 'continuous' | 'event' | undef
   if (mode === 'continuous') return 'continuous';
   if (mode === 'event' || mode === 'adhoc') return 'event';
   return undefined;
+}
+
+/** The mode a camera is set to, for the storage statistics: `adhoc` stays «По запросу» though it runs like «по событию». */
+function shownMode(mode: string | undefined): string {
+  return effectiveMode(mode) ? mode! : 'off';
 }
 
 function localDay(ms: number): string {

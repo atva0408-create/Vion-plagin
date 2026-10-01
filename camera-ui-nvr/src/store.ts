@@ -70,6 +70,7 @@ export class Store {
         keyframes TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS segments_camera_time ON segments (camera_id, role, start_us);
+      CREATE INDEX IF NOT EXISTS segments_time ON segments (start_us);
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         camera_id TEXT NOT NULL,
@@ -262,7 +263,16 @@ export class Store {
       args.push(opts.state);
     }
     const sql = `SELECT * FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY start_ms DESC LIMIT ?`;
-    return this.db.prepare(sql).all(...args, opts.limit) as unknown as EventRow[];
+    const rows = this.db.prepare(sql).all(...args, opts.limit) as unknown as EventRow[];
+    // the next page is asked for with `before` = the start of the last row, a strict `<`: events that started in the
+    // same millisecond as that row and did not fit under LIMIT would never be listed, so a full page takes them too
+    if (rows.length > 0 && rows.length === opts.limit) {
+      const lastMs = rows[rows.length - 1].start_ms;
+      const listed = new Set(rows.filter((r) => r.start_ms === lastMs).map((r) => r.id));
+      const tied = this.db.prepare(`SELECT * FROM events WHERE ${[...where, 'start_ms = ?'].join(' AND ')}`).all(...args, lastMs) as unknown as EventRow[];
+      for (const row of tied) if (!listed.has(row.id)) rows.push(row);
+    }
+    return rows;
   }
 
   public setFavorite(id: string, favorite: boolean): void {
@@ -337,6 +347,21 @@ export class Store {
     return this.db
       .prepare(`SELECT * FROM episodes WHERE end_ms >= ? AND start_ms <= ? ${opts.favoritesOnly ? 'AND favorite = 1' : ''} ORDER BY start_ms DESC LIMIT ?`)
       .all(opts.fromMs, opts.toMs, opts.limit) as unknown as EpisodeRow[];
+  }
+
+  /** How many episodes overlap [fromMs, toMs]; with `cameraIds`, only those with an event of one of these cameras. */
+  public episodeCount(opts: { fromMs: number; toMs: number; favoritesOnly?: boolean; cameraIds?: string[] }): number {
+    const where = ['end_ms >= ?', 'start_ms <= ?'];
+    const args: (string | number)[] = [opts.fromMs, opts.toMs];
+    if (opts.favoritesOnly) where.push('favorite = 1');
+    if (opts.cameraIds?.length) {
+      where.push(
+        `EXISTS (SELECT 1 FROM json_each(episodes.data, '$.episode.members') AS m
+           WHERE json_extract(m.value, '$.cameraId') IN (${opts.cameraIds.map(() => '?').join(',')}))`,
+      );
+      args.push(...opts.cameraIds);
+    }
+    return Number((this.db.prepare(`SELECT COUNT(*) AS n FROM episodes WHERE ${where.join(' AND ')}`).get(...args) as { n: number }).n);
   }
 
   /** Episodes ending at or after `sinceMs` (the ones still open when the NVR restarted). */

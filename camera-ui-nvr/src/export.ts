@@ -7,6 +7,55 @@ import { crc32 } from 'node:zlib';
 
 import type { SegmentRow } from './store.js';
 
+/** Segments at most this far apart are one stretch of recording (the timeline joins them the same way). */
+const RUN_GAP_US = 2_000_000;
+/** Sizes and offsets in a ZIP written here are 32-bit and the entry count 16-bit (no ZIP64). */
+export const ZIP_MAX_BYTES = 0xffff_ffff;
+const ZIP_MAX_FILES = 0xffff;
+
+/**
+ * Where [startUs, endUs] lies in the clip made of `segments` (in time order). The clip holds recorded video only:
+ * stretches of recording follow each other without the pauses between them, so its length is the recorded time
+ * inside the range, not the span of the range, and the cut that ends it is counted the same way.
+ */
+export function clipPlan(segments: SegmentRow[], startUs: number, endUs: number): { runs: SegmentRow[][]; offsetSec: number; durationSec: number } {
+  const runs: SegmentRow[][] = [];
+  const ends: number[] = [];
+  for (const segment of segments) {
+    if (!runs.length || segment.start_us - ends[ends.length - 1] > RUN_GAP_US) {
+      runs.push([segment]);
+      ends.push(segment.end_us);
+    } else {
+      runs[runs.length - 1].push(segment);
+      ends[ends.length - 1] = Math.max(ends[ends.length - 1], segment.end_us);
+    }
+  }
+  let recordedUs = 0;
+  runs.forEach((run, i) => (recordedUs += Math.max(0, Math.min(endUs, ends[i]) - Math.max(startUs, run[0].start_us))));
+  return { runs, offsetSec: Math.max(0, (startUs - segments[0].start_us) / 1e6), durationSec: Math.max(0.1, recordedUs / 1e6) };
+}
+
+/**
+ * The input list of ffmpeg's concat demuxer, one entry per stretch of recording. Inside a stretch the files are
+ * joined byte by byte (`concat:`), which is the stream as it was received. Between stretches the demuxer starts
+ * the next one where the previous ended, whatever the pause or the timestamps of a new connection: `concat:` alone
+ * drops a pause only when it is longer than 10 s, so where the range ended in the clip could not be known.
+ */
+function concatList(runs: SegmentRow[][]): string {
+  // inside the quotes of a list entry only the quote itself needs care: it is closed, escaped and opened again
+  const entries = runs.map((run) => `file '${concatUrl(run).replaceAll("'", "'\\''")}'`);
+  return ['ffconcat version 1.0', ...entries, ''].join('\n');
+}
+
+function concatUrl(run: SegmentRow[]): string {
+  return `concat:${run.map((s) => s.path).join('|')}`;
+}
+
+export function zipTooLarge(bytes: number): Error {
+  const gb = (n: number) => (n / 1e9).toFixed(1);
+  return new Error(`Export too large for a ZIP archive: ${gb(bytes)} GB, a ZIP holds up to ${gb(ZIP_MAX_BYTES)} GB. Export a shorter period or fewer cameras at a time.`);
+}
+
 /** Cuts [startUs, endUs] out of consecutive TS segments into an MP4 without re-encoding. */
 export async function exportClip(opts: {
   ffmpegPath: string;
@@ -22,11 +71,15 @@ export async function exportClip(opts: {
   await mkdir(opts.outDir, { recursive: true });
   const out = join(opts.outDir, opts.filename);
 
-  const offsetSec = Math.max(0, (opts.startUs - segments[0].start_us) / 1e6);
-  const durationSec = Math.max(0.1, (Math.min(opts.endUs, segments.at(-1)!.end_us) - Math.max(opts.startUs, segments[0].start_us)) / 1e6);
-  const input = `concat:${segments.map((s) => s.path).join('|')}`;
+  const { runs, offsetSec, durationSec } = clipPlan(segments, opts.startUs, opts.endUs);
+  const listDir = await mkdtemp(join(tmpdir(), 'nvr-export-'));
+  const list = join(listDir, 'segments.txt');
 
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3)];
+  // one stretch of recording is read directly, as it always was: ffmpeg then also mends a jump of the timestamps
+  // inside it (it does that for MPEG-TS, not for a list). The whitelist lets the list name `concat:` inputs (a list
+  // read from a file may open only files by default).
+  const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...input, '-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3)];
   if (opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0) {
     // one frame per interval, played at 30 fps
     args.push('-vf', `fps=1/${opts.timelapseIntervalSec},setpts=N/30/TB`, '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
@@ -36,7 +89,12 @@ export async function exportClip(opts: {
   }
   args.push('-movflags', '+faststart', out);
 
-  await run(opts.ffmpegPath, args);
+  try {
+    if (runs.length > 1) await writeFile(list, concatList(runs));
+    await run(opts.ffmpegPath, args);
+  } finally {
+    await rm(listDir, { recursive: true, force: true });
+  }
   const { size } = await stat(out);
   return { path: out, size, durationMs: Math.round(durationSec * 1000) };
 }
@@ -104,6 +162,12 @@ function run(bin: string, args: string[]): Promise<void> {
 
 /** Writes an uncompressed (store) ZIP of the given files; MP4 does not compress further. */
 export async function writeZip(target: string, files: { path: string; name: string }[]): Promise<number> {
+  // checked before the first byte: the 32-bit offsets used to overflow in the central directory, after gigabytes were written
+  if (files.length >= ZIP_MAX_FILES) throw new Error(`Export too large for a ZIP archive: ${files.length} files, a ZIP holds up to ${ZIP_MAX_FILES - 1}.`);
+  let bytes = 0;
+  for (const file of files) bytes += 30 + Buffer.byteLength(file.name, 'utf8') + (await stat(file.path)).size + 16;
+  if (bytes >= ZIP_MAX_BYTES) throw zipTooLarge(bytes);
+
   const out = createWriteStream(target);
   const central: Buffer[] = [];
   let offset = 0;

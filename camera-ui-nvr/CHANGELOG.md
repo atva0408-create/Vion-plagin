@@ -1,3 +1,18 @@
+## [0.10.3]
+
+- Cameras that send a long header in front of every keyframe (many Hikvision and Dahua models, H.265 streams) are recorded. Such a camera could record nothing at all while the log looked healthy. The log now says when a camera sends video without keyframes
+- A full or failing disk no longer stops the recording of every camera at once: recording goes on and the index of the archive catches up
+- An exported clip that runs over a pause in the recording ends where it was asked to and reports its real length. Pauses longer than 2 seconds are left out of the clip
+- An export too large for a ZIP file is refused at once with the reason, and a failed export leaves no files on the archive disk
+- "Record" is refused with an explanation while recording is paused for lack of disk space
+- A camera that records two streams no longer flickers to "not recording" when one of them reconnects
+- Cameras in "On request" mode are shown with that mode in the storage statistics
+- The Episodes view shows the real number of episodes
+- Events that happened at the same instant on several cameras are no longer skipped when the list loads more
+- The "Recording file length" setting takes effect at once
+- AI descriptions: the hourly limit is spent only by events that were sent to the model
+- Cleaning up a large archive by its size limit is much faster
+
 ## [0.10.2]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
