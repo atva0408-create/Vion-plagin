@@ -9,8 +9,8 @@
   "camera@vion.local": "camera@vion.local",
   "Motion On Text": "Text für Bewegungsbeginn",
   "Text pattern that triggers motion. Leave empty to trigger on any email.": "Text in der E-Mail, der Bewegung auslöst. Leer lassen, um bei jeder E-Mail auszulösen.",
-  "motion detected": "motion detected",
+  "motion detected": "Bewegung erkannt",
   "Motion Off Text": "Text für Bewegungsende",
   "Text pattern that clears motion state.": "Text in der E-Mail, der die Bewegung beendet.",
-  "motion cleared": "motion cleared"
+  "motion cleared": "Bewegung beendet"
 }
