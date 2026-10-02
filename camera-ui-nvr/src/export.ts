@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
@@ -79,24 +79,71 @@ export async function exportClip(opts: {
   // inside it (it does that for MPEG-TS, not for a list). The whitelist lets the list name `concat:` inputs (a list
   // read from a file may open only files by default).
   const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...input, '-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3)];
-  if (opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0) {
-    // one frame per interval, played at 30 fps
-    args.push('-vf', `fps=1/${opts.timelapseIntervalSec},setpts=N/30/TB`, '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...input];
+  const timelapse = opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0 ? opts.timelapseIntervalSec : 0;
+  if (timelapse) {
+    // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
+    // of a second of what is left. The range is cut by `trim`, in front of that: `-ss`/`-t` of the output count the
+    // compressed time, so a range starting 10 s into a file skipped the first 10 s of the timelapse (all of it, for
+    // a short one) and no range ended where it was asked to. `eof_action=pass`: a range shorter than the interval
+    // still gives its one picture.
+    const range = `trim=start=${offsetSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`;
+    args.push('-vf', `${range},setpts=(PTS-STARTPTS)/${30 * timelapse},fps=30:eof_action=pass`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
   } else {
     // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
-    args.push('-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
+    args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
   }
   args.push('-movflags', '+faststart', out);
 
   try {
     if (runs.length > 1) await writeFile(list, concatList(runs));
     await run(opts.ffmpegPath, args);
+  } catch (error) {
+    // what ffmpeg wrote before it failed (an empty file when it could not start the MP4) is not a clip, and nothing
+    // removes it later: the download that cleans up an export is only made for a finished one
+    await rm(out, { force: true }).catch((e: Error) => ((error as Error).message += ` (the unfinished file stays: ${e.message})`));
+    throw error;
   } finally {
     await rm(listDir, { recursive: true, force: true });
   }
   const { size } = await stat(out);
-  return { path: out, size, durationMs: Math.round(durationSec * 1000) };
+  if (!timelapse) return { path: out, size, durationMs: Math.round(durationSec * 1000) };
+  // a timelapse plays as long as its pictures at 30 a second, not as long as the range they are taken from
+  const durationMs = await mp4DurationMs(out);
+  if (!durationMs) {
+    // ffmpeg ends well with an MP4 without a frame when the range has no picture it could decode
+    await rm(out, { force: true });
+    throw new Error('No video in the selected range for a timelapse');
+  }
+  return { path: out, size, durationMs };
+}
+
+/** How long an MP4 plays, from its movie header; 0 when it has none or the movie is empty. */
+async function mp4DurationMs(path: string): Promise<number> {
+  const file = await open(path, 'r');
+  try {
+    const box = Buffer.alloc(48);
+    for (let at = 0; ;) {
+      const { bytesRead } = await file.read(box, 0, box.length, at);
+      if (bytesRead < 8) return 0;
+      const large = box.readUInt32BE(0) === 1;
+      const header = large ? 16 : 8;
+      const size = large ? Number(box.readBigUInt64BE(8)) : box.readUInt32BE(0);
+      const type = box.toString('latin1', 4, 8);
+      if (type === 'mvhd' && bytesRead === box.length) {
+        const v1 = box[header] === 1;
+        const timescale = box.readUInt32BE(header + (v1 ? 20 : 12));
+        const duration = v1 ? Number(box.readBigUInt64BE(header + 24)) : box.readUInt32BE(header + 16);
+        return timescale ? Math.round((duration / timescale) * 1000) : 0;
+      }
+      // the movie header is the first box inside `moov`; any other box is stepped over (size 0: it runs to the end)
+      if (type === 'moov') at += header;
+      else if (size < header) return 0;
+      else at += size;
+    }
+  } finally {
+    await file.close();
+  }
 }
 
 const TILE_W = 480;

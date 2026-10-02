@@ -1,5 +1,8 @@
+import { existsSync } from 'node:fs';
+import { join, posix, relative, sep, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import type { StatementSync } from 'node:sqlite';
 import type { VideoCodec } from './media/ts-demux.js';
 import type { RecordedEvent } from './types.js';
 
@@ -9,6 +12,10 @@ export interface SegmentRow {
   role: string;
   start_us: number;
   end_us: number;
+  /**
+   * As stored, not a place to open: `<camera>/<day>/<file>` below the recordings directory, or, in rows of older
+   * versions, the absolute path the file was written at. `Store.file()` says where the file is now.
+   */
   path: string;
   bytes: number;
   codec: VideoCodec;
@@ -37,6 +44,18 @@ export interface EventRow {
   favorite: number;
 }
 
+/** What the event statistics need of an event, read from its stored JSON by the database (`Store.eventDigests`). */
+export interface EventDigest {
+  id: string;
+  camera_id: string;
+  start_ms: number;
+  end_ms: number | null;
+  /** JSON of the event's `types`. */
+  types: string | null;
+  /** How many segments it has. */
+  segments: number | null;
+}
+
 export interface EpisodeRow {
   id: string;
   start_ms: number;
@@ -48,8 +67,16 @@ export interface EpisodeRow {
 
 export class Store {
   private readonly db: DatabaseSync;
+  private lastSegment: StatementSync | undefined;
 
-  constructor(path: string) {
+  /**
+   * `recordingsDir`: the directory the segment files are kept in. With it new rows name their file below it and
+   * `file()` finds a file wherever the archive is now; without it (a store on its own) a path is kept and given as it is.
+   */
+  constructor(
+    path: string,
+    private readonly recordingsDir?: string,
+  ) {
     this.db = new DatabaseSync(path);
     this.db.exec(`
       PRAGMA journal_mode = WAL;
@@ -135,7 +162,7 @@ export class Store {
         row.role,
         row.start_us,
         row.end_us,
-        row.path,
+        this.storedPath(row.path),
         row.bytes,
         row.codec,
         row.codec_string,
@@ -148,6 +175,39 @@ export class Store {
     return Number(res.lastInsertRowid);
   }
 
+  /**
+   * A file below the recordings directory is stored by its place in it, with `/` on every system: the archive can
+   * then be mounted or moved elsewhere as a whole. Rows already written keep the path they have.
+   */
+  private storedPath(path: string): string {
+    if (!this.recordingsDir) return path;
+    const below = relative(this.recordingsDir, path);
+    return below && !below.startsWith('..') && !isAbsolutePath(below) ? below.split(sep).join('/') : path;
+  }
+
+  /**
+   * Where the file of a segment is now: everything that opens, sizes or removes one asks here. A stored path that
+   * is not absolute lies below the recordings directory. An absolute one (rows of older versions, a file outside
+   * the recordings directory) is used as it is while the file is there; when it is not, the archive was moved (the
+   * volume mounted elsewhere, a folder renamed) and the file is looked for at the same place below the recordings
+   * directory of today. Without this playback of a moved archive was silently empty and retention deleted the rows
+   * and left the files.
+   */
+  public file(segment: Pick<SegmentRow, 'path'>): string {
+    const stored = segment.path;
+    if (!this.recordingsDir) return stored;
+    if (!isAbsolutePath(stored)) return join(this.recordingsDir, stored);
+    if (existsSync(stored)) return stored;
+    // …/recordings/<camera>/<day>/<file>, written on this system or another
+    const parts = stored.split(/[\\/]/);
+    return parts.length > 4 && parts.at(-4) === 'recordings' ? join(this.recordingsDir, ...parts.slice(-3)) : stored;
+  }
+
+  /** The row with `path` being the place of its file now, for what reads a file by its row (reader.ts, export.ts). */
+  public located(segment: SegmentRow): SegmentRow {
+    return { ...segment, path: this.file(segment) };
+  }
+
   public updateSegment(id: number, endUs: number, bytes: number, keyframes: string): void {
     this.db.prepare('UPDATE segments SET end_us = ?, bytes = ?, keyframes = ? WHERE id = ?').run(endUs, bytes, keyframes, id);
   }
@@ -156,6 +216,23 @@ export class Store {
     return this.db
       .prepare('SELECT * FROM segments WHERE camera_id = ? AND role = ? AND end_us >= ? AND start_us <= ? ORDER BY start_us')
       .all(cameraId, role, startUs, endUs) as unknown as SegmentRow[];
+  }
+
+  /**
+   * Whether `segments()` would find anything, without reading it. Asked for every listed event («has a recording»),
+   * and `segments()` walks the index from the camera's oldest file up to the range: 4 ms for an event of today on two
+   * weeks of archive, seconds for a page of statistics. The file that starts last before the end of the range is the
+   * one that covers it, when one does, and the index gives it at once. Only when that one ends before the range is
+   * the old question asked: files overlap a little where one was cut, so an earlier one may still reach into it.
+   */
+  public hasSegments(cameraId: string, role: string, startUs: number, endUs: number): boolean {
+    // prepared once: asked thousands of times in a row, where preparing costs more than the look itself
+    this.lastSegment ??= this.db.prepare('SELECT end_us FROM segments WHERE camera_id = ? AND role = ? AND start_us <= ? ORDER BY start_us DESC LIMIT 1');
+    const last = this.lastSegment.get(cameraId, role, endUs) as { end_us: number } | undefined;
+    if (!last) return false;
+    if (last.end_us >= startUs) return true;
+    const any = this.db.prepare('SELECT 1 FROM segments WHERE camera_id = ? AND role = ? AND end_us >= ? AND start_us <= ? LIMIT 1');
+    return any.get(cameraId, role, startUs, endUs) !== undefined;
   }
 
   /** The segment containing `tsUs`, else the first one starting after it. */
@@ -235,6 +312,21 @@ export class Store {
     state?: string;
     limit: number;
   }): EventRow[] {
+    return this.eventPage('*', opts) as EventRow[];
+  }
+
+  /**
+   * The same page as `events()`, of two values per event instead of its whole JSON: counting events needs their
+   * types and the number of their segments, and the database reads these in half the time it takes to parse the
+   * events in JavaScript. (Not so for what lies deeper, the detections and their scores: measured, the database
+   * was slower at those, so a filter on them still parses.)
+   */
+  public eventDigests(opts: Parameters<Store['events']>[0]): EventDigest[] {
+    const columns = "id, camera_id, start_ms, end_ms, json_extract(data, '$.types') AS types, json_array_length(data, '$.segments') AS segments";
+    return this.eventPage(columns, opts) as EventDigest[];
+  }
+
+  private eventPage(columns: string, opts: Parameters<Store['events']>[0]): unknown[] {
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (opts.cameraIds?.length) {
@@ -262,14 +354,14 @@ export class Store {
       where.push('state = ?');
       args.push(opts.state);
     }
-    const sql = `SELECT * FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY start_ms DESC LIMIT ?`;
-    const rows = this.db.prepare(sql).all(...args, opts.limit) as unknown as EventRow[];
+    const sql = `SELECT ${columns} FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY start_ms DESC LIMIT ?`;
+    const rows = this.db.prepare(sql).all(...args, opts.limit) as unknown as { id: string; start_ms: number }[];
     // the next page is asked for with `before` = the start of the last row, a strict `<`: events that started in the
     // same millisecond as that row and did not fit under LIMIT would never be listed, so a full page takes them too
     if (rows.length > 0 && rows.length === opts.limit) {
       const lastMs = rows[rows.length - 1].start_ms;
       const listed = new Set(rows.filter((r) => r.start_ms === lastMs).map((r) => r.id));
-      const tied = this.db.prepare(`SELECT * FROM events WHERE ${[...where, 'start_ms = ?'].join(' AND ')}`).all(...args, lastMs) as unknown as EventRow[];
+      const tied = this.db.prepare(`SELECT ${columns} FROM events WHERE ${[...where, 'start_ms = ?'].join(' AND ')}`).all(...args, lastMs) as unknown as typeof rows;
       for (const row of tied) if (!listed.has(row.id)) rows.push(row);
     }
     return rows;
@@ -402,6 +494,11 @@ export class Store {
   public activeEvents(cameraId: string): EventRow[] {
     return this.db.prepare("SELECT * FROM events WHERE camera_id = ? AND state = 'active'").all(cameraId) as unknown as EventRow[];
   }
+}
+
+/** Absolute on this system or the other one: an archive is also moved between a Windows and a Linux server. */
+function isAbsolutePath(path: string): boolean {
+  return posix.isAbsolute(path) || win32.isAbsolute(path);
 }
 
 export function parseKeyframes(json: string): Keyframe[] {

@@ -86,6 +86,11 @@ export interface ManualRecording {
   active: boolean;
   startedAt?: number;
   untilMs?: number;
+  /**
+   * Why a recording that was started is not active: `paused`, the disk is full and recording is paused. It keeps
+   * `startedAt` and `untilMs` and is active again when there is room before `untilMs`.
+   */
+  reason?: 'paused';
 }
 
 export interface GetEventsOptions {

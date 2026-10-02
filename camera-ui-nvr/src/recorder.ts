@@ -70,6 +70,15 @@ const NO_KEYFRAME_WARN_MS = 30_000;
 /** A frame waits for its picture NAL no longer than this many TS packets (~750 KiB, far more than any parameter sets and SEI). */
 const HELD_MAX_PACKETS = 4096;
 const EMPTY = Buffer.alloc(0);
+/** Two frames in a row further apart than this by the stream's own clock (PTS, 90 kHz): the clock was restarted. */
+const PTS_JUMP_TICKS = 5 * 90_000;
+/** How far the recorded time may be from the wall clock before it is brought back. */
+const DRIFT_MAX_US = 5_000_000;
+/** A lag is drift, and corrected, only once every frame has had it for this long. */
+const DRIFT_PERSIST_US = 60_000_000;
+/** The anchor follows the stream in whole hours: 33 bits of PTS tell a difference only up to 13 hours. */
+const PTS_HOUR = 3600 * 90_000;
+const PTS_WRAP = 2 ** 33;
 
 /**
  * Records one camera stream tier. ffmpeg copies the go2rtc RTSP restream into MPEG-TS (no transcode);
@@ -90,6 +99,10 @@ export class Recorder {
   private pending = Buffer.alloc(0);
 
   private anchor: { pts: number; us: number } | undefined;
+  /** PTS of the video frame before this one. */
+  private lastPts: number | undefined;
+  /** The frames arriving late in a row: since when (wall clock), and the smallest lag among them. */
+  private late: { sinceUs: number; minUs: number } | undefined;
   private held: HeldFrame | undefined;
   /** When the last keyframe came, or the first frame of a stream that has had none yet. */
   private keyframeMs: number | undefined;
@@ -104,6 +117,8 @@ export class Recorder {
   private recording = false;
   /** Last GOP written to a closed segment: the pre-buffer of the next one must not repeat it. */
   private lastWrittenGopUs = -1;
+  /** Closes nobody awaits (a file cut at its length, the end of a stream) that are still writing: `stop()` waits for them. */
+  private readonly closing = new Set<Promise<void>>();
 
   constructor(private opts: RecorderOptions) {
     this.demux = this.createDemuxer();
@@ -167,6 +182,9 @@ export class Recorder {
     this.proc = undefined;
     this.httpAbort?.abort();
     await this.closeSegment();
+    // a file cut a moment ago may still be closing: its index is written after its last bytes, and at shutdown the
+    // database is closed as soon as the recorders have stopped
+    await Promise.all(this.closing);
   }
 
   private spawn(): void {
@@ -260,6 +278,8 @@ export class Recorder {
   private resetStream(): void {
     this.pending = Buffer.alloc(0);
     this.anchor = undefined;
+    this.lastPts = undefined;
+    this.late = undefined;
     this.held = undefined;
     this.keyframeMs = undefined;
     this.gop = undefined;
@@ -312,19 +332,7 @@ export class Recorder {
       this.watchKeyframes();
       const pes = payloadOf(pkt);
       const pts = pes && pes[7] & 0x80 ? readPts(pes, 9) : undefined;
-      let frameUs: number | undefined;
-
-      if (pts !== undefined) {
-        const now = Date.now() * 1000;
-        this.anchor ??= { pts, us: now };
-        let tsUs = this.anchor.us + Math.round((ptsDelta(this.anchor.pts, pts) / 90) * 1000);
-        // re-anchor on clock jumps / PTS resets
-        if (Math.abs(tsUs - now) > 5_000_000) {
-          this.anchor = { pts, us: now };
-          tsUs = now;
-        }
-        frameUs = tsUs;
-      }
+      const frameUs = pts === undefined ? undefined : this.frameTime(pts);
       if (pes) {
         this.held = { packets: [], tail: EMPTY, tsUs: frameUs };
         this.hold(pkt, pes.subarray(9 + pes[8]));
@@ -333,6 +341,58 @@ export class Recorder {
     }
     if (this.held) this.hold(pkt, audio ? undefined : tsPayload(pkt));
     else this.keep(pkt);
+  }
+
+  /**
+   * The wall-clock time of a video frame: the anchor (the first frame, at the moment it arrived) plus the stream's
+   * own clock. Frames keep the spacing the camera gave them however late they arrive. Packets that waited in a buffer
+   * while this process was busy (a statistics query, a re-index) or the network stalled come in one burst; they used
+   * to be stamped by their arrival whenever that was more than 5 s late, which moved them, and the stream after them,
+   * by the length of the stall. A new anchor is taken when the PTS itself breaks between two frames (the camera
+   * restarted its clock), not for a frame that is late.
+   *
+   * The recorded time is still kept near the wall clock over days (a camera clock runs fast or slow, the clock of
+   * the server is set), by two rules a stall cannot trigger. A frame more than 5 s ahead of the wall clock gets a new
+   * anchor at once, as before: waiting makes a frame late, never early. A lag of more than 5 s is corrected only
+   * after every frame for a minute has had it, and by the smallest lag among them (so a server clock set forward is
+   * followed a minute later, where it was at once): a stall delays frames only for the moment it takes to drain the
+   * buffer, and a frame much later than the best of the run, the mark of a stall, starts the minute again.
+   */
+  private frameTime(pts: number): number {
+    const now = Date.now() * 1000;
+    if (this.lastPts !== undefined && Math.abs(ptsDelta(this.lastPts, pts)) > PTS_JUMP_TICKS) this.anchor = undefined;
+    this.lastPts = pts;
+    if (!this.anchor) {
+      this.anchor = { pts, us: now };
+      this.late = undefined;
+    }
+    let delta = ptsDelta(this.anchor.pts, pts);
+    // exact, so no frame gets another time by it; without it the difference wraps after 13 hours of one connection
+    while (delta >= PTS_HOUR) {
+      this.anchor = { pts: (this.anchor.pts + PTS_HOUR) % PTS_WRAP, us: this.anchor.us + 3_600_000_000 };
+      delta -= PTS_HOUR;
+    }
+    const tsUs = this.anchor.us + Math.round((delta / 90) * 1000);
+    const lagUs = now - tsUs;
+    if (lagUs < -DRIFT_MAX_US) {
+      this.anchor = { pts, us: now };
+      this.late = undefined;
+      return now;
+    }
+    if (lagUs <= DRIFT_MAX_US) {
+      this.late = undefined;
+      return tsUs;
+    }
+    if (!this.late || lagUs - this.late.minUs > DRIFT_MAX_US) {
+      this.late = { sinceUs: now, minUs: lagUs };
+      return tsUs;
+    }
+    this.late.minUs = Math.min(this.late.minUs, lagUs);
+    if (now - this.late.sinceUs < DRIFT_PERSIST_US) return tsUs;
+    const driftUs = this.late.minUs;
+    this.anchor.us += driftUs;
+    this.late = undefined;
+    return tsUs + driftUs;
   }
 
   /**
@@ -482,8 +542,10 @@ export class Recorder {
     try {
       if (seg.keyframes.length) this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
       else this.opts.store.deleteSegment(seg.id);
-    } catch {
-      // the index is fixed up by retention
+    } catch (error) {
+      // the row keeps what the last flush wrote. Said once for a run of failures, like the flushes of this file (saveIndex)
+      if (!seg.indexFailed) this.opts.log('error', `${this.label} cannot update the index: ${(error as Error).message}`);
+      seg.indexFailed = true;
     }
     this.setRecording(false);
     this.opts.onSegment();
@@ -519,7 +581,10 @@ export class Recorder {
 
   /** Closes the segment without waiting for it: a rejection nobody awaits ends the process, so a failure is logged here. */
   private closeSegmentSoon(): void {
-    this.closeSegment().catch((error: Error) => this.opts.log('error', `${this.label} closing a segment failed: ${error.message}`));
+    const closing = this.closeSegment()
+      .catch((error: Error) => this.opts.log('error', `${this.label} closing a segment failed: ${error.message}`))
+      .finally(() => this.closing.delete(closing));
+    this.closing.add(closing);
   }
 
   private async closeSegment(): Promise<void> {

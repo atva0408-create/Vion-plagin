@@ -1,6 +1,6 @@
 // What the recordings page reads, through the real plugin class with a fake host API: pages of events as the UI
-// asks for them (the next page starts `before` the start of the last event it has), the re-index walking every
-// event the same way, and the totals: `getEventStats().episodes` is the number of episodes of the cameras and the
+// asks for them (the next page starts `before` the start of the last event it has), one event by its id as the list
+// gives it (`getEvent`), the re-index walking every event the same way, and the totals: `getEventStats().episodes` is the number of episodes of the cameras and the
 // time range asked for, which the page shows as the total of «Эпизоды».
 // Run: npx tsx spec/paging.spec.ts
 import assert from 'node:assert/strict';
@@ -110,6 +110,55 @@ function event(id: string, cameraId: string, startTime: number, label?: string):
   assert.deepEqual((await walk((opts) => nvr.getCameraEvents(['cam1'], opts), 2)).flat(), ['f', 'e1', 'd', 'c1', 'b', 'a']);
 }
 
+// ------------------------------------------------------------------ one event by its id
+
+{
+  const nvr = start(['cam1', 'cam2']);
+  const internals = nvr as unknown as {
+    store: { addSegment(row: Record<string, unknown>): number };
+    saveDescription(eventId: string, description: { title: string; description: string; tags: string[]; at: number }): void;
+  };
+  const at = Date.now() - 60_000;
+  // a face with its vectors, as the detection pipeline sends it
+  const seen = event('seen', 'cam1', at, 'person');
+  seen.segments[0].attributes = [{ type: 'face', label: 'unknown', confidence: 0.8, embedding: [0.1, 0.2], embeddingModel: 'face-test', clipEmbedding: [1, 0, 0, 0], clipEmbeddingModel: 'clip-test' }];
+  await nvr.ingestDetectionEvent('cam1', 'end' as never, seen);
+  await nvr.ingestDetectionEvent('cam2', 'end' as never, event('unrecorded', 'cam2', at, 'person'));
+  internals.store.addSegment({
+    camera_id: 'cam1',
+    role: 'high',
+    start_us: (at - 10_000) * 1000,
+    end_us: (at + 20_000) * 1000,
+    path: 'unused.ts',
+    bytes: 1000,
+    codec: 'h264',
+    codec_string: 'avc1.640028',
+    width: 1920,
+    height: 1080,
+    video_pid: 256,
+    audio_pid: -1,
+    keyframes: '[[0,0]]',
+  });
+  internals.saveDescription('seen', { title: 'A visitor', description: 'A person walks to the door.', tags: ['person'], at });
+  await nvr.setEventFavorite('seen', true);
+
+  const one = await nvr.getEvent('seen');
+  const listed = (await nvr.getEvents({ withRecordingInfo: true })).events;
+  assert.deepEqual(one, listed.find((e) => e.id === 'seen'), 'the event is what the list gives for it');
+  assert.equal(one?.hasRecording, true, 'with the recording info, which the list gives only when asked');
+  assert.equal(one?.favorite, true);
+  assert.equal(one?.ai?.title, 'A visitor', 'with its description');
+  assert.deepEqual(Object.keys(one!.segments[0].attributes[0]).sort(), ['confidence', 'clipEmbeddingModel', 'embeddingModel', 'label', 'type'].sort(), 'without the vectors');
+  const other = await nvr.getEvent('unrecorded');
+  assert.deepEqual(other, listed.find((e) => e.id === 'unrecorded'));
+  assert.equal(other?.hasRecording, false, 'an event without a recording says so');
+  assert.equal(other?.favorite, false);
+  assert.equal(await nvr.getEvent('nope'), undefined, 'no such event');
+  assert.equal(await nvr.getEvent(undefined as never), undefined, 'a call without an id is no event, not an error of the database');
+  await nvr.deleteEvents(['seen']);
+  assert.equal(await nvr.getEvent('seen'), undefined, 'a deleted event is gone');
+}
+
 // ------------------------------------------------------------------ the re-index reads every event
 
 {
@@ -172,5 +221,5 @@ function event(id: string, cameraId: string, startTime: number, label?: string):
   }
 }
 
-console.log('paging.spec: pages over equal start times (all cameras, chosen cameras), re-index, episode totals — ok');
+console.log('paging.spec: pages over equal start times (all cameras, chosen cameras), one event by its id, re-index, episode totals — ok');
 process.exit(0);

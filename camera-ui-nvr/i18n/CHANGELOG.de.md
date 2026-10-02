@@ -1,3 +1,16 @@
+## [0.10.4]
+
+- Ein Archiv, das auf eine andere Festplatte oder in einen anderen Ordner verschoben wurde, wird wieder abgespielt, und das Aufräumen entfernt seine Dateien, nicht nur deren Einträge. Neue Aufzeichnungen werden relativ zum Archivordner gespeichert, vorhandene werden dort gefunden, wo das Archiv jetzt liegt
+- Aufzeichnungen behalten ihre Zeit, wenn der Server mehrere Sekunden beschäftigt ist. Zuvor war das Video nach einer solchen Verzögerung um deren Dauer verschoben
+- Der Aufzeichnungskalender, die Daten der Speicherseite und die Namen exportierter Dateien folgen der Zeitzone des Betrachters, nicht der des Servers
+- Ein Zeitraffer eines Bereichs, der mitten in einer Aufzeichnung beginnt, war eine leere Datei. Jetzt zeigt er den gewählten Bereich und meldet seine tatsächliche Länge
+- Der Exportdialog sagt vor dem Start, wenn der Export für ein ZIP-Archiv zu groß ist. Ein fehlgeschlagener Export hinterlässt keine unfertige Datei, und die leeren Ordner abgelaufener Exporte werden entfernt
+- Die Wiedergabe läuft dem Player nach Pause, Fortsetzen, Tempowechsel oder Lücken im Archiv nicht mehr immer weiter voraus
+- Eine manuelle Aufzeichnung wird als pausiert angezeigt, solange die Aufzeichnung wegen fehlenden Speicherplatzes pausiert, und läuft weiter, sobald wieder Platz ist
+- Die Speicherseite zeigt „aus“ für eine Kamera, deren Aufzeichnung ausgeschaltet ist
+- Ein Ereignis lässt sich über seine Kennung öffnen, sodass die Momente der Tageszusammenfassung des Assistenten ihre Aufzeichnung öffnen
+- Die Seite der Aufzeichnungen öffnet sich bei einem großen Archiv deutlich schneller
+
 ## [0.10.3]
 
 - Kameras, die vor jedem Schlüsselbild einen langen Header senden (viele Modelle von Hikvision und Dahua, H.265-Streams), werden aufgezeichnet. Eine solche Kamera konnte gar nichts aufzeichnen, während das Protokoll unauffällig aussah. Das Protokoll meldet jetzt, wenn eine Kamera Video ohne Schlüsselbilder sendet

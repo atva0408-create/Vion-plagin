@@ -1,7 +1,9 @@
 // The recorder against a synthetic MPEG-TS, without a camera and without ffmpeg: a keyframe whose picture starts
 // after the first TS packet (parameter sets and a long SEI in front of it) is found and indexed where the reader
-// looks for it, video without keyframes is reported once, and a failing index database neither throws out of the
-// stream handler nor rejects unhandled (either one ends the plugin process and with it the recording of every camera).
+// looks for it, video without keyframes is reported once, a failing index database neither throws out of the
+// stream handler nor rejects unhandled (either one ends the plugin process and with it the recording of every camera)
+// and is reported when a broken file loses its index, stop() waits for a file that is still closing, and frames keep
+// the spacing of the stream when they arrive late in a burst while a healthy stream is stamped exactly as it was.
 // Run: npx tsx spec/recorder.spec.ts
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
@@ -92,15 +94,15 @@ function pes(pts: number, es: Buffer, counter: { value: number }): Buffer[] {
 /**
  * `gops` groups of ten frames at 10 fps. `seiBytes` > 0 puts an SEI of that size between the parameter sets and the
  * picture of every keyframe, which moves the picture out of the first TS packet; `keyframes: false` sends no
- * keyframe at all.
+ * keyframe at all; `ptsOffset` moves the clock of the stream (ticks of 90 kHz, wrapping at 33 bits like a real one).
  */
-function stream(codec: VideoCodec, opts: { gops: number; seiBytes?: number; keyframes?: boolean; firstGop?: number }): Buffer {
+function stream(codec: VideoCodec, opts: { gops: number; seiBytes?: number; keyframes?: boolean; firstGop?: number; ptsOffset?: number }): Buffer {
   const c = CODECS[codec];
   const counter = { value: 0 };
   const out: Buffer[] = [];
   for (let gop = opts.firstGop ?? 0; gop < (opts.firstGop ?? 0) + opts.gops; gop++) {
     for (let frame = 0; frame < 10; frame++) {
-      const pts = 90_000 + (gop * 10 + frame) * 9000;
+      const pts = (90_000 + (opts.ptsOffset ?? 0) + (gop * 10 + frame) * 9000) % 2 ** 33;
       if (frame === 0) out.push(pat(), pmt(c.streamType));
       const key = frame === 0 && opts.keyframes !== false;
       const es = key ? Buffer.concat([...c.header, ...(opts.seiBytes ? [c.sei(opts.seiBytes)] : []), c.key(gop + 1)]) : c.delta();
@@ -313,6 +315,168 @@ const filesUnder = (path: string): string[] => (existsSync(path) ? readdirSync(p
   store.close();
 }
 
+{
+  // the disk fails under the open file while the database fails too: the lost index of the file is said, once
+  const { store, state } = breakable('broken-file');
+  const { rec, logs, feed } = recorder('broken-file', { store });
+  feed(stream('h264', { gops: 2 }));
+  state.fail = true;
+  (rec as unknown as { segment: { stream: { destroy(error: Error): void } } }).segment.stream.destroy(new Error('ENOSPC: no space left on device'));
+  await settle();
+  assert.equal(rec.isRecording, false, 'the broken file is given up');
+  assert.equal(logs.filter((l) => l.level === 'error' && l.message.includes('write failed')).length, 1);
+  assert.equal(indexErrors(logs).length, 1, `the index that could not be written for the broken file is reported: ${JSON.stringify(logs)}`);
+  await rec.stop();
+  store.close();
+}
+{
+  // the flush before it has reported the failing database already: one report for the run of failures of a file
+  const { store, state } = breakable('broken-file-again');
+  const { rec, logs, feed } = recorder('broken-file-again', { store });
+  feed(stream('h264', { gops: 2 }));
+  state.fail = true;
+  clock += 5000;
+  feed(stream('h264', { gops: 1, firstGop: 2 }));
+  assert.equal(indexErrors(logs).length, 1, 'the failed flush is reported');
+  (rec as unknown as { segment: { stream: { destroy(error: Error): void } } }).segment.stream.destroy(new Error('ENOSPC: no space left on device'));
+  await settle();
+  assert.equal(rec.isRecording, false);
+  assert.equal(indexErrors(logs).length, 1, 'and not a second time when the file breaks');
+  await rec.stop();
+  store.close();
+}
+
+// ------------------------------------------- 4. stop() waits for a file that is still closing
+
+{
+  const { rec, store, logs, feed } = recorder('rollover');
+  const second = (n: number) => {
+    feed(stream('h264', { gops: 1, firstGop: n }));
+    clock += 1000;
+  };
+  for (let n = 0; n < 59; n++) second(n);
+  // a busy disk: the last bytes of the first file are written 300 ms after it is cut at its length
+  const first = (rec as unknown as { segment: { id: number; path: string; stream: { end(done: () => void): void } } }).segment;
+  const end = first.stream.end.bind(first.stream);
+  first.stream.end = (done) => void setTimeout(() => end(done), 300);
+  for (let n = 59; n < 62; n++) second(n);
+  assert.notEqual(rec.liveSegmentId, first.id, 'the first file was cut after a minute');
+  await rec.stop();
+  // the plugin closes the database as soon as its recorders have stopped
+  const row = store.segment(first.id)!;
+  assert.equal(parseKeyframes(row.keyframes).length, 60, 'stop() waited for the file that was still closing: its index is complete');
+  assert.equal(row.bytes, statSync(first.path).size, 'with the size of the file');
+  store.close();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.deepEqual(
+    logs.filter((l) => l.level === 'error'),
+    [],
+    'nothing is written to the index after the database was closed',
+  );
+  assert.deepEqual(unhandled, []);
+}
+
+// ------------------------------------------- 5. the time of a frame
+
+const US = 1_000_000;
+/** The time the index has for every keyframe of a camera, in microseconds after `t0` (a clock value in ms), in the order recorded. */
+const keyframeTimes = (store: Store, camera: string, t0: number) =>
+  store
+    .segments(camera, 'high', 0, Number.MAX_SAFE_INTEGER)
+    .flatMap((segment) => parseKeyframes(segment.keyframes))
+    .map((keyframe) => keyframe.tsUs - t0 * 1000);
+/** Records a stream of one-second GOPs: GOP `n` is fed when the clock is `t0 + arrival(n)` ms. */
+async function timesOf(name: string, gops: number, arrival: (n: number) => number, ptsOffset: (n: number) => number = () => 0): Promise<number[]> {
+  const t0 = clock;
+  const { rec, store, feed } = recorder(name);
+  for (let n = 0; n < gops; n++) {
+    clock = t0 + arrival(n);
+    feed(stream('h264', { gops: 1, firstGop: n, ptsOffset: ptsOffset(n) }));
+  }
+  await rec.stop();
+  const times = keyframeTimes(store, name, t0);
+  store.close();
+  clock = t0 + arrival(gops - 1) + 1000;
+  return times;
+}
+const seconds = (count: number, from = 0) => Array.from({ length: count }, (_, n) => (from + n) * US);
+
+// 5a. what does not change: every case here is stamped by the recorder exactly as it was before frames kept their
+// spacing over a stall, to the microsecond
+{
+  // a healthy stream: a second of video every second, some of it up to three seconds late
+  const lateMs = [0, 300, 1200, 2100, 3000, 2000, 1000, 0, 800, 1700, 2600, 1600];
+  assert.deepEqual(await timesOf('time-healthy', 12, (n) => n * 1000 + lateMs[n]), seconds(12), 'a frame is stamped by the arrival of the first one plus the clock of the stream');
+  // the 33-bit clock of the stream wraps around (every 26.5 hours): nothing to see in the times
+  assert.deepEqual(await timesOf('time-wrap', 12, (n) => n * 1000, () => 2 ** 33 - 4 * 90_000), seconds(12), 'over the wrap of the PTS');
+  // the camera restarts its clock, forward or back by two hours: the new clock starts at the moment its first frame arrives
+  const restarted = (n: number) => (n < 5 ? 2 * 3600 * 90_000 : 0);
+  assert.deepEqual(await timesOf('time-pts-back', 10, (n) => n * 1000, restarted), seconds(10), 'the PTS jumps back');
+  assert.deepEqual(await timesOf('time-pts-forward', 10, (n) => n * 1000, (n) => 2 * 3600 * 90_000 - restarted(n)), seconds(10), 'the PTS jumps forward');
+  // eight seconds of video come at once when the connection is made (the cache of the restreamer), the rest as it
+  // is filmed: a frame more than 5 s ahead of the wall clock takes the wall clock, and the stream goes on from there
+  assert.deepEqual(
+    await timesOf('time-cache', 12, (n) => Math.max(0, n - 7) * 1000),
+    [...seconds(6), ...seconds(6).map((us) => us + 900_000)],
+    'video ahead of the wall clock',
+  );
+  // the clock of the server is set back by an hour: the next frame takes the new time
+  assert.deepEqual(await timesOf('time-clock-back', 10, (n) => (n < 5 ? n * 1000 : n * 1000 - 3600_000)), [...seconds(5), ...seconds(5, 5).map((us) => us - 3600 * US)], 'the wall clock set back');
+}
+{
+  // fourteen hours of one connection, a keyframe every 4.9 s: longer than half of what 33 bits of PTS can tell apart
+  const t0 = clock;
+  const { rec, store, feed } = recorder('time-day', { mode: 'event' });
+  const counter = { value: 0 };
+  const stepTicks = 441_000;
+  const picture = Buffer.concat([...CODECS.h264.header, nal('65', filler(40))]);
+  const wrong: string[] = [];
+  for (let n = 0; n < 10_300 && wrong.length < 3; n++) {
+    clock = t0 + n * 4900;
+    feed(Buffer.concat([pat(), pmt(CODECS.h264.streamType), ...pes(90_000 + n * stepTicks, picture, counter)]));
+    const tsUs = (rec as unknown as { gop?: { tsUs: number } }).gop?.tsUs;
+    if (tsUs !== clock * 1000) wrong.push(`keyframe ${n} (${((n * 4.9) / 3600).toFixed(2)} h): ${tsUs === undefined ? 'none' : (tsUs - clock * 1000) / US} s off`);
+  }
+  assert.deepEqual(wrong, [], 'every keyframe of a long connection has the time of its arrival');
+  await rec.stop();
+  store.close();
+  clock = t0 + 15 * 3600_000;
+}
+
+// 5b. what changes: frames that arrive late keep the spacing the camera gave them
+{
+  // the process is busy for 30 s (a statistics query, a re-index): what the camera sent meanwhile waits in the socket
+  // and comes at once, with the second that is filmed just then; after that the stream is on time again
+  const stalled = await timesOf('time-stall', 45, (n) => (n < 5 ? n : Math.max(n, 35)) * 1000);
+  assert.deepEqual(stalled, seconds(45), 'video that waited through a stall is stamped by the clock of the stream, not moved by the length of the stall');
+}
+{
+  // two stalls with a part of the waiting video read between them, 30 s and 60 s: no frame of it is on time for
+  // more than a minute, and still it is a stall, not a camera clock that runs slow
+  const arrival = (n: number) => (n < 5 ? n : n < 10 ? 35 : Math.max(n, 95)) * 1000;
+  assert.deepEqual(await timesOf('time-stalls', 100, arrival), seconds(100), 'two stalls in a row move nothing either');
+}
+{
+  // the clock of the camera runs 5 % slow: a second of its video takes 1.05 s. The recorded time falls behind the
+  // wall clock; once every frame has been more than 5 s late for a minute it is brought back by the smallest lag
+  const slow = await timesOf('time-drift', 240, (n) => n * 1050);
+  const lags = slow.map((us, n) => n * 1_050_000 - us);
+  assert.ok(Math.max(...lags) <= 9 * US, `the recorded time stays near the wall clock: at most ${Math.max(...lags) / US} s behind`);
+  const steps = slow.slice(1).map((us, i) => us - slow[i]);
+  const corrected = steps.flatMap((step, i) => (step === US ? [] : [{ keyframe: i + 1, step }]));
+  assert.deepEqual(corrected, [{ keyframe: 177, step: 6_050_000 }], 'one correction, after a minute of frames more than 5 s late, by the smallest lag of that minute');
+  assert.equal(lags[177], 3_800_000);
+}
+{
+  // the clock of the server is set forward by an hour (the first time sync after a start without one): every frame
+  // is an hour late from then on, which is not a stall, and the recorded time follows within a minute
+  const set = await timesOf('time-clock-forward', 80, (n) => (n < 5 ? n * 1000 : n * 1000 + 3600_000));
+  assert.deepEqual(set.slice(0, 65), seconds(65), 'for a minute the frames keep the clock they were anchored to');
+  assert.deepEqual(set.slice(65), seconds(15, 65).map((us) => us + 3600 * US - 900_000), 'then the new time, to the frame that is least late');
+}
+
 Date.now = realNow;
-console.log('recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database — ok');
+console.log(
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift) — ok',
+);
 process.exit(0);

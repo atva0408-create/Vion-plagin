@@ -20,9 +20,21 @@ const YIELD_EVERY = 8;
 interface Session {
   paused: boolean;
   speed: number;
-  /** Changing either resets the pacing anchor. */
-  epoch: number;
+  /**
+   * Where the player is: at `tsUs` of what is played, at the wall-clock moment `wallUs`; from there it moves on at
+   * `speed`, or stands while paused. Set when the first frame to show is sent.
+   */
+  clock: { wallUs: number; tsUs: number } | undefined;
+  /** The holes of the archive the player has jumped over so far: its position counts what is played, not these. */
+  skippedUs: number;
   abort: AbortController;
+}
+
+/** Where the player of a session is at `nowUs`, 0 before its first frame. */
+function position(session: Session, nowUs: number): number {
+  const clock = session.clock;
+  if (!clock) return 0;
+  return session.paused ? clock.tsUs : clock.tsUs + (nowUs - clock.wallUs) * session.speed;
 }
 
 export class PlaybackManager {
@@ -36,10 +48,31 @@ export class PlaybackManager {
   public command(sessionId: string, cmd: { cmd: 'pause' | 'resume' | 'speed'; speed?: number }): void {
     const s = this.sessions.get(sessionId);
     if (!s) return;
+    // The player goes on from where it is: its position is brought to this moment at the pace it had, and the new
+    // pace counts from there. The pacing used to start anew at the next frame to send, which is a whole lead ahead
+    // of the player: every pause, resume or change of speed sent another 1.5 s × speed of frames on top of those
+    // the player had not shown yet, and after a few of them it held many seconds of video it could only store.
+    const now = Date.now() * 1000;
+    if (s.clock) s.clock = { wallUs: now, tsUs: position(s, now) };
     if (cmd.cmd === 'pause') s.paused = true;
     else if (cmd.cmd === 'resume') s.paused = false;
     else if (cmd.cmd === 'speed' && cmd.speed && cmd.speed > 0) s.speed = Math.min(cmd.speed, 64);
-    s.epoch++;
+  }
+
+  /** Holds a frame back until the player is no more than the lead away from it, whatever becomes of the pace meanwhile. */
+  private async pace(session: Session, playedUs: number): Promise<void> {
+    while (!session.abort.signal.aborted) {
+      if (session.paused) {
+        await sleep(100);
+        continue;
+      }
+      const now = Date.now() * 1000;
+      session.clock ??= { wallUs: now, tsUs: playedUs };
+      const waitUs = (playedUs - position(session, now)) / session.speed - LEAD_US;
+      if (waitUs <= 0) return;
+      // in short waits: a command may change the pace at any moment
+      await sleep(Math.min(waitUs / 1000, 100));
+    }
   }
 
   public stopAll(): void {
@@ -49,7 +82,7 @@ export class PlaybackManager {
 
   public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks, opts: { audio?: boolean } = {}): AsyncGenerator<void> {
     const sessionId = randomUUID();
-    const session: Session = { paused: false, speed: 1, epoch: 0, abort: new AbortController() };
+    const session: Session = { paused: false, speed: 1, clock: undefined, skippedUs: 0, abort: new AbortController() };
     this.sessions.set(sessionId, session);
     const call = <K extends 'onReady' | 'onVideo' | 'onAudio' | 'onNoData'>(method: K, payload: Parameters<NonNullable<NvrPlaybackCallbacks[K]>>[0]) => {
       try {
@@ -68,7 +101,6 @@ export class PlaybackManager {
       }
 
       let readyKey = '';
-      let anchor: { wallUs: number; tsUs: number; epoch: number } | undefined;
       let sent = 0;
       let lastTs = tsUs;
       let from = keyframeAtOrBefore(segment, tsUs);
@@ -93,18 +125,10 @@ export class PlaybackManager {
         }
 
         const current = segment;
-        for await (const frame of readFrames(current, from, { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio })) {
+        const file = this.store.located(current);
+        for await (const frame of readFrames(file, from, { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio })) {
           // frames before the target only prime the decoder: send them without pacing
-          if (frame.tsUs >= tsUs) {
-            while (session.paused && !session.abort.signal.aborted) {
-              await sleep(100);
-              anchor = undefined;
-            }
-            if (anchor?.epoch !== session.epoch) anchor = { wallUs: Date.now() * 1000, tsUs: frame.tsUs, epoch: session.epoch };
-            const dueUs = anchor.wallUs + (frame.tsUs - anchor.tsUs) / session.speed;
-            const aheadUs = dueUs - Date.now() * 1000;
-            if (aheadUs > LEAD_US) await sleep((aheadUs - LEAD_US) / 1000);
-          }
+          if (frame.tsUs >= tsUs) await this.pace(session, frame.tsUs - session.skippedUs);
           if (session.abort.signal.aborted) return;
           if (frame.audio) {
             call('onAudio', { frame: frame.data, ts: frame.tsUs });
@@ -117,12 +141,15 @@ export class PlaybackManager {
 
         const next = this.store.nextSegment(cameraId, role, current.id, current.start_us);
         if (!next) break;
-        if (next.start_us - lastTs > GAP_US) {
-          call('onNoData', { ts: lastTs });
-          anchor = undefined;
-        }
+        if (next.start_us - lastTs > GAP_US) call('onNoData', { ts: lastTs });
         segment = next;
         from = keyframeAtOrBefore(next, next.start_us);
+        // The player does not walk through a hole of the archive: when it gets there it goes on with the next
+        // recording (a hole it would need more than 3 s for at its speed). Its position leaves the hole out the
+        // same way, so the frames behind it are sent as far ahead as any other; starting the pacing anew at the
+        // first of them, as before, added a lead with every hole.
+        const holeUs = (from?.tsUs ?? next.start_us) - lastTs;
+        if (holeUs > GAP_US * session.speed) session.skippedUs += holeUs;
       }
       call('onNoData', { ts: lastTs });
     } finally {

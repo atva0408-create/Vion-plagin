@@ -1,7 +1,7 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { readdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
+import { readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
@@ -196,6 +196,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly systemEvents: SystemEvent[] = [];
   private readonly manual = new Map<string, { startedAt: number; untilMs: number; timer: NodeJS.Timeout }>();
   private readonly manualListeners = new Set<(s: ManualRecording) => void>();
+  /** Export folders being filled right now: the cleanup of empty ones leaves them alone. */
+  private readonly exporting = new Set<string>();
+  /** Time zone names of clients that this server does not know, each reported once. */
+  private readonly unknownZones = new Set<string>();
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginStorageValues>) {
     super(logger, api, storage);
@@ -444,7 +448,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private init(): void {
     mkdirSync(this.recordingsDir, { recursive: true });
-    this.store = new Store(join(this.dataDir, 'nvr.db'));
+    this.store = new Store(join(this.dataDir, 'nvr.db'), this.recordingsDir);
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
     this.semantic = new SemanticIndex(this.store.sql);
@@ -715,6 +719,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /**
+   * One event by its id, as `getEvents` lists it when asked for the recording info; `undefined` when there is none
+   * (never recorded, deleted, past the retention). A report of the assistant names an event by its id alone.
+   */
+  public async getEvent(eventId: string): Promise<RecordedEvent | undefined> {
+    await this.ready;
+    const row = typeof eventId === 'string' ? this.store.event(eventId) : undefined;
+    return row ? this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1, true) : undefined;
+  }
+
+  /**
    * Newest first, with the filters applied per event (triggers, types, attributes with their «И/ИЛИ»,
    * confidence, search, hidden types; see filter.ts). A selective filter may need many rows for one
    * page, so rows are read in large batches. Once the page has results, the scan stops after
@@ -763,12 +777,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     opts: GetEventsOptions = {},
   ): Promise<{ total: number; segments: number; episodes: number; byType: Record<string, number>; capped: boolean }> {
     await this.ready;
-    const { events, hasMore } = this.queryEvents(cameraIds?.length ? cameraIds : undefined, { ...opts, before: undefined }, STATS_CAP, STATS_SCAN_ROWS);
-    const byType: Record<string, number> = {};
-    let segments = 0;
-    for (const ev of events) {
-      for (const t of ev.types ?? []) byType[t] = (byType[t] ?? 0) + 1;
-      segments += Math.max(1, ev.segments?.length ?? 0);
+    const scope = cameraIds?.length ? cameraIds : undefined;
+    let counts = this.eventCounts(scope, opts);
+    if (!counts) {
+      const { events, hasMore } = this.queryEvents(scope, { ...opts, before: undefined }, STATS_CAP, STATS_SCAN_ROWS);
+      counts = { total: events.length, segments: 0, byType: {}, capped: hasMore };
+      for (const ev of events) {
+        for (const t of ev.types ?? []) counts.byType[t] = (counts.byType[t] ?? 0) + 1;
+        counts.segments += Math.max(1, ev.segments?.length ?? 0);
+      }
     }
     // the episodes of the same cameras and time range, as the page lists them: an episode belongs to the range while
     // it ends in it, the event filters (types, search…) do not apply to episodes
@@ -778,7 +795,52 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       favoritesOnly: opts.favoritesOnly,
       cameraIds: cameraIds?.length ? cameraIds : undefined,
     });
-    return { total: events.length, segments, episodes, byType, capped: hasMore };
+    return { total: counts.total, segments: counts.segments, episodes, byType: counts.byType, capped: counts.capped };
+  }
+
+  /**
+   * The counts of `getEventStats` without parsing an event: the walk of `queryEvents` (the same pages, the same two
+   * limits, the same ties) over the two values the database reads from each event. Possible while the filter asks
+   * nothing that needs the event itself: no detections or confidence, no search, no chosen types, triggers or
+   * attributes, no hidden types; otherwise there is no answer here and the events are parsed as before.
+   */
+  private eventCounts(
+    cameraIds: string[] | undefined,
+    opts: GetEventsOptions,
+  ): { total: number; segments: number; byType: Record<string, number>; capped: boolean } | undefined {
+    const inEvent = [opts.hasDetections, opts.minConfidence, opts.search].some(Boolean);
+    const chosen = [opts.triggers, opts.triggerLabels, opts.types, opts.attributes, ...Object.values(opts.hiddenTypes ?? {})].some((list) => list?.length);
+    if (inEvent || chosen) return undefined;
+    const batch = Math.min(Math.max(STATS_CAP * 2 + 1, 200), 2000);
+    const withRecording = opts.withRecordingInfo ?? opts.hasRecording;
+    const counts = { total: 0, segments: 0, byType: {} as Record<string, number>, capped: false };
+    let before: number | undefined;
+    let scanned = 0;
+    let lastMs: number | undefined;
+    for (;;) {
+      const rows = this.store.eventDigests({
+        cameraIds,
+        startMs: opts.startMs,
+        endMs: opts.endMs,
+        startedSinceMs: opts.startedSinceMs,
+        before,
+        favoritesOnly: opts.favoritesOnly,
+        state: opts.state,
+        limit: batch,
+      });
+      for (const row of rows) {
+        if (opts.hasRecording && !(withRecording && this.hasRecording(row.camera_id, row.start_ms, row.end_ms))) continue;
+        if (counts.total >= STATS_CAP && row.start_ms !== lastMs) return { ...counts, capped: true };
+        counts.total++;
+        lastMs = row.start_ms;
+        for (const t of row.types?.startsWith('[') ? (JSON.parse(row.types) as string[]) : []) counts.byType[t] = (counts.byType[t] ?? 0) + 1;
+        counts.segments += Math.max(1, row.segments ?? 0);
+      }
+      scanned += rows.length;
+      if (rows.length < batch) return counts;
+      if (counts.total > 0 && scanned >= STATS_SCAN_ROWS) return { ...counts, capped: true };
+      before = rows.at(-1)!.start_ms;
+    }
   }
 
   public async getEventThumbnails(
@@ -880,17 +942,28 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return { roles, union: mergeRanges(Object.values(roles).flat()) };
   }
 
-  public async getRecordingDays(cameraId: string, year: number, month: number): Promise<string[]> {
+  /**
+   * The days of a month that have recordings, `YYYY-MM-DD`. The interface draws its calendar in the time zone of the
+   * browser and sends it as `timeZone` (an IANA name): the days are the days of that zone. Without it they are the
+   * days of the server, which on a server in UTC put a recording of 01:00 in Moscow on the day before.
+   */
+  public async getRecordingDays(cameraId: string, year: number, month: number, timeZone?: string): Promise<string[]> {
     await this.ready;
-    const from = new Date(year, month - 1, 1).getTime() * 1000;
-    const to = new Date(year, month, 1).getTime() * 1000;
-    const days = new Set<string>();
+    const zone = this.zoneFormat(timeZone);
+    const count = month >= 1 && month <= 12 ? new Date(Date.UTC(year, month, 0)).getUTCDate() : 0;
+    if (!(count > 0)) return [];
+    // where every day of the month starts, and the month after it: a day is not always 24 hours long
+    const starts = Array.from({ length: count + 1 }, (_, i) => dayStart(year, month, i + 1, zone) * 1000);
+    const from = starts[0];
+    const to = starts[count];
+    const recorded = new Set<number>();
     const bounds = this.store.recordingDays(cameraId, from, to);
-    for (let i = 0; i < bounds.length; i += 2) {
-      for (let t = Math.max(bounds[i], from); t <= Math.min(bounds[i + 1], to - 1); t += 3600_000_000) days.add(localDay(t / 1000));
-      days.add(localDay(Math.min(bounds[i + 1], to - 1) / 1000));
+    for (let i = 0; i < bounds.length && recorded.size < count; i += 2) {
+      const startUs = Math.max(bounds[i], from);
+      const endUs = Math.min(bounds[i + 1], to - 1);
+      for (let day = 0; day < count; day++) if (startUs < starts[day + 1] && endUs >= starts[day]) recorded.add(day);
     }
-    return [...days].filter((d) => d.startsWith(`${year}-${String(month).padStart(2, '0')}`)).sort();
+    return [...recorded].sort((a, b) => a - b).map((day) => `${year}-${pad2(month)}-${pad2(day + 1)}`);
   }
 
   public async onRecordingState(cameraId: string, callback: (s: RecordingState) => void): Promise<Unsubscribe> {
@@ -915,7 +988,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       for (const seg of this.store.segments(cameraId, role, startUs, Math.min(endUs, limit))) {
         if (seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit) {
           // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-          await rm(seg.path, { force: true });
+          await rm(this.store.file(seg), { force: true });
           this.store.deleteSegment(seg.id);
           minUs = Math.min(minUs, seg.start_us);
           maxUs = Math.max(maxUs, seg.end_us);
@@ -969,11 +1042,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!kf) return { ts: tsUs, videoCodec: '', noData: true };
     const meta = { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
     if (fine) {
-      const gop = await readGop(seg, kf, tsUs);
+      const gop = await readGop(this.store.located(seg), kf, tsUs);
       if (!gop.length) return { ts: tsUs, videoCodec: '', noData: true };
       return { ...meta, ts: gop.at(-1)!.tsUs, frame: gop[0].data, frames: gop.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe })) };
     }
-    const frame = await readKeyframe(seg, kf);
+    const frame = await readKeyframe(this.store.located(seg), kf);
     return frame ? { ...meta, ts: frame.tsUs, frame: frame.data } : { ts: tsUs, videoCodec: '', noData: true };
   }
 
@@ -996,7 +1069,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const kf = keyframeAtOrBefore(seg, t);
       if (!kf || seen.has(`${seg.id}:${kf.offset}`)) continue;
       seen.add(`${seg.id}:${kf.offset}`);
-      const frame = await readKeyframe(seg, kf);
+      const frame = await readKeyframe(this.store.located(seg), kf);
       if (!frame) continue;
       meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
       frames.push({ frame: frame.data, ts: frame.tsUs, keyframe: true });
@@ -1037,7 +1110,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         chains.set(key, chain);
       }
       if (mode === 'exact') {
-        const gop = await readGop(seg, kf, tsUs);
+        const gop = await readGop(this.store.located(seg), kf, tsUs);
         if (!gop.length) {
           missing.push(target);
           chains.delete(key);
@@ -1053,7 +1126,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         chain.keep.push({ target, index: known, exact: false });
         continue;
       }
-      const frame = await readKeyframe(seg, kf);
+      const frame = await readKeyframe(this.store.located(seg), kf);
       if (!frame) {
         missing.push(target);
         continue;
@@ -1072,29 +1145,46 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     cameraId: string,
     startUs: number,
     endUs: number,
-    options: { timelapseIntervalSec?: number; sourceRole?: string } = {},
+    options: { timelapseIntervalSec?: number; sourceRole?: string; timeZone?: string } = {},
   ): Promise<{ url: string; filename: string; size: number; durationMs: number }> {
     await this.ready;
     const role = this.resolveRole(cameraId, options.sourceRole);
-    const filename = `${this.cameraSlug(cameraId)}_${fileStamp(startUs)}.mp4`;
+    const filename = `${this.cameraSlug(cameraId)}_${fileStamp(startUs, this.zoneFormat(options.timeZone))}.mp4`;
     const res = await exportClip({
       ffmpegPath: this.ffmpegPath,
-      segments: this.store.segments(cameraId, role, startUs, endUs),
+      segments: this.store.segments(cameraId, role, startUs, endUs).map((s) => this.store.located(s)),
       startUs,
       endUs,
       outDir: join(this.dataDir, 'exports'),
       filename,
       timelapseIntervalSec: options.timelapseIntervalSec,
     });
-    const dl = await this.api.downloadManager.createDownload({ filePath: res.path, filename, mimeType: 'video/mp4', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
-    return { url: dl.url, filename, size: res.size, durationMs: res.durationMs };
+    try {
+      const dl = await this.api.downloadManager.createDownload({ filePath: res.path, filename, mimeType: 'video/mp4', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });
+      return { url: dl.url, filename, size: res.size, durationMs: res.durationMs };
+    } catch (error) {
+      // without a download nobody removes the clip when it expires
+      await rm(res.path, { force: true }).catch((e: Error) => this.logger.warn(`Export cleanup: ${e.message}`));
+      throw error;
+    }
   }
 
+  /**
+   * The files an export would have and their size. `tooLarge` is set when `nvrExportBatch` would refuse this export:
+   * several files leave as one ZIP, which holds 4 GB at most. A timelapse (`timelapse`) is a small part of the
+   * recordings it is made of, so it is not judged by their size.
+   */
   public async nvrExportEstimate(request: {
     cameras: string[];
     slices: { day: string; startUs: number; endUs: number }[];
     quality?: ExportQuality;
-  }): Promise<{ files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[]; totalBytes: number; durationMs: number }> {
+    timelapse?: boolean;
+  }): Promise<{
+    files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[];
+    totalBytes: number;
+    durationMs: number;
+    tooLarge?: { bytes: number; limitBytes: number };
+  }> {
     await this.ready;
     const files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[] = [];
     let durationMs = 0;
@@ -1110,7 +1200,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         if (bytes > 0) files.push({ cameraId, day: slice.day, startUs: slice.startUs, endUs: slice.endUs, bytes });
       }
     }
-    return { files, totalBytes: files.reduce((n, f) => n + f.bytes, 0), durationMs: Math.round(durationMs) };
+    const totalBytes = files.reduce((n, f) => n + f.bytes, 0);
+    const tooLarge = !request.timelapse && files.length > 1 && totalBytes >= ZIP_MAX_BYTES;
+    return { files, totalBytes, durationMs: Math.round(durationMs), ...(tooLarge ? { tooLarge: { bytes: totalBytes, limitBytes: ZIP_MAX_BYTES } } : {}) };
   }
 
   public async nvrExportBatch(request: {
@@ -1118,26 +1210,27 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     slices: { day: string; startUs: number; endUs: number }[];
     quality?: ExportQuality;
     timelapseIntervalSec?: number;
+    timeZone?: string;
   }): Promise<{ url: string; filename: string }> {
     await this.ready;
+    const zone = this.zoneFormat(request.timeZone);
     // several files leave as one ZIP, which holds 4 GB at most: said now, not after every file was cut. The estimate is
-    // the size the export dialog shows. A timelapse is a small part of the recordings it is made of, so its files are
-    // measured when they exist (writeZip).
-    if (!request.timelapseIntervalSec) {
-      const estimate = await this.nvrExportEstimate(request);
-      if (estimate.files.length > 1 && estimate.totalBytes >= ZIP_MAX_BYTES) throw zipTooLarge(estimate.totalBytes);
-    }
+    // the size the export dialog shows, and it tells the dialog the same refusal beforehand. The files of a timelapse
+    // are measured when they exist (writeZip).
+    const { tooLarge } = await this.nvrExportEstimate({ ...request, timelapse: !!request.timelapseIntervalSec });
+    if (tooLarge) throw zipTooLarge(tooLarge.bytes);
     const outDir = join(this.dataDir, 'exports', randomUUID());
+    this.exporting.add(outDir);
     try {
       const parts: { path: string; name: string }[] = [];
       for (const cameraId of request.cameras) {
         for (const slice of request.slices) {
           const segments = this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality);
           if (!segments.length) continue;
-          const name = `${this.cameraSlug(cameraId)}_${fileStamp(slice.startUs)}.mp4`;
+          const name = `${this.cameraSlug(cameraId)}_${fileStamp(slice.startUs, zone)}.mp4`;
           const res = await exportClip({
             ffmpegPath: this.ffmpegPath,
-            segments,
+            segments: segments.map((s) => this.store.located(s)),
             startUs: slice.startUs,
             endUs: slice.endUs,
             outDir,
@@ -1158,7 +1251,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         });
         return { url: dl.url, filename: parts[0].name };
       }
-      const filename = `vion-export_${fileStamp(Date.now() * 1000)}.zip`;
+      const filename = `vion-export_${fileStamp(Date.now() * 1000, zone)}.zip`;
       const zipPath = join(outDir, filename);
       await writeZip(zipPath, parts);
       await Promise.all(parts.map((p) => rm(p.path, { force: true })));
@@ -1167,12 +1260,35 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       await this.removeExportDir(outDir);
       throw error;
+    } finally {
+      this.exporting.delete(outDir);
     }
   }
 
   /** A failed export leaves nothing behind: the files cut before the failure would stay on the archive disk for good. */
   private async removeExportDir(outDir: string): Promise<void> {
     await rm(outDir, { recursive: true, force: true }).catch((error: Error) => this.logger.warn(`Export cleanup: ${error.message}`));
+  }
+
+  /**
+   * When a download expires the host removes its file, not the folder a ZIP or an episode clip was made in: the empty
+   * `exports/<id>` folders stayed for good. Only an empty folder goes (`rmdir` refuses any other, whose download is
+   * still there), and never the folder of an export being made: it is empty until ffmpeg has opened its first file.
+   */
+  private async removeEmptyExportDirs(): Promise<void> {
+    const root = join(this.dataDir, 'exports');
+    try {
+      for (const entry of await readdir(root, { withFileTypes: true })) {
+        const dir = join(root, entry.name);
+        if (!entry.isDirectory() || this.exporting.has(dir)) continue;
+        await rmdir(dir).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== 'ENOTEMPTY' && error.code !== 'EEXIST' && error.code !== 'ENOENT') this.logger.warn(`Export cleanup: ${error.message}`);
+        });
+      }
+    } catch (error) {
+      // nothing was exported yet: no folder to look into
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') this.logger.warn(`Export cleanup: ${(error as Error).message}`);
+    }
   }
 
   /**
@@ -1191,20 +1307,23 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   // ----------------------------------------------------------------- storage
 
-  public async getStorageStats(): Promise<StorageStats> {
+  /** `timeZone`: the zone the first and the last day of each camera's archive are named in (the server's without it). */
+  public async getStorageStats(timeZone?: string): Promise<StorageStats> {
     await this.ready;
+    const zone = this.zoneFormat(timeZone);
     const fs = await statfs(this.recordingsDir);
     const total = fs.blocks * fs.bsize;
     const free = fs.bavail * fs.bsize;
     const GB = 1024 ** 3;
     const s = this.setting;
     const cameras: StorageStats['cameras'] = {};
-    for (const row of this.store.cameraStats()) {
+    const recorded = this.store.cameraStats();
+    for (const row of recorded) {
       const hours = Math.max(1 / 60, (row.newest - row.oldest) / 3.6e9);
       const managed = this.cameras.get(row.camera_id);
       const recorders = [...(managed?.recorders.values() ?? [])];
-      const oldestDay = localDay(row.oldest / 1000);
-      const newestDay = localDay(row.newest / 1000);
+      const oldestDay = localDay(row.oldest / 1000, zone);
+      const newestDay = localDay(row.newest / 1000, zone);
       cameras[row.camera_id] = {
         usedBytes: row.bytes,
         segmentCount: row.count,
@@ -1212,7 +1331,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay,
         daysCount: Math.max(1, Math.round((new Date(newestDay).getTime() - new Date(oldestDay).getTime()) / 86_400_000) + 1),
         bandwidthMBh: Math.round((row.bytes / 1024 ** 2 / hours) * 10) / 10,
-        recordingMode: shownMode(managed?.device.recordingSettings?.mode),
+        recordingMode: shownMode(managed?.device),
         isRecording: recorders.some((r) => r.isRecording),
       };
     }
@@ -1224,7 +1343,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         newestDay: '',
         daysCount: 0,
         bandwidthMBh: 0,
-        recordingMode: shownMode(managed.device.recordingSettings?.mode),
+        recordingMode: shownMode(managed.device),
         isRecording: [...managed.recorders.values()].some((r) => r.isRecording),
       };
     }
@@ -1233,7 +1352,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       diskUsedGB: round2((total - free) / GB),
       diskFreeGB: round2(free / GB),
       diskFreePercent: total ? round2((free / total) * 100) : 0,
-      nvrUsedGB: round2(this.store.totalBytes() / GB),
+      // the sum of what was read above: asking the database for the total was a second pass over every segment
+      nvrUsedGB: round2(recorded.reduce((bytes, row) => bytes + row.bytes, 0) / GB),
       nvrQuotaGB: s.quotaGB,
       retentionDays: s.retentionDays,
       smallVolume: total > 0 && total < 32 * GB,
@@ -1251,7 +1371,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200)) {
         for (const seg of batch) {
           // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-          await rm(seg.path, { force: true });
+          await rm(this.store.file(seg), { force: true });
           this.store.deleteSegment(seg.id);
           removed++;
         }
@@ -1271,12 +1391,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           if (freePct < Math.max(1, s.minFreePercent / 3) && !this.paused) {
             this.paused = true;
             this.pushSystemEvent({ type: 'storage', severity: 'error', message: 'Недостаточно места на диске: запись приостановлена' });
+            this.announceManual();
             for (const c of this.cameras.values()) for (const r of c.recorders.values()) await r.stop();
           }
           break;
         }
         // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-        await rm(oldest.path, { force: true });
+        await rm(this.store.file(oldest), { force: true });
         this.store.deleteSegment(oldest.id);
         usedBytes -= oldest.bytes;
         removed++;
@@ -1287,6 +1408,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           this.paused = false;
           this.pushSystemEvent({ type: 'storage', severity: 'success', message: 'Место на диске освободилось: запись возобновлена' });
           for (const c of this.cameras.values()) for (const r of c.recorders.values()) r.start();
+          this.announceManual();
         }
       }
 
@@ -1308,6 +1430,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Retention failed: ${(error as Error).message}`);
     }
+    await this.removeEmptyExportDirs();
   }
 
   // ------------------------------------------------------------ detection trace
@@ -1385,9 +1508,24 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return this.subscribe(this.manualListeners, callback);
   }
 
+  /**
+   * While the disk guard has paused recording a manual recording writes nothing: it is reported as not active, with
+   * the reason and the times it keeps. Its window stays on the recorders, so it goes on when there is room again
+   * before its time is up (the timer that ends it runs through the pause).
+   */
   private manualState(cameraId: string): ManualRecording {
     const m = this.manual.get(cameraId);
-    return m ? { cameraId, active: true, startedAt: m.startedAt, untilMs: m.untilMs } : { cameraId, active: false };
+    if (!m) return { cameraId, active: false };
+    const times = { startedAt: m.startedAt, untilMs: m.untilMs };
+    return this.paused ? { cameraId, active: false, ...times, reason: 'paused' } : { cameraId, active: true, ...times };
+  }
+
+  /** The disk guard pausing or resuming changes the state of every manual recording at once: the listeners hear each. */
+  private announceManual(): void {
+    for (const cameraId of this.manual.keys()) {
+      const state = this.manualState(cameraId);
+      for (const cb of this.manualListeners) this.safeCall(this.manualListeners, cb, state);
+    }
   }
 
   /** Ends a manual recording (stop, time up, camera gone); what detections asked for keeps recording. */
@@ -1475,13 +1613,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** The episode's recordings in the player's order: one MP4, or a ZIP with one MP4 per camera block. */
-  public async nvrExportEpisode(episodeId: string): Promise<{ url: string; filename: string }> {
+  public async nvrExportEpisode(episodeId: string, options: { timeZone?: string } = {}): Promise<{ url: string; filename: string }> {
     await this.ready;
+    const zone = this.zoneFormat(options?.timeZone);
     const episode = this.episodes.get(episodeId);
     if (!episode) throw new Error('Episode not found');
     const told = (episode.blocks ?? []).filter((b) => !b.secondAngle && b.endMs > b.startMs);
     const blocks = told.length ? told : episode.members.map((m) => ({ cameraId: m.cameraId, startMs: m.firstSeen, endMs: m.lastSeen }));
     const outDir = join(this.dataDir, 'exports', randomUUID());
+    this.exporting.add(outDir);
     try {
       const parts: { path: string; name: string }[] = [];
       for (const block of blocks) {
@@ -1489,8 +1629,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         const endUs = (block.endMs + EPISODE_TAIL_MS) * 1000;
         const segments = this.exportSegments(block.cameraId, startUs, endUs);
         if (!segments.length) continue;
-        const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs)}.mp4`;
-        const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments, startUs, endUs, outDir, filename: name });
+        const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs, zone)}.mp4`;
+        const located = segments.map((s) => this.store.located(s));
+        const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments: located, startUs, endUs, outDir, filename: name });
         parts.push({ path: res.path, name });
       }
       if (!parts.length) throw new Error('No recordings for this episode');
@@ -1504,7 +1645,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         });
         return { url: dl.url, filename: parts[0].name };
       }
-      const filename = `vion-episode_${fileStamp(episode.startTime * 1000)}.zip`;
+      const filename = `vion-episode_${fileStamp(episode.startTime * 1000, zone)}.zip`;
       const zipPath = join(outDir, filename);
       await writeZip(zipPath, parts);
       await Promise.all(parts.map((p) => rm(p.path, { force: true })));
@@ -1513,6 +1654,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       await this.removeExportDir(outDir);
       throw error;
+    } finally {
+      this.exporting.delete(outDir);
     }
   }
 
@@ -2155,12 +2298,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private decorate(event: RecordedEvent, favorite: boolean, withRecording?: boolean): RecordedEvent {
     const ev: RecordedEvent = { ...event, favorite };
-    if (withRecording) {
-      const role = this.primaryRole(event.cameraId);
-      const end = event.endTime ?? Date.now();
-      ev.hasRecording = this.store.segments(event.cameraId, role, event.startTime * 1000, end * 1000).length > 0;
-    }
+    if (withRecording) ev.hasRecording = this.hasRecording(event.cameraId, event.startTime, event.endTime);
     return ev;
+  }
+
+  /** Whether the stream the camera is played from has a recording of the time (until now, for an event still going on). */
+  private hasRecording(cameraId: string, startMs: number, endMs: number | null | undefined): boolean {
+    return this.store.hasSegments(cameraId, this.primaryRole(cameraId), startMs * 1000, (endMs ?? Date.now()) * 1000);
   }
 
   private emitRecordingState(cameraId: string, recording: boolean): void {
@@ -2175,6 +2319,36 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.systemEvents.push(event);
     if (this.systemEvents.length > MAX_SYSTEM_EVENTS) this.systemEvents.shift();
     for (const cb of this.systemListeners) this.safeCall(this.systemListeners, cb, event);
+  }
+
+  /**
+   * The calendar of the viewer: a formatter for the IANA zone the interface sent, or nothing for the server's own
+   * zone, which is also what a name this server does not know falls back to (said once for a name).
+   */
+  private zoneFormat(timeZone: string | undefined): Intl.DateTimeFormat | undefined {
+    if (!timeZone) return undefined;
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        calendar: 'gregory',
+        numberingSystem: 'latn',
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    } catch {
+      const name = String(timeZone).slice(0, 64);
+      // bounded: the name comes from the client
+      if (!this.unknownZones.has(name) && this.unknownZones.size < 20) {
+        this.unknownZones.add(name);
+        this.logger.warn(`Unknown time zone "${name}": calendar days and export file names use the time zone of the server`);
+      }
+      return undefined;
+    }
   }
 
   private cameraSlug(cameraId: string): string {
@@ -2269,20 +2443,58 @@ function effectiveMode(mode: string | undefined): 'continuous' | 'event' | undef
   return undefined;
 }
 
-/** The mode a camera is set to, for the storage statistics: `adhoc` stays «По запросу» though it runs like «по событию». */
-function shownMode(mode: string | undefined): string {
-  return effectiveMode(mode) ? mode! : 'off';
+/**
+ * The mode a camera records in, for the storage statistics: `adhoc` stays «По запросу» though it runs like «по
+ * событию», and a camera whose recording is switched off, or which is disabled, is `off` whatever mode it keeps.
+ */
+function shownMode(device: CameraDevice | undefined): string {
+  return device && isRecordingWanted(device) ? device.recordingSettings.mode : 'off';
 }
 
-function localDay(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
-function fileStamp(us: number): string {
-  const d = new Date(us / 1000);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+/** The calendar date and the time of a moment: in the zone of `zone`, or in the server's own zone without one. */
+function wallClock(ms: number, zone?: Intl.DateTimeFormat): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  // a formatter throws for a time that is not one
+  if (!zone || !Number.isFinite(ms)) {
+    const d = new Date(ms);
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds() };
+  }
+  const parts: Record<string, number> = {};
+  for (const part of zone.formatToParts(ms)) parts[part.type] = Number(part.value);
+  return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute, second: parts.second };
+}
+
+/**
+ * The first moment of a calendar day (a day past the end of the month is a day of the next one). In a zone it is the
+ * midnight of that date read as UTC, moved back by the zone's offset. The offset is taken at that midnight and again
+ * at the moment it gives, because the clock may change between the two; of the two results the day starts at the
+ * earlier one that lies in the day, so a midnight skipped by a clock change starts the day an hour later.
+ */
+function dayStart(year: number, month: number, day: number, zone?: Intl.DateTimeFormat): number {
+  if (!zone) return new Date(year, month - 1, day).getTime();
+  const wall = Date.UTC(year, month - 1, day);
+  const offsetAt = (ms: number) => {
+    const c = wallClock(ms, zone);
+    return Date.UTC(c.year, c.month - 1, c.day, c.hour, c.minute, c.second) - ms;
+  };
+  const first = wall - offsetAt(wall);
+  const second = wall - offsetAt(first);
+  const inDay = (ms: number) => ms + offsetAt(ms) >= wall;
+  const [early, late] = first <= second ? [first, second] : [second, first];
+  return inDay(early) ? early : late;
+}
+
+function localDay(ms: number, zone?: Intl.DateTimeFormat): string {
+  const c = wallClock(ms, zone);
+  return `${c.year}-${pad2(c.month)}-${pad2(c.day)}`;
+}
+
+function fileStamp(us: number, zone?: Intl.DateTimeFormat): string {
+  const c = wallClock(us / 1000, zone);
+  return `${c.year}-${pad2(c.month)}-${pad2(c.day)}_${pad2(c.hour)}-${pad2(c.minute)}-${pad2(c.second)}`;
 }
 
 function round2(n: number): number {

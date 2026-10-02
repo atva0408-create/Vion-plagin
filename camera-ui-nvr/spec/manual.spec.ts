@@ -102,6 +102,24 @@ const far = () => (Date.now() + 3600_000) * 1000;
   await rec.stop();
   store.close();
 }
+{
+  // the disk guard stops the recorders and starts them when there is room again: the manual window is still theirs
+  const states: boolean[] = [];
+  const { rec, store, feed } = recorder('cam-c', states);
+  rec.setManual(far());
+  feed(parts[0]);
+  assert.equal(rec.isRecording, true);
+  await rec.stop();
+  (rec as unknown as { onStreamEnd(reason: string, startedAt: number): void }).onStreamEnd('stopped', Date.now());
+  assert.equal(rec.isRecording, false);
+  // the stream of the recorder started again
+  feed(parts[1]);
+  assert.equal(rec.isRecording, true, 'a recorder stopped and started again goes on with the manual recording');
+  assert.deepEqual(states, [true, false, true]);
+  await rec.stop();
+  assert.equal(store.segments('cam-c', 'high', 0, Number.MAX_SAFE_INTEGER).length, 2, 'a file before the pause and one after it');
+  store.close();
+}
 
 // ------------------------------------------------------------------ plugin
 

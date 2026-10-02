@@ -1,3 +1,16 @@
+## [0.10.4]
+
+- An archive moved to another disk or folder plays again, and cleanup removes its files, not only their entries. New recordings are stored relative to the archive folder; existing ones are found where the archive is now
+- Recordings keep their timing when the server is busy for several seconds. Before, the video after such a stall was shifted by the length of the stall
+- The recordings calendar, the dates of the storage page and the names of exported files follow the time zone of the viewer, not of the server
+- A timelapse of a range that starts in the middle of a recording was an empty file. It now shows the chosen range and reports its real length
+- The export dialog says before the export starts when it is too large for a ZIP archive. A failed export leaves no unfinished file, and the empty folders of expired exports are removed
+- Playback no longer runs further and further ahead of the player after pausing, resuming, changing speed or crossing gaps in the archive
+- A manual recording is shown as paused while recording is paused for lack of disk space, and goes on when there is room again
+- The storage page shows "off" for a camera whose recording is switched off
+- An event can be opened by its id, so the moments of the assistant's day summary open their recording
+- The recordings page opens far faster on a large archive
+
 ## [0.10.3]
 
 - Cameras that send a long header in front of every keyframe (many Hikvision and Dahua models, H.265 streams) are recorded. Such a camera could record nothing at all while the log looked healthy. The log now says when a camera sends video without keyframes
