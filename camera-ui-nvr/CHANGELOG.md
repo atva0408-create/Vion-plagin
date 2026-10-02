@@ -1,3 +1,7 @@
+## [0.11.0]
+
+- Fewer wrong names on faces, together with ViON 2.3.0. A face that looks about as much like two known people is no longer given to one of them, and for a face that is nobody for sure the recorder says whom it came closest to, which the event trace of the server shows
+
 ## [0.10.6]
 
 - An archive whose events are not in the search yet is caught up quickly. In 0.10.5 the next portion of events was taken only once in two minutes instead of 20 seconds after the previous one, so an archive of thousands of events took hours to become searchable

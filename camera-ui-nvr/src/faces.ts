@@ -15,6 +15,19 @@ export interface FaceMatchResult {
   score: number;
 }
 
+/**
+ * A face as the server of ViON 2.3.0 asks about it: who it is (`identity`), or, when it is nobody for sure, whom it
+ * came closest to. The server names a person only after several faces agree and shows the rest in the event trace.
+ */
+export interface FaceNearestResult {
+  identity?: string;
+  score?: number;
+  closest?: string;
+  closestScore?: number;
+  runnerUp?: string;
+  runnerUpScore?: number;
+}
+
 export interface FaceProfile {
   name: string;
   imageCount: number;
@@ -57,6 +70,8 @@ export interface FaceSighting {
 
 /** Cosine thresholds for a match (ArcFace/FaceNet 512-d, unit vectors). */
 export const SENSITIVITY: Record<string, number> = { strict: 0.55, balanced: 0.45, relaxed: 0.38 };
+/** Two people this close to a face are both as likely: the face is given to neither (matchNearest). */
+const AMBIGUOUS_MARGIN = 0.03;
 /** Unknown faces at least this similar share a cluster. */
 const CLUSTER_SIMILARITY = 0.5;
 /** A new unknown face this similar to an ignored one is dropped. */
@@ -142,6 +157,32 @@ export class FaceStore {
         if (score >= threshold && (!best || score > best.score)) best = { identity: k.name, score: Math.round(score * 1000) / 1000 };
       }
       return best;
+    });
+  }
+
+  /**
+   * As match(), and a face that is not named still says whom it came closest to. A face that passes the bar of two
+   * people and is about as close to both is not named either: one picture of a look-alike was enough to give a
+   * person the wrong name for as long as the camera followed them.
+   */
+  public matchNearest(embeddings: number[][], model: string, sensitivity = 'balanced'): (FaceNearestResult | null)[] {
+    const threshold = SENSITIVITY[sensitivity] ?? SENSITIVITY.balanced;
+    const known = this.knownVectors(model);
+    const round = (score: number) => Math.round(score * 1000) / 1000;
+    return embeddings.map((embedding) => {
+      if (!embedding?.length || !known.length) return null;
+      const v = normalize(embedding);
+      // a person is as close as their closest picture
+      const people = new Map<string, number>();
+      for (const k of known) {
+        const score = dot(v, k.vec);
+        if (score > (people.get(k.name) ?? -Infinity)) people.set(k.name, score);
+      }
+      const [first, second] = [...people].sort((a, b) => b[1] - a[1]);
+      const runnerUp = second ? { runnerUp: second[0], runnerUpScore: round(second[1]) } : {};
+      const likeBoth = !!second && second[1] >= threshold && first[1] - second[1] < AMBIGUOUS_MARGIN;
+      if (first[1] >= threshold && !likeBoth) return { identity: first[0], score: round(first[1]), ...runnerUp };
+      return { closest: first[0], closestScore: round(first[1]), ...runnerUp };
     });
   }
 

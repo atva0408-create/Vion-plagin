@@ -170,6 +170,10 @@ assert.equal(known[0]!.imageCount, 1);
 const [match] = await nvr.matchFaces([vec(9, 0.05, 3)], 'arcface-test', 'balanced');
 assert.equal(match?.identity, 'Иван');
 assert.deepEqual(await nvr.matchFaces([vec(9)], 'other-model', 'balanced'), [null]);
+// the answer the server of 2.3.0 asks for: the same person, and for a stranger whom they came closest to
+assert.equal((await nvr.matchFacesNearest([vec(9, 0.05, 3)], 'arcface-test', 'balanced'))[0]?.identity, 'Иван');
+const [stranger] = await nvr.matchFacesNearest([vec(4)], 'arcface-test', 'balanced');
+assert.deepEqual([stranger?.identity, stranger?.closest], [undefined, 'Иван']);
 let relabeled = (await nvr.getEvents({ limit: 10 } as never)).events.find((e) => e.id === 'ev-person')!;
 assert.equal(relabeled.segments[0]!.attributes[1]!.label, 'Иван');
 

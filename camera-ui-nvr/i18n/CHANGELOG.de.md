@@ -1,3 +1,7 @@
+## [0.11.0]
+
+- Weniger falsche Namen bei Gesichtern, zusammen mit ViON 2.3.0. Ein Gesicht, das zwei bekannten Personen etwa gleich ähnlich sieht, wird keiner von beiden mehr zugeordnet, und zu einem Gesicht, das niemand sicher ist, nennt der Rekorder die ähnlichste Person, was die Ereignisverfolgung des Servers zeigt
+
 ## [0.10.6]
 
 - Ein Archiv, dessen Ereignisse noch nicht in der Suche sind, wird schnell aufgeholt. In 0.10.5 wurde die nächste Portion Ereignisse nur alle zwei Minuten genommen statt 20 Sekunden nach der vorherigen, sodass ein Archiv mit Tausenden Ereignissen erst nach Stunden durchsuchbar war

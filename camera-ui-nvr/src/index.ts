@@ -31,7 +31,7 @@ import type {
 import type { AssistantHost } from './assistant.js';
 import type { EventDescription } from './describer.js';
 import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
-import type { FaceImageData, FaceMatchResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
+import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow, SegmentRow } from './store.js';
 import type {
@@ -2091,6 +2091,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   public async matchFaces(embeddings: number[][], embeddingModel: string, sensitivity = 'balanced'): Promise<(FaceMatchResult | null)[]> {
     await this.ready;
     return this.faces.match(embeddings, embeddingModel, sensitivity);
+  }
+
+  /** What the server of ViON 2.3.0 asks instead of matchFaces: a face that is not named says whom it came closest to. */
+  public async matchFacesNearest(embeddings: number[][], embeddingModel: string, sensitivity = 'balanced'): Promise<(FaceNearestResult | null)[]> {
+    await this.ready;
+    return this.faces.matchNearest(embeddings, embeddingModel, sensitivity);
   }
 
   public async enrollFace(name: string, imageData: Uint8Array): Promise<void> {
