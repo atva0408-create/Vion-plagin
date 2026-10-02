@@ -467,5 +467,25 @@
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-wyze/logo.png",
     "screenshots": [],
     "protocolLevel": 2
+  },
+  "@vionvision/camera-ui-xiaomi": {
+    "displayName": "Xiaomi",
+    "category": "camera-source",
+    "featured": false,
+    "tagline": "Connects Xiaomi Mi Home cameras to ViON: sign-in to the Mi account, camera discovery and live view over the local network.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects Xiaomi Mi Home cameras to ViON: sign-in to the Mi account, camera discovery and live view over the local network."
+      },
+      "ru": {
+        "tagline": "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети."
+      },
+      "de": {
+        "tagline": "Verbindet Kameras von Xiaomi Mi Home mit ViON: Anmeldung beim Mi-Konto, Kamerasuche und Livebild über das lokale Netzwerk."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-xiaomi/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2
   }
 }

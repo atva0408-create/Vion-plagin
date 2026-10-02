@@ -82,6 +82,7 @@ git fetch upstream && git merge upstream/main
 | [Tuya](camera-ui-tuya)                 | `@vionvision/camera-ui-tuya`         |
 | [WASM Motion](camera-ui-wasm-motion)   | `@vionvision/camera-ui-wasm-motion`  |
 | [Wyze](camera-ui-wyze)                 | `@vionvision/camera-ui-wyze`         |
+| [Xiaomi](camera-ui-xiaomi)             | `@vionvision/camera-ui-xiaomi`       |
 | [YAMNet Audio](camera-ui-audio-yamnet) | `@vionvision/camera-ui-audio-yamnet` |
 
 ---

@@ -50,6 +50,7 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-tuya': 'camera-source',
   'camera-ui-wasm-motion': 'detection',
   'camera-ui-wyze': 'camera-source',
+  'camera-ui-xiaomi': 'camera-source',
 };
 
 const FEATURED = new Set<string>([
