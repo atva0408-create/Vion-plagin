@@ -97,13 +97,32 @@ test('the sign-in asks for the captcha and the code in the dialog, keeps the tok
   assert.equal(codeField.placeholder, '+7*****12');
 
   const done = await h.submit({ ...form, [captchaField]: CAPTCHA, [codeField.key]: TICKET });
-  assert.deepEqual(done, { toast: { type: 'success', message: 'Signed in to Mi Home. Cameras in the account: 1' } });
+  // the window ends with what was found and where to add it
+  const result = done?.schema?.[0] as { key: string; title: string; description: string; defaultValue?: string; readonly?: boolean };
+  assert.equal(result.title, 'Signed in to Mi Home');
+  assert.match(result.description, /open Cameras in ViON and click it under Discovered/);
+  assert.equal(result.defaultValue, 'Hall');
+  assert.equal(result.readonly, true);
+  // its button closes the window, it does not sign in again
+  const before = h.values.passToken;
+  assert.equal(await h.submit({ ...form, [captchaField]: CAPTCHA, [codeField.key]: TICKET, [result.key]: result.defaultValue }), undefined);
+  assert.equal(h.values.passToken, before);
   assert.equal(h.values.userId, '42');
   assert.equal(h.values.passToken, 'PT-VERIFIED');
   assert.equal(h.values.username, 'user@example.com');
   assert.equal(h.values.password, undefined);
   assert.equal(JSON.stringify(h.values).includes(PASSWORD), false);
   assert.deepEqual(h.pushed, [{ id: 'xiaomi:1001', name: 'Hall', manufacturer: 'Xiaomi', model: 'chuangmi.camera.039a01', address: '192.168.1.50' }]);
+  await h.shutdown();
+});
+
+test('an account without cameras says so and what to check', async () => {
+  globalThis.fetch = fakeXiaomi(scenario({ devices: Object.fromEntries(['cn', 'de', 'i2', 'ru', 'sg', 'us'].map((region) => [region, []])) })).fetch;
+  const h = host();
+  const done = await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const result = done?.schema?.[0] as { title: string; description: string };
+  assert.equal(result.title, 'Signed in to Mi Home, no cameras found');
+  assert.match(result.description, /in the Mi Home app/);
   await h.shutdown();
 });
 

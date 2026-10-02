@@ -24,6 +24,13 @@ Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Kont
 - **Abmelden**: vergisst die Anmeldung. Hinzugefügte Kameras bleiben und zeigen nach der nächsten Anmeldung wieder Video
 - **Bildqualität**: Standard, Hoch, Niedrig oder Maximal. Maximal passt zu neueren Modellen, bei älteren kann sie das Bild stören
 
+## Kameras hinzufügen
+
+1. Öffnen Sie die Einstellungen des Plugins, geben Sie Mi-Konto und Passwort ein und klicken Sie auf **Anmelden**
+2. Fragt Xiaomi nach den Zeichen eines Bildes oder nach einem Code, geben Sie sie im Fenster ein, das sich öffnet
+3. Danach zeigt das Fenster die gefundenen Kameras
+4. Öffnen Sie in ViON die Seite **Kameras**: Die Kameras stehen unter **Entdeckt**. Klicken Sie eine Kamera an, prüfen Sie den Namen und bestätigen Sie
+
 ## Gut zu wissen
 
 - Xiaomi bietet keine offizielle Schnittstelle für andere Systeme. Das Plugin meldet sich so an wie die App Mi Home; eine Änderung auf Seiten von Xiaomi kann ein Update des Plugins erfordern

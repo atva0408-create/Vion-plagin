@@ -21,6 +21,8 @@ import type { XiaomiCamera } from './xiaomi/cameras.js';
 import type { XiaomiConfig } from './types.js';
 
 const ID_PREFIX = 'xiaomi:';
+/** The field of the window that reports a finished sign-in. */
+const SIGNED_IN_FIELD = 'signedIn';
 /** The device list is read again this often: a camera may get another address in the network. */
 const REFRESH_MS = 30 * 60_000;
 /** An address older than this is read again before a connection. */
@@ -303,6 +305,9 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
    * that field, and its submit comes back here with the value.
    */
   private async onLogin(values: XiaomiConfig & Record<string, unknown>): Promise<FormSubmitResponse | void> {
+    // the button of the window that reports the sign-in closes it
+    if (!this.pending && values[SIGNED_IN_FIELD] !== undefined) return;
+
     const pending = this.pending;
     const answer = pending ? values[pending.field] : undefined;
     const username = String(values.username ?? this.storage.values.username ?? '').trim();
@@ -343,7 +348,35 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     } catch (error: any) {
       return { toast: { type: 'warning', message: `Signed in, but the cameras could not be read: ${error.message}` } };
     }
-    return { toast: { type: 'success', message: `Signed in to Mi Home. Cameras in the account: ${this.cameras.size}` } };
+    return { schema: this.signedInSchema() };
+  }
+
+  /** What the sign-in found, and where the cameras are added: the window of the sign-in shows it at the end. */
+  private signedInSchema(): JsonSchemaWithoutCallbacks[] {
+    const names = [...this.cameras.values()].map((camera) => camera.name).sort((a, b) => a.localeCompare(b));
+    if (!names.length) {
+      return [
+        {
+          type: 'string',
+          key: SIGNED_IN_FIELD,
+          title: 'Signed in to Mi Home, no cameras found',
+          description: 'This Mi account has no cameras. Check that the cameras are in this account in the Mi Home app, then sign in again.',
+          readonly: true,
+          defaultValue: '',
+        },
+      ];
+    }
+    return [
+      {
+        type: 'string',
+        key: SIGNED_IN_FIELD,
+        title: 'Signed in to Mi Home',
+        description: 'Cameras found are listed below. To add one, open Cameras in ViON and click it under Discovered.',
+        format: 'textarea',
+        readonly: true,
+        defaultValue: names.join('\n'),
+      },
+    ];
   }
 
   private challengeSchema(challenge: LoginChallenge, field: string): JsonSchemaWithoutCallbacks[] {
