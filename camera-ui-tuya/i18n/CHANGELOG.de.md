@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- Die Rechenzentrumsregionen in den Einstellungen werden in der Sprache der Oberfläche angezeigt, auch China und Indien
+
 ## [1.2.7]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

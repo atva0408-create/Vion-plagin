@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- The data center regions in the settings are shown in the language of the interface, China and India included
+
 ## [1.2.7]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
