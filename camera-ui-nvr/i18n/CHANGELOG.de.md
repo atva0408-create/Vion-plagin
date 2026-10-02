@@ -1,3 +1,8 @@
+## [0.10.5]
+
+- Die Suche nach Beschreibung findet jedes Ereignis von selbst. Ereignisse nur mit Bewegung, ohne erkanntes Objekt, kamen erst nach einer von Hand gestarteten Neuindizierung in die Suche, sodass sich die meisten Ereignisse eines Tages nicht finden ließen. Ihre Bilder werden jetzt automatisch in die Suche aufgenommen, die neuesten zuerst, und ein nie indiziertes Archiv wird dahinter aufgefüllt
+- Wenn die Suche keine Ereignisse aufnehmen kann oder eine von Hand gestartete Neuindizierung abbricht, steht der Grund im Protokoll
+
 ## [0.10.4]
 
 - Ein Archiv, das auf eine andere Festplatte oder in einen anderen Ordner verschoben wurde, wird wieder abgespielt, und das Aufräumen entfernt seine Dateien, nicht nur deren Einträge. Neue Aufzeichnungen werden relativ zum Archivordner gespeichert, vorhandene werden dort gefunden, wo das Archiv jetzt liegt

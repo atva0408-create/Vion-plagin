@@ -1,3 +1,8 @@
+## [0.10.5]
+
+- The search by description finds every event by itself. Events of motion alone, without a recognized object, got into the search only after a re-index started by hand, so most events of a day could not be found. Their pictures are now added to the search automatically, the newest first, and an archive that was never indexed is filled in behind them
+- When the search cannot add events, or a re-index started by hand stops, the reason is written to the log
+
 ## [0.10.4]
 
 - An archive moved to another disk or folder plays again, and cleanup removes its files, not only their entries. New recordings are stored relative to the archive folder; existing ones are found where the archive is now

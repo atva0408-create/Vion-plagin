@@ -111,6 +111,18 @@ export class SemanticIndex {
     return !!this.db.prepare('SELECT 1 FROM clip_vectors WHERE event_id = ? AND model = ? LIMIT 1').get(eventId, model);
   }
 
+  /** Ids of the ended events that have no vector of `model` yet, newest first: what the search cannot find. */
+  public unindexed(model: string, limit: number): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM events
+         WHERE state = 'ended' AND NOT EXISTS (SELECT 1 FROM clip_vectors v WHERE v.event_id = events.id AND v.model = ?)
+         ORDER BY start_ms DESC LIMIT ?`,
+      )
+      .all(model, limit) as unknown as { id: string }[];
+    return rows.map((row) => row.id);
+  }
+
   public deleteEvents(ids: string[]): void {
     if (!ids.length) return;
     const del = this.db.prepare('DELETE FROM clip_vectors WHERE event_id = ?');

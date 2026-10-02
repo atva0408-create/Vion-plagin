@@ -94,7 +94,22 @@ interface Entitlements {
   nvr: { maxCameras: number; retentionDays: number };
 }
 
+/** An event whose stored picture is to be embedded for the search by description. */
+interface PendingScene {
+  id: string;
+  cameraId: string;
+  startTime: number;
+  label: string;
+}
+
 const ENTITLEMENTS_INTERVAL_MS = 10 * 60_000;
+/** How often the search index picks up events that have no vector yet, and how many pictures it embeds in one go. */
+const CLIP_AUTO_INTERVAL_MS = 2 * 60_000;
+/** The pause between portions while more events wait: long enough to leave the processor to the detection. */
+const CLIP_AUTO_BACKLOG_MS = 20_000;
+// the pictures are embedded by the detection plugin, on the processor that also detects: a small portion at a time
+const CLIP_AUTO_BATCH = 24;
+const CLIP_EMBED_BATCH = 8;
 const PLUGIN_CALL_TIMEOUT_MS = 30_000;
 
 interface FaceEmbedder {
@@ -169,6 +184,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly proxies = new Map<string, unknown>();
   private clipStatus: ClipReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
   private clipCancel = false;
+  private clipAutoTimer: NodeJS.Timeout | undefined;
+  private clipAutoBusy = false;
+  private clipAutoSoon: NodeJS.Timeout | undefined;
+  private clipAutoAdded = 0;
+  /** Events the automatic indexing cannot give a vector (no stored picture, or the plugin made none of it). */
+  private readonly clipAutoSkipped = new Set<string>();
+  /** The indexing problem last logged as a warning: the passes that hit the same one do not repeat it. */
+  private clipProblem: string | undefined;
   private readonly clipListeners = new Set<(s: ClipReindexStatus) => void>();
   private facesReindexStatus: FacesReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
   private facesReindexCancel = false;
@@ -492,6 +515,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.entitlementsTimer = setInterval(() => void this.refreshEntitlements(), ENTITLEMENTS_INTERVAL_MS);
     this.retentionTimer = setInterval(() => void this.enforceRetention(), RETENTION_INTERVAL_MS);
     this.episodeTimer = setInterval(() => this.episodes.sweep(Date.now()), EPISODE_SWEEP_MS);
+    this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
     void this.enforceRetention();
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
   }
@@ -501,6 +525,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
     clearInterval(this.episodeTimer);
+    clearInterval(this.clipAutoTimer);
+    this.clipAutoTimer = undefined;
+    clearTimeout(this.clipAutoSoon);
     for (const m of this.manual.values()) clearTimeout(m.timer);
     this.playback?.stopAll();
     await Promise.all([...this.cameras.keys()].map((id) => this.releaseCamera(id)));
@@ -1940,7 +1967,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (!encoder) throw new Error('Нет плагина с CLIP (ONNX, OpenVINO или CoreML)');
       const model = (await withTimeout(encoder.getTextEmbedding('a photo'))).embeddingModel;
 
-      const pending: { id: string; cameraId: string; startTime: number; label: string }[] = [];
+      const pending: PendingScene[] = [];
       let skipped = 0;
       for (let before: number | undefined; ;) {
         const rows = this.store.events({ before, limit: 500 });
@@ -1959,24 +1986,89 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       }
       this.emitClip({ total: pending.length + skipped, done: skipped, skipped });
 
-      for (let i = 0; i < pending.length && !this.clipCancel; i += 8) {
-        const batch = pending.slice(i, i + 8);
-        const pictures = batch.map((e) => this.eventPicture(e.cameraId, e.id));
-        const usable = batch.filter((_, j) => pictures[j]);
-        const images = pictures.filter((p): p is Uint8Array => !!p);
-        let results: Awaited<ReturnType<NonNullable<ClipEncoder['embedImages']>>> = [];
-        if (images.length) results = (await withTimeout(encoder.embedImages!(images), 120_000)) ?? [];
-        usable.forEach((e, j) => {
-          const vector = results[j]?.embeddings?.[0]?.embedding;
-          if (vector?.length) this.semantic.addScene(e, results[j]!.embeddingModel, vector);
-          else skipped++;
-        });
-        skipped += batch.length - usable.length;
+      for (let i = 0; i < pending.length && !this.clipCancel; i += CLIP_EMBED_BATCH) {
+        const batch = pending.slice(i, i + CLIP_EMBED_BATCH);
+        skipped += batch.length - (await this.embedScenes(encoder, batch)).length;
         this.emitClip({ done: Math.min(this.clipStatus.total, skipped + i + batch.length), skipped });
       }
       this.emitClip({ running: false });
     } catch (error) {
+      // the dialog shows it, but only while it is open: the reason must also be where it can be read afterwards
+      this.logger.warn(`Search index: the re-index stopped: ${(error as Error).message}`);
       this.emitClip({ running: false, error: (error as Error).message });
+    }
+  }
+
+  /** Embeds the stored pictures of `events` and files the vectors; answers the events that got one. */
+  private async embedScenes(encoder: ClipEncoder, events: PendingScene[]): Promise<PendingScene[]> {
+    const pictures = events.map((e) => this.eventPicture(e.cameraId, e.id));
+    const usable = events.filter((_, j) => pictures[j]);
+    const images = pictures.filter((p): p is Uint8Array => !!p);
+    let results: Awaited<ReturnType<NonNullable<ClipEncoder['embedImages']>>> = [];
+    if (images.length) results = (await withTimeout(encoder.embedImages!(images), 120_000)) ?? [];
+    return usable.filter((e, j) => {
+      const vector = results[j]?.embeddings?.[0]?.embedding;
+      if (vector?.length) this.semantic.addScene(e, results[j]!.embeddingModel, vector);
+      return !!vector?.length;
+    });
+  }
+
+  /**
+   * Keeps the search index complete by itself. An event gets its vector from the detection plugin only when that
+   * plugin saw an object in it; an event of motion alone had none until somebody ran the re-index by hand, so the
+   * search found nothing among most events of a day and nothing said why. A portion of the events without a vector
+   * is embedded from their stored picture, newest first, so what just happened is found first and an old archive
+   * fills in behind it.
+   */
+  private async indexPending(): Promise<void> {
+    if (this.clipAutoBusy || this.clipStatus.running || !this.store) return;
+    this.clipAutoBusy = true;
+    let more = false;
+    try {
+      const [encoder] = await this.pluginProxies<ClipEncoder>('ClipDetection');
+      // no plugin that embeds pictures: the search by description is not there at all, nothing to keep complete
+      if (!encoder) return;
+      const model = (await withTimeout(encoder.getTextEmbedding('a photo'))).embeddingModel;
+
+      // the events passed over are still without a vector and come first in the list: ask for that many more
+      const ids = this.semantic.unindexed(model, CLIP_AUTO_BATCH + this.clipAutoSkipped.size).filter((id) => !this.clipAutoSkipped.has(id));
+      const pending: PendingScene[] = [];
+      for (const id of ids.slice(0, CLIP_AUTO_BATCH)) {
+        const row = this.store.event(id);
+        if (!row) continue;
+        const ev = JSON.parse(row.data) as RecordedEvent;
+        const label = String((ev.segments?.[0]?.detections?.[0] as { label?: string } | undefined)?.label ?? ev.types?.[0] ?? '');
+        pending.push({ id: row.id, cameraId: row.camera_id, startTime: row.start_ms, label });
+      }
+      if (!pending.length) {
+        if (this.clipAutoAdded) this.logger.log(`Search index: ${this.clipAutoAdded} event(s) added, every event with a picture can be found now`);
+        this.clipAutoAdded = 0;
+        this.clipProblem = undefined;
+        return;
+      }
+
+      for (let i = 0; i < pending.length; i += CLIP_EMBED_BATCH) {
+        const batch = pending.slice(i, i + CLIP_EMBED_BATCH);
+        const indexed = new Set((await this.embedScenes(encoder, batch)).map((e) => e.id));
+        this.clipAutoAdded += indexed.size;
+        // an ended event without a stored picture will never have one, and a picture the plugin could not embed
+        // would take the plugin's time again in every pass: both are passed over until a restart
+        for (const e of batch) if (!indexed.has(e.id)) this.clipAutoSkipped.add(e.id);
+      }
+      this.clipProblem = undefined;
+      more = ids.length > pending.length;
+    } catch (error) {
+      // nothing is passed over: the same events are tried again by the next pass
+      const problem = `Search index: new events are not being added: ${(error as Error).message}`;
+      if (problem !== this.clipProblem) this.logger.warn(problem);
+      this.clipProblem = problem;
+    } finally {
+      this.clipAutoBusy = false;
+    }
+    // an archive that was never indexed is caught up in portions close together, not one portion per interval
+    if (more && this.clipAutoTimer) {
+      clearTimeout(this.clipAutoSoon);
+      this.clipAutoSoon = setTimeout(() => void this.indexPending(), CLIP_AUTO_BACKLOG_MS);
     }
   }
 
