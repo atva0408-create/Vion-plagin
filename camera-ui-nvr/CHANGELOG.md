@@ -1,3 +1,7 @@
+## [0.10.6]
+
+- An archive whose events are not in the search yet is caught up quickly. In 0.10.5 the next portion of events was taken only once in two minutes instead of 20 seconds after the previous one, so an archive of thousands of events took hours to become searchable
+
 ## [0.10.5]
 
 - The search by description finds every event by itself. Events of motion alone, without a recognized object, got into the search only after a re-index started by hand, so most events of a day could not be found. Their pictures are now added to the search automatically, the newest first, and an archive that was never indexed is filled in behind them

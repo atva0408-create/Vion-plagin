@@ -2030,8 +2030,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (!encoder) return;
       const model = (await withTimeout(encoder.getTextEmbedding('a photo'))).embeddingModel;
 
-      // the events passed over are still without a vector and come first in the list: ask for that many more
-      const ids = this.semantic.unindexed(model, CLIP_AUTO_BATCH + this.clipAutoSkipped.size).filter((id) => !this.clipAutoSkipped.has(id));
+      // the events passed over are still without a vector and come first in the list: ask for that many more, and
+      // for one beyond the portion: a full portion alone does not tell whether anything is left behind it
+      const ids = this.semantic.unindexed(model, CLIP_AUTO_BATCH + 1 + this.clipAutoSkipped.size).filter((id) => !this.clipAutoSkipped.has(id));
       const pending: PendingScene[] = [];
       for (const id of ids.slice(0, CLIP_AUTO_BATCH)) {
         const row = this.store.event(id);
@@ -2056,7 +2057,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         for (const e of batch) if (!indexed.has(e.id)) this.clipAutoSkipped.add(e.id);
       }
       this.clipProblem = undefined;
-      more = ids.length > pending.length;
+      more = ids.length > CLIP_AUTO_BATCH;
     } catch (error) {
       // nothing is passed over: the same events are tried again by the next pass
       const problem = `Search index: new events are not being added: ${(error as Error).message}`;

@@ -1,3 +1,7 @@
+## [0.10.6]
+
+- Ein Archiv, dessen Ereignisse noch nicht in der Suche sind, wird schnell aufgeholt. In 0.10.5 wurde die nächste Portion Ereignisse nur alle zwei Minuten genommen statt 20 Sekunden nach der vorherigen, sodass ein Archiv mit Tausenden Ereignissen erst nach Stunden durchsuchbar war
+
 ## [0.10.5]
 
 - Die Suche nach Beschreibung findet jedes Ereignis von selbst. Ereignisse nur mit Bewegung, ohne erkanntes Objekt, kamen erst nach einer von Hand gestarteten Neuindizierung in die Suche, sodass sich die meisten Ereignisse eines Tages nicht finden ließen. Ihre Bilder werden jetzt automatisch in die Suche aufgenommen, die neuesten zuerst, und ein nie indiziertes Archiv wird dahinter aufgefüllt

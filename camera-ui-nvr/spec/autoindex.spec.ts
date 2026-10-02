@@ -7,6 +7,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { API_EVENT } from '@camera.ui/sdk';
+
 import VionNvr from '../src/index.js';
 
 const dim = 16;
@@ -31,6 +33,7 @@ const clip = {
 let clipPlugins = [{ id: 'onnx' }];
 const log: string[] = [];
 const noop = () => undefined;
+const hostEvents = new Map<string, () => void>();
 const logger = {
   log: (message: string) => log.push(`log: ${message}`),
   warn: (message: string) => log.push(`warn: ${message}`),
@@ -41,7 +44,7 @@ const logger = {
 };
 const api = {
   storagePath: mkdtempSync(join(tmpdir(), 'nvr-autoindex-')),
-  on: noop,
+  on: (event: string, handler: () => void) => void hostEvents.set(event, handler),
   once: noop,
   emit: noop,
   notificationManager: { publish: async () => undefined },
@@ -54,8 +57,15 @@ const api = {
 };
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr(logger as never, api as never, storage as never);
+// started as the host starts it: the pass that follows a full portion is asked for by the plugin's own timer.
+// Before anything is stored, because the start also clears the archive of what is older than the retention
+hostEvents.get(API_EVENT.FINISH_LAUNCHING)!();
 /** One pass of the automatic indexing, as its timer makes it. */
 const pass = (): Promise<void> => (nvr as unknown as { indexPending(): Promise<void> }).indexPending();
+/** Lets a pass started by a timer of the plugin run to its end. */
+const idle = async (): Promise<void> => {
+  for (let i = 0; i < 1000 && (nvr as unknown as { clipAutoBusy: boolean }).clipAutoBusy; i++) await new Promise((resolve) => setImmediate(resolve));
+};
 
 const jpeg = (content: number) => new Uint8Array([content, 0xff, 0xd8, 1, 2, 3]);
 function motion(id: string, startTime: number, state = 'ended') {
@@ -89,17 +99,33 @@ assert.deepEqual(await found('parcel'), [], 'an event that has not ended is left
 assert.deepEqual(embedCalls.at(-1), [4], 'only the ended event with a picture went to the plugin');
 
 // ------------------------------------------------- more events than one portion: several passes, newest first
+let soon: (() => void) | undefined;
+const realSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = ((fn: () => void, ms?: number, ...args: unknown[]) => {
+  if (ms !== 20_000) return realSetTimeout(fn, ms, ...args);
+  soon = fn;
+  return { unref: noop } as unknown as NodeJS.Timeout;
+}) as typeof setTimeout;
 embedCalls.length = 0;
-for (let i = 0; i < 30; i++) await nvr.ingestDetectionEvent('cam1', 'end' as never, motion(`ev-many-${i}`, 10_000 + i) as never, { scene: jpeg(3) } as never);
+// older than the event without a picture above: the events passed over stay the newest without a vector, as on
+// the recorder, and take places in what the index is asked for
+for (let i = 0; i < 30; i++) await nvr.ingestDetectionEvent('cam1', 'end' as never, motion(`ev-many-${i}`, 100 + i) as never, { scene: jpeg(3) } as never);
 await pass();
 assert.equal(embedCalls.flat().length, 24, 'one pass embeds one portion, the plugin also detects on this processor');
 assert.ok(embedCalls.every((batch) => batch.length <= 8), 'in batches the plugin answers in time');
 assert.ok((await found('dog')).includes('ev-many-29'), 'the newest events come first');
-await pass();
+// on the recorder a full portion asked for nothing, and an archive of 500 events was filled 24 events in two minutes
+assert.ok(soon, 'events are left behind a full portion: the next one follows in 20 seconds, not at the next interval');
+const next = soon;
+soon = undefined;
+next();
+await idle();
 assert.equal(embedCalls.flat().length, 30, 'the next pass takes the rest');
+assert.equal(soon, undefined, 'nothing is left: no pass is asked for before the interval');
 await pass();
 await pass();
 assert.equal(embedCalls.flat().length, 30, 'and nothing is embedded twice');
+globalThis.setTimeout = realSetTimeout;
 
 // ------------------------------------------------- a picture the plugin cannot embed is not sent again
 unreadable = new Set([5]);
