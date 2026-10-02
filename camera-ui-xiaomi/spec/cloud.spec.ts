@@ -7,6 +7,7 @@ import { createPrivateKey, createPublicKey } from 'node:crypto';
 
 import { LoginChallengeError, XiaomiAuthError, XiaomiCloud, apiBaseUrl, decryptResponse, encryptRequest } from '../src/xiaomi/cloud.js';
 import { generateKeyPair } from '../src/xiaomi/keys.js';
+import { rc4 } from '../src/xiaomi/rc4.js';
 import { CAPTCHA, CAPTCHA_IMAGE, PASSWORD, TICKET, fakeXiaomi } from './fake-xiaomi.js';
 
 // computed by the Xiaomi client of the stream engine (Go) for these inputs
@@ -38,7 +39,26 @@ test('a request is encrypted and signed exactly as the Mi Home app does it', () 
 test('an answer is decrypted to its result, and an error answer becomes an error', () => {
   const key = Buffer.from(GO.signedNonce, 'hex');
   assert.deepEqual(decryptResponse(GO.response, key), { public_key: 'bb', sign: 'cc', vendor: { vendor: 4, vendor_params: {} } });
-  assert.throws(() => decryptResponse(Buffer.from('not json').toString('base64'), key));
+
+  // an error of a device is an error, the session is fine
+  const offline = rc4(key, Buffer.from(JSON.stringify({ code: -2, message: 'device offline' }))).toString('base64');
+  assert.throws(
+    () => decryptResponse(offline, key),
+    (error: Error) => !(error instanceof XiaomiAuthError) && /device offline/.test(error.message),
+  );
+});
+
+test('an answer the session cannot read means the session is gone, so the plugin signs in again', () => {
+  const key = Buffer.from(GO.signedNonce, 'hex');
+  // the API answers an ended session in plain JSON
+  assert.throws(() => decryptResponse('{"code":2,"message":"auth err"}', key), XiaomiAuthError);
+  // or with something that does not decrypt
+  assert.throws(() => decryptResponse(Buffer.from('not json').toString('base64'), key), XiaomiAuthError);
+  // a plain error that is not about the session stays an ordinary error
+  assert.throws(
+    () => decryptResponse('{"code":-6,"message":"too many requests"}', key),
+    (error: Error) => !(error instanceof XiaomiAuthError) && /too many requests/.test(error.message),
+  );
 });
 
 test('the key pairs are Curve25519 keys as the cameras expect them', () => {

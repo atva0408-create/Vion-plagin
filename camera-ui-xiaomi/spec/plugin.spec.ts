@@ -169,6 +169,76 @@ test('after a restart the token signs in, and a session Xiaomi ended is renewed 
   await h.shutdown();
 });
 
+test('a session the API ends with a plain error answer is renewed as well', async () => {
+  const fake = fakeXiaomi(scenario({ endedSession: 'plain' }));
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  await h.launch();
+
+  const plugin = h.plugin as unknown as { cloud?: { cookies: string } };
+  plugin.cloud!.cookies = 'userId=42; cUserId=c42; serviceToken=EXPIRED';
+  assert.equal(new URL(await stream()).host, '192.168.1.50');
+  await h.shutdown();
+});
+
+test('an old address is used at once, the device list is read again on the side', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  await h.launch();
+
+  // the list was read long ago and reading it again is slow now
+  const plugin = h.plugin as unknown as { camerasReadAt: number; refreshing?: Promise<void> };
+  plugin.camerasReadAt = 0;
+  const slow = fakeXiaomi(scenario({ deviceListDelayMs: 1500 }));
+  globalThis.fetch = async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    return url.includes('device_list_page') ? slow.fetch(input, init) : fake.fetch(input, init);
+  };
+
+  const started = Date.now();
+  assert.equal(new URL(await stream()).host, '192.168.1.50');
+  assert.ok(Date.now() - started < 1000, `the stream waited ${Date.now() - started} ms for the device list`);
+  await plugin.refreshing;
+  await h.shutdown();
+});
+
+test('cameras handed over after the start get their stream at once', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  await h.launch();
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  assert.equal(new URL(await stream()).host, '192.168.1.50');
+  await h.shutdown();
+});
+
+test('a camera removed from the account is no longer offered, unless a region could not be read', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  await h.launch();
+  assert.deepEqual(
+    (await h.plugin.onDiscoverCameras()).map((c) => c.id),
+    ['xiaomi:1001'],
+  );
+
+  // only China answers, the other regions fail: nothing is dropped
+  globalThis.fetch = fakeXiaomi(scenario({ devices: { cn: [] } })).fetch;
+  assert.deepEqual(
+    (await h.plugin.onDiscoverCameras()).map((c) => c.id),
+    ['xiaomi:1001'],
+  );
+
+  // every region read, the camera is gone from the account
+  globalThis.fetch = fakeXiaomi(scenario({ devices: Object.fromEntries(['cn', 'de', 'i2', 'ru', 'sg', 'us'].map((region) => [region, []])) })).fetch;
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
+  await h.shutdown();
+});
+
 test('signing out forgets the token; cameras then say how to get them back', async () => {
   globalThis.fetch = fakeXiaomi(scenario()).fetch;
   const h = host();

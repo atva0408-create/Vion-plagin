@@ -47,6 +47,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   private existing = new Map<string, CameraDevice>();
   private controllers = new Map<string, Camera>();
+  private started = false;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<XiaomiConfig>) {
     super(logger, api, storage);
@@ -121,7 +122,11 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   public async configureCameras(cameras: CameraDevice[]): Promise<void> {
-    for (const camera of cameras) this.existing.set(camera.id, camera);
+    for (const camera of cameras) {
+      this.existing.set(camera.id, camera);
+      // cameras handed over after the start get their stream now, not at the next reading of the device list
+      if (this.started) await this.initializeCamera(camera);
+    }
   }
 
   public async onCameraAdded(camera: CameraDevice): Promise<void> {
@@ -178,6 +183,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   private async start(): Promise<void> {
+    this.started = true;
     // added cameras get their stream at once: the address is asked when a connection opens, not now
     for (const device of this.existing.values()) await this.initializeCamera(device);
 
@@ -195,6 +201,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   private stop(): void {
+    this.started = false;
     clearInterval(this.refreshTimer);
     this.controllers.clear();
     this.cameras.clear();
@@ -236,7 +243,11 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   private async refreshCameras(): Promise<void> {
     this.refreshing ??= (async () => {
-      const cameras = await this.withSession((cloud) => listCameras(cloud, (region, error) => this.logger.debug(`Mi Home region ${region} not read:`, error.message)));
+      const { cameras, complete } = await this.withSession((cloud) =>
+        listCameras(cloud, (region, error) => this.logger.debug(`Mi Home region ${region} not read:`, error.message)),
+      );
+      // a camera removed from the account is no longer offered; when a region could not be read, nothing is dropped
+      if (complete) this.cameras.clear();
       for (const camera of cameras) this.cameras.set(camera.did, camera);
       this.camerasReadAt = Date.now();
       this.logger.debug(`Mi Home cameras: ${cameras.length}`);
@@ -265,11 +276,12 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   /** The address of one connection to the camera, with keys made for it. */
   private async streamUrl(did: string): Promise<string> {
-    if (!this.cameras.has(did) || Date.now() - this.camerasReadAt > ADDRESS_MAX_AGE_MS) {
-      await this.refreshCameras().catch((error) => {
-        if (!this.cameras.has(did)) throw error;
-        this.logger.debug('Using the last known address, the device list was not read:', error.message);
-      });
+    if (!this.cameras.has(did)) {
+      // a camera not read yet (the first connection after a start): its address is needed now
+      await this.refreshCameras();
+    } else if (Date.now() - this.camerasReadAt > ADDRESS_MAX_AGE_MS) {
+      // the known address is used at once; reading all regions again can take seconds the stream does not wait for
+      this.refreshCameras().catch((error) => this.logger.debug('Could not read the device list again:', error.message));
     }
     const camera = this.cameras.get(did);
     if (!camera) throw new Error(`The Mi account has no camera ${did} anymore`);

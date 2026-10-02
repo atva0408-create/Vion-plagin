@@ -23,6 +23,10 @@ export interface Scenario {
   devicepass?: Record<string, Record<string, unknown>>;
   /** passTokens the account accepts */
   tokens: Set<string>;
+  /** how an ended session is answered: HTTP 401 (default), or 200 with an error in plain JSON */
+  endedSession?: 'status' | 'plain';
+  /** milliseconds the device list takes */
+  deviceListDelayMs?: number;
 }
 
 export interface Call {
@@ -53,8 +57,11 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
   let captchaSolved = false;
   let ticketSent = false;
 
-  const api = (url: URL, init: RequestInit | undefined): Response => {
-    if (cookie(init, 'serviceToken') !== 'ST' || cookie(init, 'userId') !== '42') return new Response('unauthorized', { status: 401 });
+  const api = async (url: URL, init: RequestInit | undefined): Promise<Response> => {
+    if (cookie(init, 'serviceToken') !== 'ST' || cookie(init, 'userId') !== '42') {
+      if (scenario.endedSession === 'plain') return new Response(JSON.stringify({ code: 2, message: 'auth err' }));
+      return new Response('unauthorized', { status: 401 });
+    }
     const form = new URLSearchParams(String(init?.body));
     const path = url.pathname.replace(/^\/app/, '');
     const key = signedNonce(SSECURITY, Buffer.from(form.get('_nonce') ?? '', 'base64'));
@@ -71,6 +78,7 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
     let result: unknown = null;
     let error: string | undefined;
     if (path === '/v2/home/device_list_page') {
+      if (scenario.deviceListDelayMs) await new Promise((resolve) => setTimeout(resolve, scenario.deviceListDelayMs));
       const list = scenario.devices[region];
       if (!list) return new Response('region down', { status: 502 });
       result = { list, has_more: false };

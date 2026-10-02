@@ -121,10 +121,36 @@ export function encryptRequest(path: string, params: string, ssecurity: Buffer, 
   };
 }
 
+/** Errors of the API that mean the session is gone: signing in again with the token helps. */
+const AUTH_MESSAGE = /auth|token|login|session|signature/i;
+
+function apiError(answer: { code?: unknown; message?: unknown }): Error {
+  const message = typeof answer.message === 'string' ? answer.message : `code ${String(answer.code)}`;
+  return AUTH_MESSAGE.test(message) ? new XiaomiAuthError(`Xiaomi ended the session: ${message}`) : new Error(`Xiaomi: ${message}`);
+}
+
+function parseObject(text: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The result of an encrypted answer. An answer that does not decrypt was not made for this session (the API answers
+ * an ended session in plain text, or with a key of its own): that is an authentication error, so the caller signs
+ * in again instead of failing every request until someone signs in by hand.
+ */
 export function decryptResponse(body: string, key: Buffer): unknown {
-  const plain = rc4(key, Buffer.from(body.trim(), 'base64')).toString('utf8');
-  const answer = JSON.parse(plain) as { code: number; message?: string; result?: unknown };
-  if (answer.code !== 0) throw new Error(`Xiaomi: ${answer.message ?? `code ${answer.code}`}`);
+  const answer = parseObject(rc4(key, Buffer.from(body.trim(), 'base64')).toString('utf8'));
+  if (!answer || !('code' in answer)) {
+    const plain = parseObject(body.trim());
+    if (plain && 'code' in plain) throw apiError(plain);
+    throw new XiaomiAuthError('Xiaomi sent an answer this session cannot read');
+  }
+  if (answer.code !== 0) throw apiError(answer);
   return answer.result;
 }
 

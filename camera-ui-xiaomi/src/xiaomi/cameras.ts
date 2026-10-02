@@ -64,7 +64,7 @@ async function camerasOfRegion(cloud: XiaomiCloud, region: Region): Promise<Xiao
  * The cameras of every region of the account: a user rarely knows the region the Mi Home app chose. A region that
  * cannot be read is skipped and reported; when none can be read, that is an error.
  */
-export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: Region, error: Error) => void): Promise<XiaomiCamera[]> {
+export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: Region, error: Error) => void): Promise<{ cameras: XiaomiCamera[]; complete: boolean }> {
   const results = await Promise.allSettled(REGIONS.map((region) => camerasOfRegion(cloud, region)));
   const cameras = new Map<string, XiaomiCamera>();
   let failed = 0;
@@ -77,7 +77,7 @@ export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: R
     }
   });
   if (failed === REGIONS.length) throw (results[0] as PromiseRejectedResult).reason as Error;
-  return [...cameras.values()];
+  return { cameras: [...cameras.values()], complete: failed === 0 };
 }
 
 /** Keys of the newer protocol (miss): the cloud names the P2P vendor of the camera and signs a fresh key of ours. */

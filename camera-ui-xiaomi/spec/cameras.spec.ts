@@ -61,7 +61,8 @@ test('the cameras of every region are listed, other devices are not, a region th
     return { list: [] };
   });
 
-  const cameras = await listCameras(cloud, (region) => reported.push(region));
+  const { cameras, complete } = await listCameras(cloud, (region) => reported.push(region));
+  assert.equal(complete, false);
   assert.deepEqual(
     cameras.map((c) => [c.did, c.name, c.region, c.ip]),
     [
@@ -85,7 +86,8 @@ test('a long device list is read page by page, and a page that repeats stops it'
     if (!params.start_did) return { list: [{ did: '1', name: 'A', model: 'a.camera.x', localip: '10.0.0.1' }], has_more: true, next_start_did: '1' };
     return { list: [{ did: '2', name: 'B', model: 'b.camera.x', localip: '10.0.0.2' }], has_more: true, next_start_did: '1' };
   });
-  const cameras = await listCameras(cloud);
+  const { cameras, complete } = await listCameras(cloud);
+  assert.equal(complete, true);
   assert.deepEqual(
     cameras.map((c) => c.did),
     ['1', '2'],
