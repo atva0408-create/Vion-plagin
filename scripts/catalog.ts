@@ -24,6 +24,13 @@ interface CatalogEntry {
   logo?: string;
   screenshots: string[];
   protocolLevel?: number;
+  /**
+   * Where the plugin runs, as its package.json declares it (an empty list: anywhere). A server tells "compatible with
+   * this system" from them; an entry without them (an external plugin, a catalog older than these fields) is "not known".
+   */
+  os?: string[];
+  cpu?: string[];
+  engines?: Record<string, string>;
 }
 
 const CATEGORY_OVERRIDES: Record<string, Category> = {
@@ -165,6 +172,9 @@ function buildEntry(folder: string): { name: string; entry: CatalogEntry } {
     ...(existsSync(resolve(dir, 'logo.png')) ? { logo: `${RAW_BASE}/${folder}/logo.png` } : {}),
     screenshots: collectScreenshots(folder, dir),
     ...(protocolLevel !== undefined ? { protocolLevel } : {}),
+    os: pkg.os ?? [],
+    cpu: pkg.cpu ?? [],
+    ...(pkg.engines ? { engines: pkg.engines as Record<string, string> } : {}),
   };
 
   return { name, entry };
