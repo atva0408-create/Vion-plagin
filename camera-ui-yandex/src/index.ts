@@ -167,8 +167,9 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       {
         type: 'submit',
         key: 'qrLogin',
-        title: 'Sign in with QR code',
-        description: 'Scan the code with the Yandex app and confirm. Needed for speech on the stations and live updates of the sensors.',
+        title: 'Sign in with a link or QR code',
+        description:
+          'Opens a window: confirm the sign-in in the browser or with the Yandex app on the phone. Needed for speech on the stations and live updates of the sensors.',
         onClick: this.onQrLogin.bind(this),
         group: 'Yandex app',
       },
@@ -1095,7 +1096,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
           if (signOuts !== this.signOuts) return { toast: { type: 'error', message: SIGNED_OUT } };
           if (Date.now() > until)
             return {
-              toast: { type: 'warning', message: 'Not confirmed yet: confirm in the Yandex app, then press the button again' },
+              toast: { type: 'warning', message: 'Not confirmed yet: confirm the sign-in in Yandex, then press Save again' },
               schema: await this.qrSchema(String(values.qrLink)),
             };
           await new Promise((resolve) => setTimeout(resolve, QR_POLL_MS));
@@ -1117,26 +1118,33 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     }
   }
 
+  /**
+   * The link first: it needs no second device, in a browser signed in to Yandex the sign-in is one click on the page
+   * Yandex opens, and a browser that is not signed in is asked to sign in first. ViON gives a link field a button that
+   * opens it. The code is for the phone, when signing in to Yandex in this browser is not wanted.
+   */
   private async qrSchema(link: string): Promise<JsonSchemaWithoutCallbacks[]> {
-    const image = await QRCode.toDataURL(link, { margin: 1, width: 280 });
+    // 240 px: a phone reads it from the screen, and the window still fits on a phone or a small laptop
+    const image = await QRCode.toDataURL(link, { margin: 1, width: 240 });
     return [
       {
         type: 'string',
-        key: 'qrImage',
-        title: 'Scan with the Yandex app',
-        description: 'Or open the link below on the phone where you are signed in to Yandex.',
-        format: 'image',
+        key: 'qrLink',
+        title: 'Confirm in the browser',
+        description:
+          'Open the link with the button on its right and confirm the sign-in with the Yandex account of your Smart Home ' +
+          '(a browser not signed in to Yandex asks you to sign in first). Then come back to this window and press Save.',
         readonly: true,
-        defaultValue: image,
+        defaultValue: link,
       },
       {
         type: 'string',
-        key: 'qrLink',
-        title: 'Link',
-        description: 'After you confirm in the app, press the button below.',
-        format: 'textarea',
+        key: 'qrImage',
+        title: 'Or on the phone',
+        description: 'Scan the code with the Yandex app on a phone signed in to the same account and confirm the sign-in there. Then press Save.',
+        format: 'image',
         readonly: true,
-        defaultValue: link,
+        defaultValue: image,
       },
     ];
   }
@@ -1182,7 +1190,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'string',
         key: DONE_FIELD,
         title: 'Signed in to the Smart Home API, devices found:',
-        description: 'Sensors are added under Sensors in ViON, cameras under Cameras. For speech on the stations, also sign in with QR code.',
+        description: 'Sensors are added under Sensors in ViON, cameras under Cameras. For speech on the stations, also sign in with a link or QR code.',
         readonly: true,
         defaultValue: value,
       };

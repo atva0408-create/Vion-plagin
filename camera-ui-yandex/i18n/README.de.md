@@ -23,11 +23,15 @@ Das Plugin nutzt eine davon oder beide zusammen.
 
 Ohne Secret zeigt das Fenster stattdessen eine Seite von Yandex ID: Zugriff erlauben, Token kopieren und in das Fenster einfügen. Yandex ID zeigt das Token dort nur, wenn die App den Redirect URI oauth.yandex.ru/verification_code (mit https davor) hat: tragen Sie ihn zuerst in den Einstellungen der App auf oauth.yandex.ru ein.
 
-**Yandex-App (QR-Code).** Das Plugin meldet sich so an wie die Apps von Yandex. Diese Anmeldung braucht die Sprache der Stationen, und mit ihr ändern sich die Sensoren sofort:
+**Yandex-App (Link oder QR-Code).** Das Plugin meldet sich so an wie die Apps von Yandex. Diese Anmeldung braucht die Sprache der Stationen, und mit ihr ändern sich die Sensoren sofort:
 
-1. Klicken Sie auf **Mit QR-Code anmelden**
-2. Scannen Sie den Code mit der Yandex-App (oder öffnen Sie den Link auf dem Telefon, das bei Yandex angemeldet ist) und bestätigen Sie die Anmeldung
-3. Klicken Sie auf die Schaltfläche im Fenster
+1. Klicken Sie auf **Mit Link oder QR-Code anmelden**. Ein Fenster mit einem Link und einem QR-Code öffnet sich
+2. Bestätigen Sie die Anmeldung auf eine von zwei Arten:
+   - **Im Browser.** Klicken Sie auf die Schaltfläche rechts neben dem Link: Yandex öffnet sich in einem neuen Tab und bittet Sie, die Anmeldung zu bestätigen. Ist dieser Browser nicht bei Yandex angemeldet, fragt Yandex zuerst nach der Anmeldung
+   - **Am Telefon.** Scannen Sie den Code mit der Yandex-App auf einem Telefon, das bei Yandex angemeldet ist, und bestätigen Sie die Anmeldung in der App. Praktisch, wenn der Browser mit ViON nicht bei Yandex angemeldet ist
+3. Kehren Sie zum Fenster zurück und klicken Sie auf **Speichern**. Das Fenster zeigt das Konto, bei dem sich das Plugin angemeldet hat. Vor der Bestätigung geklickt, wartet es bis zu 20 Sekunden und bittet dann, erneut zu klicken
+
+Bestätigen Sie mit dem Yandex-Konto, zu dem Ihr Smart Home gehört: Das Plugin sieht die Geräte und Stationen des Kontos, das bestätigt hat. Yandex verlangt diese Bestätigung jedes Mal, ohne sie geht keine Anmeldung bei einem Konto durch.
 
 Wenn Sie bereits ein x_token des Kontos haben, können Sie es stattdessen in das Feld **x_token** einfügen.
 

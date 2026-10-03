@@ -23,11 +23,15 @@ The plugin can use either sign-in, or both together.
 
 Without a secret the window shows a page of Yandex ID instead: allow access there, copy the token and paste it into the window. Yandex ID shows the token there only when the app has the Redirect URI oauth.yandex.ru/verification_code (with https in front): enter it in the settings of the app on oauth.yandex.ru first.
 
-**Yandex app (QR code).** The plugin signs in the way the Yandex apps do. This sign-in is needed for the speech on the stations, and it reports changes of the sensors at once:
+**Yandex app (link or QR code).** The plugin signs in the way the Yandex apps do. This sign-in is needed for the speech on the stations, and it reports changes of the sensors at once:
 
-1. Click **Sign in with QR code**
-2. Scan the code with the Yandex app (or open the link on the phone signed in to Yandex) and confirm the sign-in
-3. Click the button in the window
+1. Click **Sign in with a link or QR code**. A window opens with a link and a QR code
+2. Confirm the sign-in in one of two ways:
+   - **In the browser.** Click the button to the right of the link: Yandex opens in a new tab and asks you to confirm the sign-in. If this browser is not signed in to Yandex, it asks you to sign in first
+   - **On the phone.** Scan the code with the Yandex app on a phone signed in to Yandex and confirm the sign-in in the app. Handy when the browser with ViON is not signed in to Yandex
+3. Come back to the window and click **Save**. The window shows the account the plugin signed in to. Clicked before the confirmation came, it waits up to 20 seconds and then asks you to click again
+
+Confirm with the Yandex account your Smart Home belongs to: the plugin sees the devices and stations of the account that confirmed. Yandex asks for this confirmation every time, a sign-in to an account does not go through without it.
 
 If you already have an x_token of the account, you can paste it into the **x_token** field instead.
 

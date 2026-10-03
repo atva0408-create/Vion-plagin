@@ -98,6 +98,15 @@ function keys(response: FormSubmitResponse | undefined): string[] {
   return (response?.schema ?? []).map((f) => f.key);
 }
 
+function valueOf(response: FormSubmitResponse | undefined, key: string): unknown {
+  return response?.schema?.find((f) => f.key === key)?.defaultValue;
+}
+
+// width of a PNG given as a data URL, from its IHDR header
+function pngWidth(dataUrl: string): number {
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64').readUInt32BE(16);
+}
+
 function adopt(nativeId: string, type: SensorType, name = nativeId): AdoptedSensor {
   return { id: `vion-${nativeId}`, nativeId, address: nativeId.split('|')[0], name, type } as AdoptedSensor;
 }
@@ -249,9 +258,12 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
 
   // ---- sign-in by QR code
   const qr = await h.submit('qrLogin', {});
-  assert.deepEqual(keys(qr), ['qrImage', 'qrLink']);
-  assert.match(String(qr?.schema?.[0]?.defaultValue), /^data:image\/png;base64,/);
-  const signed = await h.submit('qrLogin', { qrLink: qr?.schema?.[1]?.defaultValue });
+  assert.deepEqual(keys(qr), ['qrLink', 'qrImage'], 'the link to open in the browser comes first');
+  // a web address: ViON gives such a field the button that opens it
+  assert.match(String(valueOf(qr, 'qrLink')), /^https:\/\/passport\.yandex\.ru\//);
+  assert.match(String(valueOf(qr, 'qrImage')), /^data:image\/png;base64,/);
+  assert.equal(pngWidth(String(valueOf(qr, 'qrImage'))), 240, 'the code is small enough for the window on a phone');
+  const signed = await h.submit('qrLogin', { qrLink: valueOf(qr, 'qrLink') });
   assert.deepEqual(keys(signed), ['done']);
   assert.equal(h.values.xToken, X_TOKEN);
   assert.equal(h.values.account, 'ivan');
@@ -547,7 +559,7 @@ test('Sign out while the QR sign-in waits for the confirmation: the confirmation
   globalThis.fetch = fakeYandex(state).fetch;
   const h = host();
   const window = await h.submit('qrLogin', {});
-  const waiting = h.submit('qrLogin', { qrLink: window?.schema?.[1]?.defaultValue });
+  const waiting = h.submit('qrLogin', { qrLink: valueOf(window, 'qrLink') });
   await sleep(300);
   await h.press('logout');
   const answer = await waiting;
@@ -562,7 +574,7 @@ test('Sign out while the QR sign-in waits for the confirmation: the confirmation
   const unconfirmed = host();
   const unconfirmedWindow = await unconfirmed.submit('qrLogin', {});
   const started = Date.now();
-  const stillWaiting = unconfirmed.submit('qrLogin', { qrLink: unconfirmedWindow?.schema?.[1]?.defaultValue });
+  const stillWaiting = unconfirmed.submit('qrLogin', { qrLink: valueOf(unconfirmedWindow, 'qrLink') });
   await sleep(300);
   await unconfirmed.press('logout');
   assert.match(String((await stillWaiting)?.toast?.message), /Signed out of Yandex while this sign-in ran/);

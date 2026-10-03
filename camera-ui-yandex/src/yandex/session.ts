@@ -74,7 +74,7 @@ export class YandexSession {
 
   /**
    * Starts the sign-in with a QR code. The link it gives is what the code shows: it is opened by the Yandex app
-   * (scanned, or tapped on the phone signed in to Yandex), and the app asks to confirm the sign-in.
+   * (scanned) or in a browser signed in to Yandex, and Yandex asks there to confirm the sign-in.
    */
   async startQr(): Promise<string> {
     this.qr = undefined;
