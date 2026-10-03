@@ -11,6 +11,7 @@ export const NODE = {
   'camera-ui-smtp': '',
   'camera-ui-tuya': '',
   'camera-ui-wasm-motion': '',
+  'camera-ui-yandex': '',
 };
 
 export const GO = {

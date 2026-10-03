@@ -58,6 +58,7 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-wasm-motion': 'detection',
   'camera-ui-wyze': 'camera-source',
   'camera-ui-xiaomi': 'camera-source',
+  'camera-ui-yandex': 'automation',
 };
 
 const FEATURED = new Set<string>([

@@ -18,6 +18,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import numpy.typing as npt
 from camera_ui_ml.detectors.clip import ClipEncoder
 from PIL import Image
 
@@ -53,14 +54,14 @@ class SiglipPreprocessor:
         )
         self.tokenizer = AutoTokenizer.from_pretrained(folder)
 
-    def pixels(self, image: Any) -> np.ndarray:
+    def pixels(self, image: Any) -> npt.NDArray[np.float32]:
         pil = image if isinstance(image, Image.Image) else Image.fromarray(np.asarray(image, dtype=np.uint8))
         pil = pil.convert("RGB").resize((self.width, self.height), resample=self.resample)
         array = np.asarray(pil, dtype=np.float32) * self.rescale
         array = (array - self.mean) / self.std
         return array.transpose(2, 0, 1)[None].astype(np.float32)
 
-    def input_ids(self, text: str) -> np.ndarray:
+    def input_ids(self, text: str) -> npt.NDArray[np.int64]:
         tokens = self.tokenizer(
             [text], padding="max_length", max_length=TEXT_TOKENS, truncation=True, return_tensors="np"
         )
@@ -74,7 +75,7 @@ async def ensure_processor(manager: BaseModelManager, base_url: str, family: str
     return os.path.join(manager.model_path, family)
 
 
-def _unit(vector: np.ndarray) -> list[float]:
+def _unit(vector: npt.NDArray[Any]) -> list[float]:
     flat = np.asarray(vector, dtype=np.float32).reshape(-1)
     norm = float(np.linalg.norm(flat))
     return [float(v) for v in (flat / norm if norm > 0 else flat)]

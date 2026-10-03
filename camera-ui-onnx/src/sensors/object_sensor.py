@@ -36,7 +36,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         self._camera = camera
         self._plugin = plugin
         self._logger = logger
-        self._active: str | None = None
+        self._active_model: str | None = None
 
     @property
     def storage_schema(self) -> list[JsonSchema]:
@@ -69,7 +69,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
 
     @property
     def modelSpec(self) -> ObjectModelSpec:
-        detector = self._plugin.object_detectors.get(self._active or self._wanted_model())
+        detector = self._plugin.object_detectors.get(self._active_model or self._wanted_model())
         width, height = detector.input_size if detector is not None and detector.initialized else (320, 320)
         return {
             "input": {"width": width, "height": height, "format": "rgb"},
@@ -83,10 +83,10 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         if detector is None or not detector.initialized:
             # a newly published model loads in the background; the current one keeps detecting
             self._plugin.prepare_object_detector(wanted)
-            detector = self._plugin.object_detectors.get(self._active) if self._active else None
-        elif wanted != self._active:
-            previous = self._active
-            self._active = wanted
+            detector = self._plugin.object_detectors.get(self._active_model) if self._active_model else None
+        elif wanted != self._active_model:
+            previous = self._active_model
+            self._active_model = wanted
             self.updateModelSpec()
             if previous:
                 self._logger.log(f"Модель объектов: {previous} → {wanted}")
@@ -110,7 +110,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             )
             model_name = DEFAULT_OBJECT_MODEL
             await self._plugin.get_object_detector(model_name)
-        self._active = model_name
+        self._active_model = model_name
         self.updateModelSpec()
         if trained_models.detector_name() == model_name:
             self._logger.log(f"Используется модель, обученная ViON: {model_name}")
@@ -119,7 +119,7 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         if new_model != _old_model:
             resolved = resolve_object_model(new_model, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
             await self._plugin.get_object_detector(resolved)
-            self._active = resolved
+            self._active_model = resolved
             self.updateModelSpec()
             self._logger.log(f"Модель объектов изменена на {resolved}")
 

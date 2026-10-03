@@ -661,5 +661,31 @@
       "camera.ui": ">=2.2.11",
       "node": ">=22.0.0"
     }
+  },
+  "@vionvision/camera-ui-yandex": {
+    "displayName": "Яндекс Умный дом",
+    "category": "automation",
+    "featured": false,
+    "tagline": "Connects ViON to the Yandex Smart Home and the Alice stations: sensors and relays of the hub become sensors of ViON, scenarios run from automations, stations say notifications, cameras of the Smart Home show in ViON.",
+    "i18n": {
+      "en": {
+        "tagline": "Connects ViON to the Yandex Smart Home and the Alice stations: sensors and relays of the hub become sensors of ViON, scenarios run from automations, stations say notifications, cameras of the Smart Home show in ViON."
+      },
+      "ru": {
+        "tagline": "Связывает ViON с Умным домом Яндекса и станциями Алисы: датчики и реле хаба становятся датчиками ViON, сценарии запускаются из автоматизаций, станции произносят уведомления, камеры Умного дома показываются в ViON."
+      },
+      "de": {
+        "tagline": "Verbindet ViON mit dem Yandex Smart Home und den Alice-Stationen: Sensoren und Relais des Hubs werden zu Sensoren von ViON, Szenarien laufen aus Automationen, Stationen sprechen Benachrichtigungen, Kameras des Smart Home erscheinen in ViON."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-yandex/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.11",
+      "node": ">=22.0.0"
+    }
   }
 }

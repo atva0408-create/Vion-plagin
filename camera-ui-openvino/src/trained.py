@@ -87,7 +87,8 @@ class TrainedModels:
         manifest = self.manifest()
         for entry in [manifest.get("detector"), *(manifest.get("attributes") or [])]:
             if _usable(entry) and entry.get("id") == model_id:
-                return entry
+                found: dict[str, Any] = entry
+                return found
         return None
 
     def path(self, name: str) -> str:
