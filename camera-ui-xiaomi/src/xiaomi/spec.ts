@@ -72,9 +72,9 @@ const NUMBER_FORMATS = new Set(['uint8', 'uint16', 'uint32', 'int8', 'int16', 'i
 export function wordsOf(item: { type: string; description?: string }): string {
   const name = item.type.split(':')[3] ?? '';
   return `${name} ${item.description ?? ''}`
-    .toLowerCase()
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/[-_]+/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2');
+    .toLowerCase();
 }
 
 interface AxisWords {
@@ -193,7 +193,7 @@ async function getJson(url: string): Promise<unknown> {
  */
 export class SpecSource {
   private readonly specs = new Map<string, Promise<MiotSpec>>();
-  private instances?: Promise<{ model?: string; type?: string; version?: number }[]>;
+  private types?: Promise<Map<string, string>>;
 
   constructor(private readonly baseUrl = SPEC_URL) {}
 
@@ -217,16 +217,25 @@ export class SpecSource {
   }
 
   private async typeOf(model: string): Promise<string> {
-    this.instances ??= getJson(`${this.baseUrl}/instances?status=released`).then((answer) => (answer as { instances?: [] }).instances ?? []);
-    let instances: { model?: string; type?: string; version?: number }[];
+    // the list of all specs is large: only the newest spec of each camera model is kept from it
+    this.types ??= getJson(`${this.baseUrl}/instances?status=released`).then((answer) => {
+      const newest = new Map<string, { type: string; version: number }>();
+      for (const instance of (answer as { instances?: { model?: string; type?: string; version?: number }[] }).instances ?? []) {
+        if (!instance.model || !instance.type || !/\.(camera|cateye)\./.test(instance.model)) continue;
+        const known = newest.get(instance.model);
+        if (!known || (instance.version ?? 0) > known.version) newest.set(instance.model, { type: instance.type, version: instance.version ?? 0 });
+      }
+      return new Map([...newest].map(([key, value]) => [key, value.type]));
+    });
+    let types: Map<string, string>;
     try {
-      instances = await this.instances;
+      types = await this.types;
     } catch (error) {
-      this.instances = undefined;
+      this.types = undefined;
       throw new Error(`Could not read the list of MIoT specs: ${errorText(error)}`);
     }
-    const latest = instances.filter((instance) => instance.model === model && instance.type).sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
-    if (!latest?.type) throw new Error(`miot-spec.org has no spec of ${model}`);
-    return latest.type;
+    const type = types.get(model);
+    if (!type) throw new Error(`miot-spec.org has no spec of ${model}`);
+    return type;
   }
 }

@@ -10,8 +10,10 @@ import { axisDriver, lensOf, STEPS_PER_RANGE } from '../src/optics.js';
 import { XiaomiPtz } from '../src/ptz.js';
 import { SpecSource, findOptics, hasOptics, wordsOf } from '../src/xiaomi/spec.js';
 
-import type { MiotDevice } from '../src/xiaomi/miot.js';
+import { miotDevice } from '../src/xiaomi/miot.js';
 import { C300, RW, ZOOM_CAMERA } from './miot-specs.js';
+
+import type { MiotDevice } from '../src/xiaomi/miot.js';
 
 import type { ActionRef, MiotSpec, PropRef } from '../src/xiaomi/spec.js';
 
@@ -274,6 +276,84 @@ test('a spec is read once per model; a model the device list names no spec for i
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test('values named in camelCase (ZoomIn, ZoomOut) are found as well', () => {
+  const spec: MiotSpec = {
+    type: 't',
+    services: [
+      {
+        iid: 6,
+        type: 's',
+        properties: [
+          {
+            iid: 1,
+            type: 'urn:x:property:zoom-control:1:x:1',
+            format: 'uint8',
+            access: RW,
+            'value-list': [
+              { value: 0, description: 'Stop' },
+              { value: 1, description: 'ZoomIn' },
+              { value: 2, description: 'ZoomOut' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(findOptics(spec).zoom, { kind: 'values', prop: { siid: 6, piid: 1 }, plus: 1, minus: 2, stop: 0 });
+});
+
+test('quick steps are steps one after another; a reset reads the zoom again', async () => {
+  const { device, sent, values } = recordingDevice({ '9.1': 1 });
+  const zoom = axisDriver({ kind: 'range', prop: { siid: 9, piid: 1 }, min: 1, max: 30, step: 1 }, device);
+  await Promise.all([zoom.step(1), zoom.step(1)]);
+  assert.deepEqual(sent, ['get 9.1', 'set 9.1=4', 'set 9.1=7']);
+  // the app zoomed out meanwhile
+  values['9.1'] = 1;
+  zoom.reset!();
+  await zoom.step(1);
+  assert.deepEqual(sent.slice(3), ['get 9.1', 'set 9.1=4']);
+});
+
+test('a new zoom gesture of the player reads where the zoom is', async () => {
+  const { device, sent, values } = recordingDevice({ '9.1': 30 });
+  const { ptz } = zoomPtz(device);
+  try {
+    await ptz.setRelativeMove({ panDelta: 0, tiltDelta: 0, zoomDelta: -1 });
+    values['9.1'] = 30;
+    await ptz.setRelativeMove({ panDelta: 0, tiltDelta: 0, zoomDelta: -1 });
+    assert.deepEqual(sent, ['get 9.1', 'set 9.1=27', 'get 9.1', 'set 9.1=27']);
+  } finally {
+    ptz.dispose();
+  }
+});
+
+test('a zoom position the camera refused is not taken as the position', async () => {
+  const device: MiotDevice = {
+    get: async () => 1,
+    set: async () => {
+      throw new Error('refused');
+    },
+    action: async () => {},
+  };
+  const { ptz, lines } = zoomPtz(device);
+  try {
+    await ptz.setPosition({ pan: 0, tilt: 0, zoom: 1 });
+    assert.equal(ptz.position.zoom, 0);
+    assert.deepEqual(lines.error, ['Could not set the zoom: refused']);
+  } finally {
+    ptz.dispose();
+  }
+});
+
+test('the cloud: code 1 (taken, still being done) is a success, a negative code a refusal', async () => {
+  const answers: unknown[] = [{ code: 1 }, [{ code: 1 }], [{ code: -704042011 }]];
+  const camera = async () => ({ did: '1001', region: 'ru' }) as never;
+  const device = miotDevice(async (run) => run({ request: async () => answers.shift() } as never), camera);
+  await device.action({ siid: 9, aiid: 2 });
+  await device.set({ siid: 9, piid: 1 }, 5);
+  await assert.rejects(device.set({ siid: 9, piid: 1 }, 6), /refused to set 9.1 \(code -704042011\)/);
 });
 
 let failed = 0;

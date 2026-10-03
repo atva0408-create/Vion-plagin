@@ -17,7 +17,8 @@ export interface MiotDevice {
 
 function checked(answer: MiotAnswer | undefined, what: string): MiotAnswer {
   // the device refuses with a negative code: -4001 not readable, -4002 not writable, -704… offline
-  if (!answer || (answer.code !== undefined && answer.code !== 0)) throw new Error(`The camera refused ${what} (code ${answer?.code ?? 'none'})`);
+  // 1 is "taken, still being done": a success too
+  if (!answer || (typeof answer.code === 'number' && answer.code < 0)) throw new Error(`The camera refused ${what} (code ${answer?.code ?? 'none'})`);
   return answer;
 }
 

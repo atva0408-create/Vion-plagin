@@ -716,7 +716,8 @@ test('a camera with pan and tilt switched on has its PTZ control again after a r
   const hall = device('1001', { ptz: true });
   await h.plugin.configureCameras([hall.camera]);
   await h.launch();
-  assert.equal(hall.sensors.length, 1);
+  // the lens is read first, without holding up the start
+  await until(() => hall.sensors.length === 1);
   await h.shutdown();
 });
 
@@ -734,6 +735,7 @@ test("a step turns the camera over a session of the plugin's own, with keys the 
     const hall = device('1001', { ptz: true });
     await h.plugin.configureCameras([hall.camera]);
     await h.launch();
+    await until(() => hall.sensors.length === 1);
     await hall.sensors[0].setRelativeMove({ panDelta: 0.4, tiltDelta: 0, zoomDelta: 0 });
     await until(() => camera.operations.length === 1);
     assert.deepEqual(camera.operations, [2]);
@@ -755,8 +757,21 @@ test('a camera the plugin cannot turn says why in its log at the first step', as
   const hall = device('1001', { ptz: true }, logger);
   await h.plugin.configureCameras([hall.camera]);
   await h.launch();
+  await until(() => hall.sensors.length === 1);
   await hall.sensors[0].setRelativeMove({ panDelta: -1, tiltDelta: 0, zoomDelta: 0 });
   assert.deepEqual(lines.error, ['Could not turn the camera left: Hall (chuangmi.camera.039a01) connects over tutk: the plugin turns cameras over CS2 only']);
+  await h.shutdown();
+});
+
+test('a camera gone from the account with pan and tilt on does not hold up the start of the others', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001', { ptz: true });
+  const gone = device('9999', { ptz: true });
+  await h.plugin.configureCameras([hall.camera, gone.camera]);
+  const launched = await Promise.race([h.launch().then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 5000))]);
+  assert.equal(launched, true, 'the start hung');
+  await until(() => hall.sensors.length === 1);
   await h.shutdown();
 });
 

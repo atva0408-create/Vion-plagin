@@ -386,9 +386,10 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const optics = findOptics(await this.specs.spec(camera.model, camera.specType));
     return lensOf(
       optics,
+      // a lens command still queued when the plugin stops must not read the whole device list again
       miotDevice(
         (run) => this.withSession(run),
-        () => this.knownCamera(did),
+        () => (this.started ? this.knownCamera(did) : Promise.reject(new Error('The Xiaomi plugin has stopped'))),
       ),
     );
   }

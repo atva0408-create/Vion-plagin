@@ -14,6 +14,8 @@ export interface AxisDriver {
   set?: (fraction: number) => Promise<void>;
   /** Ends a move the camera keeps doing by itself (an axis of values in, out and stop). */
   stop?: () => Promise<void>;
+  /** Forgets the value it followed: read again at the next step (the app or a restart may have changed it). */
+  reset?: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -49,12 +51,23 @@ export function axisDriver(axis: Axis, device: MiotDevice): AxisDriver {
     await device.set(axis.prop, value);
     current = value;
   };
+  // one after another: two quick presses are two steps, not the same one twice
+  let queue: Promise<void> = Promise.resolve();
+  const queued = (run: () => Promise<void>): Promise<void> => {
+    const next = queue.then(run);
+    queue = next.catch(() => undefined);
+    return next;
+  };
   return {
-    step: async (direction) => {
-      const next = snap((await known()) + direction * span);
-      if (next !== current) await write(next);
+    step: (direction) =>
+      queued(async () => {
+        const next = snap((await known()) + direction * span);
+        if (next !== current) await write(next);
+      }),
+    set: (fraction) => queued(() => write(snap(min + clamp(fraction, 0, 1) * (max - min)))),
+    reset: () => {
+      current = undefined;
     },
-    set: async (fraction) => write(snap(min + clamp(fraction, 0, 1) * (max - min))),
   };
 }
 

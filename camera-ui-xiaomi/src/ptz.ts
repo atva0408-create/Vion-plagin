@@ -80,6 +80,8 @@ export class XiaomiPtz extends PTZControl {
     } else {
       this.endHold();
       if (move) {
+        // a new zoom gesture reads where the zoom is: the app or a restart of the camera may have moved it
+        if (move.key.startsWith('zoom:')) this.zoom?.reset?.();
         const timer = setInterval(() => {
           if (this.hold && Date.now() < this.hold.until) void this.run(move);
           else this.endHold();
@@ -95,6 +97,7 @@ export class XiaomiPtz extends PTZControl {
   public override async setRelativeMove(value: PTZRelativeMove): Promise<void> {
     const move = this.moveOf(value.panDelta, value.tiltDelta, value.zoomDelta ?? 0);
     if (move) {
+      if (move.key.startsWith('zoom:')) this.zoom?.reset?.();
       await move.run();
       await move.end?.();
     }
@@ -106,8 +109,8 @@ export class XiaomiPtz extends PTZControl {
     const set = this.zoom?.set;
     if (!set || typeof value?.zoom !== 'number' || !Number.isFinite(value.zoom)) return;
     const zoom = Math.min(1, Math.max(0, value.zoom));
-    await this.lens(() => set(zoom), 'set the zoom');
-    await super.setPosition({ ...this.position, zoom });
+    // the position is the zoom the camera took, not one it refused
+    if (await this.lens(() => set(zoom), 'set the zoom')) await super.setPosition({ ...this.position, zoom });
   }
 
   /** Ends what is running: the held direction and the session. */
@@ -129,8 +132,8 @@ export class XiaomiPtz extends PTZControl {
       const stop = lens.stop;
       return {
         key: `zoom:${direction}`,
-        run: () => this.lens(() => lens.step(direction), direction > 0 ? 'zoom in' : 'zoom out'),
-        ...(stop ? { end: () => this.lens(stop, 'stop the zoom') } : {}),
+        run: async () => void (await this.lens(() => lens.step(direction), direction > 0 ? 'zoom in' : 'zoom out', `zoom:${direction}`)),
+        ...(stop ? { end: async () => void (await this.lens(stop, 'stop the zoom')) } : {}),
       };
     }
     const step = stepOf(pan, tilt);
@@ -151,20 +154,26 @@ export class XiaomiPtz extends PTZControl {
     }
   }
 
-  /** Lens commands one after another; a failed one is reported and ends the held move. */
-  private lens(command: () => Promise<void>, what: string): Promise<void> {
-    this.lensQueue = this.lensQueue.then(async () => {
+  /**
+   * Lens commands one after another; a failed one is reported and ends the held move it belongs to (`key`), not a
+   * move started since. Whether the command went through.
+   */
+  private lens(command: () => Promise<void>, what: string, key?: string): Promise<boolean> {
+    const done = this.lensQueue.then(async () => {
       this.setMoving(true);
       clearTimeout(this.movingTimer);
       this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.stepMs);
       try {
         await command();
+        return true;
       } catch (error) {
-        this.endHold(false);
+        if (key && this.hold?.key === key) this.endHold(false);
         this.logger.error(`Could not ${what}:`, errorText(error));
+        return false;
       }
     });
-    return this.lensQueue;
+    this.lensQueue = done.then(() => undefined);
+    return done;
   }
 
   /** Steps one after another over one session: two at once would open two sessions with the camera. */

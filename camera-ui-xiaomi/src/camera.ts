@@ -28,6 +28,7 @@ export class Camera implements StreamingInterface {
   private ptz?: XiaomiPtz;
   /** switching on reads the lens first: a second switch waits for the first instead of adding a second control */
   private ptzChange: Promise<void> = Promise.resolve();
+  private disposed = false;
 
   constructor(
     public readonly device: CameraDevice,
@@ -55,7 +56,8 @@ export class Camera implements StreamingInterface {
   public async initialize(): Promise<void> {
     await this.device.implement(this);
     this.device.connect();
-    await this.applyPtz(this.storage.values.ptz === true);
+    // the lens is read over the network: the camera does not wait for it, and neither does the list of cameras
+    this.applyPtz(this.storage.values.ptz === true).catch((error) => this.device.logger.error('Could not set up pan and tilt:', errorText(error)));
   }
 
   public async streamUrl(_sourceId: string): Promise<string> {
@@ -65,6 +67,7 @@ export class Camera implements StreamingInterface {
 
   /** The camera left the plugin: its motor session is closed. */
   public dispose(): void {
+    this.disposed = true;
     this.ptz?.dispose();
   }
 
@@ -78,6 +81,8 @@ export class Camera implements StreamingInterface {
     const nativeId = this.device.nativeId;
     if (on && !this.ptz && nativeId) {
       const lens = await this.readLens(nativeId);
+      // the camera left the plugin while its lens was read
+      if (this.disposed) return;
       const ptz = new XiaomiPtz(this.openMotor(nativeId), this.device.logger, {}, lens.zoom);
       try {
         await this.device.addSensor(ptz);
