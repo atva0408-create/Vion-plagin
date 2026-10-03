@@ -1,5 +1,6 @@
 ## [0.11.1]
 
+- The search re-index counts only its own work: events that already had their vector were shown as failures ("3 of 3, 2 failed"), and a search index that was up to date was never said to be
 - A changed plan of ViON Cloud reaches the recording at once, together with ViON 2.3.4: the cloud tells the server, the server tells the recorder. A plan with more cameras starts their recording right away, it used to take up to an hour
 
 ## [0.11.0]

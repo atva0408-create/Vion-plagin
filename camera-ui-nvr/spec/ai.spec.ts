@@ -146,7 +146,14 @@ await nvr.startClipReindex();
 await done;
 const status = await nvr.getClipReindexStatus();
 assert.equal(status.error, undefined);
-assert.equal(status.total, 3);
+// the one event without a vector is the work; the events that had one are neither work nor failures
+assert.deepEqual({ total: status.total, done: status.done, skipped: status.skipped }, { total: 1, done: 1, skipped: 0 });
+// run again: nothing to do, which the dialog says as "up to date"
+const again = new Promise<void>((resolve) => void nvr.onClipReindex((s) => !s.running && resolve()));
+await nvr.startClipReindex();
+await again;
+const second = await nvr.getClipReindexStatus();
+assert.deepEqual({ total: second.total, done: second.done, skipped: second.skipped, error: second.error }, { total: 0, done: 0, skipped: 0, error: undefined });
 const dogs = await nvr.searchEventsByText('dog', 10, 0.5);
 assert.deepEqual(
   dogs.map((r) => r.eventId),

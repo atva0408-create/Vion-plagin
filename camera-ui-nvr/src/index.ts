@@ -1976,16 +1976,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (!encoder) throw new Error('Нет плагина с CLIP (ONNX, OpenVINO или CoreML)');
       const model = (await withTimeout(encoder.getTextEmbedding('a photo'))).embeddingModel;
 
+      // an event that has a vector of the model is not this job's work: counted as skipped, the dialog said
+      // "N failed" for every event that was already fine, and "up to date" never
       const pending: PendingScene[] = [];
-      let skipped = 0;
       for (let before: number | undefined; ;) {
         const rows = this.store.events({ before, limit: 500 });
         if (!rows.length) break;
         for (const row of rows) {
-          if (this.semantic.hasVectors(row.id, model)) {
-            skipped++;
-            continue;
-          }
+          if (this.semantic.hasVectors(row.id, model)) continue;
           const ev = JSON.parse(row.data) as RecordedEvent;
           const label = String((ev.segments?.[0]?.detections?.[0] as { label?: string } | undefined)?.label ?? ev.types?.[0] ?? '');
           pending.push({ id: row.id, cameraId: row.camera_id, startTime: row.start_ms, label });
@@ -1993,12 +1991,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         before = rows[rows.length - 1].start_ms;
         if (rows.length < 500) break;
       }
-      this.emitClip({ total: pending.length + skipped, done: skipped, skipped });
+      this.emitClip({ total: pending.length, done: 0, skipped: 0 });
 
+      // done: events that got their vector; skipped: events whose picture could not be turned into one
+      let done = 0;
+      let skipped = 0;
       for (let i = 0; i < pending.length && !this.clipCancel; i += CLIP_EMBED_BATCH) {
         const batch = pending.slice(i, i + CLIP_EMBED_BATCH);
-        skipped += batch.length - (await this.embedScenes(encoder, batch)).length;
-        this.emitClip({ done: Math.min(this.clipStatus.total, skipped + i + batch.length), skipped });
+        const embedded = (await this.embedScenes(encoder, batch)).length;
+        done += embedded;
+        skipped += batch.length - embedded;
+        this.emitClip({ done, skipped });
       }
       this.emitClip({ running: false });
     } catch (error) {

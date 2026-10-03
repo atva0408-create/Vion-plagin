@@ -1,5 +1,6 @@
 ## [0.11.1]
 
+- Die Neuindizierung der Suche zählt nur ihre eigene Arbeit: Ereignisse, die ihren Vektor schon hatten, erschienen als Fehler („3 von 3, 2 fehlgeschlagen“), und ein aktueller Suchindex wurde nie so genannt
 - Ein geänderter Tarif von ViON Cloud erreicht die Aufnahme sofort, zusammen mit ViON 2.3.4: Die Cloud sagt es dem Server, der Server der Aufnahme. Ein Tarif mit mehr Kameras startet deren Aufnahme gleich, früher dauerte das bis zu einer Stunde
 
 ## [0.11.0]
