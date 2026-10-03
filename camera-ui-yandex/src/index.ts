@@ -2,6 +2,7 @@ import { API_EVENT, BasePlugin, SwitchProperty } from '@camera.ui/sdk';
 import QRCode from 'qrcode';
 
 import { Camera } from './camera.js';
+import { extraSchema } from './extras.js';
 import { SCENARIO_DEVICE, scenarioSlot, slotFromRecord, slotsOf, splitNativeId } from './mapping.js';
 import { SCENARIO_RESET_MS, applyDevice, commandFor, createSensor } from './sensors.js';
 import { StationVoice } from './voice.js';
@@ -38,7 +39,7 @@ import type { Slot } from './mapping.js';
 import type { Bound, YandexSwitch } from './sensors.js';
 import type { Source, YandexConfig } from './types.js';
 import type { YDevice, YScenario } from './yandex/home.js';
-import type { DeviceCode, OAuthTokens } from './yandex/iot.js';
+import type { DeviceCode, OAuthTokens, YAction } from './yandex/iot.js';
 
 const CAMERA_PREFIX = 'yandex:';
 const STATION_PREFIX = 'station:';
@@ -573,7 +574,22 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       return;
     }
     applyDevice(bound, device, live);
+    const b = bound.slot.binding;
+    if (b.kind === 'onoff' || b.kind === 'panel') {
+      const light = b.kind === 'onoff' && b.light;
+      (bound.sensor as YandexSwitch).setExtras(extraSchema(device, light, (action) => this.extraCommand(bound, action)));
+    }
     bound.sensor.setSourceState('connected');
+  }
+
+  /** A field of the extra controls was set (extras.ts): the command goes to the device at once. */
+  private async extraCommand(bound: Bound, action: YAction): Promise<void> {
+    try {
+      await this.commandApi().action(bound.slot.deviceId, [action]);
+    } catch (error: any) {
+      this.logger.error(`Command for ${bound.slot.name} failed:`, errorText(error));
+      throw error;
+    }
   }
 
   private applyScenarios(): void {
@@ -668,6 +684,11 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         await this.commandApi().runScenario(slot.binding.scenarioId);
         const sensor = bound.sensor as YandexSwitch;
         setTimeout(() => sensor.write({ [SwitchProperty.On]: false }), SCENARIO_RESET_MS).unref?.();
+        return;
+      }
+      // a panel has nothing to turn on: its controls are its settings
+      if (slot.binding.kind === 'panel') {
+        (bound.sensor as YandexSwitch).write({ [SwitchProperty.On]: false });
         return;
       }
       const action = commandFor(slot, property, value);

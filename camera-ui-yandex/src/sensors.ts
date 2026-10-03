@@ -1,6 +1,8 @@
 import { DoorbellTrigger, LightCapability, LightControl, LightProperty, MotionSensor, Sensor, SwitchControl, SwitchProperty, sensorMeta } from '@camera.ui/sdk';
 
-import type { SensorCategory, SensorType } from '@camera.ui/sdk';
+import type { JsonSchema, SensorCategory, SensorType } from '@camera.ui/sdk';
+import { schemaKey } from './extras.js';
+
 import type { Slot } from './mapping.js';
 import type { YDevice } from './yandex/home.js';
 
@@ -49,6 +51,27 @@ export class YandexSwitch extends SwitchControl {
     super(name, options(nativeId));
   }
 
+  private extraFields: JsonSchema[] = [];
+  private extraKey = '[]';
+
+  /** The settings ViON shows for the sensor: the extra controls of the device (extras.ts). */
+  override get storageSchema(): JsonSchema[] {
+    return this.extraFields;
+  }
+
+  /** New extra controls, or new current values in them; nothing is sent when they are the same. */
+  setExtras(fields: JsonSchema[]): void {
+    const key = schemaKey(fields);
+    if (key === this.extraKey) return;
+    this.extraKey = key;
+    this.extraFields = fields;
+    try {
+      this.storage.defineSchemas(fields);
+    } catch {
+      // not registered yet: the host reads storageSchema when it registers the sensor
+    }
+  }
+
   write(partial: Record<string, unknown>): void {
     this._writeState(partial);
   }
@@ -66,6 +89,27 @@ export class YandexLight extends LightControl {
     private readonly command: CommandFn,
   ) {
     super(name, options(nativeId));
+  }
+
+  private extraFields: JsonSchema[] = [];
+  private extraKey = '[]';
+
+  /** The settings ViON shows for the sensor: the extra controls of the device (extras.ts). */
+  override get storageSchema(): JsonSchema[] {
+    return this.extraFields;
+  }
+
+  /** New extra controls, or new current values in them; nothing is sent when they are the same. */
+  setExtras(fields: JsonSchema[]): void {
+    const key = schemaKey(fields);
+    if (key === this.extraKey) return;
+    this.extraKey = key;
+    this.extraFields = fields;
+    try {
+      this.storage.defineSchemas(fields);
+    } catch {
+      // not registered yet: the host reads storageSchema when it registers the sensor
+    }
   }
 
   write(partial: Record<string, unknown>): void {
@@ -97,7 +141,7 @@ export interface Bound {
 export function createSensor(slot: Slot, command: CommandFn): RuntimeSensor {
   const b = slot.binding;
   let sensor: RuntimeSensor;
-  if (b.kind === 'onoff' || b.kind === 'scenario') {
+  if (b.kind === 'onoff' || b.kind === 'scenario' || b.kind === 'panel') {
     sensor = b.kind === 'onoff' && b.light ? new YandexLight(slot.name, slot.nativeId, command) : new YandexSwitch(slot.name, slot.nativeId, command);
   } else if (b.kind === 'button') {
     sensor = new DoorbellTrigger(slot.name, options(slot.nativeId));
@@ -118,7 +162,8 @@ export function applyDevice(bound: Bound, device: YDevice, live: boolean): void 
   const { binding: b } = bound.slot;
   const sensor = bound.sensor;
 
-  if (b.kind === 'scenario') return;
+  // a scenario has no state, a panel only its extras (index.ts applies them)
+  if (b.kind === 'scenario' || b.kind === 'panel') return;
 
   if (b.kind === 'onoff') {
     const brightness = b.light ? device.capabilities.find((c) => c.type === 'devices.capabilities.range' && c.instance === 'brightness') : undefined;

@@ -7,6 +7,8 @@ export interface YCapability {
   instance: string;
   value: unknown;
   parameters: Record<string, any>;
+  /** Whether Yandex knows the state: an IR remote only sends, its state is never read back. */
+  retrievable?: boolean;
 }
 
 export interface YProperty {
@@ -65,7 +67,15 @@ function timeOf(raw: unknown): number | undefined {
 
 function capabilities(raw: unknown): YCapability[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((c) => typeof c?.type === 'string').map((c) => ({ type: c.type, instance: instanceOf(c), value: c.state?.value, parameters: c.parameters ?? {} }));
+  return raw
+    .filter((c) => typeof c?.type === 'string')
+    .map((c) => ({
+      type: c.type,
+      instance: instanceOf(c),
+      value: c.state?.value,
+      parameters: c.parameters ?? {},
+      retrievable: typeof c.retrievable === 'boolean' ? c.retrievable : undefined,
+    }));
 }
 
 function properties(raw: unknown): YProperty[] {
