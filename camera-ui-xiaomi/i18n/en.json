@@ -24,10 +24,16 @@
   "This Mi account has no cameras. Check that the cameras are in this account in the Mi Home app, then sign in again.": "This Mi account has no cameras. Check that the cameras are in this account in the Mi Home app, then sign in again.",
   "Signed in to Mi Home": "Signed in to Mi Home",
   "Cameras found are listed below. To add one, open Cameras in ViON and click it under Discovered.": "Cameras found are listed below. To add one, open Cameras in ViON and click it under Discovered.",
+  "Signed in to Mi Home, no camera ViON can play": "Signed in to Mi Home, no camera ViON can play",
+  "The cameras of this Mi account are listed below with the reason they cannot be added.": "The cameras of this Mi account are listed below with the reason they cannot be added.",
+  "Cameras ViON cannot play": "Cameras ViON cannot play",
+  "Xiaomi connects these cameras over a protocol ViON does not support yet. They are not offered for adding.": "Xiaomi connects these cameras over a protocol ViON does not support yet. They are not offered for adding.",
   "Picture": "Picture",
   "Xiaomi wants to make sure a person signs in.": "Xiaomi wants to make sure a person signs in.",
   "Characters from the picture": "Characters from the picture",
   "Type the characters you see, then confirm.": "Type the characters you see, then confirm.",
   "Confirmation code": "Confirmation code",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.",
+  "Pan and tilt (PTZ)": "Pan and tilt (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300."
 }

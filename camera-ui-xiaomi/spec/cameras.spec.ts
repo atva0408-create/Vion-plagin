@@ -3,7 +3,7 @@
 // Run: npx tsx spec/cameras.spec.ts
 import assert from 'node:assert/strict';
 
-import { cameraStreamUrl, isCameraModel, listCameras, vendorName } from '../src/xiaomi/cameras.js';
+import { UnplayableCameraError, cameraStreamUrl, checkPlayable, isCameraModel, listCameras, vendorName } from '../src/xiaomi/cameras.js';
 
 import type { XiaomiCamera } from '../src/xiaomi/cameras.js';
 import type { XiaomiCloud } from '../src/xiaomi/cloud.js';
@@ -134,6 +134,45 @@ test('over TUTK the P2P id goes along', async () => {
   assert.equal(vendorName(6), 'mtp');
 });
 
+test('a camera over MTP or Agora gets no address: the engine refuses those vendors, the error names it', async () => {
+  for (const [id, label] of [
+    [6, 'MTP'],
+    [3, 'Agora'],
+    [undefined, 'P2P vendor ""'],
+  ] as const) {
+    const { cloud } = stubCloud(() => ({ vendor: { vendor: id }, public_key: 'dd', sign: 's' }));
+    await assert.rejects(cameraStreamUrl(cloud, camera()), (error: unknown) => {
+      assert.ok(error instanceof UnplayableCameraError, String(error));
+      assert.equal(error.message, `Hall (chuangmi.camera.039a01) connects over ${label}, which ViON cannot play`);
+      return true;
+    });
+  }
+});
+
+test('whether ViON can play a camera is asked as a connection asks; the older protocol plays', async () => {
+  const cs2 = stubCloud(() => ({ vendor: { vendor: 4 }, public_key: 'dd', sign: 's' }));
+  await checkPlayable(cs2.cloud, camera());
+  assert.deepEqual(
+    cs2.asked.map((a) => a.path),
+    ['/v2/device/miss_get_vendor'],
+  );
+  await checkPlayable(stubCloud(() => ({ vendor: { vendor: 1, vendor_params: { p2p_id: 'UID' } }, public_key: 'dd', sign: 's' })).cloud, camera());
+  await assert.rejects(checkPlayable(stubCloud(() => ({ vendor: { vendor: 6 }, public_key: 'dd', sign: 's' })).cloud, camera()), UnplayableCameraError);
+
+  const legacy = stubCloud(() => ({}));
+  await checkPlayable(legacy.cloud, camera({ model: 'isa.camera.isc5' }));
+  assert.equal(legacy.asked.length, 0);
+  const unlisted = stubCloud(() => {
+    throw new Error('Xiaomi: no available vendor support');
+  });
+  await checkPlayable(unlisted.cloud, camera({ model: 'chuangmi.camera.v2' }));
+  // any other error is not an answer about the camera
+  const refused = stubCloud(() => {
+    throw new Error('Xiaomi: permission denied');
+  });
+  await assert.rejects(checkPlayable(refused.cloud, camera()), (error: unknown) => !(error instanceof UnplayableCameraError) && /permission denied/.test(String(error)));
+});
+
 test('a camera of the older protocol: signed keys, or the device password', async () => {
   const signed = stubCloud(() => ({ p2p_id: 'UID1', p2p_dev_public_key: 'ee', signForAppData: 'sig' }));
   const q1 = new URL(await cameraStreamUrl(signed.cloud, camera({ model: 'isa.camera.isc5' }))).searchParams;
@@ -178,6 +217,17 @@ test('a door viewer is woken first; quality and lens go into the address', async
 
   assert.equal(new URL(await cameraStreamUrl(cloud, camera(), 'max')).searchParams.get('subtype'), '3');
   assert.equal(new URL(await cameraStreamUrl(cloud, camera(), 'default')).searchParams.get('subtype'), null);
+});
+
+test('a door viewer that could not be woken is reported with the reason and dialled all the same', async () => {
+  const { cloud } = stubCloud(({ path }) => {
+    if (path.startsWith('/home/rpc/')) throw new Error('Xiaomi: device offline');
+    return { vendor: { vendor: 4 }, public_key: 'dd', sign: 's' };
+  });
+  const reported: string[] = [];
+  const url = new URL(await cameraStreamUrl(cloud, camera({ model: 'loock.cateye.v02' }), 'default', undefined, (error) => reported.push(error.message)));
+  assert.equal(url.host, '192.168.1.50');
+  assert.deepEqual(reported, ['Xiaomi: device offline']);
 });
 
 test('a camera without a local address is explained, not dialled', async () => {

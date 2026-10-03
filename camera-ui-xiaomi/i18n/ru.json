@@ -24,10 +24,16 @@
   "This Mi account has no cameras. Check that the cameras are in this account in the Mi Home app, then sign in again.": "В этом аккаунте Mi нет камер. Проверьте в приложении Mi Home, что камеры добавлены в этот аккаунт, и войдите снова.",
   "Signed in to Mi Home": "Вход в Mi Home выполнен",
   "Cameras found are listed below. To add one, open Cameras in ViON and click it under Discovered.": "Ниже список найденных камер. Чтобы добавить камеру, откройте в ViON страницу «Камеры» и нажмите на неё в разделе «Обнаружено».",
+  "Signed in to Mi Home, no camera ViON can play": "Вход в Mi Home выполнен, камер, которые ViON может показать, нет",
+  "The cameras of this Mi account are listed below with the reason they cannot be added.": "Ниже камеры этого аккаунта Mi и причина, по которой их нельзя добавить.",
+  "Cameras ViON cannot play": "Камеры, которые ViON не может показать",
+  "Xiaomi connects these cameras over a protocol ViON does not support yet. They are not offered for adding.": "Xiaomi подключает эти камеры по протоколу, который ViON пока не поддерживает. Они не предлагаются для добавления.",
   "Picture": "Картинка",
   "Xiaomi wants to make sure a person signs in.": "Xiaomi хочет убедиться, что входит человек.",
   "Characters from the picture": "Символы с картинки",
   "Type the characters you see, then confirm.": "Введите символы с картинки и подтвердите.",
   "Confirmation code": "Код подтверждения",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите.",
+  "Pan and tilt (PTZ)": "Поворот камеры (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Позволяет поворачивать камеру из ViON: стрелки в плеере и автослежение. Для камер с мотором, например Mi 360°, C200 и C300."
 }

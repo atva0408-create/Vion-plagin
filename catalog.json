@@ -26,7 +26,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-audio-yamnet/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-coral": {
     "displayName": "Coral",
@@ -46,7 +52,18 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coral/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "linux"
+    ],
+    "cpu": [
+      "x64",
+      "arm64"
+    ],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-coreml": {
     "displayName": "CoreML",
@@ -66,7 +83,15 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-coreml/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "darwin"
+    ],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-eufy": {
     "displayName": "Eufy",
@@ -86,7 +111,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-eufy/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=24.5.0"
+    }
   },
   "@vionvision/camera-ui-homeassistant": {
     "displayName": "Home Assistant",
@@ -106,7 +137,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homeassistant/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-homekit": {
     "displayName": "HomeKit",
@@ -126,7 +163,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-homekit/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.18.0"
+    }
   },
   "@vionvision/camera-ui-ncnn": {
     "displayName": "NCNN",
@@ -146,7 +189,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-ncnn/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-nvr": {
     "displayName": "ViON NVR",
@@ -166,7 +215,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-nvr/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.8",
+      "node": ">=22.13.0"
+    }
   },
   "@vionvision/camera-ui-onnx": {
     "displayName": "ONNX",
@@ -186,7 +241,19 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onnx/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "linux",
+      "win32"
+    ],
+    "cpu": [
+      "x64",
+      "arm64"
+    ],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-onnx-legacy": {
     "displayName": "ONNX Legacy",
@@ -206,7 +273,18 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onnx-legacy/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "linux",
+      "win32"
+    ],
+    "cpu": [
+      "x64"
+    ],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-onvif": {
     "displayName": "Onvif",
@@ -226,7 +304,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-onvif/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=20.19.0"
+    }
   },
   "@vionvision/camera-ui-opencl": {
     "displayName": "OpenCL",
@@ -246,7 +330,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-opencl/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-opencv": {
     "displayName": "OpenCV",
@@ -266,7 +356,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-opencv/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-openvino": {
     "displayName": "OpenVino",
@@ -286,7 +382,19 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-openvino/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "linux",
+      "win32"
+    ],
+    "cpu": [
+      "x64",
+      "arm64"
+    ],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-openvino-legacy": {
     "displayName": "OpenVino Legacy",
@@ -306,7 +414,19 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-openvino-legacy/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [
+      "linux",
+      "win32"
+    ],
+    "cpu": [
+      "x64",
+      "arm64"
+    ],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-pamdiff": {
     "displayName": "Pam Diff",
@@ -326,7 +446,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-pamdiff/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-reolink": {
     "displayName": "Reolink",
@@ -346,7 +472,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-reolink/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.8",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-ring": {
     "displayName": "Ring",
@@ -366,7 +498,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-ring/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-rust-motion": {
     "displayName": "Rust Motion",
@@ -386,7 +524,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-rust-motion/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-smtp": {
     "displayName": "SMTP",
@@ -406,7 +550,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-smtp/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-tuya": {
     "displayName": "Tuya",
@@ -426,7 +576,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-tuya/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-wasm-motion": {
     "displayName": "WASM Motion",
@@ -446,7 +602,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-wasm-motion/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-wyze": {
     "displayName": "Wyze",
@@ -466,7 +628,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-wyze/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-xiaomi": {
     "displayName": "Xiaomi",
@@ -486,7 +654,13 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-xiaomi/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.11",
+      "node": ">=22.0.0"
+    }
   },
   "@vionvision/camera-ui-yandex": {
     "displayName": "Яндекс Умный дом",
@@ -506,6 +680,12 @@
     },
     "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-yandex/logo.png",
     "screenshots": [],
-    "protocolLevel": 2
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.11",
+      "node": ">=22.0.0"
+    }
   }
 }

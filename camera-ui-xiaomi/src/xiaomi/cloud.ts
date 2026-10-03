@@ -24,12 +24,21 @@ export function apiBaseUrl(region: string): string {
   return region !== 'cn' && (REGIONS as readonly string[]).includes(region) ? `https://${region}.api.io.mi.com/app` : 'https://api.io.mi.com/app';
 }
 
-/** What Xiaomi wants before the sign-in goes on: the characters of a picture, or a code it sent. */
-export type LoginChallenge = { kind: 'captcha'; image: string } | { kind: 'verify'; phone?: string; email?: string };
+/**
+ * What Xiaomi wants before the sign-in goes on: the characters of a picture, or a code it sent. `rejected` is why
+ * Xiaomi did not take the code typed last: the same code is asked again, no new one is sent.
+ */
+export type LoginChallenge = { kind: 'captcha'; image: string } | { kind: 'verify'; phone?: string; email?: string; rejected?: string };
 
 export class LoginChallengeError extends Error {
   constructor(public readonly challenge: LoginChallenge) {
-    super(challenge.kind === 'captcha' ? 'Xiaomi asks for the characters from a picture' : 'Xiaomi asks for a confirmation code');
+    super(
+      challenge.kind === 'captcha'
+        ? 'Xiaomi asks for the characters from a picture'
+        : challenge.rejected
+          ? `The code was not accepted: ${challenge.rejected}`
+          : 'Xiaomi asks for a confirmation code',
+    );
     this.name = 'LoginChallengeError';
   }
 }
@@ -42,6 +51,17 @@ export class XiaomiAuthError extends Error {
   }
 }
 
+/**
+ * Xiaomi refuses the stored token itself (the password of the account was changed, or its sign-ins were ended): unlike
+ * a sign-in that broke on the way, presenting it again cannot help.
+ */
+export class TokenRejectedError extends XiaomiAuthError {
+  constructor() {
+    super('Xiaomi no longer accepts the stored sign-in, sign in again');
+    this.name = 'TokenRejectedError';
+  }
+}
+
 interface PendingLogin {
   username: string;
   password: string;
@@ -49,6 +69,8 @@ interface PendingLogin {
   captchaCode?: string;
   flag?: string;
   identitySession?: string;
+  /** where the code went, shown again when a code is typed wrong */
+  target?: { phone?: string; email?: string };
 }
 
 const WRONG_PASSWORD = 70016;
@@ -80,6 +102,16 @@ async function readLogin<T>(res: Response): Promise<T> {
   const marker = '&&&START&&&';
   if (!text.startsWith(marker)) throw new Error(`Xiaomi: ${res.status} ${text.slice(0, 200)}`);
   return JSON.parse(text.slice(marker.length)) as T;
+}
+
+/**
+ * The address of the captcha picture in an answer of the account server. The stream engine names the field
+ * `captchaURL`, other clients `captchaUrl`: Go reads JSON names regardless of case, so the engine cannot tell which
+ * one Xiaomi sends, and an exact name here would miss the captcha and end the sign-in with "no reason given".
+ */
+function captchaUrlOf(answer: object): string | undefined {
+  const value = Object.entries(answer).find(([key]) => key.toLowerCase() === 'captchaurl')?.[1];
+  return typeof value === 'string' ? nonEmpty(value) : undefined;
 }
 
 function http(url: string, init: RequestInit = {}): Promise<Response> {
@@ -203,7 +235,6 @@ export class XiaomiCloud {
       ssecurity?: string;
       passToken?: string;
       location?: string;
-      captchaURL?: string;
       notificationUrl?: string;
       code?: number;
       desc?: string;
@@ -211,7 +242,8 @@ export class XiaomiCloud {
 
     this.pending = { username, password };
 
-    if (answer.captchaURL) return this.captcha(answer.captchaURL);
+    const captchaUrl = captchaUrlOf(answer);
+    if (captchaUrl) return this.captcha(captchaUrl);
     if (answer.notificationUrl) return this.startVerification(answer.notificationUrl);
     if (!answer.location) {
       if (answer.code === WRONG_PASSWORD) throw new XiaomiAuthError('Wrong account or password');
@@ -243,16 +275,24 @@ export class XiaomiCloud {
       redirect: 'manual',
     });
     const answer = await readLogin<{ location?: string; code?: number; desc?: string }>(res);
-    if (!answer.location) throw new XiaomiAuthError(`The code was not accepted: ${answer.desc ?? answer.code ?? 'no reason given'}`);
+    if (!answer.location) {
+      // the sign-in waits on: a typo is typed again, starting over would make Xiaomi send another code (a few a day)
+      throw new LoginChallengeError({ kind: 'verify', ...this.pending?.target, rejected: String(answer.desc ?? answer.code ?? 'no reason given') });
+    }
     this.pending = undefined;
     await this.finish(answer.location);
+  }
+
+  /** Forgets a sign-in that waits for a captcha or a code, and with it the password it keeps for the next step. */
+  public abandon(): void {
+    this.pending = undefined;
   }
 
   /** Signs in with the stored token, no password and no confirmation needed. */
   public async loginWithToken(userId: string, passToken: string): Promise<void> {
     const res = await http(`${ACCOUNT_URL}/pass/serviceLogin?_json=true&sid=${SERVICE_ID}`, { headers: { cookie: `userId=${userId}; passToken=${passToken}` } });
     const answer = await readLogin<{ ssecurity?: string; passToken?: string; location?: string }>(res);
-    if (!answer.location) throw new XiaomiAuthError('Xiaomi no longer accepts the stored sign-in, sign in again');
+    if (!answer.location) throw new TokenRejectedError();
     this.userId = userId;
     this.passToken = nonEmpty(answer.passToken) ?? passToken;
     if (answer.ssecurity) this.ssecurity = Buffer.from(answer.ssecurity, 'base64');
@@ -271,7 +311,8 @@ export class XiaomiCloud {
   }
 
   private async captcha(captchaUrl: string): Promise<never> {
-    const res = await http(ACCOUNT_URL + captchaUrl);
+    // the address comes relative to the account server or whole; prefixing a whole one gave a host that does not exist
+    const res = await http(new URL(captchaUrl, ACCOUNT_URL).toString());
     const image = Buffer.from(await res.arrayBuffer());
     if (this.pending) this.pending.ick = cookiesOf(res).get('ick') ?? '';
     const type = nonEmpty(res.headers.get('content-type')?.split(';')[0]?.trim()) ?? 'image/jpeg';
@@ -302,14 +343,16 @@ export class XiaomiCloud {
     // the code is asked for after a captcha
     if (pending.captchaCode) cookies += `; ick=${pending.ick ?? ''}`;
     const request = form({ _json: 'true', icode: pending.captchaCode ?? '', retry: '0' });
-    const sent = await readLogin<{ code?: number; captchaURL?: string; desc?: string }>(
+    const sent = await readLogin<{ code?: number; desc?: string }>(
       await http(`${ACCOUNT_URL}/identity/auth/send${name}Ticket`, { method: 'POST', body: request.body, headers: { ...request.headers, cookie: cookies } }),
     );
 
-    if (sent.captchaURL) return this.captcha(sent.captchaURL);
+    const captchaUrl = captchaUrlOf(sent);
+    if (captchaUrl) return this.captcha(captchaUrl);
     if (sent.code !== 0) throw new Error(`Xiaomi could not send the code: ${sent.desc ?? sent.code ?? 'no reason given'}`);
 
-    throw new LoginChallengeError({ kind: 'verify', phone: target.maskedPhone, email: target.maskedEmail });
+    pending.target = { phone: target.maskedPhone, email: target.maskedEmail };
+    throw new LoginChallengeError({ kind: 'verify', ...pending.target });
   }
 
   private verifyName(): string {
