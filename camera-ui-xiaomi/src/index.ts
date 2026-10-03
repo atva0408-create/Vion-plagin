@@ -1,9 +1,12 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 
 import { Camera } from './camera.js';
+import { lensOf } from './optics.js';
 import { UnplayableCameraError, cameraStreamUrl, checkPlayable, listCameras, motorKeys } from './xiaomi/cameras.js';
 import { LoginChallengeError, TokenRejectedError, XiaomiAuthError, XiaomiCloud } from './xiaomi/cloud.js';
 import { MissSession } from './xiaomi/miss.js';
+import { miotDevice } from './xiaomi/miot.js';
+import { SpecSource, findOptics } from './xiaomi/spec.js';
 import { errorText } from './xiaomi/text.js';
 
 import type {
@@ -21,6 +24,7 @@ import type {
 import type { LoginChallenge } from './xiaomi/cloud.js';
 import type { XiaomiCamera } from './xiaomi/cameras.js';
 import type { MotorAnswer } from './xiaomi/miss.js';
+import type { Lens } from './optics.js';
 import type { XiaomiConfig } from './types.js';
 
 const ID_PREFIX = 'xiaomi:';
@@ -66,6 +70,8 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   private existing = new Map<string, CameraDevice>();
   private controllers = new Map<string, Camera>();
+  /** the MIoT descriptions of the models, read once each */
+  private readonly specs = new SpecSource();
   private started = false;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<XiaomiConfig>) {
@@ -344,6 +350,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
       device,
       (nativeId) => this.streamUrl(nativeId),
       (nativeId) => (onAnswer) => this.openMotor(nativeId, onAnswer),
+      (nativeId) => this.lensOf(nativeId),
     );
     this.controllers.set(did, camera);
     try {
@@ -371,6 +378,19 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const camera = await this.knownCamera(did);
     const keys = await this.withSession((cloud) => motorKeys(cloud, camera));
     return MissSession.open(camera.ip, keys, onAnswer);
+  }
+
+  /** What the lens of the camera can do, from its MIoT description: zoom and focus go through the Mi Home cloud. */
+  private async lensOf(did: string): Promise<Lens> {
+    const camera = await this.knownCamera(did);
+    const optics = findOptics(await this.specs.spec(camera.model, camera.specType));
+    return lensOf(
+      optics,
+      miotDevice(
+        (run) => this.withSession(run),
+        () => this.knownCamera(did),
+      ),
+    );
   }
 
   /** The camera as the device list last gave it, with an address read at most ADDRESS_MAX_AGE_MS ago. */

@@ -1,3 +1,7 @@
+## [0.3.0]
+
+- Cameras with a zoom lens zoom from ViON: the zoom of the player and **Home** (all the way out), with **Pan, tilt and zoom (PTZ)** switched on. Their focus is set next to the switch: **Focus nearer**, **Focus farther** and the autofocus of the camera. The plugin finds the zoom and the focus in the MIoT description Xiaomi publishes for the model; cameras with a fixed lens (Mi 360°, C200, C300) have neither and turn as before
+
 ## [0.2.0]
 
 - Cameras with a motor turn from ViON: switch on **Pan and tilt (PTZ)** for the camera under **Settings**, **Autotrack**, then hold an arrow in the player or let autotracking follow a person

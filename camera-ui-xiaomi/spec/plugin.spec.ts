@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import XiaomiPlugin from '../src/index.js';
 import { SIGN, fakeCamera } from './fake-camera.js';
 import { CAPTCHA, PASSWORD, TICKET, fakeXiaomi } from './fake-xiaomi.js';
+import { C300, ZOOM_CAMERA } from './miot-specs.js';
+
+import { PTZCapability } from '@camera.ui/sdk';
 
 import type { CameraDevice, DiscoveredCamera, FormSubmitResponse, JsonSchema, PTZControl, StreamingInterface } from '@camera.ui/sdk';
 import type { Scenario } from './fake-xiaomi.js';
@@ -124,7 +127,19 @@ function device(nativeId = '1001', stored: Record<string, unknown> = {}, logger:
     createStorage(schemas: JsonSchema[]) {
       schema = schemas as typeof schema;
       for (const field of schema) if (field.store && values[field.key] === undefined) values[field.key] = field.defaultValue;
-      return { values };
+      return {
+        values,
+        hasSchema: (key: string) => schema.some((field) => field.key === key),
+        async addSchema(field: JsonSchema) {
+          schema.push(field as (typeof schema)[number]);
+        },
+        async removeSchema(key: string) {
+          schema = schema.filter((field) => field.key !== key);
+        },
+        async changeSchema(key: string, field: JsonSchema) {
+          schema = schema.map((current) => (current.key === key ? (field as (typeof schema)[number]) : current));
+        },
+      };
     },
     async addSensor(sensor: PTZControl) {
       sensors.push(sensor);
@@ -141,6 +156,8 @@ function device(nativeId = '1001', stored: Record<string, unknown> = {}, logger:
     stream: () => implementation!.streamUrl('source-1'),
     sensors,
     values,
+    /** the fields of the camera's settings, as they are now */
+    fields: () => schema,
     /** the camera's setting changed in the interface */
     set: async (key: string, value: unknown) => {
       const old = values[key];
@@ -740,6 +757,74 @@ test('a camera the plugin cannot turn says why in its log at the first step', as
   await h.launch();
   await hall.sensors[0].setRelativeMove({ panDelta: -1, tiltDelta: 0, zoomDelta: 0 });
   assert.deepEqual(lines.error, ['Could not turn the camera left: Hall (chuangmi.camera.039a01) connects over tutk: the plugin turns cameras over CS2 only']);
+  await h.shutdown();
+});
+
+test('a camera with a zoom lens zooms and focuses through the Mi Home cloud once pan and tilt are on; off hides the focus', async () => {
+  const fake = fakeXiaomi(
+    scenario({
+      devices: { ru: [{ did: '1001', name: 'Hall', model: 'xiaomi.camera.zoom01', localip: '192.168.1.50', isOnline: true, spec_type: ZOOM_CAMERA.type }], cn: [] },
+      specs: { [ZOOM_CAMERA.type]: ZOOM_CAMERA },
+      miot: { '1001.9.1': 1 },
+    }),
+  );
+  globalThis.fetch = fake.fetch;
+  const { lines, logger } = recorder();
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001', {}, logger);
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  const keys = () => hall.fields().map((field) => field.key);
+  assert.deepEqual(keys(), ['ptz']);
+
+  await hall.set('ptz', true);
+  const ptz = hall.sensors[0]!;
+  assert.ok(ptz.capabilities.includes(PTZCapability.Zoom));
+  assert.deepEqual(lines.log, ['The camera has a lens ViON can drive: zoom and focus']);
+  assert.deepEqual(keys(), ['ptz', 'focusNear', 'focusFar', 'focusAuto']);
+
+  await ptz.setRelativeMove({ panDelta: 0, tiltDelta: 0, zoomDelta: 0.5 });
+  const set = fake.calls.find((call) => call.path === '/miotspec/prop/set');
+  assert.deepEqual(set?.params, { params: [{ did: '1001', siid: 9, piid: 1, value: 4 }] });
+
+  await hall
+    .fields()
+    .find((field) => field.key === 'focusFar')!
+    .onSet();
+  assert.deepEqual(fake.calls.find((call) => call.path === '/miotspec/action')?.params, { params: { did: '1001', siid: 9, aiid: 2, in: [] } });
+
+  await hall.set('ptz', false);
+  assert.deepEqual(keys(), ['ptz']);
+  await h.shutdown();
+});
+
+test('a camera with a fixed lens turns without zoom; a description that cannot be read is said and the camera turns all the same', async () => {
+  const c300 = { did: '1001', name: 'Hall', model: 'xiaomi.camera.c01a01', localip: '192.168.1.50', isOnline: true, spec_type: C300.type };
+  globalThis.fetch = fakeXiaomi(scenario({ devices: { ru: [c300], cn: [] }, specs: { [C300.type]: C300 } })).fetch;
+  let h = host({ userId: '42', passToken: 'PT1' });
+  let hall = device('1001', { ptz: true });
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  await until(() => hall.sensors.length === 1);
+  assert.equal(hall.sensors[0]!.capabilities.includes(PTZCapability.Zoom), false);
+  assert.deepEqual(
+    hall.fields().map((field) => field.key),
+    ['ptz'],
+  );
+  await h.shutdown();
+
+  // miot-spec.org does not know the model
+  globalThis.fetch = fakeXiaomi(scenario({ devices: { ru: [{ ...c300, spec_type: undefined }], cn: [] } })).fetch;
+  const { lines, logger } = recorder();
+  h = host({ userId: '42', passToken: 'PT1' });
+  hall = device('1001', { ptz: true }, logger);
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  await until(() => hall.sensors.length === 1);
+  assert.equal(hall.sensors[0]!.capabilities.includes(PTZCapability.Zoom), false);
+  assert.deepEqual(lines.warn, [
+    'Could not read whether the camera can zoom (switch pan and tilt off and on to try again): miot-spec.org has no spec of xiaomi.camera.c01a01',
+  ]);
   await h.shutdown();
 });
 
