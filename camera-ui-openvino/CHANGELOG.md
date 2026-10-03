@@ -1,3 +1,7 @@
+## [1.4.3]
+
+- Object detection gets frames of the size the chosen model expects: it was given 320×320 whatever the model, and switching the model could stop and start the detector twice
+
 ## [1.4.2]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface

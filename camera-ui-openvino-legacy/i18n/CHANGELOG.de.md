@@ -1,3 +1,7 @@
+## [1.2.19]
+
+- Die Objekterkennung bekommt Bilder in der Größe, die das gewählte Modell erwartet: Sie bekam 320×320 unabhängig vom Modell, und ein Modellwechsel konnte den Detektor doppelt stoppen und starten
+
 ## [1.2.18]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

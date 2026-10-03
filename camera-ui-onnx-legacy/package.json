@@ -1,7 +1,7 @@
 {
   "displayName": "ONNX Legacy",
   "name": "@vionvision/camera-ui-onnx-legacy",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "description": "Детектор ONNX Runtime для ViON со старой средой CUDA 12. Для видеокарт NVIDIA до GTX 1650 (Maxwell, Pascal, Volta) и систем, остающихся на CUDA 12. На новом оборудовании используйте обычный плагин ONNX.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
