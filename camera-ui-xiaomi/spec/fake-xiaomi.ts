@@ -35,6 +35,11 @@ export interface Scenario {
   deviceListDelayMs?: number;
   /** the error the API answers a wake-up of a door viewer with */
   wakeUpError?: string;
+  /** MIoT values of the devices, by `did.siid.piid`; a set changes them */
+  miot?: Record<string, unknown>;
+  /** the specs miot-spec.org has, by their type, and its list of released ones */
+  specs?: Record<string, unknown>;
+  instances?: { model: string; type: string; version: number }[];
 }
 
 export interface Call {
@@ -101,6 +106,16 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
       else result = answer;
     } else if (path === '/device/devicepass') {
       result = scenario.devicepass?.[String(parsed.did)];
+    } else if (path === '/miotspec/prop/get' || path === '/miotspec/prop/set') {
+      const values = (scenario.miot ??= {});
+      result = ((parsed.params ?? []) as { did: string; siid: number; piid: number; value?: unknown }[]).map((item) => {
+        const key = `${item.did}.${item.siid}.${item.piid}`;
+        if (!(key in values)) return { ...item, code: -4003 };
+        if (path === '/miotspec/prop/set') values[key] = item.value;
+        return { did: item.did, siid: item.siid, piid: item.piid, code: 0, ...(path === '/miotspec/prop/get' ? { value: values[key] } : {}) };
+      });
+    } else if (path === '/miotspec/action') {
+      result = { code: 0, out: [] };
     } else if (path.startsWith('/home/rpc/')) {
       if (scenario.wakeUpError) error = scenario.wakeUpError;
       else result = { code: 0 };
@@ -174,6 +189,13 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
       return new Response(null, { status: 302, headers });
     }
     if (url.hostname === 'api.io.mi.com' && url.pathname === '/sts/done') return new Response('ok');
+
+    if (url.hostname === 'miot-spec.org') {
+      if (url.pathname === '/miot-spec-v2/instances') return Response.json({ instances: scenario.instances ?? [] });
+      const spec = scenario.specs?.[url.searchParams.get('type') ?? ''];
+      if (url.pathname === '/miot-spec-v2/instance' && spec) return Response.json(spec);
+      return Response.json({ error: 'not found' }, { status: 404 });
+    }
 
     return new Response(`unexpected ${url}`, { status: 404 });
   };

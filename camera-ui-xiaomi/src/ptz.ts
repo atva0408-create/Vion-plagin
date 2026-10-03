@@ -4,6 +4,7 @@ import { MotorStep } from './xiaomi/miss.js';
 import { errorText } from './xiaomi/text.js';
 
 import type { LoggerService, PTZDirection, PTZPosition, PTZRelativeMove } from '@camera.ui/sdk';
+import type { AxisDriver, Direction } from './optics.js';
 import type { MissSession, MotorAnswer } from './xiaomi/miss.js';
 
 /** A held direction steps the motor this often; one step takes the camera about a quarter of a second. */
@@ -28,14 +29,29 @@ export function stepOf(pan: number, tilt: number): MotorStep | undefined {
   return tilt > 0 ? MotorStep.Up : MotorStep.Down;
 }
 
+/** What a held control does: a step of the motor or of the zoom, repeated while held. */
+interface Move {
+  key: string;
+  run: () => Promise<void>;
+  /** ends a move the camera keeps doing by itself */
+  end?: () => Promise<void>;
+}
+
+/** Whether the zoom is the larger part of a move: the player sends pan, tilt and zoom together, one of them set. */
+function zoomWins(pan: number, tilt: number, zoom: number): boolean {
+  return zoom !== 0 && Math.abs(zoom) > Math.max(Math.abs(pan), Math.abs(tilt));
+}
+
 /**
- * Pan and tilt of a Xiaomi camera. The stream engine has no motor command, so the plugin opens a P2P session of its
- * own with the camera, the way the Mi Home app turns it, and keeps it while the camera is being moved.
+ * Pan, tilt and zoom of a Xiaomi camera. The stream engine has no motor command, so the plugin opens a P2P session of
+ * its own with the camera, the way the Mi Home app turns it, and keeps it while the camera is being moved. A camera
+ * with a zoom lens zooms through the Mi Home cloud, as the app does.
  */
 export class XiaomiPtz extends PTZControl {
   private session?: Promise<MissSession>;
   private queue: Promise<void> = Promise.resolve();
-  private hold?: { step: MotorStep; until: number; timer: NodeJS.Timeout };
+  private hold?: { key: string; until: number; timer: NodeJS.Timeout; busy: boolean; end?: () => Promise<void> };
+  private lensQueue: Promise<void> = Promise.resolve();
   private idleTimer?: NodeJS.Timeout;
   private movingTimer?: NodeJS.Timeout;
   private refusals = 0;
@@ -45,9 +61,10 @@ export class XiaomiPtz extends PTZControl {
     private readonly open: OpenSession,
     private readonly logger: LoggerService,
     timing: Partial<PtzTiming> = {},
+    private readonly zoom?: AxisDriver,
   ) {
     super('Xiaomi PTZ');
-    this.capabilities = [PTZCapability.Pan, PTZCapability.Tilt, PTZCapability.RelativeMove, PTZCapability.VelocityControl];
+    this.capabilities = [PTZCapability.Pan, PTZCapability.Tilt, ...(zoom ? [PTZCapability.Zoom] : []), PTZCapability.RelativeMove, PTZCapability.VelocityControl];
     this.timing = { stepMs: STEP_INTERVAL_MS, holdMs: HOLD_LIMIT_MS, idleMs: IDLE_MS, ...timing };
   }
 
@@ -57,18 +74,20 @@ export class XiaomiPtz extends PTZControl {
    */
   public override async setVelocity(value: PTZDirection | undefined): Promise<void> {
     if (!value) return;
-    const step = stepOf(value.panSpeed, value.tiltSpeed);
-    if (step !== undefined && this.hold?.step === step) {
+    const move = this.moveOf(value.panSpeed, value.tiltSpeed, value.zoomSpeed ?? 0);
+    if (move && this.hold?.key === move.key) {
       this.hold.until = Date.now() + this.timing.holdMs;
     } else {
       this.endHold();
-      if (step !== undefined) {
+      if (move) {
+        // a new zoom gesture reads where the zoom is: the app or a restart of the camera may have moved it
+        if (move.key.startsWith('zoom:')) this.zoom?.reset?.();
         const timer = setInterval(() => {
-          if (this.hold && Date.now() < this.hold.until) void this.step(step);
+          if (this.hold && Date.now() < this.hold.until) void this.run(move);
           else this.endHold();
         }, this.timing.stepMs);
-        this.hold = { step, until: Date.now() + this.timing.holdMs, timer };
-        await this.step(step);
+        this.hold = { key: move.key, until: Date.now() + this.timing.holdMs, timer, busy: false, end: move.end };
+        await this.run(move);
       }
     }
     await super.setVelocity(value);
@@ -76,12 +95,23 @@ export class XiaomiPtz extends PTZControl {
 
   /** One step in the direction of the move: the camera has no finer or measured moves. */
   public override async setRelativeMove(value: PTZRelativeMove): Promise<void> {
-    const step = stepOf(value.panDelta, value.tiltDelta);
-    if (step !== undefined) await this.step(step);
+    const move = this.moveOf(value.panDelta, value.tiltDelta, value.zoomDelta ?? 0);
+    if (move) {
+      if (move.key.startsWith('zoom:')) this.zoom?.reset?.();
+      await move.run();
+      await move.end?.();
+    }
     await super.setRelativeMove(value);
   }
 
-  public override async setPosition(_value: PTZPosition): Promise<void> {}
+  /** Only the zoom has a position: the motor of a Xiaomi camera does not say where it points. Home zooms out. */
+  public override async setPosition(value: PTZPosition): Promise<void> {
+    const set = this.zoom?.set;
+    if (!set || typeof value?.zoom !== 'number' || !Number.isFinite(value.zoom)) return;
+    const zoom = Math.min(1, Math.max(0, value.zoom));
+    // the position is the zoom the camera took, not one it refused
+    if (await this.lens(() => set(zoom), 'set the zoom')) await super.setPosition({ ...this.position, zoom });
+  }
 
   /** Ends what is running: the held direction and the session. */
   public dispose(): void {
@@ -93,6 +123,57 @@ export class XiaomiPtz extends PTZControl {
 
   protected override onStop(): void {
     this.dispose();
+  }
+
+  private moveOf(pan: number, tilt: number, zoom: number): Move | undefined {
+    const lens = this.zoom;
+    if (lens && zoomWins(pan, tilt, zoom)) {
+      const direction: Direction = zoom > 0 ? 1 : -1;
+      const stop = lens.stop;
+      return {
+        key: `zoom:${direction}`,
+        run: async () => void (await this.lens(() => lens.step(direction), direction > 0 ? 'zoom in' : 'zoom out', `zoom:${direction}`)),
+        ...(stop ? { end: async () => void (await this.lens(stop, 'stop the zoom')) } : {}),
+      };
+    }
+    const step = stepOf(pan, tilt);
+    return step === undefined ? undefined : { key: `motor:${step}`, run: () => this.step(step) };
+  }
+
+  /** A step of a held move; a step still on its way is not followed by another (the zoom goes through the cloud). */
+  private async run(move: Move): Promise<void> {
+    const hold = this.hold;
+    if (hold?.key === move.key) {
+      if (hold.busy) return;
+      hold.busy = true;
+    }
+    try {
+      await move.run();
+    } finally {
+      if (hold) hold.busy = false;
+    }
+  }
+
+  /**
+   * Lens commands one after another; a failed one is reported and ends the held move it belongs to (`key`), not a
+   * move started since. Whether the command went through.
+   */
+  private lens(command: () => Promise<void>, what: string, key?: string): Promise<boolean> {
+    const done = this.lensQueue.then(async () => {
+      this.setMoving(true);
+      clearTimeout(this.movingTimer);
+      this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.stepMs);
+      try {
+        await command();
+        return true;
+      } catch (error) {
+        if (key && this.hold?.key === key) this.endHold(false);
+        this.logger.error(`Could not ${what}:`, errorText(error));
+        return false;
+      }
+    });
+    this.lensQueue = done.then(() => undefined);
+    return done;
   }
 
   /** Steps one after another over one session: two at once would open two sessions with the camera. */
@@ -143,9 +224,13 @@ export class XiaomiPtz extends PTZControl {
     if (this.refusals++ === 0) this.logger.warn('The camera did not take a step of its motor (at the end of its travel?):', answer.raw ?? JSON.stringify(answer));
   }
 
-  private endHold(): void {
-    if (this.hold) clearInterval(this.hold.timer);
+  /** Ends the held move; a zoom that keeps moving by itself is stopped. */
+  private endHold(stop = true): void {
+    const hold = this.hold;
     this.hold = undefined;
+    if (!hold) return;
+    clearInterval(hold.timer);
+    if (stop) void hold.end?.();
   }
 
   private closeSession(): void {

@@ -1,7 +1,7 @@
 {
   "displayName": "Яндекс Умный дом",
   "name": "@vionvision/camera-ui-yandex",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Связывает ViON с Умным домом Яндекса и станциями Алисы: датчики и реле хаба становятся датчиками ViON, сценарии запускаются из автоматизаций, станции произносят уведомления, камеры Умного дома показываются в ViON.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -18,7 +18,7 @@
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
-    "test": "tsx spec/mapping.spec.ts && tsx spec/clients.spec.ts && tsx spec/plugin.spec.ts"
+    "test": "tsx spec/mapping.spec.ts && tsx spec/extras.spec.ts && tsx spec/clients.spec.ts && tsx spec/plugin.spec.ts"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

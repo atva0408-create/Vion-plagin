@@ -2,6 +2,7 @@
 // the temperature and the humidity, a motion sensor often the light level too.
 import { SensorType } from '@camera.ui/sdk';
 
+import { hasExtras } from './extras.js';
 import { isCamera, isStation } from './yandex/home.js';
 
 import type { YDevice, YScenario } from './yandex/home.js';
@@ -12,6 +13,8 @@ export type Binding =
   | { kind: 'button'; instance: string }
   | { kind: 'float'; instance: string }
   | { kind: 'onoff'; light: boolean }
+  /** A device without on/off whose controls are all extras (an IR remote of learned buttons, a curtain): a switch that holds them. */
+  | { kind: 'panel' }
   | { kind: 'scenario'; scenarioId: string };
 
 export interface Slot {
@@ -60,6 +63,7 @@ const SUFFIX: Record<string, string> = {
   illumination: 'Light level',
   co2_level: 'CO₂',
   on: 'Power',
+  panel: 'Controls',
 };
 
 export function nativeIdOf(deviceId: string, key: string): string {
@@ -91,6 +95,8 @@ export function slotsOf(device: YDevice): Slot[] {
   if (device.capabilities.some((c) => c.type === 'devices.capabilities.on_off')) {
     const light = device.type.startsWith('devices.types.light');
     parts.push({ key: 'on', type: light ? SensorType.Light : SensorType.Switch, binding: { kind: 'onoff', light } });
+  } else if (hasExtras(device, false)) {
+    parts.push({ key: 'panel', type: SensorType.Switch, binding: { kind: 'panel' } });
   }
 
   const several = parts.length > 1;
@@ -127,5 +133,6 @@ export function slotFromRecord(nativeId: string, name: string, type: SensorType)
   else if (key === 'button') binding = { kind: 'button', instance: key };
   else if (FLOATS[key]) binding = { kind: 'float', instance: key };
   else if (key === 'on') binding = { kind: 'onoff', light: type === SensorType.Light };
+  else if (key === 'panel') binding = { kind: 'panel' };
   return binding ? { nativeId, deviceId, name, type, binding } : undefined;
 }
