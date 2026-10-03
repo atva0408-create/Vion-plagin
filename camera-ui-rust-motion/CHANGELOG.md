@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- Faster motion detection on ARM boards such as Jetson: the comparison of frames is written so the processor runs it in parallel (rust-detector 0.0.13)
+
 ## [1.2.7]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface

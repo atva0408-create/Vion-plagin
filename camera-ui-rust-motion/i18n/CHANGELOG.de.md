@@ -1,3 +1,7 @@
+## [1.2.8]
+
+- Schnellere Bewegungserkennung auf ARM-Boards wie Jetson: Der Bildvergleich ist so geschrieben, dass der Prozessor ihn parallel ausführt (rust-detector 0.0.13)
+
 ## [1.2.7]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche
