@@ -58,6 +58,7 @@ jobs:
             camera-ui-smtp: ['camera-ui-smtp/**']
             camera-ui-tuya: ['camera-ui-tuya/**']
             camera-ui-wasm-motion: ['camera-ui-wasm-motion/**']
+            camera-ui-yandex: ['camera-ui-yandex/**']
             camera-ui-audio-yamnet: ['camera-ui-audio-yamnet/**']
             camera-ui-coral: ['camera-ui-coral/**']
             camera-ui-coreml: ['camera-ui-coreml/**']
@@ -118,8 +119,9 @@ jobs:
         with:
           node-version: "22"
 
+      # --force only skips npm's platform check, for a plugin made for another platform (select-plugins.mjs)
       - name: Install
-        run: npm --prefix ${{ matrix.plugin }} install --ignore-scripts
+        run: npm --prefix ${{ matrix.plugin }} install --ignore-scripts ${{ matrix.force && '--force' || '' }}
 
       - name: Build
         run: npm --prefix ${{ matrix.plugin }} run build
@@ -139,7 +141,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Test
-        if: matrix.plugin == 'camera-ui-nvr'
+        if: matrix.test
         run: npm --prefix ${{ matrix.plugin }} test
 
   go-plugins:
