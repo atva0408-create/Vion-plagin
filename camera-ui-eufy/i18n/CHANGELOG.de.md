@@ -1,3 +1,12 @@
+## [2.0.6]
+
+- Das Live-Bild friert seltener ein. Ein unterwegs verlorenes oder zwischen zwei Netzwerkpaketen geteiltes Bild hielt das Bild bis zum nächsten vollständigen Bild an
+- Kameras hinter einer HomeBase 3 streamen weiter. Nach einer Weile schlug jedes neue Live-Bild fehl, bis die Verbindung neu aufgebaut wurde
+- Kameras hinter einer HomeBase 2 zeigen das Bild ihres letzten Ereignisses, und ein Ereignis, das vor seinem Bild ankommt, bekommt trotzdem eines
+- Die Sirene einer HomeBase 3 lässt sich auslösen
+- Eine Verbindung zu einer verstummten Kamera wird bemerkt und neu aufgebaut. Das Live-Bild bleibt nicht mehr daran hängen
+- Mit aktiviertem Debug-Log erscheint jede Eufy-Benachrichtigung im Log, sodass eine fehlende Erkennung nachverfolgt werden kann
+
 ## [2.0.5]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

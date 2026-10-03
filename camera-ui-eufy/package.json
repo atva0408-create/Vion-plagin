@@ -1,7 +1,7 @@
 {
   "displayName": "Eufy",
   "name": "@vionvision/camera-ui-eufy",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к ViON: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
