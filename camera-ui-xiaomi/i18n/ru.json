@@ -1,5 +1,15 @@
 {
   "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети.": "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети.",
+  "Pan, tilt and zoom (PTZ)": "Поворот и зум камеры (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. A camera with a zoom lens also zooms, and its focus is set here.": "Поворачивает камеру из ViON: стрелки в плеере и автослежение. Для камер с мотором, например Mi 360°, C200 и C300. Камера с зум-объективом ещё и приближает, а её фокус настраивается здесь.",
+  "Focus nearer": "Фокус ближе",
+  "One step of the focus towards the camera.": "Один шаг фокуса ближе к камере.",
+  "Focus farther": "Фокус дальше",
+  "One step of the focus away from the camera.": "Один шаг фокуса дальше от камеры.",
+  "Focus automatically": "Автофокус",
+  "The camera finds the sharpest focus itself.": "Камера сама находит самый резкий фокус.",
+  "Autofocus": "Автофокус",
+  "The camera keeps the picture sharp by itself.": "Камера сама держит картинку резкой.",
   "Mi account": "Аккаунт Mi",
   "Email, phone number or Mi ID of the account your cameras are in, as in the Mi Home app.": "Электронная почта, номер телефона или Mi ID аккаунта, в котором ваши камеры, как в приложении Mi Home.",
   "Account": "Аккаунт",
@@ -33,7 +43,5 @@
   "Characters from the picture": "Символы с картинки",
   "Type the characters you see, then confirm.": "Введите символы с картинки и подтвердите.",
   "Confirmation code": "Код подтверждения",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите.",
-  "Pan and tilt (PTZ)": "Поворот камеры (PTZ)",
-  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Позволяет поворачивать камеру из ViON: стрелки в плеере и автослежение. Для камер с мотором, например Mi 360°, C200 и C300."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите."
 }

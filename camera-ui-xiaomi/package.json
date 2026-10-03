@@ -1,7 +1,7 @@
 {
   "displayName": "Xiaomi",
   "name": "@vionvision/camera-ui-xiaomi",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -18,7 +18,7 @@
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
-    "test": "tsx spec/cloud.spec.ts && tsx spec/cameras.spec.ts && tsx spec/plugin.spec.ts && tsx spec/crypto.spec.ts && tsx spec/ptz.spec.ts"
+    "test": "tsx spec/cloud.spec.ts && tsx spec/cameras.spec.ts && tsx spec/plugin.spec.ts && tsx spec/crypto.spec.ts && tsx spec/ptz.spec.ts && tsx spec/optics.spec.ts"
   },
   "devDependencies": {
     "@camera.ui/cli": "^0.0.113",

@@ -6,6 +6,7 @@ Verbindet ViON mit dem Yandex Smart Home und den Alice-Stationen. Sensoren und R
 
 - **Sensoren**: Bewegung, Türen und Fenster, Wasserlecks, Rauch, Gas, Vibration, Taster, Temperatur, Luftfeuchtigkeit, Helligkeit und CO₂ des Smart Home werden zu Sensoren von ViON. Sie können Aufnahme und Erkennung an den Kameras sowie Automationen auslösen
 - **Steuerung**: Relais, Steckdosen, Schalter und Lampen des Smart Home werden zu Schaltern und Lampen von ViON, Automationen schalten sie ein und aus
+- **Klimaanlagen, Fernseher, IR-Fernbedienungen**: neben Ein und Aus stehen Modus, Temperatur und Lüfter einer Klimaanlage, Lautstärke, Kanal, Eingang und Stummschaltung eines Fernsehers und die angelernten Tasten einer IR-Fernbedienung in den Einstellungen ihres Schalters (Seite „Geräte“ in ViON, „Mehr“). Eine Fernbedienung nur aus Tasten wird ein eigener Schalter
 - **Szenarien**: jedes Szenario des Smart Home wird als Schalter angeboten. Einschalten startet das Szenario, aus der Oberfläche oder aus einer Automation
 - **Sprache der Stationen**: mit der Anmeldung als Yandex-App ist jede Station ein Benachrichtigungsziel. Eine Station, die Sie einschalten, spricht Benachrichtigungen laut: „Bewegung. Hofkamera“
 - **Assistent**: der Assistent von ViON kann einen Satz auf einer Station sagen, Alice einen Befehl geben, ein Szenario starten und den Zustand der Geräte lesen

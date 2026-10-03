@@ -1,5 +1,15 @@
 {
   "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети.": "Connects Xiaomi Mi Home cameras to ViON: sign-in to the Mi account, camera discovery and live view over the local network.",
+  "Pan, tilt and zoom (PTZ)": "Pan, tilt and zoom (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. A camera with a zoom lens also zooms, and its focus is set here.": "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. A camera with a zoom lens also zooms, and its focus is set here.",
+  "Focus nearer": "Focus nearer",
+  "One step of the focus towards the camera.": "One step of the focus towards the camera.",
+  "Focus farther": "Focus farther",
+  "One step of the focus away from the camera.": "One step of the focus away from the camera.",
+  "Focus automatically": "Focus automatically",
+  "The camera finds the sharpest focus itself.": "The camera finds the sharpest focus itself.",
+  "Autofocus": "Autofocus",
+  "The camera keeps the picture sharp by itself.": "The camera keeps the picture sharp by itself.",
   "Mi account": "Mi account",
   "Email, phone number or Mi ID of the account your cameras are in, as in the Mi Home app.": "Email, phone number or Mi ID of the account your cameras are in, as in the Mi Home app.",
   "Account": "Account",
@@ -33,7 +43,5 @@
   "Characters from the picture": "Characters from the picture",
   "Type the characters you see, then confirm.": "Type the characters you see, then confirm.",
   "Confirmation code": "Confirmation code",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.",
-  "Pan and tilt (PTZ)": "Pan and tilt (PTZ)",
-  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm."
 }

@@ -1,5 +1,6 @@
-## [0.2.1]
+## [0.3.0]
 
+- Kameras mit Zoomobjektiv zoomen aus ViON: der Zoom im Player und **Home** (ganz heraus), wenn **Schwenken, Neigen und Zoomen (PTZ)** eingeschaltet ist. Ihr Fokus wird neben dem Schalter eingestellt: **Fokus näher**, **Fokus weiter** und der Autofokus der Kamera. Das Plugin findet Zoom und Fokus in der MIoT-Beschreibung, die Xiaomi für das Modell veröffentlicht; Kameras mit festem Objektiv (Mi 360°, C200, C300) haben beides nicht und drehen sich wie bisher
 - Ein gehaltener Pfeil dreht die Kamera in einer gleichmäßigen Bewegung: Der Motor bekam nur jede halbe Sekunde einen Schritt und hielt vor jedem an, sodass die Kamera ruckelte und einen Teil der Schritte ausließ. Autotrack sieht die Kamera als in Bewegung, solange ihr Motor dreht
 
 ## [0.2.0]

@@ -15,13 +15,15 @@ export interface XiaomiCamera {
   mac?: string;
   online?: boolean;
   region: Region;
+  /** the MIoT spec of the device (urn:miot-spec-v2:device:camera:…), when the list names it */
+  specType?: string;
 }
 
 /** Picture quality the camera is asked for. `default` leaves the choice to the stream engine (HD). */
 export type Quality = 'default' | 'sd' | 'hd' | 'max';
 
 interface DeviceListPage {
-  list?: { did?: string; name?: string; model?: string; localip?: string; mac?: string; isOnline?: boolean }[];
+  list?: { did?: string; name?: string; model?: string; localip?: string; mac?: string; isOnline?: boolean; spec_type?: string }[];
   has_more?: boolean;
   next_start_did?: string;
 }
@@ -53,6 +55,7 @@ async function camerasOfRegion(cloud: XiaomiCloud, region: Region): Promise<Xiao
         mac: device.mac,
         online: device.isOnline,
         region,
+        ...(nonEmpty(device.spec_type) ? { specType: device.spec_type } : {}),
       });
     }
     if (!result?.has_more || !result.next_start_did || result.next_start_did === startDid) break;
@@ -228,7 +231,8 @@ export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera): Promi
   if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
   if (LEGACY_MODELS.has(camera.model)) throw new Error(`${camera.name} (${camera.model}) uses the older protocol, which the plugin cannot turn`);
   const params = await missParams(cloud, camera);
-  if (params.vendor !== 'cs2')
+  if (params.vendor !== 'cs2') {
     throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
+  }
   return { client_public: params.client_public, client_private: params.client_private, device_public: params.device_public, sign: params.sign, vendor: params.vendor };
 }
