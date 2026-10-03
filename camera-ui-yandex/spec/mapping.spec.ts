@@ -3,12 +3,12 @@
 // Run: npx tsx spec/mapping.spec.ts
 import assert from 'node:assert/strict';
 
-import { DoorbellTrigger, LightProperty, SensorType, SwitchProperty } from '@camera.ui/sdk';
+import { DoorbellTrigger, LightCapability, LightProperty, SensorType, SwitchProperty } from '@camera.ui/sdk';
 
 import { scenarioSlot, slotFromRecord, slotsOf, splitNativeId } from '../src/mapping.js';
 import { applyDevice, commandFor, createSensor } from '../src/sensors.js';
 import { parseHosts } from '../src/voice.js';
-import { isCamera, isStation, mergeDevice, parseQuasarDevices, parseUserInfo } from '../src/yandex/home.js';
+import { isCamera, isStation, mergeDevice, parseQuasarDevices, parseUserInfo, userScenarios } from '../src/yandex/home.js';
 import { cloudText, scenarioTrigger, ttsScenario } from '../src/yandex/quasar.js';
 import { baseDevices } from './fake-yandex.js';
 
@@ -21,7 +21,11 @@ const official = parseUserInfo({
   rooms: [{ id: 'room-1', name: 'Прихожая' }],
   households: [{ id: 'h1', name: 'Дом' }],
   devices: baseDevices().map((d) => ({ ...d, room: d.room ? 'room-1' : undefined, household_id: 'h1', quasar_info: undefined })),
-  scenarios: [{ id: 'sc-1', name: 'Я ушёл' }],
+  // the second is the plugin's own scenario of a station: not offered as a switch
+  scenarios: [
+    { id: 'sc-1', name: 'Я ушёл' },
+    { id: 'sc-2', name: 'ViON station-1' },
+  ],
 });
 const app = parseQuasarDevices({
   households: [
@@ -33,6 +37,7 @@ const app = parseQuasarDevices({
 assert.equal(official.devices.length, 7);
 assert.equal(app.length, 7, 'a shared house is not read');
 assert.deepEqual(official.scenarios, [{ id: 'sc-1', name: 'Я ушёл' }]);
+assert.deepEqual(userScenarios([{ id: 'sc-3', name: 'ViON station-2' }, { id: 'sc-4', name: 'Вечер' }]), [{ id: 'sc-4', name: 'Вечер' }], 'the app list as well');
 for (const list of [official.devices, app]) {
   const motion = list.find((d) => d.id === 'motion-1')!;
   assert.equal(motion.room, 'Прихожая');
@@ -53,7 +58,8 @@ const slots = official.devices.flatMap(slotsOf);
 const byId = new Map(slots.map((s) => [s.nativeId, s]));
 assert.deepEqual([...byId.keys()].sort(), ['button-1|button', 'door-1|open', 'lamp-1|on', 'motion-1|illumination', 'motion-1|motion', 'relay-1|on'].sort(), 'stations and cameras are not sensors');
 assert.equal(byId.get('motion-1|motion')!.type, SensorType.Motion);
-assert.equal(byId.get('motion-1|motion')!.name, 'Датчик в прихожей: движение', 'a device with several sensors names each');
+assert.equal(byId.get('motion-1|motion')!.name, 'Датчик в прихожей: Motion', 'a device with several sensors names each, in English after the name Yandex gives');
+assert.equal(byId.get('motion-1|illumination')!.name, 'Датчик в прихожей: Light level');
 assert.equal(byId.get('motion-1|illumination')!.type, SensorType.Illuminance);
 assert.equal(byId.get('door-1|open')!.name, 'Входная дверь', 'a device with one sensor keeps its name');
 assert.equal(byId.get('door-1|open')!.type, SensorType.Contact);
@@ -61,6 +67,7 @@ assert.equal(byId.get('button-1|button')!.type, SensorType.Doorbell);
 assert.equal(byId.get('relay-1|on')!.type, SensorType.Switch);
 assert.equal(byId.get('lamp-1|on')!.type, SensorType.Light);
 assert.equal(scenarioSlot({ id: 'sc-1', name: 'Я ушёл' }).nativeId, 'scenario|sc-1');
+assert.equal(scenarioSlot({ id: 'sc-1', name: 'Я ушёл' }).name, 'Scenario: Я ушёл');
 assert.deepEqual(splitNativeId('a|b|c'), { deviceId: 'a|b', key: 'c' });
 
 // an adopted sensor is bound again from its record, before the device is read
@@ -104,16 +111,26 @@ applyDevice(button, device('button-1', () => {}), true);
 assert.equal(rings, 0, 'the same press read again is not a new one');
 applyDevice(button, device('button-1', (d) => (d.properties[0].last_updated = 2000)), true);
 assert.equal(rings, 1, 'a new time of the click is a press');
+// a reading that is not live (the plugin reads so after a reconnect, see plugin.spec) is no press, but it is the new
+// last value: the same time read live afterwards is no press either, a newer one is
 applyDevice(button, device('button-1', (d) => (d.properties[0].last_updated = 3000)), false);
-assert.equal(rings, 1, 'a reading after a reconnect is not a press');
+assert.equal(rings, 1, 'a reading that is not live is not a press');
+applyDevice(button, device('button-1', (d) => (d.properties[0].last_updated = 3000)), true);
+assert.equal(rings, 1, 'what a reading that is not live saw is not a press later');
+applyDevice(button, device('button-1', (d) => (d.properties[0].last_updated = 4000)), true);
+assert.equal(rings, 2);
 
 const relay = bind('relay-1|on');
 applyDevice(relay, device('relay-1', (d) => (d.capabilities[0].state.value = true)), true);
 assert.equal(relay.sensor.getValue(SwitchProperty.On), true);
 const lamp = bind('lamp-1|on');
+assert.equal(lamp.sensor.hasCapability(LightCapability.Brightness), false, 'unknown until the device is read');
 applyDevice(lamp, device('lamp-1', () => {}), true);
 assert.equal(lamp.sensor.getValue(LightProperty.On), true);
 assert.equal(lamp.sensor.getValue(LightProperty.Brightness), 60);
+assert.equal(lamp.sensor.hasCapability(LightCapability.Brightness), true, 'a light with brightness gets the slider');
+applyDevice(lamp, device('lamp-1', (d) => d.capabilities.splice(1, 1)), true);
+assert.equal(lamp.sensor.hasCapability(LightCapability.Brightness), false, 'one without it does not');
 
 // an update of the app may carry only what changed
 const merged = mergeDevice(app.find((d) => d.id === 'motion-1')!, {
@@ -127,6 +144,12 @@ assert.equal(merged.name, 'Датчик в прихожей');
 // ---- commands
 assert.deepEqual(commandFor(byId.get('relay-1|on')!, SwitchProperty.On, true), { type: 'devices.capabilities.on_off', state: { instance: 'on', value: true } });
 assert.deepEqual(commandFor(byId.get('lamp-1|on')!, LightProperty.Brightness, 140), { type: 'devices.capabilities.range', state: { instance: 'brightness', value: 100 } });
+assert.deepEqual(commandFor(byId.get('lamp-1|on')!, LightProperty.Brightness, 1), { type: 'devices.capabilities.range', state: { instance: 'brightness', value: 1 } });
+assert.deepEqual(
+  commandFor(byId.get('lamp-1|on')!, LightProperty.Brightness, 0),
+  { type: 'devices.capabilities.on_off', state: { instance: 'on', value: false } },
+  'brightness 0 turns the light off',
+);
 assert.equal(commandFor(byId.get('relay-1|on')!, LightProperty.Brightness, 10), undefined, 'a relay has no brightness');
 assert.equal(commandFor(byId.get('door-1|open')!, 'detected', true), undefined, 'a sensor takes no commands');
 

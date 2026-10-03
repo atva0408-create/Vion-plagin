@@ -1,4 +1,4 @@
-import { DoorbellTrigger, LightControl, LightProperty, MotionSensor, Sensor, SwitchControl, SwitchProperty, sensorMeta } from '@camera.ui/sdk';
+import { DoorbellTrigger, LightCapability, LightControl, LightProperty, MotionSensor, Sensor, SwitchControl, SwitchProperty, sensorMeta } from '@camera.ui/sdk';
 
 import type { SensorCategory, SensorType } from '@camera.ui/sdk';
 import type { Slot } from './mapping.js';
@@ -72,6 +72,12 @@ export class YandexLight extends LightControl {
     this._writeState(partial);
   }
 
+  /** The interface shows the brightness slider only to a light with this capability. */
+  dimmable(yes: boolean): void {
+    // each set goes to the server, and the state of the device is applied at every reading: only a change is sent
+    if (this.hasCapability(LightCapability.Brightness) !== yes) this.capabilities = yes ? [LightCapability.Brightness] : [];
+  }
+
   override async updateValue(property: string, value: unknown): Promise<void> {
     this._writeState({ [property]: value });
     await this.command(property, value);
@@ -115,13 +121,12 @@ export function applyDevice(bound: Bound, device: YDevice, live: boolean): void 
   if (b.kind === 'scenario') return;
 
   if (b.kind === 'onoff') {
+    const brightness = b.light ? device.capabilities.find((c) => c.type === 'devices.capabilities.range' && c.instance === 'brightness') : undefined;
+    if (b.light) (sensor as YandexLight).dimmable(!!brightness);
     const on = device.capabilities.find((c) => c.type === 'devices.capabilities.on_off')?.value;
     if (typeof on !== 'boolean') return;
     const partial: Record<string, unknown> = { [b.light ? LightProperty.On : SwitchProperty.On]: on };
-    if (b.light) {
-      const brightness = device.capabilities.find((c) => c.type === 'devices.capabilities.range' && c.instance === 'brightness')?.value;
-      if (typeof brightness === 'number') partial[LightProperty.Brightness] = Math.round(brightness);
-    }
+    if (typeof brightness?.value === 'number') partial[LightProperty.Brightness] = Math.round(brightness.value);
     (sensor as YandexSwitch | YandexLight).write(partial);
     return;
   }
@@ -167,7 +172,9 @@ export function commandFor(slot: Slot, property: string, value: unknown): { type
     return { type: 'devices.capabilities.on_off', state: { instance: 'on', value: !!value } };
   }
   if (b.light && property === String(LightProperty.Brightness) && typeof value === 'number') {
-    return { type: 'devices.capabilities.range', state: { instance: 'brightness', value: Math.max(1, Math.min(100, Math.round(value))) } };
+    // the Smart Home has no brightness 0: the slider at its start means off, not the faintest light
+    if (Math.round(value) <= 0) return { type: 'devices.capabilities.on_off', state: { instance: 'on', value: false } };
+    return { type: 'devices.capabilities.range', state: { instance: 'brightness', value: Math.min(100, Math.round(value)) } };
   }
   return undefined;
 }

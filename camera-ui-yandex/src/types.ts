@@ -25,6 +25,7 @@ export interface YandexConfig {
   voiceMode?: VoiceMode;
   stationHosts?: string;
 
-  mutedStations?: string[];
+  /** Stations chosen to say notifications. None until the user turns one on: each would speak every notification. */
+  speakingStations?: string[];
   stationNames?: Record<string, string>;
 }

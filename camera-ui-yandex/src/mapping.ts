@@ -43,20 +43,23 @@ const FLOATS: Record<string, SensorType> = {
   co2_level: SensorType.CarbonDioxide,
 };
 
-/** What a sensor of a device with several shows, after the name of the device. */
+/**
+ * What a sensor of a device with several shows, after the name of the device. In English, as the other plugins name
+ * what they make: a plugin is not told the language of the interface, and the user renames a sensor in ViON.
+ */
 const SUFFIX: Record<string, string> = {
-  motion: 'движение',
-  open: 'открытие',
-  water_leak: 'протечка',
-  smoke: 'дым',
-  gas: 'газ',
-  vibration: 'вибрация',
-  button: 'кнопка',
-  temperature: 'температура',
-  humidity: 'влажность',
-  illumination: 'освещённость',
+  motion: 'Motion',
+  open: 'Opening',
+  water_leak: 'Leak',
+  smoke: 'Smoke',
+  gas: 'Gas',
+  vibration: 'Vibration',
+  button: 'Button',
+  temperature: 'Temperature',
+  humidity: 'Humidity',
+  illumination: 'Light level',
   co2_level: 'CO₂',
-  on: 'питание',
+  on: 'Power',
 };
 
 export function nativeIdOf(deviceId: string, key: string): string {
@@ -106,7 +109,7 @@ export function scenarioSlot(scenario: YScenario): Slot {
   return {
     nativeId: nativeIdOf(SCENARIO_DEVICE, scenario.id),
     deviceId: SCENARIO_DEVICE,
-    name: `Сценарий: ${scenario.name}`,
+    name: `Scenario: ${scenario.name}`,
     type: SensorType.Switch,
     binding: { kind: 'scenario', scenarioId: scenario.id },
   };

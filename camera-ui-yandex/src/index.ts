@@ -1,11 +1,11 @@
-import { API_EVENT, BasePlugin, LightProperty, SwitchProperty } from '@camera.ui/sdk';
+import { API_EVENT, BasePlugin, SwitchProperty } from '@camera.ui/sdk';
 import QRCode from 'qrcode';
 
 import { Camera } from './camera.js';
 import { SCENARIO_DEVICE, scenarioSlot, slotFromRecord, slotsOf, splitNativeId } from './mapping.js';
 import { SCENARIO_RESET_MS, applyDevice, commandFor, createSensor } from './sensors.js';
 import { StationVoice } from './voice.js';
-import { YandexAuthError } from './yandex/http.js';
+import { YandexAuthError, errorText } from './yandex/http.js';
 import { isCamera, isStation, mergeDevice } from './yandex/home.js';
 import { AuthorizationPending, YandexIot, exchangeDeviceCode, refreshOAuthToken, requestDeviceCode, tokenPageUrl } from './yandex/iot.js';
 import { QuasarUpdates, YandexQuasar } from './yandex/quasar.js';
@@ -38,7 +38,7 @@ import type { Slot } from './mapping.js';
 import type { Bound, YandexSwitch } from './sensors.js';
 import type { Source, YandexConfig } from './types.js';
 import type { YDevice, YScenario } from './yandex/home.js';
-import type { DeviceCode } from './yandex/iot.js';
+import type { DeviceCode, OAuthTokens } from './yandex/iot.js';
 
 const CAMERA_PREFIX = 'yandex:';
 const STATION_PREFIX = 'station:';
@@ -49,9 +49,20 @@ const MIN_POLL_SECONDS = 3;
 const APP_LIST_MS = 10 * 60_000;
 /** A token of Yandex ID is renewed this long before it ends. */
 const TOKEN_MARGIN_MS = 24 * 60 * 60_000;
+/** A renewal that failed on the way (not refused) is tried again after this, not at every reading. */
+const RENEW_RETRY_MS = 60 * 60_000;
+/** Scenarios that could not be read in the app mode are read again after this: until then their switches are unavailable. */
+const SCENARIO_RETRY_MS = 60_000;
 /** How long the window of the QR code waits for the confirmation after its button is pressed. */
 const QR_WAIT_MS = 20_000;
 const QR_POLL_MS = 2_000;
+const NOT_SIGNED_IN = 'Not signed in to Yandex: sign in in the settings of the plugin';
+const SIGNED_OUT = 'Signed out of Yandex while this sign-in ran: sign in again';
+/**
+ * The owner of a station for everyone but a notification on its way: a station belongs to the house, not to a user
+ * of ViON, so no user matches it and only an admin may turn it on or rename it.
+ */
+const HOUSEHOLD = '';
 
 type ReadSource = 'official' | 'app';
 
@@ -62,14 +73,28 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private updates?: QuasarUpdates;
   private pollTimer?: NodeJS.Timeout;
   private reading?: Promise<void>;
-  private reads = 0;
+  /** The last reading succeeded: only a reading right after a good one is live, see applyDevice. */
+  private readOk = false;
   private renewing?: Promise<string>;
+  private renewFailedAt = 0;
   private started = false;
+  /** Counts Sign out: work that started before one does not bring back the account or what was read with it. */
+  private signOuts = 0;
+  /** Sign-ins being dropped because Yandex refused them: another failure meanwhile is the same news, see dropRefused. */
+  private dropping = new Set<ReadSource>();
+  /** The live updates could not read the Smart Home, and the log said so: it is said again after they worked. */
+  private updatesDown = false;
 
   private devices = new Map<string, YDevice>();
   private scenarioList: YScenario[] = [];
   private complete = false;
+  /** The list of the scenarios is known: a scenario missing from it was removed, not just unread. */
+  private scenariosRead = false;
+  private readingScenarios?: Promise<void>;
+  private scenarioTimer?: NodeJS.Timeout;
   private appDevices?: { at: number; devices: YDevice[] };
+  /** The ids of the cameras last offered for adding: the same set is not offered again at every reading. */
+  private offeredCameras?: string;
 
   private bound = new Map<string, Bound>();
   private existing = new Map<string, CameraDevice>();
@@ -80,11 +105,10 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private qrSession?: YandexSession;
   /** The x_token the plugin stored itself: storing it calls the hook of the field, which must not sign in again. */
   private storedXToken?: string;
-  private lastOwnerUserId = '';
   private voice = new StationVoice(
     () => this.quasar,
     () => ({ mode: this.storage.values.voiceMode ?? 'auto', hosts: this.storage.values.stationHosts }),
-    (message, error) => this.logger.debug(message, error instanceof Error ? error.message : (error ?? '')),
+    (message, error) => this.logger.debug(message, error === undefined ? '' : errorText(error)),
   );
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<YandexConfig>) {
@@ -285,19 +309,23 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
 
     const source = this.readSource();
     if (!source) {
-      this.logger.warn('Not signed in to Yandex: sign in in the settings of the plugin');
+      this.logger.warn(NOT_SIGNED_IN);
       return;
     }
     this.logger.log(`Reading the Smart Home through the ${source === 'app' ? 'Yandex app' : 'official API'}`);
     if (source === 'app' && this.quasar) {
       this.updates = new QuasarUpdates(
         this.quasar,
-        (devices) => void this.applyList(devices, undefined, this.reads++ > 0),
-        (update) => this.applyUpdate(update),
-        (message, error) => this.logger.debug(message, error instanceof Error ? error.message : (error ?? '')),
+        {
+          // the list read at an opening of the socket is not live: a press made while it was closed is not a new one
+          devices: (devices) => this.onAppDevices(devices),
+          update: (update) => this.applyUpdate(update),
+          scenarios: () => void this.readScenarios(),
+          lost: (error) => this.onUpdatesLost(error),
+        },
+        (message, error) => this.logger.debug(message, error === undefined ? '' : errorText(error)),
       );
       this.updates.start();
-      void this.readScenarios();
     } else {
       void this.read();
       const seconds = Math.max(MIN_POLL_SECONDS, Number(this.storage.values.pollSeconds) || DEFAULT_POLL_SECONDS);
@@ -309,6 +337,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private disconnect(): void {
     clearInterval(this.pollTimer);
     this.pollTimer = undefined;
+    clearTimeout(this.scenarioTimer);
     this.updates?.stop();
     this.updates = undefined;
     this.voice.close();
@@ -316,7 +345,8 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     this.quasar = undefined;
     this.iot = undefined;
     this.appDevices = undefined;
-    this.reads = 0;
+    this.readOk = false;
+    this.updatesDown = false;
   }
 
   private restartTimer?: NodeJS.Timeout;
@@ -342,21 +372,66 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     const { oauthToken, refreshToken, tokenExpiresAt, clientId, clientSecret } = this.storage.values;
     if (!oauthToken) throw new YandexAuthError('No token of the official API');
     if (!refreshToken || !clientId || !clientSecret || !tokenExpiresAt || tokenExpiresAt - Date.now() > TOKEN_MARGIN_MS) return oauthToken;
-    this.renewing ??= refreshOAuthToken(clientId, clientSecret, refreshToken)
-      .then(async (tokens) => {
-        await this.storage.setValue('oauthToken', tokens.accessToken);
-        if (tokens.refreshToken) await this.storage.setInternalValue('refreshToken', tokens.refreshToken);
-        await this.storage.setInternalValue('tokenExpiresAt', tokens.expiresAt ?? 0);
-        return tokens.accessToken;
-      })
-      .catch((error) => {
-        this.logger.warn('Could not renew the token of the official API:', error.message);
+    // the token works until it ends: a renewal that failed is not tried at every reading
+    if (Date.now() - this.renewFailedAt < RENEW_RETRY_MS) return oauthToken;
+    const signOuts = this.signOuts;
+    this.renewing ??= (async () => {
+      let tokens: OAuthTokens;
+      try {
+        tokens = await refreshOAuthToken(clientId, clientSecret, refreshToken);
+      } catch (error) {
+        if (signOuts !== this.signOuts) throw new YandexAuthError(NOT_SIGNED_IN);
+        if (error instanceof YandexAuthError) {
+          // Yandex ID refused the refresh token: asking again gets the same answer, the token works until it ends
+          await this.storage.setInternalValue('refreshToken', '');
+          this.logger.warn('Yandex ID no longer renews the token of the official API: it works until it ends, then sign in again:', errorText(error));
+        } else {
+          this.renewFailedAt = Date.now();
+          this.logger.warn('Could not renew the token of the official API, trying again in an hour:', errorText(error));
+        }
         return oauthToken;
-      })
-      .finally(() => {
-        this.renewing = undefined;
-      });
+      }
+      // Sign out was pressed while Yandex ID answered: the new token must not bring the sign-in back
+      if (signOuts !== this.signOuts) throw new YandexAuthError(NOT_SIGNED_IN);
+      await this.storage.setValue('oauthToken', tokens.accessToken);
+      if (tokens.refreshToken) await this.storage.setInternalValue('refreshToken', tokens.refreshToken);
+      await this.storage.setInternalValue('tokenExpiresAt', tokens.expiresAt ?? 0);
+      return tokens.accessToken;
+    })().finally(() => {
+      this.renewing = undefined;
+    });
     return this.renewing;
+  }
+
+  /**
+   * Yandex refused a stored sign-in: it is dropped, so Yandex does not get it again at every reading, and the log says
+   * once what to do. The other sign-in, when there is one, takes over after the restart.
+   */
+  private async dropRefused(kind: ReadSource, token: string | undefined, error: unknown): Promise<void> {
+    const values = this.storage.values;
+    // a sign-in in the settings replaced the refused token meanwhile, or another failure is dropping it right now
+    if (!token || token !== (kind === 'app' ? values.xToken : values.oauthToken) || this.dropping.has(kind)) return;
+    this.dropping.add(kind);
+    try {
+      // the sensors read through the other sign-in stay as they are
+      if (kind === this.readSource()) {
+        clearInterval(this.pollTimer);
+        this.markUnavailable();
+      }
+      if (kind === 'app') {
+        this.logger.error('Yandex no longer accepts the sign-in as the Yandex app: sign in again by QR code or x_token in the settings of the plugin:', errorText(error));
+        this.storedXToken = undefined;
+        for (const key of ['xToken', 'cookies', 'stationToken', 'account'] as const) await this.storage.setValue(key, '');
+      } else {
+        this.logger.error('Yandex no longer accepts the token of the official API: sign in again in the settings of the plugin:', errorText(error));
+        await this.storage.setValue('oauthToken', '');
+        await this.storage.setInternalValue('refreshToken', '');
+        await this.storage.setInternalValue('tokenExpiresAt', 0);
+      }
+    } finally {
+      this.dropping.delete(kind);
+    }
+    this.restartSoon();
   }
 
   // ---- reading -----------------------------------------------------------------------------------------------------
@@ -364,18 +439,29 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private async read(): Promise<void> {
     this.reading ??= (async () => {
       const source = this.readSource();
+      const { iot, quasar, session } = this;
+      const signOuts = this.signOuts;
+      const token = source === 'official' ? this.storage.values.oauthToken : session?.xToken;
+      // after a failed reading a change seen now may have happened any time during the outage
+      const live = this.readOk;
       try {
-        if (source === 'official' && this.iot) {
-          const home = await this.iot.home();
-          await this.applyList(home.devices, home.scenarios, this.reads++ > 0);
-        } else if (source === 'app' && this.quasar) {
-          const { devices } = await this.quasar.devices();
-          await this.applyList(devices, await this.quasar.scenarios(), this.reads++ > 0);
-        }
+        let home: { devices: YDevice[]; scenarios: YScenario[] };
+        if (source === 'official' && iot) home = await iot.home();
+        else if (source === 'app' && quasar) home = { devices: (await quasar.devices()).devices, scenarios: await quasar.scenarios() };
+        else return;
+        // signed out or restarted while Yandex answered: what was read belongs to a sign-in that is gone
+        if (signOuts !== this.signOuts || iot !== this.iot || quasar !== this.quasar) return;
+        this.readOk = true;
+        await this.applyList(home.devices, home.scenarios, live);
       } catch (error: any) {
+        if (signOuts !== this.signOuts || iot !== this.iot || quasar !== this.quasar) {
+          this.logger.debug('A reading of the Smart Home ended after a sign-out or restart:', errorText(error));
+          return;
+        }
+        this.readOk = false;
         this.markUnavailable();
-        if (error instanceof YandexAuthError) this.logger.error(error.message);
-        else this.logger.warn('Could not read the Smart Home:', error.message);
+        if (error instanceof YandexAuthError && source) await this.dropRefused(source, token, error);
+        else this.logger.warn('Could not read the Smart Home:', errorText(error));
       }
     })().finally(() => {
       this.reading = undefined;
@@ -383,19 +469,57 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     return this.reading;
   }
 
+  /** The scenarios in the app mode: read at every opening of the live updates and when Yandex says they changed. */
   private async readScenarios(): Promise<void> {
-    try {
-      if (this.quasar) this.scenarioList = await this.quasar.scenarios();
+    const quasar = this.quasar;
+    if (!quasar) return;
+    this.readingScenarios ??= (async () => {
+      clearTimeout(this.scenarioTimer);
+      try {
+        const scenarios = await quasar.scenarios();
+        if (quasar !== this.quasar) return;
+        this.scenarioList = scenarios;
+        this.scenariosRead = true;
+      } catch (error: any) {
+        if (quasar !== this.quasar) return;
+        this.logger.warn('Could not read the scenarios of the Smart Home, trying again in a minute:', errorText(error));
+        this.scenarioTimer = setTimeout(() => void this.readScenarios(), SCENARIO_RETRY_MS);
+        this.scenarioTimer.unref?.();
+      }
       this.applyScenarios();
-    } catch (error: any) {
-      this.logger.debug('Could not read the scenarios:', error.message);
+    })().finally(() => {
+      this.readingScenarios = undefined;
+    });
+    return this.readingScenarios;
+  }
+
+  private onAppDevices(devices: YDevice[]): void {
+    if (this.updatesDown) this.logger.log('The Smart Home answers again');
+    this.updatesDown = false;
+    void this.applyList(devices, undefined, false);
+  }
+
+  /** The live updates lost the state: the sensors show it until the list is read again. */
+  private onUpdatesLost(error?: unknown): void {
+    this.markUnavailable();
+    if (error === undefined) {
+      this.logger.debug('The live updates of the Smart Home closed, reading the devices again');
+    } else if (error instanceof YandexAuthError) {
+      void this.dropRefused('app', this.session?.xToken, error);
+    } else {
+      // said once per outage: the updates try again every 30 seconds
+      if (!this.updatesDown) this.logger.warn('Could not read the Smart Home through the Yandex app, trying again every 30 seconds:', errorText(error));
+      this.updatesDown = true;
     }
   }
 
   private async applyList(devices: YDevice[], scenarios: YScenario[] | undefined, live: boolean): Promise<void> {
     this.devices = new Map(devices.map((device) => [device.id, device]));
     this.complete = true;
-    if (scenarios) this.scenarioList = scenarios;
+    if (scenarios) {
+      this.scenarioList = scenarios;
+      this.scenariosRead = true;
+    }
     if (this.readSource() === 'app') this.appDevices = { at: Date.now(), devices };
 
     for (const bound of this.bound.values()) {
@@ -409,9 +533,28 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     }
     this.applyScenarios();
     if (this.storage.values.debug) this.logger.log(`Smart Home: ${devices.length} devices, ${this.scenarioList.length} scenarios`);
+    await this.offerCameras();
+  }
 
+  /** Cameras not added yet are offered when they change, not at every reading: ViON logs each offer. */
+  private async offerCameras(): Promise<void> {
     const fresh = this.notAddedCameras();
-    if (fresh.length) await this.api.deviceManager.pushDiscoveredCameras(fresh).catch(() => {});
+    const ids = fresh
+      .map((camera) => camera.id)
+      .sort()
+      .join('\n');
+    if (ids === this.offeredCameras) return;
+    if (!fresh.length) {
+      this.offeredCameras = ids;
+      return;
+    }
+    try {
+      await this.api.deviceManager.pushDiscoveredCameras(fresh);
+      this.offeredCameras = ids;
+    } catch (error: any) {
+      // not remembered: the next reading offers them again
+      this.logger.warn('Could not offer the cameras of the Smart Home for adding:', errorText(error));
+    }
   }
 
   private applyUpdate(update: any): void {
@@ -437,7 +580,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     const ids = new Set(this.scenarioList.map((s) => s.id));
     for (const bound of this.bound.values()) {
       if (bound.slot.binding.kind !== 'scenario') continue;
-      bound.sensor.setSourceState(ids.has(bound.slot.binding.scenarioId) ? 'connected' : this.complete ? 'removed' : 'unavailable');
+      bound.sensor.setSourceState(ids.has(bound.slot.binding.scenarioId) ? 'connected' : this.scenariosRead ? 'removed' : 'unavailable');
     }
   }
 
@@ -449,7 +592,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private commandApi(): YandexIot | YandexQuasar {
     const source = this.readSource();
     const api = source === 'official' ? this.iot : source === 'app' ? this.quasar : undefined;
-    if (!api) throw new YandexAuthError('Not signed in to Yandex: sign in in the settings of the plugin');
+    if (!api) throw new YandexAuthError(NOT_SIGNED_IN);
     return api;
   }
 
@@ -516,6 +659,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     return bound;
   }
 
+  /** A write to a control, sent to Yandex. A failure reaches the caller, so an automation sees the step failed. */
   private async command(bound: Bound, property: string, value: unknown): Promise<void> {
     const slot = bound.slot;
     try {
@@ -528,38 +672,53 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       }
       const action = commandFor(slot, property, value);
       if (!action) return;
-      // brightness above zero turns the light on in the Smart Home as well
-      const actions =
-        property === String(LightProperty.Brightness) ? [{ type: 'devices.capabilities.on_off', state: { instance: 'on', value: true } }, action] : [action];
+      // brightness above zero turns the light on in the Smart Home as well (zero is the command to turn it off)
+      const actions = action.type === 'devices.capabilities.range' ? [{ type: 'devices.capabilities.on_off', state: { instance: 'on', value: true } }, action] : [action];
       await this.commandApi().action(slot.deviceId, actions);
     } catch (error: any) {
-      this.logger.error(`Command for ${slot.name} failed:`, error.message);
-      // the state the sensor shows goes back to what the device reports
-      const device = this.devices.get(slot.deviceId);
-      if (device) applyDevice(bound, device, false);
+      this.logger.error(`Command for ${slot.name} failed:`, errorText(error));
+      // the state the sensor shows goes back to what the device reports; a scenario that did not run is off
+      if (slot.binding.kind === 'scenario') {
+        (bound.sensor as YandexSwitch).write({ [SwitchProperty.On]: false });
+      } else {
+        const device = this.devices.get(slot.deviceId);
+        if (device) applyDevice(bound, device, false);
+      }
+      throw error;
     }
   }
 
   // ---- stations: speech as a notifier ---------------------------------------------------------------------------
 
-  /** Stations with what the voice needs: from the app when signed in as it, from the official list otherwise. */
+  /**
+   * Stations with what the voice needs, from the app. Without the sign-in as the app there are none: a station can
+   * speak only through it, and one offered as a target would fail every notification chosen for it.
+   */
   private async stations(): Promise<YDevice[]> {
-    if (this.quasar) {
-      if (this.readSource() === 'app' && this.complete) return [...this.devices.values()].filter(isStation);
-      if (!this.appDevices || Date.now() - this.appDevices.at > APP_LIST_MS) {
-        try {
-          this.appDevices = { at: Date.now(), devices: (await this.quasar.devices()).devices };
-        } catch (error: any) {
-          this.logger.warn('Could not read the stations:', error.message);
-          if (!this.appDevices) return [];
+    const { quasar, session } = this;
+    if (!quasar) return [];
+    if (this.readSource() === 'app' && this.complete) return [...this.devices.values()].filter(isStation);
+    if (!this.appDevices || Date.now() - this.appDevices.at > APP_LIST_MS) {
+      try {
+        const { devices } = await quasar.devices();
+        // signed out or restarted while Yandex answered: the list belongs to a sign-in that is gone
+        if (quasar !== this.quasar) return [];
+        this.appDevices = { at: Date.now(), devices };
+      } catch (error: any) {
+        if (quasar !== this.quasar) return [];
+        if (error instanceof YandexAuthError) {
+          await this.dropRefused('app', session?.xToken, error);
+          return [];
         }
+        this.logger.warn('Could not read the stations:', errorText(error));
+        if (!this.appDevices) return [];
       }
-      return this.appDevices.devices.filter(isStation);
     }
-    return [...this.devices.values()].filter(isStation);
+    return this.appDevices.devices.filter(isStation);
   }
 
   private async findStation(name?: string): Promise<YDevice> {
+    if (!this.quasar) throw new Error('The stations speak after the sign-in by QR code or x_token in the settings of the plugin');
     const stations = await this.stations();
     if (!stations.length) throw new Error('No Yandex station in the account');
     if (!name) return stations[0];
@@ -576,8 +735,9 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     return this.storage.values.stationNames?.[station.id] ?? (station.room ? `${station.name} (${station.room})` : station.name);
   }
 
-  private isMuted(id: string): boolean {
-    return (this.storage.values.mutedStations ?? []).includes(id);
+  /** A station speaks notifications only once the user turned it on: otherwise a sign-in makes every one speak them all. */
+  private speaks(id: string): boolean {
+    return (this.storage.values.speakingStations ?? []).includes(id);
   }
 
   private toNotifierDevice(station: YDevice, owner: string): NotifierDevice {
@@ -585,21 +745,22 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       id: `${STATION_PREFIX}${station.id}`,
       ownerUserId: owner,
       name: this.stationName(station),
-      active: !this.isMuted(station.id),
+      active: this.speaks(station.id),
       metadata: { type: station.type },
     };
   }
 
   async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
-    const owner = ownerUserIds[0] ?? this.lastOwnerUserId;
-    if (owner) this.lastOwnerUserId = owner;
+    // the fan-out of a notification delivers only to devices of the users it names, so here a station counts as the
+    // first one's; who may change a station is asked through getDevice, which names no user
+    const owner = ownerUserIds[0] ?? HOUSEHOLD;
     return (await this.stations()).map((station) => this.toNotifierDevice(station, owner));
   }
 
   async getDevice(deviceId: string): Promise<NotifierDevice | null> {
     if (!deviceId.startsWith(STATION_PREFIX)) return null;
     const station = (await this.stations()).find((s) => s.id === deviceId.slice(STATION_PREFIX.length));
-    return station ? this.toNotifierDevice(station, this.lastOwnerUserId) : null;
+    return station ? this.toNotifierDevice(station, HOUSEHOLD) : null;
   }
 
   /** A notification is said aloud: its title, then its text. */
@@ -611,17 +772,22 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       .join('. ');
     if (!text) return;
     const stations = await this.stations();
-    for (const deviceId of deviceIds) {
+    const targets = deviceIds.flatMap((deviceId) => {
       const id = deviceId.startsWith(STATION_PREFIX) ? deviceId.slice(STATION_PREFIX.length) : undefined;
       const station = id ? stations.find((s) => s.id === id) : undefined;
-      if (!station || this.isMuted(station.id)) continue;
-      try {
-        const route = await this.voice.say(station, text);
-        if (this.storage.values.debug) this.logger.log(`${station.name} said the notification (${route})`);
-      } catch (error: any) {
-        this.logger.error(`${station.name} could not say the notification:`, error.message);
-      }
-    }
+      return station && this.speaks(station.id) ? [station] : [];
+    });
+    // all at once: a station that does not answer must not hold back the others
+    await Promise.all(
+      targets.map(async (station) => {
+        try {
+          const route = await this.voice.say(station, text);
+          if (this.storage.values.debug) this.logger.log(`${station.name} said the notification (${route})`);
+        } catch (error: any) {
+          this.logger.error(`${station.name} could not say the notification:`, errorText(error));
+        }
+      }),
+    );
   }
 
   async registerDevice(): Promise<NotifierDevice> {
@@ -629,29 +795,29 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   }
 
   async revokeDevice(deviceId: string): Promise<void> {
-    await this.setMuted(deviceId.slice(STATION_PREFIX.length), true);
+    await this.setSpeaking(deviceId.slice(STATION_PREFIX.length), false);
   }
 
   async updateDevice(deviceId: string, patch: Record<string, unknown>): Promise<NotifierDevice | null> {
     const id = deviceId.slice(STATION_PREFIX.length);
     const station = (await this.stations()).find((s) => s.id === id);
     if (!station) return null;
-    if (typeof patch.active === 'boolean') await this.setMuted(id, !patch.active);
+    if (typeof patch.active === 'boolean') await this.setSpeaking(id, patch.active);
     if (typeof patch.name === 'string' && patch.name.trim()) {
       await this.storage.setInternalValue('stationNames', { ...this.storage.values.stationNames, [id]: patch.name.trim() });
     }
-    return this.toNotifierDevice(station, this.lastOwnerUserId);
+    return this.toNotifierDevice(station, HOUSEHOLD);
   }
 
   async notificationSettings(): Promise<JsonSchema[] | undefined> {
     return undefined;
   }
 
-  private async setMuted(id: string, muted: boolean): Promise<void> {
-    const current = new Set(this.storage.values.mutedStations ?? []);
-    if (muted) current.add(id);
+  private async setSpeaking(id: string, speaking: boolean): Promise<void> {
+    const current = new Set(this.storage.values.speakingStations ?? []);
+    if (speaking) current.add(id);
     else current.delete(id);
-    await this.storage.setInternalValue('mutedStations', [...current]);
+    await this.storage.setInternalValue('speakingStations', [...current]);
   }
 
   // ---- assistant ---------------------------------------------------------------------------------------------------
@@ -739,7 +905,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       }
       return { error: `Unknown tool ${name}` };
     } catch (error: any) {
-      return { error: error.message };
+      return { error: errorText(error) };
     }
   }
 
@@ -809,7 +975,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       await camera.initialize();
     } catch (error: any) {
       this.cameras.delete(id);
-      this.logger.error(`Could not set up camera ${device.name}:`, error.message);
+      this.logger.error(`Could not set up camera ${device.name}:`, errorText(error));
     }
   }
 
@@ -821,7 +987,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         if (url) return url;
       } catch (error: any) {
         if (!this.quasar) throw error;
-        this.logger.debug('The official API gave no stream, asking the Yandex app:', error.message);
+        this.logger.debug('The official API gave no stream, asking the Yandex app:', errorText(error));
       }
     }
     if (!this.quasar) throw new Error('The camera stream needs the sign-in by QR code or x_token');
@@ -832,6 +998,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
 
   private async onOfficialLogin(values: YandexConfig & Record<string, unknown>): Promise<FormSubmitResponse | void> {
     if (values[DONE_FIELD] !== undefined) return;
+    const signOuts = this.signOuts;
     const clientId = String(values.clientId ?? this.storage.values.clientId ?? '').trim();
     const clientSecret = String(values.clientSecret ?? this.storage.values.clientSecret ?? '').trim();
     if (!clientId) return { toast: { type: 'error', message: 'Enter the App ID of your app in Yandex ID first' } };
@@ -841,14 +1008,15 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     // without a secret the user gets the token on the page of Yandex ID and pastes it
     if (!clientSecret) {
       const pasted = typeof values.pastedToken === 'string' ? values.pastedToken.trim() : '';
-      if (pasted) return this.finishOfficial({ accessToken: pasted });
+      if (pasted) return this.finishOfficial({ accessToken: pasted }, signOuts);
       return {
         schema: [
           {
             type: 'string',
             key: 'tokenPage',
             title: 'Open this page, allow access, copy the token',
-            description: 'The page of Yandex ID shows the token after you allow access.',
+            description:
+              'The page of Yandex ID shows the token after you allow access, if the app in Yandex ID has the Redirect URI https://oauth.yandex.ru/verification_code.',
             format: 'textarea',
             readonly: true,
             defaultValue: tokenPageUrl(clientId),
@@ -863,7 +1031,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       try {
         const tokens = await exchangeDeviceCode(clientId, clientSecret, pending.deviceCode);
         this.deviceCode = undefined;
-        return this.finishOfficial(tokens);
+        return this.finishOfficial(tokens, signOuts);
       } catch (error: any) {
         if (error instanceof AuthorizationPending)
           return {
@@ -871,14 +1039,14 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
             schema: this.codeSchema(pending),
           };
         this.deviceCode = undefined;
-        return { toast: { type: 'error', message: error.message } };
+        return { toast: { type: 'error', message: errorText(error) } };
       }
     }
 
     try {
       this.deviceCode = await requestDeviceCode(clientId, `vion${(this.storage.values.account ?? '').replace(/\W/g, '')}`.slice(0, 32).padEnd(8, '0'));
     } catch (error: any) {
-      return { toast: { type: 'error', message: error.message } };
+      return { toast: { type: 'error', message: errorText(error) } };
     }
     return { schema: this.codeSchema(this.deviceCode) };
   }
@@ -897,14 +1065,16 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     ];
   }
 
-  private async finishOfficial(tokens: { accessToken: string; refreshToken?: string; expiresAt?: number }): Promise<FormSubmitResponse> {
+  private async finishOfficial(tokens: OAuthTokens, signOuts: number): Promise<FormSubmitResponse> {
     const iot = new YandexIot(async () => tokens.accessToken);
     let count: number;
     try {
       count = (await iot.home()).devices.length;
     } catch (error: any) {
-      return { toast: { type: 'error', message: `Yandex did not accept the token: ${error.message}` } };
+      return { toast: { type: 'error', message: `Yandex did not accept the token: ${errorText(error)}` } };
     }
+    // Sign out was pressed while Yandex answered: this sign-in must not come back into the settings
+    if (signOuts !== this.signOuts) return { toast: { type: 'error', message: SIGNED_OUT } };
     await this.storage.setValue('oauthToken', tokens.accessToken);
     await this.storage.setInternalValue('refreshToken', tokens.refreshToken ?? '');
     await this.storage.setInternalValue('tokenExpiresAt', tokens.expiresAt ?? 0);
@@ -914,12 +1084,15 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
 
   private async onQrLogin(values: Record<string, unknown>): Promise<FormSubmitResponse | void> {
     if (values[DONE_FIELD] !== undefined) return;
+    const signOuts = this.signOuts;
     const pending = this.qrSession?.qrPending && values.qrLink !== undefined ? this.qrSession : undefined;
 
     if (pending) {
       const until = Date.now() + QR_WAIT_MS;
       try {
         while (!(await pending.checkQr())) {
+          // signed out while the window waited: the confirmation that may still come is not taken
+          if (signOuts !== this.signOuts) return { toast: { type: 'error', message: SIGNED_OUT } };
           if (Date.now() > until)
             return {
               toast: { type: 'warning', message: 'Not confirmed yet: confirm in the Yandex app, then press the button again' },
@@ -927,19 +1100,20 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
             };
           await new Promise((resolve) => setTimeout(resolve, QR_POLL_MS));
         }
-        return await this.finishApp(pending);
+        return await this.finishApp(pending, signOuts);
       } catch (error: any) {
-        return { toast: { type: 'error', message: `Sign-in failed: ${error.message}` } };
+        return { toast: { type: 'error', message: `Sign-in failed: ${errorText(error)}` } };
       }
     }
 
     try {
       const session = new YandexSession();
       const link = await session.startQr();
+      if (signOuts !== this.signOuts) return { toast: { type: 'error', message: SIGNED_OUT } };
       this.qrSession = session;
       return { schema: await this.qrSchema(link) };
     } catch (error: any) {
-      return { toast: { type: 'error', message: `Could not start the QR sign-in: ${error.message}` } };
+      return { toast: { type: 'error', message: `Could not start the QR sign-in: ${errorText(error)}` } };
     }
   }
 
@@ -967,21 +1141,29 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     ];
   }
 
+  /**
+   * An x_token typed into its field. ViON stores the field before this runs, so one Yandex does not take is put back
+   * to the sign-in that worked (or emptied): kept, it would be what the next start signs in with.
+   */
   private async onXToken(value: unknown): Promise<void> {
     const xToken = typeof value === 'string' ? value.trim() : '';
     if (!xToken || xToken === this.storedXToken) return;
+    const signOuts = this.signOuts;
     try {
       const session = new YandexSession();
       await session.useXToken(xToken);
-      await this.finishApp(session);
+      await this.finishApp(session, signOuts);
     } catch (error: any) {
-      this.logger.error('Yandex did not accept the x_token:', error.message);
+      this.logger.error('The x_token typed in the settings did not sign in to Yandex and is not kept:', errorText(error));
+      if (signOuts === this.signOuts && this.storage.values.xToken === value) await this.storage.setValue('xToken', this.storedXToken ?? '');
     }
   }
 
-  private async finishApp(session: YandexSession): Promise<FormSubmitResponse> {
+  private async finishApp(session: YandexSession, signOuts: number): Promise<FormSubmitResponse> {
     const account = await session.account();
     if (!session.jar.size) await session.cookiesFromXToken();
+    // Sign out was pressed while Yandex answered: this sign-in must not come back into the settings
+    if (signOuts !== this.signOuts) throw new YandexAuthError(SIGNED_OUT);
     const state = session.state();
     this.storedXToken = state.xToken;
     this.qrSession = undefined;
@@ -1000,7 +1182,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'string',
         key: DONE_FIELD,
         title: 'Signed in to the Smart Home API, devices found:',
-        description: 'Sensors are added under Sensors in ViON, cameras under Cameras, stations speak notifications chosen for them.',
+        description: 'Sensors are added under Sensors in ViON, cameras under Cameras. For speech on the stations, also sign in with QR code.',
         readonly: true,
         defaultValue: value,
       };
@@ -1009,7 +1191,8 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       type: 'string',
       key: DONE_FIELD,
       title: 'Signed in to Yandex as:',
-      description: 'Sensors are added under Sensors in ViON, cameras under Cameras, stations speak notifications chosen for them.',
+      description:
+        'Sensors are added under Sensors in ViON, cameras under Cameras. A station speaks notifications once you turn it on in the notification settings of ViON.',
       readonly: true,
       defaultValue: value,
     };
@@ -1041,19 +1224,29 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       const route = await this.voice.say(station, text);
       return { toast: { type: 'success', message: route === 'local' ? 'Said through the home network' : 'Said through the cloud' } };
     } catch (error: any) {
-      return { toast: { type: 'error', message: error.message } };
+      return { toast: { type: 'error', message: errorText(error) } };
     }
   }
 
   private async onLogout(): Promise<void> {
+    // what runs now (a reading, a renewal, a sign-in) checks this when Yandex answers, and keeps nothing
+    this.signOuts++;
     this.disconnect();
     this.deviceCode = undefined;
+    this.qrSession = undefined;
+    this.storedXToken = undefined;
+    this.renewFailedAt = 0;
+    this.devices.clear();
+    this.scenarioList = [];
+    this.scenariosRead = false;
+    this.complete = false;
+    this.offeredCameras = undefined;
+    this.markUnavailable();
     for (const key of ['xToken', 'cookies', 'stationToken', 'account', 'oauthToken'] as const) await this.storage.setValue(key, '');
     await this.storage.setInternalValue('refreshToken', '');
     await this.storage.setInternalValue('tokenExpiresAt', 0);
-    this.devices.clear();
-    this.complete = false;
-    this.markUnavailable();
+    // the stations of the next sign-in speak only once chosen again
+    await this.storage.setInternalValue('speakingStations', []);
     this.logger.log('Signed out of Yandex');
   }
 }

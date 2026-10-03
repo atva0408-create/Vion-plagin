@@ -3,8 +3,8 @@
 // account (see LICENSE.md for where this comes from).
 import WebSocket from 'ws';
 
-import { YandexApiError, messageText } from './http.js';
-import { parseQuasarDevice, parseQuasarDevices } from './home.js';
+import { YandexApiError, YandexAuthError, messageText } from './http.js';
+import { SCENARIO_PREFIX, parseQuasarDevice, parseQuasarDevices, userScenarios } from './home.js';
 
 import type { YDevice, YScenario } from './home.js';
 import type { YAction } from './iot.js';
@@ -15,9 +15,6 @@ export const GLAGOL_URL = 'https://quasar.yandex.net/glagol';
 
 /** The longest text a scenario says, as the app allows it. */
 export const CLOUD_TEXT_LIMIT = 100;
-/** Scenarios the plugin keeps, one per station, start with this name. */
-export const SCENARIO_PREFIX = 'ViON ';
-
 const MASK_EN = '0123456789abcdef-';
 const MASK_RU = 'оеаинтсрвлкмдпуяы';
 
@@ -64,6 +61,8 @@ export interface GlagolDevice {
 
 export class YandexQuasar {
   private scenarioIds = new Map<string, string>();
+  /** The last text each station was given through its scenario, by station: the next one waits for it. */
+  private speaking = new Map<string, Promise<void>>();
 
   constructor(
     private readonly session: YandexSession,
@@ -77,7 +76,7 @@ export class YandexQuasar {
 
   async scenarios(): Promise<YScenario[]> {
     const answer = await this.session.quasar('GET', `${this.baseUrl}/m/user/scenarios`);
-    return (answer.scenarios ?? []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? s.id) }));
+    return userScenarios((answer.scenarios ?? []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? s.id) })));
   }
 
   async device(id: string): Promise<YDevice> {
@@ -110,10 +109,26 @@ export class YandexQuasar {
     await this.runOwnScenario(deviceId, commandScenario(deviceId, text));
   }
 
-  private async runOwnScenario(deviceId: string, body: ReturnType<typeof ttsScenario>): Promise<void> {
-    const id = await this.ownScenario(deviceId);
-    await this.session.quasar('PUT', `${this.baseUrl}/m/v4/user/scenarios/${encodeURIComponent(id)}`, body);
-    await this.session.quasar('POST', `${this.baseUrl}/m/user/scenarios/${encodeURIComponent(id)}/actions`);
+  /**
+   * One text after the other per station: a station has one scenario, and two texts at once would both write it
+   * before either ran, so the station said the second one twice and never the first. The first time, both would
+   * also find no scenario and make one each.
+   */
+  private runOwnScenario(deviceId: string, body: ReturnType<typeof ttsScenario>): Promise<void> {
+    const run = async () => {
+      const id = await this.ownScenario(deviceId);
+      await this.session.quasar('PUT', `${this.baseUrl}/m/v4/user/scenarios/${encodeURIComponent(id)}`, body);
+      await this.session.quasar('POST', `${this.baseUrl}/m/user/scenarios/${encodeURIComponent(id)}/actions`);
+    };
+    const previous = this.speaking.get(deviceId);
+    // the text before failed or not, this one is said: its caller got that failure already
+    const current = previous ? previous.then(run, run) : run();
+    this.speaking.set(deviceId, current);
+    const forget = () => {
+      if (this.speaking.get(deviceId) === current) this.speaking.delete(deviceId);
+    };
+    current.then(forget, forget);
+    return current;
   }
 
   /** The scenario of the plugin for this station: found by its voice phrase, made when there is none. */
@@ -153,6 +168,21 @@ export class YandexQuasar {
   }
 }
 
+/** What the live updates hand over. */
+export interface UpdateHandlers {
+  /** The list read when the socket is opened (again): changes in it happened while no socket was open. */
+  devices(devices: YDevice[]): void;
+  /** A device changed, as Yandex reported it on the socket. */
+  update(update: any): void;
+  /** The scenarios may have changed: at every opening of the socket, and when Yandex says so. */
+  scenarios(): void;
+  /**
+   * The state is not followed any more: the list could not be read (`error`), or the socket closed. A refused
+   * sign-in (YandexAuthError) ends the updates, anything else is tried again.
+   */
+  lost(error?: unknown): void;
+}
+
 /**
  * Live state of the devices: the app keeps a socket open, and Yandex sends there what changed. The socket is
  * opened again after it closes; between, the list is read once, so nothing that changed meanwhile is missed.
@@ -164,10 +194,11 @@ export class QuasarUpdates {
 
   constructor(
     private readonly quasar: YandexQuasar,
-    private readonly onDevices: (devices: YDevice[]) => void,
-    private readonly onUpdate: (update: any) => void,
+    private readonly handlers: UpdateHandlers,
     private readonly log: (message: string, error?: unknown) => void,
     private readonly retryMs = 30_000,
+    /** A ping goes out this often; a socket that did not answer the last one is closed. */
+    private readonly heartbeatMs = 30_000,
   ) {}
 
   start(): void {
@@ -178,43 +209,84 @@ export class QuasarUpdates {
   stop(): void {
     this.stopped = true;
     clearTimeout(this.timer);
-    this.socket?.close();
+    this.socket?.terminate();
     this.socket = undefined;
   }
 
   private async connect(): Promise<void> {
     if (this.stopped) return;
+    let answer: Awaited<ReturnType<YandexQuasar['devices']>>;
     try {
-      const { devices, updatesUrl } = await this.quasar.devices();
-      this.onDevices(devices);
-      if (!updatesUrl || this.stopped) return this.retry();
-      const socket = new WebSocket(updatesUrl);
-      this.socket = socket;
-      socket.on('message', (data) => {
-        try {
-          const message = JSON.parse(messageText(data));
-          if (message.operation !== 'update_states') return;
-          const payload = typeof message.message === 'string' ? JSON.parse(message.message) : message.message;
-          for (const device of payload?.updated_devices ?? []) this.onUpdate(device);
-        } catch (error) {
-          this.log('Could not read an update of the Smart Home', error);
-        }
-      });
-      socket.on('error', (error) => this.log('The live updates of the Smart Home failed', error));
-      socket.on('close', () => {
-        if (this.socket === socket) this.socket = undefined;
-        this.retry();
-      });
+      answer = await this.quasar.devices();
     } catch (error) {
-      this.log('Could not read the devices of the Smart Home', error);
-      this.retry();
+      if (this.stopped) return;
+      this.handlers.lost(error);
+      // a refused sign-in is refused at every try: the updates wait for a new sign-in instead
+      if (!(error instanceof YandexAuthError)) this.retry(this.retryMs);
+      return;
     }
+    // stopped (signed out, restarted) while the list was read: it belongs to a sign-in that is gone
+    if (this.stopped) return;
+    this.handlers.devices(answer.devices);
+    this.handlers.scenarios();
+    if (answer.updatesUrl) this.open(answer.updatesUrl);
+    else this.retry(this.retryMs);
   }
 
-  private retry(): void {
+  private open(url: string): void {
+    const socket = new WebSocket(url, { handshakeTimeout: this.heartbeatMs });
+    this.socket = socket;
+    let openedAt = 0;
+    let answered = true;
+    let heartbeat: NodeJS.Timeout | undefined;
+
+    socket.on('open', () => {
+      openedAt = Date.now();
+      // a connection a router dropped closes on neither side: only an unanswered ping tells
+      heartbeat = setInterval(() => {
+        if (!answered) {
+          this.log('The live updates of the Smart Home stopped answering, opening them again');
+          socket.terminate();
+          return;
+        }
+        answered = false;
+        if (socket.readyState === WebSocket.OPEN) socket.ping();
+      }, this.heartbeatMs);
+      heartbeat.unref?.();
+    });
+    socket.on('pong', () => {
+      answered = true;
+    });
+    socket.on('message', (data) => {
+      answered = true;
+      try {
+        const message = JSON.parse(messageText(data));
+        if (message.operation === 'update_scenario_list') {
+          this.handlers.scenarios();
+          return;
+        }
+        if (message.operation !== 'update_states') return;
+        const payload = typeof message.message === 'string' ? JSON.parse(message.message) : message.message;
+        for (const device of payload?.updated_devices ?? []) this.handlers.update(device);
+      } catch (error) {
+        this.log('Could not read an update of the Smart Home', error);
+      }
+    });
+    socket.on('error', (error) => this.log('The live updates of the Smart Home failed', error));
+    socket.on('close', () => {
+      clearInterval(heartbeat);
+      if (this.socket === socket) this.socket = undefined;
+      if (this.stopped) return;
+      this.handlers.lost();
+      // a socket that lived is opened again at once; one that closed right away waits, so Yandex is not hammered
+      this.retry(openedAt && Date.now() - openedAt >= this.retryMs ? 0 : this.retryMs);
+    });
+  }
+
+  private retry(ms: number): void {
     if (this.stopped) return;
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.connect(), this.retryMs);
+    this.timer = setTimeout(() => void this.connect(), ms);
     this.timer.unref?.();
   }
 }

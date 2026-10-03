@@ -102,11 +102,18 @@ export async function requestDeviceCode(clientId: string, deviceId: string): Pro
   };
 }
 
+/** Answers of Yandex ID that stay the same however often it is asked: the token or the app is refused. */
+const REFUSALS = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
+
 async function tokenRequest(params: Record<string, string>): Promise<OAuthTokens> {
   const res = await http(`${OAUTH_URL}/token`, { method: 'POST', body: new URLSearchParams(params) });
   const body = await json<Record<string, any>>(res);
   if (body.error === 'authorization_pending' || body.error === 'slow_down') throw new AuthorizationPending();
-  if (!body.access_token) throw new YandexAuthError(`Yandex ID did not give a token: ${body.error_description ?? body.error ?? res.status}`);
+  if (!body.access_token) {
+    const message = `Yandex ID did not give a token: ${body.error_description ?? body.error ?? res.status}`;
+    // a renewal Yandex ID refused is final, any other failure (an outage, a limit) is worth another try later
+    throw REFUSALS.has(body.error) ? new YandexAuthError(message) : new YandexApiError(message, res.status);
+  }
   return {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,

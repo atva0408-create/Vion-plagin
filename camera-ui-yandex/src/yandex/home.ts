@@ -82,6 +82,17 @@ function properties(raw: unknown): YProperty[] {
 }
 
 /** The answer of GET /v1.0/user/info of the official API. */
+/** Scenarios the plugin keeps, one per station, start with this name. */
+export const SCENARIO_PREFIX = 'ViON ';
+
+/**
+ * The scenarios of the account a user may run from ViON: the ones the plugin keeps to make its stations speak are
+ * left out, offered as switches they said the last notification again.
+ */
+export function userScenarios(scenarios: YScenario[]): YScenario[] {
+  return scenarios.filter((scenario) => !scenario.name.startsWith(SCENARIO_PREFIX));
+}
+
 export function parseUserInfo(info: any): YHome {
   const rooms = new Map<string, string>((info?.rooms ?? []).map((room: any) => [String(room.id), String(room.name)]));
   const households = new Map<string, string>((info?.households ?? []).map((house: any) => [String(house.id), String(house.name)]));
@@ -97,7 +108,7 @@ export function parseUserInfo(info: any): YHome {
     properties: properties(device.properties),
   }));
   const scenarios: YScenario[] = (info?.scenarios ?? []).map((s: any) => ({ id: String(s.id), name: String(s.name ?? s.id) }));
-  return { devices, scenarios };
+  return { devices, scenarios: userScenarios(scenarios) };
 }
 
 /** One device as the web API of the app gives it, in the list and in the updates. */

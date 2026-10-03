@@ -1,7 +1,11 @@
 // A stand-in for the servers of Yandex the plugin talks to, reached through a replaced `fetch`: Passport with the QR
 // sign-in and the x_token, Yandex ID with the code sign-in, the official Smart Home API, and the web API of the app
 // with its CSRF token and cookies. It refuses what the real servers refuse: a request of the app without the
-// cookies of the session, a change without the CSRF token, the official API without the token.
+// cookies of the session, a change without the CSRF token, the official API without the token. The live updates of
+// the app are a real WebSocket server on this machine (fakeUpdates), named by the device list like Yandex does.
+import { WebSocketServer } from 'ws';
+
+import type { AddressInfo } from 'node:net';
 
 export const X_TOKEN = 'x-token-1';
 export const OAUTH_TOKEN = 'oauth-1';
@@ -32,6 +36,8 @@ export interface FakeState {
   ran: string[];
   /** actions sent to devices */
   actions: { id: string; actions: any[] }[];
+  /** the socket of the live updates the device list of the app names, see fakeUpdates; none when empty */
+  updatesUrl?: string;
 }
 
 function ok(body: unknown, init: ResponseInit & { cookies?: string[] } = {}): Response {
@@ -187,7 +193,7 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
       if (path === '/m/v3/user/devices') {
         return ok({
           status: 'ok',
-          updates_url: '',
+          updates_url: state.updatesUrl ?? '',
           households: [
             {
               id: 'h1',
@@ -258,6 +264,65 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
       calls.push({ method: (init?.method ?? 'GET').toUpperCase(), url: url.toString(), body: body(init) });
       return handler(url, init);
     }) as typeof fetch,
+  };
+}
+
+/** The socket of the live updates: the tests send on it what Yandex would. */
+export interface FakeUpdates {
+  url: string;
+  /** sockets open now */
+  readonly open: number;
+  /** sockets opened so far */
+  readonly opened: number;
+  /** pings the plugin sent */
+  readonly pings: number;
+  /** changes of devices as Yandex sends them: the message is JSON text inside the JSON, or an object when `nested` is false */
+  states(devices: any[], nested?: boolean): void;
+  send(message: unknown): void;
+  /** every socket closed from this side, as Yandex or a router does */
+  drop(): void;
+  close(): Promise<void>;
+}
+
+/** `pong: false` answers no ping: a connection that died on the way without a close. */
+export async function fakeUpdates(options: { pong?: boolean } = {}): Promise<FakeUpdates> {
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0, autoPong: options.pong ?? true });
+  await new Promise((resolve) => server.once('listening', resolve));
+  let opened = 0;
+  let pings = 0;
+  server.on('connection', (socket) => {
+    opened++;
+    socket.on('ping', () => pings++);
+  });
+  const all = (data: string) => {
+    for (const client of server.clients) client.send(data);
+  };
+  return {
+    url: `ws://127.0.0.1:${(server.address() as AddressInfo).port}/updates`,
+    get open() {
+      return server.clients.size;
+    },
+    get opened() {
+      return opened;
+    },
+    get pings() {
+      return pings;
+    },
+    states(devices, nested = true) {
+      const message = { updated_devices: devices, source: 'action' };
+      all(JSON.stringify({ operation: 'update_states', message: nested ? JSON.stringify(message) : message }));
+    },
+    send(message) {
+      all(typeof message === 'string' ? message : JSON.stringify(message));
+    },
+    drop() {
+      for (const client of server.clients) client.terminate();
+    },
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const client of server.clients) client.terminate();
+        server.close(() => resolve());
+      }),
   };
 }
 

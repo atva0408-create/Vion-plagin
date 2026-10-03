@@ -1,6 +1,7 @@
 // Speech on the Yandex stations: through the local protocol when ViON reaches the station in the home network,
 // through a scenario of the account otherwise. Both need the sign-in by QR code or x_token.
-import { GlagolClient, GLAGOL_PORT, commandPayload, sayPayload } from './yandex/glagol.js';
+import { GlagolAnswerError, GlagolClient, GlagolTokenError, GLAGOL_PORT, commandPayload, sayPayload } from './yandex/glagol.js';
+import { YandexApiError, YandexAuthError } from './yandex/http.js';
 import { cloudText } from './yandex/quasar.js';
 
 import type { YDevice } from './yandex/home.js';
@@ -11,6 +12,8 @@ export type VoiceRoute = 'local' | 'cloud';
 
 /** How long the list of the stations in the home network is trusted. */
 const LOCAL_LIST_MS = 10 * 60_000;
+/** An address the station did not answer on is not tried for this long: each notification would wait seconds for it. */
+const UNREACHABLE_MS = 3 * 60_000;
 
 /** "Hall = 192.168.1.20" lines of the settings: a name or id of a station and its address. */
 export function parseHosts(raw: string | undefined): Map<string, { host: string; port: number }> {
@@ -32,6 +35,8 @@ export class StationVoice {
   private clients = new Map<string, GlagolClient>();
   private tokens = new Map<string, string>();
   private local?: { at: number; devices: GlagolDevice[] };
+  /** Addresses that did not answer, until when they are skipped. */
+  private unreachable = new Map<string, number>();
 
   constructor(
     private readonly quasar: () => YandexQuasar | undefined,
@@ -52,6 +57,7 @@ export class StationVoice {
     this.clients.clear();
     this.tokens.clear();
     this.local = undefined;
+    this.unreachable.clear();
   }
 
   private async deliver(station: YDevice, text: string, what: 'say' | 'command'): Promise<VoiceRoute> {
@@ -80,6 +86,8 @@ export class StationVoice {
     if (!info) throw new Error(`${station.name} has no local connection`);
     const target = await this.target(quasar, station);
     if (!target) throw new Error(`The address of ${station.name} in the home network is unknown`);
+    const address = `${target.host}:${target.port}`;
+    if ((this.unreachable.get(address) ?? 0) > Date.now()) throw new Error(`${station.name} did not answer on ${address} a moment ago`);
 
     let client = this.clients.get(info.deviceId);
     const secure = this.settings().secure ?? true;
@@ -96,14 +104,26 @@ export class StationVoice {
     }
 
     try {
-      await client.send(payload);
+      try {
+        await client.send(payload);
+      } catch (error) {
+        // only a refused token is worth a second try: after no answer or a failure the station may have said the
+        // text already, and it would say it twice
+        if (!(error instanceof GlagolTokenError)) throw error;
+        // a token of the station lives for a while; a refused one is made anew once
+        this.tokens.delete(info.deviceId);
+        client.close();
+        this.debug(`${station.name}: retrying the local connection with a new token`, error);
+        await client.send(payload);
+      }
     } catch (error) {
-      // a token of the station lives for a while; a refused one is made anew once
-      this.tokens.delete(info.deviceId);
-      client.close();
-      this.debug(`${station.name}: retrying the local connection with a new token`, error);
-      await client.send(payload);
+      // a station that answered is in reach, and a token Yandex did not give says nothing of the station; one that
+      // did not answer is skipped for a while
+      const reached = error instanceof GlagolAnswerError || error instanceof GlagolTokenError;
+      if (!reached && !(error instanceof YandexApiError) && !(error instanceof YandexAuthError)) this.unreachable.set(address, Date.now() + UNREACHABLE_MS);
+      throw error;
     }
+    this.unreachable.delete(address);
   }
 
   private async target(quasar: YandexQuasar, station: YDevice): Promise<{ host: string; port: number } | undefined> {
