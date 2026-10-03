@@ -1,3 +1,7 @@
+## [0.2.1]
+
+- Ein gehaltener Pfeil dreht die Kamera in einer gleichmäßigen Bewegung: Der Motor bekam nur jede halbe Sekunde einen Schritt und hielt vor jedem an, sodass die Kamera ruckelte und einen Teil der Schritte ausließ. Autotrack sieht die Kamera als in Bewegung, solange ihr Motor dreht
+
 ## [0.2.0]
 
 - Kameras mit Motor lassen sich aus ViON drehen: Schalten Sie **Schwenken und Neigen (PTZ)** für die Kamera unter **Einstellungen**, **Autotrack** ein und halten Sie dann einen Pfeil im Player gedrückt oder lassen Sie Autotrack einer Person folgen

@@ -6,8 +6,15 @@ import { errorText } from './xiaomi/text.js';
 import type { LoggerService, PTZDirection, PTZPosition, PTZRelativeMove } from '@camera.ui/sdk';
 import type { MissSession, MotorAnswer } from './xiaomi/miss.js';
 
-/** A held direction steps the motor this often; one step takes the camera about a quarter of a second. */
-export const STEP_INTERVAL_MS = 500;
+/**
+ * A held direction steps the motor this often. Measured on a C300: a step turns the camera about 5° in half a second,
+ * and a step that comes while it turns carries the turn on instead of adding to it. 500 ms apart the motor stopped
+ * before every step (a jerky turn, and the camera dropped some steps); 250 ms apart the steps make one even turn of
+ * about 11° a second that stops half a second after the last one, with room for a step late over Wi-Fi.
+ */
+export const STEP_INTERVAL_MS = 250;
+/** How long the motor turns after a step: until then the camera counts as moving. */
+export const STEP_TURN_MS = 500;
 /** A held direction ends by itself after this long: a stop that never comes (a closed page) does not turn the camera round. */
 export const HOLD_LIMIT_MS = 10_000;
 /** The session of the motor is closed after this long without a step. */
@@ -19,6 +26,7 @@ export interface PtzTiming {
   stepMs: number;
   holdMs: number;
   idleMs: number;
+  turnMs: number;
 }
 
 /** The direction of a move, the larger axis winning: the motor steps along one axis at a time. */
@@ -48,7 +56,7 @@ export class XiaomiPtz extends PTZControl {
   ) {
     super('Xiaomi PTZ');
     this.capabilities = [PTZCapability.Pan, PTZCapability.Tilt, PTZCapability.RelativeMove, PTZCapability.VelocityControl];
-    this.timing = { stepMs: STEP_INTERVAL_MS, holdMs: HOLD_LIMIT_MS, idleMs: IDLE_MS, ...timing };
+    this.timing = { stepMs: STEP_INTERVAL_MS, holdMs: HOLD_LIMIT_MS, idleMs: IDLE_MS, turnMs: STEP_TURN_MS, ...timing };
   }
 
   /**
@@ -104,7 +112,8 @@ export class XiaomiPtz extends PTZControl {
   private async send(step: MotorStep): Promise<void> {
     this.setMoving(true);
     clearTimeout(this.movingTimer);
-    this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.stepMs);
+    // the motor, not the pace of the steps: with steps closer than a turn the camera would count as still between them
+    this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.turnMs);
 
     try {
       const session = await this.openSession();

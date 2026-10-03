@@ -1,3 +1,7 @@
+## [0.2.1]
+
+- A held arrow turns the camera in one smooth movement: the motor was stepped every half second and stopped before every step, so the camera turned in jerks and missed some of the steps. Autotracking sees the camera as moving for as long as its motor turns
+
 ## [0.2.0]
 
 - Cameras with a motor turn from ViON: switch on **Pan and tilt (PTZ)** for the camera under **Settings**, **Autotrack**, then hold an arrow in the player or let autotracking follow a person

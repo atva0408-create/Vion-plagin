@@ -4,11 +4,12 @@
 // Run: npx tsx spec/ptz.spec.ts
 import assert from 'node:assert/strict';
 
-import { XiaomiPtz, stepOf } from '../src/ptz.js';
+import { STEP_INTERVAL_MS, STEP_TURN_MS, XiaomiPtz, stepOf } from '../src/ptz.js';
 import { MissSession, MotorStep, parseAnswer } from '../src/xiaomi/miss.js';
 import { generateKeyPair } from '../src/xiaomi/keys.js';
 import { SIGN, fakeCamera } from './fake-camera.js';
 
+import type { PtzTiming } from '../src/ptz.js';
 import type { MotorAnswer } from '../src/xiaomi/miss.js';
 import type { FakeCamera, FakeCameraOptions } from './fake-camera.js';
 
@@ -147,7 +148,7 @@ test('the arrows map to the steps of the motor, the larger axis winning', () => 
 });
 
 /** A PTZ control over sessions with the stand-in camera, counting the sessions it opens. */
-function ptzWith(camera: FakeCamera, timing = { stepMs: 100, holdMs: 1000, idleMs: 400 }) {
+function ptzWith(camera: FakeCamera, timing: Partial<PtzTiming> = { stepMs: 100, holdMs: 1000, idleMs: 400 }) {
   const { lines, logger } = recorder();
   let opened = 0;
   const ptz = new XiaomiPtz(
@@ -194,6 +195,27 @@ test('the arrow sent again while held keeps the pace, it does not step faster', 
       // 320 ms held: the first step and one per 100 ms
       assert.ok(camera.operations.length <= 5, `steps: ${camera.operations.length}`);
       assert.ok(camera.operations.every((operation) => operation === MotorStep.Up));
+    } finally {
+      ptz.dispose();
+    }
+  });
+});
+
+// measured on a C300: a step turns the motor for about half a second, a step during the turn carries it on; a held
+// arrow stepping slower than that stops the camera before every step (the jerky turn of 0.2.0, 500 ms apart)
+test('a held arrow steps before the motor stops, with room for a late step', () => {
+  assert.ok(STEP_TURN_MS - STEP_INTERVAL_MS >= 150, `a step every ${STEP_INTERVAL_MS} ms, a step turns ${STEP_TURN_MS} ms`);
+});
+
+test('the camera counts as moving while its motor turns, not only until the next step is due', async () => {
+  await withCamera({}, async (camera) => {
+    const { ptz } = ptzWith(camera, { stepMs: 100, holdMs: 1000, idleMs: 2000, turnMs: 300 });
+    try {
+      await ptz.setRelativeMove({ panDelta: 1, tiltDelta: 0, zoomDelta: 0 });
+      await sleep(180);
+      assert.equal(ptz.moving, true, 'still turning 180 ms after the step');
+      await sleep(250);
+      assert.equal(ptz.moving, false, 'stopped after the turn of a step');
     } finally {
       ptz.dispose();
     }
