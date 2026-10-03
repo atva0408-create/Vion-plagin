@@ -33,5 +33,7 @@
   "Characters from the picture": "Zeichen aus dem Bild",
   "Type the characters you see, then confirm.": "Geben Sie die Zeichen aus dem Bild ein und bestätigen Sie.",
   "Confirmation code": "Bestätigungscode",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi hat einen Code an das Telefon oder die E-Mail-Adresse des Kontos gesendet. Geben Sie ihn ein und bestätigen Sie."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi hat einen Code an das Telefon oder die E-Mail-Adresse des Kontos gesendet. Geben Sie ihn ein und bestätigen Sie.",
+  "Pan and tilt (PTZ)": "Schwenken und Neigen (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Dreht die Kamera aus ViON: Pfeile im Player und Autotrack. Für Kameras mit Motor, etwa Mi 360°, C200 und C300."
 }

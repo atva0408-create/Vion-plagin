@@ -5,9 +5,10 @@
 import assert from 'node:assert/strict';
 
 import XiaomiPlugin from '../src/index.js';
+import { SIGN, fakeCamera } from './fake-camera.js';
 import { CAPTCHA, PASSWORD, TICKET, fakeXiaomi } from './fake-xiaomi.js';
 
-import type { CameraDevice, DiscoveredCamera, FormSubmitResponse, JsonSchema, StreamingInterface } from '@camera.ui/sdk';
+import type { CameraDevice, DiscoveredCamera, FormSubmitResponse, JsonSchema, PTZControl, StreamingInterface } from '@camera.ui/sdk';
 import type { Scenario } from './fake-xiaomi.js';
 
 const realFetch = globalThis.fetch;
@@ -102,19 +103,51 @@ async function launchKeepingTimers(h: ReturnType<typeof host>): Promise<(() => v
   return ticks;
 }
 
-function device(nativeId = '1001') {
+/**
+ * A camera handed to the plugin. Its storage behaves like the SDK's: values stored before, defaults of the schema
+ * under them, and a changed value goes through the field's onSet. `stored` is what the camera kept from before.
+ */
+function device(nativeId = '1001', stored: Record<string, unknown> = {}, logger: typeof silent = silent) {
   let implementation: StreamingInterface | undefined;
+  let schema: (JsonSchema & Record<string, any>)[] = [];
+  const values: Record<string, unknown> = { ...stored };
+  const sensors: PTZControl[] = [];
   const camera = {
     id: `cam-${nativeId}`,
     name: 'Hall',
     nativeId,
-    logger: silent,
+    logger,
     async implement(impl: StreamingInterface) {
       implementation = impl;
     },
     connect() {},
+    createStorage(schemas: JsonSchema[]) {
+      schema = schemas as typeof schema;
+      for (const field of schema) if (field.store && values[field.key] === undefined) values[field.key] = field.defaultValue;
+      return { values };
+    },
+    async addSensor(sensor: PTZControl) {
+      sensors.push(sensor);
+    },
+    async removeSensor(id: string) {
+      sensors.splice(
+        sensors.findIndex((sensor) => sensor.id === id),
+        1,
+      );
+    },
   };
-  return { camera: camera as unknown as CameraDevice, stream: () => implementation!.streamUrl('source-1') };
+  return {
+    camera: camera as unknown as CameraDevice,
+    stream: () => implementation!.streamUrl('source-1'),
+    sensors,
+    values,
+    /** the camera's setting changed in the interface */
+    set: async (key: string, value: unknown) => {
+      const old = values[key];
+      values[key] = value;
+      await schema.find((field) => field.key === key)?.onSet?.(value, old);
+    },
+  };
 }
 
 const tests: [string, () => Promise<void>][] = [];
@@ -641,6 +674,81 @@ test('a door viewer that could not be woken is named in the log with the reason,
   assert.deepEqual(lines.warn, ['Could not wake up Door, connecting all the same: Xiaomi: device offline']);
   await h.shutdown();
 });
+
+test('pan and tilt are off until switched on in the settings of the camera; on adds the PTZ control, off removes it', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001');
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  assert.equal(hall.values.ptz, false);
+  assert.equal(hall.sensors.length, 0);
+  await hall.set('ptz', true);
+  assert.equal(hall.sensors.length, 1);
+  assert.equal(hall.sensors[0].type, 'ptz');
+  await hall.set('ptz', true);
+  assert.equal(hall.sensors.length, 1, 'switched on twice, added twice');
+  await hall.set('ptz', false);
+  assert.equal(hall.sensors.length, 0);
+  await h.shutdown();
+});
+
+test('a camera with pan and tilt switched on has its PTZ control again after a restart', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001', { ptz: true });
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  assert.equal(hall.sensors.length, 1);
+  await h.shutdown();
+});
+
+test("a step turns the camera over a session of the plugin's own, with keys the cloud signs for that session", async () => {
+  const camera = await fakeCamera();
+  try {
+    const fake = fakeXiaomi(
+      scenario({
+        devices: { ru: [{ did: '1001', name: 'Hall', model: 'xiaomi.camera.c01a01', localip: '127.0.0.1', isOnline: true }], cn: [] },
+        vendors: { '1001': { vendor: { vendor: 4, vendor_params: {} }, public_key: camera.devicePublic, sign: SIGN } },
+      }),
+    );
+    globalThis.fetch = fake.fetch;
+    const h = host({ userId: '42', passToken: 'PT1' });
+    const hall = device('1001', { ptz: true });
+    await h.plugin.configureCameras([hall.camera]);
+    await h.launch();
+    await hall.sensors[0].setRelativeMove({ panDelta: 0.4, tiltDelta: 0, zoomDelta: 0 });
+    await until(() => camera.operations.length === 1);
+    assert.deepEqual(camera.operations, [2]);
+    // the key the camera was signed in with is the one the cloud signed
+    const asked = fake.calls.filter((call) => call.path === '/v2/device/miss_get_vendor').at(-1)?.params as { app_pubkey?: string };
+    assert.equal(camera.auths[0].public_key, asked.app_pubkey);
+    await h.shutdown();
+  } finally {
+    await camera.close();
+  }
+});
+
+test('a camera the plugin cannot turn says why in its log at the first step', async () => {
+  globalThis.fetch = fakeXiaomi(
+    scenario({ vendors: { '1001': { vendor: { vendor: 1, vendor_params: { p2p_id: 'TUTK1' } }, public_key: 'dd'.repeat(32), sign: 'sig' } } }),
+  ).fetch;
+  const { lines, logger } = recorder();
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001', { ptz: true }, logger);
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  await hall.sensors[0].setRelativeMove({ panDelta: -1, tiltDelta: 0, zoomDelta: 0 });
+  assert.deepEqual(lines.error, ['Could not turn the camera left: Hall (chuangmi.camera.039a01) connects over tutk: the plugin turns cameras over CS2 only']);
+  await h.shutdown();
+});
+
+// a step that hangs (a session never closed keeps the process alive) ends the run red, instead of leaving a
+// process that holds the stand-in camera's port 32108 for the next run
+setTimeout(() => {
+  console.log('not ok - the run did not end within 150 s');
+  process.exit(1);
+}, 150_000).unref();
 
 let failed = 0;
 for (const [name, fn] of tests) {

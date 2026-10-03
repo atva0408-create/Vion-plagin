@@ -3,6 +3,7 @@ import { generateKeyPair } from './keys.js';
 import { nonEmpty } from './text.js';
 
 import type { Region, XiaomiCloud } from './cloud.js';
+import type { SessionKeys } from './miss.js';
 
 /** A camera of the account, as the Mi Home device list gives it. */
 export interface XiaomiCamera {
@@ -217,4 +218,16 @@ export async function cameraStreamUrl(
   if (quality === 'max') query.set('subtype', '3');
   if (channel && channel > 1) query.set('channel', String(channel));
   return `xiaomi://${camera.ip}?${query.toString()}`;
+}
+
+/**
+ * Keys for a session of the plugin's own with the camera, to turn it: asked like those of a stream connection, a new
+ * pair each time. Only cameras of the newer protocol over CS2 are turned.
+ */
+export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<SessionKeys> {
+  if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
+  if (LEGACY_MODELS.has(camera.model)) throw new Error(`${camera.name} (${camera.model}) uses the older protocol, which the plugin cannot turn`);
+  const params = await missParams(cloud, camera);
+  if (params.vendor !== 'cs2') throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
+  return { client_public: params.client_public, client_private: params.client_private, device_public: params.device_public, sign: params.sign, vendor: params.vendor };
 }

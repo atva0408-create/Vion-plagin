@@ -1,3 +1,7 @@
+## [0.2.0]
+
+- Cameras with a motor turn from ViON: switch on **Pan and tilt (PTZ)** for the camera under **Settings**, **Autotrack**, then hold an arrow in the player or let autotracking follow a person
+
 ## [0.1.1]
 
 - The picture check is shown however Xiaomi sends it, and a mistyped code is typed again in the same window, without a new code

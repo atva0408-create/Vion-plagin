@@ -1,8 +1,9 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 
 import { Camera } from './camera.js';
-import { UnplayableCameraError, cameraStreamUrl, checkPlayable, listCameras } from './xiaomi/cameras.js';
+import { UnplayableCameraError, cameraStreamUrl, checkPlayable, listCameras, motorKeys } from './xiaomi/cameras.js';
 import { LoginChallengeError, TokenRejectedError, XiaomiAuthError, XiaomiCloud } from './xiaomi/cloud.js';
+import { MissSession } from './xiaomi/miss.js';
 import { errorText } from './xiaomi/text.js';
 
 import type {
@@ -19,6 +20,7 @@ import type {
 } from '@camera.ui/sdk';
 import type { LoginChallenge } from './xiaomi/cloud.js';
 import type { XiaomiCamera } from './xiaomi/cameras.js';
+import type { MotorAnswer } from './xiaomi/miss.js';
 import type { XiaomiConfig } from './types.js';
 
 const ID_PREFIX = 'xiaomi:';
@@ -155,6 +157,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const camera = this.existing.get(cameraId);
     this.existing.delete(cameraId);
     if (camera?.nativeId) {
+      this.controllers.get(camera.nativeId)?.dispose();
       this.controllers.delete(camera.nativeId);
       const xiaomi = this.cameras.get(camera.nativeId);
       if (xiaomi && !this.unplayable.has(xiaomi.did)) await this.api.deviceManager.pushDiscoveredCameras([this.discovered(xiaomi)]);
@@ -221,6 +224,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     this.started = false;
     clearInterval(this.refreshTimer);
     this.endPending();
+    for (const controller of this.controllers.values()) controller.dispose();
     this.controllers.clear();
     this.cameras.clear();
   }
@@ -336,7 +340,11 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   private async initializeCamera(device: CameraDevice): Promise<void> {
     const did = device.nativeId;
     if (!did || this.controllers.has(did)) return;
-    const camera = new Camera(device, (nativeId) => this.streamUrl(nativeId));
+    const camera = new Camera(
+      device,
+      (nativeId) => this.streamUrl(nativeId),
+      (nativeId) => (onAnswer) => this.openMotor(nativeId, onAnswer),
+    );
     this.controllers.set(did, camera);
     try {
       await camera.initialize();
@@ -348,6 +356,25 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   /** The address of one connection to the camera, with keys made for it. */
   private async streamUrl(did: string): Promise<string> {
+    const camera = await this.knownCamera(did);
+    // said at once: the engine tries a camera again and again, and each try would ask the cloud for keys it cannot use
+    const unplayable = this.unplayable.get(did);
+    if (unplayable) throw unplayable;
+    const quality = this.storage.values.quality ?? 'default';
+    return this.withSession((cloud) =>
+      cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error))),
+    );
+  }
+
+  /** A session of the plugin's own with the camera, to turn it: the stream engine sends no motor commands. */
+  private async openMotor(did: string, onAnswer: (answer: MotorAnswer) => void): Promise<MissSession> {
+    const camera = await this.knownCamera(did);
+    const keys = await this.withSession((cloud) => motorKeys(cloud, camera));
+    return MissSession.open(camera.ip, keys, onAnswer);
+  }
+
+  /** The camera as the device list last gave it, with an address read at most ADDRESS_MAX_AGE_MS ago. */
+  private async knownCamera(did: string): Promise<XiaomiCamera> {
     if (!this.cameras.has(did)) {
       // a camera not read yet (the first connection after a start): its address is needed now
       await this.refreshCameras();
@@ -357,13 +384,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     }
     const camera = this.cameras.get(did);
     if (!camera) throw new Error(`The Mi account has no camera ${did} anymore`);
-    // said at once: the engine tries a camera again and again, and each try would ask the cloud for keys it cannot use
-    const unplayable = this.unplayable.get(did);
-    if (unplayable) throw unplayable;
-    const quality = this.storage.values.quality ?? 'default';
-    return this.withSession((cloud) =>
-      cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error))),
-    );
+    return camera;
   }
 
   private discovered(camera: XiaomiCamera): DiscoveredCamera {

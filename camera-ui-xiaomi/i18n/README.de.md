@@ -7,6 +7,7 @@ Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Kont
 - Meldet sich bei Ihrem Mi-Konto an, auch mit der Bildprüfung und dem Bestätigungscode, falls Xiaomi danach fragt
 - Findet die Kameras des Kontos in allen Regionen von Mi Home und bietet sie zum Hinzufügen an
 - Zeigt das Livebild jeder Kamera, mit Ton, wenn die Kamera welchen hat
+- Dreht Kameras mit Motor: Pfeile im Player und Autotrack, sobald es für die Kamera eingeschaltet ist
 - Speichert das Anmeldetoken Ihres Mi-Kontos statt des Passworts, damit sich das Plugin nach einem Neustart selbst wieder anmeldet. Das Token öffnet das ganze Mi-Konto, siehe **Gut zu wissen**
 
 ## Voraussetzungen
@@ -30,6 +31,10 @@ Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Kont
 2. Fragt Xiaomi nach den Zeichen eines Bildes oder nach einem Code, geben Sie sie im Fenster ein, das sich öffnet. Ein vertippter Code kann im selben Fenster erneut eingegeben werden; ein Fenster, das 10 Minuten auf eine Antwort wartet, wird abgebrochen
 3. Danach zeigt das Fenster die gefundenen Kameras
 4. Öffnen Sie in ViON die Seite **Kameras**: Die Kameras stehen unter **Entdeckt**. Klicken Sie eine Kamera an, prüfen Sie den Namen und bestätigen Sie
+
+## Schwenken und Neigen
+
+Öffnen Sie für eine Kamera mit Motor (Mi 360°, C200, C300 und ähnliche) die Kamera in ViON, dann **Einstellungen**, **Autotrack**, und schalten Sie **Schwenken und Neigen (PTZ)** ein. Der Player zeigt dann Pfeile: Halten Sie einen gedrückt, um die Kamera zu drehen, ein kurzer Druck dreht sie um einen Schritt. Autotrack kann damit einer Person folgen. Das Plugin dreht die Kamera über eine eigene Verbindung, so wie die App Mi Home. Das funktioniert für Kameras mit dem Protokoll CS2, das die meisten Modelle nutzen, nicht für Kameras mit TUTK; das Protokoll der Kamera sagt es beim ersten Schritt.
 
 ## Gut zu wissen
 

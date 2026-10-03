@@ -33,5 +33,7 @@
   "Characters from the picture": "Символы с картинки",
   "Type the characters you see, then confirm.": "Введите символы с картинки и подтвердите.",
   "Confirmation code": "Код подтверждения",
-  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите."
+  "Xiaomi sent a code to the phone or the mailbox of the account. Enter it, then confirm.": "Xiaomi отправила код на телефон или почту аккаунта. Введите его и подтвердите.",
+  "Pan and tilt (PTZ)": "Поворот камеры (PTZ)",
+  "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300.": "Позволяет поворачивать камеру из ViON: стрелки в плеере и автослежение. Для камер с мотором, например Mi 360°, C200 и C300."
 }

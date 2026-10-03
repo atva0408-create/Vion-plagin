@@ -1,3 +1,7 @@
+## [0.2.0]
+
+- Kameras mit Motor lassen sich aus ViON drehen: Schalten Sie **Schwenken und Neigen (PTZ)** für die Kamera unter **Einstellungen**, **Autotrack** ein und halten Sie dann einen Pfeil im Player gedrückt oder lassen Sie Autotrack einer Person folgen
+
 ## [0.1.1]
 
 - Die Bildprüfung wird angezeigt, egal in welcher Form Xiaomi sie sendet, und ein vertippter Code wird im selben Fenster neu eingegeben, ohne neuen Code

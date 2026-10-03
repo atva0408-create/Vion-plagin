@@ -7,6 +7,7 @@ Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the p
 - Signs in to your Mi account, including the picture check and the confirmation code Xiaomi may ask for
 - Finds the cameras of the account in every Mi Home region and offers them for adding
 - Shows the live view of each camera, with sound where the camera has it
+- Turns cameras with a motor: arrows in the player and autotracking, once switched on for the camera
 - Keeps the sign-in token of your Mi account instead of the password, so after a restart the plugin signs in again on its own. The token opens the whole Mi account, see **Good to know**
 
 ## What you need
@@ -30,6 +31,10 @@ Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the p
 2. If Xiaomi asks for the characters of a picture or for a code, enter them in the window that opens. A mistyped code can be typed again in the same window; a window left waiting for 10 minutes is cancelled
 3. The window then lists the cameras found
 4. Open **Cameras** in ViON: the cameras are under **Discovered**. Click a camera, check its name and confirm
+
+## Pan and tilt
+
+For a camera with a motor (Mi 360°, C200, C300 and alike) open the camera in ViON, then **Settings**, **Autotrack**, and switch on **Pan and tilt (PTZ)**. The player then shows arrows: hold one to turn the camera, a short press turns it by one step. Autotracking can follow a person with it. The plugin turns the camera over a connection of its own, the way the Mi Home app does. This works for cameras on the CS2 protocol, which most models use, and not for cameras on TUTK; the log of the camera says so at the first step.
 
 ## Good to know
 
