@@ -1,3 +1,7 @@
+## [0.11.1]
+
+- Ein geänderter Tarif von ViON Cloud erreicht die Aufnahme sofort, zusammen mit ViON 2.3.4: Die Cloud sagt es dem Server, der Server der Aufnahme. Ein Tarif mit mehr Kameras startet deren Aufnahme gleich, früher dauerte das bis zu einer Stunde
+
 ## [0.11.0]
 
 - Weniger falsche Namen bei Gesichtern, zusammen mit ViON 2.3.0. Ein Gesicht, das zwei bekannten Personen etwa gleich ähnlich sieht, wird keiner von beiden mehr zugeordnet, und zu einem Gesicht, das niemand sicher ist, nennt der Rekorder die ähnlichste Person, was die Ereignisverfolgung des Servers zeigt

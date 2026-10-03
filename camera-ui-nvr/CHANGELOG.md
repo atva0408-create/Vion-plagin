@@ -1,3 +1,7 @@
+## [0.11.1]
+
+- A changed plan of ViON Cloud reaches the recording at once, together with ViON 2.3.4: the cloud tells the server, the server tells the recorder. A plan with more cameras starts their recording right away, it used to take up to an hour
+
 ## [0.11.0]
 
 - Fewer wrong names on faces, together with ViON 2.3.0. A face that looks about as much like two known people is no longer given to one of them, and for a face that is nobody for sure the recorder says whom it came closest to, which the event trace of the server shows

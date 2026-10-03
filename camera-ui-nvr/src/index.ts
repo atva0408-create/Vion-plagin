@@ -432,6 +432,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return e.source === 'cloud' ? `ViON Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к ViON Cloud: ${cams}, ${days}`;
   }
 
+  /**
+   * The server read a changed plan (the cloud told it): applied now instead of at the next question, which comes
+   * every ten minutes. A plan with more cameras starts their recording, one with fewer stops the cameras over it.
+   */
+  public async reloadEntitlements(): Promise<void> {
+    await this.ready;
+    await this.refreshEntitlements();
+  }
+
   /** Plan limits and which cameras use the recording slots (settings dashboard). */
   public async getRecordingPlan(): Promise<{
     source: 'cloud' | 'local' | 'none';
