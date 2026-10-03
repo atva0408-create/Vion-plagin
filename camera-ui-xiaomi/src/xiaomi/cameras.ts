@@ -228,6 +228,7 @@ export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera): Promi
   if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
   if (LEGACY_MODELS.has(camera.model)) throw new Error(`${camera.name} (${camera.model}) uses the older protocol, which the plugin cannot turn`);
   const params = await missParams(cloud, camera);
-  if (params.vendor !== 'cs2') throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
+  if (params.vendor !== 'cs2')
+    throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
   return { client_public: params.client_public, client_private: params.client_private, device_public: params.device_public, sign: params.sign, vendor: params.vendor };
 }
