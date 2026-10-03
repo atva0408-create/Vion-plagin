@@ -162,8 +162,20 @@ function mergeItems<T extends { type: string; instance: string }>(known: T[], fr
   const result = [...known];
   for (const item of fresh) {
     const i = result.findIndex((k) => k.type === item.type && k.instance === item.instance);
-    if (i >= 0) result[i] = item;
-    else result.push(item);
+    if (i < 0) {
+      result.push(item);
+      continue;
+    }
+    // an update of the app may carry only the state: what it does not say (the range, the modes, the names of
+    // learned buttons, whether the state is read back) stays as the device list said
+    const was = result[i] as T & { parameters?: Record<string, unknown>; retrievable?: boolean };
+    const now = item as T & { parameters?: Record<string, unknown>; retrievable?: boolean };
+    result[i] = {
+      ...was,
+      ...now,
+      ...('parameters' in was ? { parameters: now.parameters && Object.keys(now.parameters).length ? now.parameters : was.parameters } : {}),
+      ...('retrievable' in was || 'retrievable' in now ? { retrievable: now.retrievable ?? was.retrievable } : {}),
+    };
   }
   return result;
 }

@@ -8,7 +8,7 @@ import { SensorType } from '@camera.ui/sdk';
 import { extraSchema, hasExtras, schemaKey } from '../src/extras.js';
 import { slotFromRecord, slotsOf } from '../src/mapping.js';
 import { YandexSwitch, applyDevice, createSensor } from '../src/sensors.js';
-import { parseUserInfo } from '../src/yandex/home.js';
+import { mergeDevice, parseUserInfo } from '../src/yandex/home.js';
 
 import type { YAction } from '../src/yandex/iot.js';
 
@@ -174,6 +174,56 @@ async function main(): Promise<void> {
   const panel = { slot: remoteSlots[0]!, sensor: createSensor(remoteSlots[0]!, async () => {}) };
   applyDevice(panel, remoteDevice, true);
   assert.equal(panel.sensor.getValue('on'), false);
+
+  // ---- what a command tells: a value Yandex reads back stays, one it never reads (IR) is cleared after it is sent
+  const flags: boolean[] = [];
+  const flagging = async (_action: YAction, readBack: boolean) => void flags.push(readBack);
+  await field(extraSchema(acDevice, false, flagging) as any[], 'temperature').onSet(23);
+  await field(extraSchema(tvDevice, false, flagging) as any[], 'mute').onSet(true);
+  await field(extraSchema(tvDevice, false, flagging) as any[], 'input_source').onSet('two');
+  await field(extraSchema(tvDevice, false, flagging) as any[], 'button_42').onSet();
+  assert.deepEqual(flags, [true, false, false, true]);
+
+  // ---- a value the form cannot take is not shown: an AC that is off has no temperature, a mode it does not list
+  const odd = parseUserInfo({
+    devices: [
+      {
+        ...ac,
+        capabilities: ac.capabilities.map((c) =>
+          c.parameters.instance === 'temperature'
+            ? { ...c, state: null }
+            : c.parameters.instance === 'thermostat'
+              ? { ...c, state: { instance: 'thermostat', value: 'fan_only' } }
+              : c,
+        ),
+      },
+    ],
+  }).devices[0]!;
+  const oddFields = extraSchema(odd, false, send) as any[];
+  assert.equal(field(oddFields, 'temperature').defaultValue, 16, 'the lowest end of the range, not 0 below it');
+  assert.equal(field(oddFields, 'thermostat').defaultValue, undefined);
+  const hot = parseUserInfo({ devices: [{ ...ac, capabilities: ac.capabilities.map((c) => (c.parameters.instance === 'temperature' ? { ...c, state: { instance: 'temperature', value: 40 } } : c)) }] }).devices[0]!;
+  assert.equal(field(extraSchema(hot, false, send) as any[], 'temperature').defaultValue, 30);
+
+  // ---- an update of the app with only the state keeps the range, the modes and the names of the buttons
+  const updated = mergeDevice(acDevice, {
+    id: 'ac-1',
+    capabilities: [{ type: 'devices.capabilities.range', state: { instance: 'temperature', value: 25 } }],
+  });
+  const updatedFields = extraSchema(updated, false, send) as any[];
+  assert.deepEqual(
+    updatedFields.map((f) => f.key),
+    ['temperature', 'thermostat', 'fan_speed'],
+  );
+  const updatedTemperature = field(updatedFields, 'temperature');
+  assert.deepEqual([updatedTemperature.minimum, updatedTemperature.maximum, updatedTemperature.defaultValue], [16, 30, 25]);
+  const tvUpdated = mergeDevice(tvDevice, { id: 'tv-1', capabilities: [{ type: 'devices.capabilities.custom.button', state: { instance: '42', value: true } }] });
+  assert.equal(field(extraSchema(tvUpdated, false, send) as any[], 'button_42').title, 'Netflix');
+
+  // ---- a reset shows the device's values again even when they did not change
+  defined.length = 0;
+  sensor.resetExtras();
+  assert.equal(defined.length, 1);
 
   console.log('extras.spec: ok');
 }

@@ -6,7 +6,8 @@ import type { JsonSchema } from '@camera.ui/sdk';
 import type { YCapability, YDevice } from './yandex/home.js';
 import type { YAction } from './yandex/iot.js';
 
-export type SendFn = (action: YAction) => Promise<void>;
+/** Sends an action; `readBack` is false for a value Yandex never reads back (an IR remote): the field is cleared after, to be sent again. */
+export type SendFn = (action: YAction, readBack: boolean) => Promise<void>;
 
 // Each text is written as a field of a form (title, enumLabels), so the translations of the plugin find it.
 const RANGES: Record<string, { title: string; up: { title: string }; down: { title: string } }> = {
@@ -72,6 +73,14 @@ const NUMBERS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
 
 const GROUPS = { controls: { group: 'Controls' }, remote: { group: 'Remote buttons' } };
 
+/** The current value of a range for the form: inside the range, its lowest end when the device says none. */
+function numberIn(value: unknown, range: { min?: unknown; max?: unknown }): number | undefined {
+  const min = typeof range.min === 'number' ? range.min : undefined;
+  const max = typeof range.max === 'number' ? range.max : undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return min;
+  return Math.min(max ?? value, Math.max(min ?? value, value));
+}
+
 /** A capability the switch or light already is: on/off, and the brightness of a light. */
 function isMain(capability: YCapability, light: boolean): boolean {
   return capability.type === 'devices.capabilities.on_off' || (light && capability.type === 'devices.capabilities.range' && capability.instance === 'brightness');
@@ -107,7 +116,7 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
             title: names?.up.title ?? `${title} +`,
             description: '',
             group,
-            onSet: async () => send({ type: c.type, state: { instance: c.instance, value: step, relative: true } }),
+            onSet: async () => send({ type: c.type, state: { instance: c.instance, value: step, relative: true } }, true),
           },
           {
             type: 'button',
@@ -115,7 +124,7 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
             title: names?.down.title ?? `${title} −`,
             description: '',
             group,
-            onSet: async () => send({ type: c.type, state: { instance: c.instance, value: -step, relative: true } }),
+            onSet: async () => send({ type: c.type, state: { instance: c.instance, value: -step, relative: true } }, true),
           },
         );
       } else {
@@ -128,9 +137,10 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
           minimum: typeof range.min === 'number' ? range.min : undefined,
           maximum: typeof range.max === 'number' ? range.max : undefined,
           step,
-          defaultValue: typeof c.value === 'number' ? c.value : undefined,
+          // a value outside the range (or none, the device off) would make the whole form invalid: the nearest end of it
+          defaultValue: numberIn(c.value, range),
           onSet: async (value: unknown) => {
-            if (typeof value === 'number' && Number.isFinite(value)) await send({ type: c.type, state: { instance: c.instance, value } });
+            if (typeof value === 'number' && Number.isFinite(value)) await send({ type: c.type, state: { instance: c.instance, value } }, c.retrievable !== false);
           },
         });
       }
@@ -148,9 +158,10 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
         group,
         enum: modes,
         enumLabels: Object.fromEntries(modes.map((m) => [m, MODE_LABELS[m] ?? (NUMBERS.includes(m) ? String(NUMBERS.indexOf(m) + 1) : m)])),
-        defaultValue: typeof c.value === 'string' ? c.value : undefined,
+        // a mode the device reports but does not list would make the whole form invalid: none is shown then
+        defaultValue: typeof c.value === 'string' && modes.includes(c.value) ? c.value : undefined,
         onSet: async (value: unknown) => {
-          if (typeof value === 'string' && modes.includes(value)) await send({ type: c.type, state: { instance: c.instance, value } });
+          if (typeof value === 'string' && modes.includes(value)) await send({ type: c.type, state: { instance: c.instance, value } }, c.retrievable !== false);
         },
       });
       continue;
@@ -164,7 +175,7 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
         description: '',
         group,
         defaultValue: typeof c.value === 'boolean' ? c.value : false,
-        onSet: async (value: unknown) => send({ type: c.type, state: { instance: c.instance, value: !!value } }),
+        onSet: async (value: unknown) => send({ type: c.type, state: { instance: c.instance, value: !!value } }, c.retrievable !== false),
       });
       continue;
     }
@@ -179,7 +190,7 @@ export function extraSchema(device: YDevice, light: boolean, send: SendFn): Json
         title: name,
         description: '',
         group: GROUPS.remote.group,
-        onSet: async () => send({ type: c.type, state: { instance: c.instance, value: true } }),
+        onSet: async () => send({ type: c.type, state: { instance: c.instance, value: true } }, true),
       });
     }
   }

@@ -577,18 +577,22 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     const b = bound.slot.binding;
     if (b.kind === 'onoff' || b.kind === 'panel') {
       const light = b.kind === 'onoff' && b.light;
-      (bound.sensor as YandexSwitch).setExtras(extraSchema(device, light, (action) => this.extraCommand(bound, action)));
+      (bound.sensor as YandexSwitch).setExtras(extraSchema(device, light, (action, readBack) => this.extraCommand(bound, action, readBack)));
     }
     bound.sensor.setSourceState('connected');
   }
 
   /** A field of the extra controls was set (extras.ts): the command goes to the device at once. */
-  private async extraCommand(bound: Bound, action: YAction): Promise<void> {
+  private async extraCommand(bound: Bound, action: YAction, readBack: boolean): Promise<void> {
+    const sensor = bound.sensor as YandexSwitch;
     try {
       await this.commandApi().action(bound.slot.deviceId, [action]);
+      // an IR remote is never read back: the field shows nothing again, so the same choice can be sent again
+      if (!readBack) sensor.resetExtras();
     } catch (error: any) {
+      // the settings show what the device has, not the value it refused; said here, once
       this.logger.error(`Command for ${bound.slot.name} failed:`, errorText(error));
-      throw error;
+      sensor.resetExtras();
     }
   }
 

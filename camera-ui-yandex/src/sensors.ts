@@ -72,6 +72,12 @@ export class YandexSwitch extends SwitchControl {
     }
   }
 
+  /** Shows the device's own values in the settings again: after a command that failed, or one Yandex never reads back. */
+  resetExtras(): void {
+    this.extraKey = '';
+    this.setExtras(this.extraFields);
+  }
+
   write(partial: Record<string, unknown>): void {
     this._writeState(partial);
   }
@@ -110,6 +116,12 @@ export class YandexLight extends LightControl {
     } catch {
       // not registered yet: the host reads storageSchema when it registers the sensor
     }
+  }
+
+  /** Shows the device's own values in the settings again: after a command that failed, or one Yandex never reads back. */
+  resetExtras(): void {
+    this.extraKey = '';
+    this.setExtras(this.extraFields);
   }
 
   write(partial: Record<string, unknown>): void {
