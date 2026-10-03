@@ -7,32 +7,33 @@ Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the p
 - Signs in to your Mi account, including the picture check and the confirmation code Xiaomi may ask for
 - Finds the cameras of the account in every Mi Home region and offers them for adding
 - Shows the live view of each camera, with sound where the camera has it
-- Keeps a sign-in token instead of your password, so after a restart the plugin signs in again on its own
+- Keeps the sign-in token of your Mi account instead of the password, so after a restart the plugin signs in again on its own. The token opens the whole Mi account, see **Good to know**
 
 ## What you need
 
 - Cameras in the same local network as the ViON server
 - An internet connection: each connection to a camera asks the Mi Home cloud for its keys
 - The account and password of the Mi Home app the cameras are in
-- Cameras on the common Xiaomi camera protocol. Most models since 2020 use it; some older models are not supported
+- Cameras on the common Xiaomi camera protocol. Most models since 2020 use it; some older models are not supported. Cameras that Xiaomi connects over MTP or Agora cannot be played yet: they are not offered for adding, and the window of the sign-in lists them
 
 ## Settings
 
 - **Mi account** and **Password**: the email, phone number or Mi ID and the password of your Mi Home account. The password is used for the sign-in only and is not stored
 - **Sign in**: signs in and finds the cameras. When Xiaomi asks for the characters of a picture or for a code it sent to your phone or mailbox, a window asks you for them
 - **Signed-in account**: the ID of the account the plugin is signed in to
-- **Sign out**: forgets the sign-in. Added cameras stay and show video again after the next sign-in
+- **Sign out**: forgets the sign-in and deletes the sign-in token from ViON. Added cameras stay and show video again after the next sign-in
 - **Picture quality**: Standard, High, Low or Maximum. Maximum suits newer models; on older ones it can break the picture
 
 ## Adding the cameras
 
 1. Open the settings of the plugin, enter the Mi account and the password, and click **Sign in**
-2. If Xiaomi asks for the characters of a picture or for a code, enter them in the window that opens
+2. If Xiaomi asks for the characters of a picture or for a code, enter them in the window that opens. A mistyped code can be typed again in the same window; a window left waiting for 10 minutes is cancelled
 3. The window then lists the cameras found
 4. Open **Cameras** in ViON: the cameras are under **Discovered**. Click a camera, check its name and confirm
 
 ## Good to know
 
+- The sign-in token is a key to your whole Mi account, not only to its cameras: whoever has it can sign in to the account without the password. ViON keeps it in the settings of the plugin, so protect the ViON server and its backups as you would the password. **Sign out** deletes it from ViON; to make a copy of it useless, change the password of the Mi account. After a change of the password Xiaomi refuses the token, and the plugin asks you to sign in again
 - Xiaomi offers no official interface for other systems. The plugin signs in the way the Mi Home app does, so a change on the side of Xiaomi may need an update of the plugin
 - Cameras with two lenses show the first lens
 - A camera that gets a new address in the network is found again within a few minutes

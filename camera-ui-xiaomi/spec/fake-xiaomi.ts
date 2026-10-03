@@ -15,6 +15,12 @@ export const CAPTCHA_IMAGE = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 
 export interface Scenario {
   captcha?: boolean;
+  /** a captcha before the code is sent, after the password was accepted */
+  ticketCaptcha?: boolean;
+  /** how the account server names the captcha address: `captchaUrl` (default) or `captchaURL` */
+  captchaField?: string;
+  /** the captcha address whole, with the host, instead of relative to the account server */
+  captchaAbsolute?: boolean;
   verify?: boolean;
   /** devices per region, as the device list gives them */
   devices: Record<string, Record<string, unknown>[]>;
@@ -27,6 +33,8 @@ export interface Scenario {
   endedSession?: 'status' | 'plain';
   /** milliseconds the device list takes */
   deviceListDelayMs?: number;
+  /** the error the API answers a wake-up of a door viewer with */
+  wakeUpError?: string;
 }
 
 export interface Call {
@@ -55,7 +63,12 @@ function cookie(init: RequestInit | undefined, name: string): string | undefined
 export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
   let captchaSolved = false;
+  let ticketCaptchaSolved = false;
   let ticketSent = false;
+  const captcha = (type: string) => {
+    const path = `/pass/getCode?icodeType=${type}`;
+    return { code: 87001, [scenario.captchaField ?? 'captchaUrl']: scenario.captchaAbsolute ? `https://account.xiaomi.com${path}` : path };
+  };
 
   const api = async (url: URL, init: RequestInit | undefined): Promise<Response> => {
     if (cookie(init, 'serviceToken') !== 'ST' || cookie(init, 'userId') !== '42') {
@@ -89,7 +102,8 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
     } else if (path === '/device/devicepass') {
       result = scenario.devicepass?.[String(parsed.did)];
     } else if (path.startsWith('/home/rpc/')) {
-      result = { code: 0 };
+      if (scenario.wakeUpError) error = scenario.wakeUpError;
+      else result = { code: 0 };
     }
     const plain = JSON.stringify(error ? { code: -1, message: error } : { code: 0, message: 'ok', result });
     return new Response(rc4(key, Buffer.from(plain)).toString('base64'));
@@ -116,7 +130,7 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
           if (form.get('hash') !== createHash('md5').update(PASSWORD).digest('hex').toUpperCase()) return login({ code: 70016, desc: 'wrong password' });
           if (scenario.captcha && !captchaSolved) {
             if (form.get('captCode') === CAPTCHA && cookie(init, 'ick') === 'ICK1') captchaSolved = true;
-            else return login({ code: 87001, captchaURL: '/pass/getCode?icodeType=login' });
+            else return login(captcha('login'));
           }
           if (scenario.verify) return login({ code: 0, notificationUrl: 'https://account.xiaomi.com/fe/service/identity/authStart?sid=xiaomiio' });
           return login({ code: 0, ssecurity: SSECURITY.toString('base64'), passToken: 'PT1', location: 'https://sts.api.io.mi.com/sts?d=1' });
@@ -136,10 +150,16 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
           if (!ticketSent) return login({ code: 70014, desc: 'no code sent' });
           if (url.searchParams.get('ticket') !== TICKET) return login({ code: 70014, desc: 'wrong code' });
           return login({ code: 0, location: 'https://sts.api.io.mi.com/sts?v=1' });
-        case '/identity/auth/sendPhoneTicket':
+        case '/identity/auth/sendPhoneTicket': {
           if (cookie(init, 'identity_session') !== 'IS1') return new Response('bad session', { status: 400 });
+          if (scenario.ticketCaptcha && !ticketCaptchaSolved) {
+            const form = new URLSearchParams(String(init?.body));
+            if (form.get('icode') === CAPTCHA && cookie(init, 'ick') === 'ICK1') ticketCaptchaSolved = true;
+            else return login(captcha('antispam'));
+          }
           ticketSent = true;
           return login({ code: 0 });
+        }
       }
     }
 

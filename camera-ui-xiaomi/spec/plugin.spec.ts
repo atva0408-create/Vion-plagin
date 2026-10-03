@@ -28,7 +28,17 @@ function scenario(patch: Partial<Scenario> = {}): Scenario {
   };
 }
 
-function host(values: Record<string, unknown> = {}) {
+/** A logger that keeps what the plugin says at each level. */
+function recorder() {
+  const lines: Record<string, string[]> = {};
+  const level =
+    (name: string) =>
+    (...args: unknown[]) =>
+      (lines[name] ??= []).push(args.map(String).join(' '));
+  return { lines, logger: { ...silent, log: level('log'), error: level('error'), warn: level('warn'), debug: level('debug') } };
+}
+
+function host(values: Record<string, unknown> = {}, logger: typeof silent = silent) {
   const listeners = new Map<string, () => unknown>();
   const pushed: DiscoveredCamera[] = [];
   const storage = {
@@ -48,7 +58,7 @@ function host(values: Record<string, unknown> = {}) {
       },
     },
   };
-  const plugin = new XiaomiPlugin(silent, api as never, storage as never);
+  const plugin = new XiaomiPlugin(logger, api as never, storage as never);
   const field = (key: string) => plugin.storageSchema.find((f) => f.key === key) as JsonSchema & Record<string, any>;
   return {
     plugin,
@@ -59,6 +69,37 @@ function host(values: Record<string, unknown> = {}) {
     submit: (form: Record<string, unknown>) => field('login').onClick(form) as Promise<FormSubmitResponse | undefined>,
     logout: () => field('logout').onSet(undefined, undefined) as Promise<void>,
   };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function until(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !condition(); i++) await sleep(5);
+  assert.ok(condition(), 'the awaited step did not come');
+}
+
+/** The Mi servers answering after `ms`: time to press Sign out while a sign-in or a reading runs. */
+function slow(fetch: typeof globalThis.fetch, ms: number): typeof globalThis.fetch {
+  return async (input, init) => {
+    await sleep(ms);
+    return fetch(input, init);
+  };
+}
+
+/** The launch with the timers it starts kept, to run them without waiting for them. */
+async function launchKeepingTimers(h: ReturnType<typeof host>): Promise<(() => void)[]> {
+  const ticks: (() => void)[] = [];
+  const realSetInterval = globalThis.setInterval;
+  globalThis.setInterval = ((tick: () => void) => {
+    ticks.push(tick);
+    return realSetInterval(() => {}, 2 ** 30);
+  }) as typeof setInterval;
+  try {
+    await h.launch();
+  } finally {
+    globalThis.setInterval = realSetInterval;
+  }
+  return ticks;
 }
 
 function device(nativeId = '1001') {
@@ -116,6 +157,75 @@ test('the sign-in asks for the captcha and the code in the dialog, keeps the tok
   await h.shutdown();
 });
 
+test('a mistyped code is typed again in the same window, and Xiaomi does not send a second one', async () => {
+  const fake = fakeXiaomi(scenario({ verify: true }));
+  globalThis.fetch = fake.fetch;
+  const h = host();
+  const form = { username: 'user@example.com', password: PASSWORD };
+  const sent = () => fake.calls.filter((c) => c.url.includes('/identity/auth/sendPhoneTicket')).length;
+
+  const first = await h.submit(form);
+  const field = first?.schema?.[0] as { key: string; title: string };
+  assert.equal(field.title, 'Confirmation code');
+
+  const typo = await h.submit({ ...form, [field.key]: '000000' });
+  // the window stays (a schema comes back) and says why
+  const again = typo?.schema?.[0] as { key: string; title: string; placeholder?: string } | undefined;
+  assert.equal(again?.title, 'Confirmation code');
+  assert.equal(again?.placeholder, '+7*****12');
+  assert.equal(typo?.toast?.type, 'error');
+  assert.match(typo?.toast?.message ?? '', /The code was not accepted: wrong code/);
+
+  const done = await h.submit({ ...form, [again!.key]: TICKET });
+  assert.equal((done?.schema?.[0] as { title: string }).title, 'Signed in to Mi Home');
+  assert.equal(h.values.passToken, 'PT-VERIFIED');
+  assert.equal(sent(), 1);
+  await h.shutdown();
+});
+
+test('a sign-in left waiting for the code is given up after 10 minutes, and the password with it', async () => {
+  const fake = fakeXiaomi(scenario({ verify: true }));
+  globalThis.fetch = fake.fetch;
+  const { lines, logger } = recorder();
+  const h = host({}, logger);
+  const form = { username: 'user@example.com', password: PASSWORD };
+  const sent = () => fake.calls.filter((c) => c.url.includes('/identity/auth/sendPhoneTicket')).length;
+
+  // the timer of the waiting sign-in is kept to be run at once; the other timers run as usual
+  const giveUps: (() => void)[] = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    if (ms !== 10 * 60_000) return realSetTimeout(fn, ms);
+    giveUps.push(fn);
+    return realSetTimeout(() => {}, 2 ** 30);
+  }) as typeof setTimeout;
+  let first: FormSubmitResponse | undefined;
+  try {
+    first = await h.submit(form);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  const field = (first?.schema?.[0] as { key: string }).key;
+  const plugin = h.plugin as unknown as { pending?: { cloud: object } };
+  const waiting = plugin.pending?.cloud;
+  assert.ok(waiting && JSON.stringify(waiting).includes(PASSWORD), 'the waiting sign-in holds the password for its next step');
+
+  assert.equal(giveUps.length, 1);
+  for (const giveUp of giveUps) giveUp();
+  assert.equal(plugin.pending, undefined);
+  assert.equal(JSON.stringify(waiting).includes(PASSWORD), false);
+  assert.equal(lines.warn?.filter((line) => /waited too long/.test(line)).length, 1);
+
+  // the code typed after that does not start a new sign-in, which would make Xiaomi send another code
+  const late = await h.submit({ ...form, [field]: TICKET });
+  assert.equal(late?.schema, undefined);
+  assert.equal(late?.toast?.type, 'error');
+  assert.match(late?.toast?.message ?? '', /waited too long and was cancelled. Click Sign in to start again/);
+  assert.equal(sent(), 1);
+  assert.equal(h.values.passToken, undefined);
+  await h.shutdown();
+});
+
 test('an account without cameras says so and what to check', async () => {
   globalThis.fetch = fakeXiaomi(scenario({ devices: Object.fromEntries(['cn', 'de', 'i2', 'ru', 'sg', 'us'].map((region) => [region, []])) })).fetch;
   const h = host();
@@ -123,6 +233,72 @@ test('an account without cameras says so and what to check', async () => {
   const result = done?.schema?.[0] as { title: string; description: string };
   assert.equal(result.title, 'Signed in to Mi Home, no cameras found');
   assert.match(result.description, /in the Mi Home app/);
+  await h.shutdown();
+});
+
+const UNPLAYABLE = {
+  ru: [
+    { did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '192.168.1.50' },
+    { did: '1003', name: 'Garage', model: 'chuangmi.camera.069a01', localip: '192.168.1.53' },
+    { did: '1004', name: 'Porch', model: 'isa.camera.hlc7', localip: '192.168.1.54' },
+  ],
+  cn: [],
+};
+const UNPLAYABLE_VENDORS = {
+  '1003': { vendor: { vendor: 6 }, public_key: 'dd'.repeat(32), sign: 'sig' },
+  '1004': { vendor: { vendor: 3 }, public_key: 'dd'.repeat(32), sign: 'sig' },
+};
+
+test('cameras ViON cannot play are not offered; the sign-in names them and why, the log says it once', async () => {
+  const fake = fakeXiaomi(scenario({ devices: UNPLAYABLE, vendors: { ...scenario().vendors, ...UNPLAYABLE_VENDORS } }));
+  globalThis.fetch = fake.fetch;
+  const { lines, logger } = recorder();
+  const h = host({}, logger);
+
+  const done = await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const [found, leftOut] = done?.schema as { key: string; title: string; defaultValue?: string }[];
+  assert.equal(found?.title, 'Signed in to Mi Home');
+  assert.equal(found?.defaultValue, 'Hall');
+  assert.equal(leftOut?.title, 'Cameras ViON cannot play');
+  assert.equal(
+    leftOut?.defaultValue,
+    'Garage (chuangmi.camera.069a01) connects over MTP, which ViON cannot play\nPorch (isa.camera.hlc7) connects over Agora, which ViON cannot play',
+  );
+  assert.deepEqual(
+    h.pushed.map((c) => c.id),
+    ['xiaomi:1001'],
+  );
+
+  // the cloud is asked once per camera, the log names each one once
+  const asked = () => fake.calls.filter((c) => c.path === '/v2/device/miss_get_vendor').length;
+  assert.equal(asked(), 3);
+  assert.deepEqual(
+    (await h.plugin.onDiscoverCameras()).map((c) => c.id),
+    ['xiaomi:1001'],
+  );
+  assert.equal(asked(), 3);
+  assert.deepEqual(lines.warn?.sort(), [
+    'Not offered for adding: Garage (chuangmi.camera.069a01) connects over MTP, which ViON cannot play',
+    'Not offered for adding: Porch (isa.camera.hlc7) connects over Agora, which ViON cannot play',
+  ]);
+
+  // added all the same (an older version offered it): opening it says why, the engine gets no address it refuses
+  const { camera, stream } = device('1003');
+  await h.plugin.onCameraAdded(camera);
+  await assert.rejects(stream(), /Garage \(chuangmi\.camera\.069a01\) connects over MTP, which ViON cannot play/);
+  assert.equal(asked(), 3);
+  await h.shutdown();
+});
+
+test('an account with only cameras ViON cannot play says that, not that it has none', async () => {
+  globalThis.fetch = fakeXiaomi(scenario({ devices: { ru: UNPLAYABLE.ru.slice(1), cn: [] }, vendors: UNPLAYABLE_VENDORS })).fetch;
+  const h = host();
+  const done = await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const [found, leftOut] = done?.schema as { title: string; defaultValue?: string }[];
+  assert.equal(found?.title, 'Signed in to Mi Home, no camera ViON can play');
+  assert.equal(leftOut?.title, 'Cameras ViON cannot play');
+  assert.match(leftOut?.defaultValue ?? '', /^Garage .*MTP.*\nPorch .*Agora/);
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
   await h.shutdown();
 });
 
@@ -202,6 +378,45 @@ test('a session the API ends with a plain error answer is renewed as well', asyn
   await h.shutdown();
 });
 
+test('two connections right after Xiaomi ended the session share one renewal, and both open', async () => {
+  const fake = fakeXiaomi(
+    scenario({
+      devices: { ru: [...scenario().devices.ru!, { did: '1005', name: 'Yard', model: 'chuangmi.camera.039a01', localip: '192.168.1.55' }], cn: [] },
+      vendors: { ...scenario().vendors, '1005': { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd'.repeat(32), sign: 'sig' } },
+    }),
+  );
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001');
+  const yard = device('1005');
+  await h.plugin.configureCameras([hall.camera, yard.camera]);
+  await h.launch();
+
+  const plugin = h.plugin as unknown as { cloud?: { cookies: string } };
+  plugin.cloud!.cookies = 'userId=42; cUserId=c42; serviceToken=EXPIRED';
+  const logins = () => fake.calls.filter((c) => c.url.includes('/pass/serviceLogin?')).length;
+  const before = logins();
+  const opened = await Promise.allSettled([hall.stream(), yard.stream()]);
+  assert.deepEqual(
+    opened.map((result) => (result.status === 'fulfilled' ? new URL(result.value).host : String(result.reason))),
+    ['192.168.1.50', '192.168.1.55'],
+  );
+  assert.equal(logins(), before + 1);
+
+  // a caller whose answer on the ended session comes after the renewal takes the renewed session, it does not renew again
+  plugin.cloud!.cookies = 'userId=42; cUserId=c42; serviceToken=EXPIRED';
+  globalThis.fetch = async (input, init) => {
+    if (String(input instanceof Request ? input.url : input).includes('device_list_page')) await sleep(100);
+    return fake.fetch(input, init);
+  };
+  const again = logins();
+  const [list, url] = await Promise.all([h.plugin.onDiscoverCameras(), hall.stream()]);
+  assert.deepEqual(list, []);
+  assert.equal(new URL(url).host, '192.168.1.50');
+  assert.equal(logins(), again + 1);
+  await h.shutdown();
+});
+
 test('an old address is used at once, the device list is read again on the side', async () => {
   const fake = fakeXiaomi(scenario());
   globalThis.fetch = fake.fetch;
@@ -272,6 +487,76 @@ test('signing out forgets the token; cameras then say how to get them back', asy
   await h.shutdown();
 });
 
+test('after signing out the cameras of the account are neither offered nor adopted', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const offered = await h.plugin.onDiscoverCameras();
+  assert.deepEqual(
+    offered.map((c) => c.id),
+    ['xiaomi:1001'],
+  );
+
+  await h.logout();
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
+  await assert.rejects(h.plugin.onAdoptCamera(offered[0]!, {}), /sign in again/);
+  await h.shutdown();
+});
+
+test('Sign out while the stored sign-in of the start runs: the token does not come back, nothing is offered', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = slow(fake.fetch, 30);
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const launching = h.launch();
+  await until(() => fake.calls.some((c) => c.url.includes('/pass/serviceLogin?')));
+  await h.logout();
+  await launching;
+  assert.equal(h.values.userId, '');
+  assert.equal(h.values.passToken, '');
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
+  assert.deepEqual(h.pushed, []);
+  await h.shutdown();
+});
+
+test('Sign out while an ended session is renewed for a connection: the token does not come back', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  await h.launch();
+
+  const plugin = h.plugin as unknown as { cloud?: { cookies: string } };
+  plugin.cloud!.cookies = 'userId=42; cUserId=c42; serviceToken=EXPIRED';
+  const logins = () => fake.calls.filter((c) => c.url.includes('/pass/serviceLogin?')).length;
+  const before = logins();
+  globalThis.fetch = slow(fake.fetch, 30);
+  const opening = stream();
+  await until(() => logins() > before);
+  await h.logout();
+  await assert.rejects(opening, /sign in in the settings of the plugin/);
+  assert.equal(h.values.userId, '');
+  assert.equal(h.values.passToken, '');
+  await h.shutdown();
+});
+
+test('Sign out while the device list is read: what it brings is not offered', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const pushed = h.pushed.length;
+
+  globalThis.fetch = fakeXiaomi(scenario({ deviceListDelayMs: 100 })).fetch;
+  const discovering = h.plugin.onDiscoverCameras();
+  await sleep(20);
+  await h.logout();
+  assert.deepEqual(await discovering, []);
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
+  assert.equal(h.pushed.length, pushed);
+  await h.shutdown();
+});
+
 test('a stored token Xiaomi no longer accepts is reported, the plugin keeps running', async () => {
   globalThis.fetch = fakeXiaomi(scenario({ tokens: new Set() })).fetch;
   const h = host({ userId: '42', passToken: 'OLD' });
@@ -281,6 +566,79 @@ test('a stored token Xiaomi no longer accepts is reported, the plugin keeps runn
   assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
   // the added camera has its stream all the same, and says what is wrong when it is opened
   await assert.rejects(stream(), /no longer accepts the stored sign-in/);
+  await h.shutdown();
+});
+
+test('a token Xiaomi refused is not presented again: the log says once to sign in, a new sign-in brings the cameras back', async () => {
+  const fake = fakeXiaomi(scenario({ tokens: new Set() }));
+  globalThis.fetch = fake.fetch;
+  const { lines, logger } = recorder();
+  const h = host({ userId: '42', passToken: 'OLD' }, logger);
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  const ticks = await launchKeepingTimers(h);
+  const tokenLogins = () => fake.calls.filter((c) => c.url.includes('/pass/serviceLogin?')).length;
+  assert.equal(tokenLogins(), 1);
+  // the settings no longer show an account the plugin is not signed in to
+  assert.equal(h.values.passToken, '');
+  assert.equal(h.values.userId, '');
+
+  // connections, discovery and the half-hourly reading of the list do not send it to Xiaomi again
+  await assert.rejects(stream(), /no longer accepts the stored sign-in: sign in again in the settings of the plugin/);
+  await assert.rejects(stream(), /no longer accepts the stored sign-in/);
+  assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
+  assert.equal(ticks.length, 1);
+  for (const tick of ticks) tick();
+  await sleep(50);
+  assert.equal(tokenLogins(), 1);
+  assert.equal(lines.error?.filter((line) => /refused the sign-in of the plugin.*sign in again in the settings/.test(line)).length, 1);
+
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  assert.equal(h.values.passToken, 'PT1');
+  assert.equal(new URL(await stream()).host, '192.168.1.50');
+  await h.shutdown();
+});
+
+const NO_DNS = (async () => {
+  throw new TypeError('fetch failed', { cause: new Error('getaddrinfo ENOTFOUND account.xiaomi.com') });
+}) as typeof fetch;
+
+test('a stored sign-in that breaks on the way (no network) keeps the token for the next try, the log says why', async () => {
+  globalThis.fetch = NO_DNS;
+  const { lines, logger } = recorder();
+  const h = host({ userId: '42', passToken: 'PT1' }, logger);
+  await h.launch();
+  assert.equal(h.values.userId, '42');
+  assert.equal(h.values.passToken, 'PT1');
+  assert.deepEqual(lines.error, ['Could not sign in to Mi Home with the stored sign-in: fetch failed: getaddrinfo ENOTFOUND account.xiaomi.com']);
+  await h.shutdown();
+});
+
+test('a sign-in that breaks on the way says why, in the message and in the log', async () => {
+  globalThis.fetch = NO_DNS;
+  const { lines, logger } = recorder();
+  const h = host({}, logger);
+  const answer = await h.submit({ username: 'user@example.com', password: PASSWORD });
+  assert.equal(answer?.toast?.type, 'error');
+  assert.equal(answer?.toast?.message, 'Sign-in failed: fetch failed: getaddrinfo ENOTFOUND account.xiaomi.com');
+  assert.deepEqual(lines.error, ['Mi Home sign-in failed: fetch failed: getaddrinfo ENOTFOUND account.xiaomi.com']);
+});
+
+test('a door viewer that could not be woken is named in the log with the reason, and opened all the same', async () => {
+  globalThis.fetch = fakeXiaomi(
+    scenario({
+      devices: { ru: [{ did: '2001', name: 'Door', model: 'loock.cateye.v02', localip: '192.168.1.70' }], cn: [] },
+      vendors: { '2001': { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd'.repeat(32), sign: 'sig' } },
+      wakeUpError: 'device offline',
+    }),
+  ).fetch;
+  const { lines, logger } = recorder();
+  const h = host({ userId: '42', passToken: 'PT1' }, logger);
+  const { camera, stream } = device('2001');
+  await h.plugin.configureCameras([camera]);
+  await h.launch();
+  assert.equal(new URL(await stream()).host, '192.168.1.70');
+  assert.deepEqual(lines.warn, ['Could not wake up Door, connecting all the same: Xiaomi: device offline']);
   await h.shutdown();
 });
 

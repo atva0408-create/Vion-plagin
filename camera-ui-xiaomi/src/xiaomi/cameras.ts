@@ -80,6 +80,24 @@ export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: R
   return { cameras: [...cameras.values()], complete: failed === 0 };
 }
 
+/**
+ * P2P vendors the stream engine dials. The cloud names MTP and Agora cameras as well (it is asked the way the engine
+ * asks it), and the engine refuses those with "unsupported vendor".
+ */
+const PLAYABLE_VENDORS = new Set(['cs2', 'tutk']);
+const VENDOR_LABELS: Record<string, string> = { agora: 'Agora', mtp: 'MTP' };
+
+/** A camera ViON cannot play: the cloud connects it over a P2P vendor the stream engine does not dial. */
+export class UnplayableCameraError extends Error {
+  constructor(
+    public readonly camera: XiaomiCamera,
+    public readonly vendor: string,
+  ) {
+    super(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[vendor] ?? `P2P vendor "${vendor}"`}, which ViON cannot play`);
+    this.name = 'UnplayableCameraError';
+  }
+}
+
 /** Keys of the newer protocol (miss): the cloud names the P2P vendor of the camera and signs a fresh key of ours. */
 async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Record<string, string>> {
   const { publicKey, privateKey } = generateKeyPair();
@@ -91,6 +109,8 @@ async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Rec
   };
 
   const vendorId = result.vendor?.vendor;
+  // an address the engine refuses would be a camera without video and only a line in the engine's log to say why
+  if (!PLAYABLE_VENDORS.has(vendorName(vendorId))) throw new UnplayableCameraError(camera, vendorName(vendorId));
   const query: Record<string, string> = {
     client_public: publicKey,
     client_private: privateKey,
@@ -140,6 +160,24 @@ export function vendorName(id: number | undefined): string {
   }
 }
 
+/** The answer of the newer protocol for a camera of the older one that is not on the list of those models. */
+function isOlderProtocol(error: unknown): boolean {
+  return String((error as Error).message).includes('no available vendor support');
+}
+
+/**
+ * Whether ViON can play the camera, asked the way a connection asks: throws UnplayableCameraError when the cloud
+ * connects it over a P2P vendor the stream engine refuses. A camera of the older protocol plays.
+ */
+export async function checkPlayable(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<void> {
+  if (LEGACY_MODELS.has(camera.model)) return;
+  try {
+    await missParams(cloud, camera);
+  } catch (error) {
+    if (!isOlderProtocol(error)) throw error;
+  }
+}
+
 /** Door viewers and battery cameras sleep: they are woken up before a connection. */
 async function wakeUp(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<void> {
   await cloud.request(camera.region, `/home/rpc/${camera.did}`, JSON.stringify({ id: 1, method: 'wakeup', params: { video: '1' } }));
@@ -147,12 +185,19 @@ async function wakeUp(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<void> {
 
 /**
  * The address the stream engine opens the camera with: the local address of the camera and keys for this one
- * connection. Asked again for every connection: the keys are not meant to be kept.
+ * connection. Asked again for every connection: the keys are not meant to be kept. A door viewer that could not be
+ * woken is reported to `onWakeUpError` and dialled all the same: it may be awake already.
  */
-export async function cameraStreamUrl(cloud: XiaomiCloud, camera: XiaomiCamera, quality: Quality = 'default', channel?: number): Promise<string> {
+export async function cameraStreamUrl(
+  cloud: XiaomiCloud,
+  camera: XiaomiCamera,
+  quality: Quality = 'default',
+  channel?: number,
+  onWakeUpError?: (error: Error) => void,
+): Promise<string> {
   if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
 
-  if (camera.model.includes('.cateye.')) await wakeUp(cloud, camera).catch(() => undefined);
+  if (camera.model.includes('.cateye.')) await wakeUp(cloud, camera).catch((error: Error) => onWakeUpError?.(error));
 
   let params: Record<string, string>;
   if (LEGACY_MODELS.has(camera.model)) {
@@ -162,7 +207,7 @@ export async function cameraStreamUrl(cloud: XiaomiCloud, camera: XiaomiCamera, 
       params = await missParams(cloud, camera);
     } catch (error) {
       // a camera of the older protocol that is not on the list
-      if (!String((error as Error).message).includes('no available vendor support')) throw error;
+      if (!isOlderProtocol(error)) throw error;
       params = await legacyParams(cloud, camera);
     }
   }
