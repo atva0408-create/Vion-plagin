@@ -190,8 +190,13 @@ try {
     assert.deepEqual(await h.plugin.onDiscoverCameras(), [], 'an added camera is not offered again');
 
     // ---- firmware from the list of versions -----------------------------------------------------------------------
-    moved.manifest = { version: '1.1.0', url: 'sensor-1.1.0.bin', sha256: 'a'.repeat(64), notes: 'Quicker calibration' };
+    // a board flashed by USB with a build newer than the list: an update button would do nothing, so there is none
+    moved.manifest = { version: '0.9.0', url: 'sensor-0.9.0.bin', sha256: 'b'.repeat(64) };
     h.values.manifestUrl = `http://${moved.address}/manifest.json`;
+    await (h.plugin as any).checkFirmware();
+    assert.ok(!sensor.storageSchema.some((f) => f.key === 'update'), 'no update button for an older firmware');
+
+    moved.manifest = { version: '1.1.0', url: 'sensor-1.1.0.bin', sha256: 'a'.repeat(64), notes: 'Quicker calibration' };
     await (h.plugin as any).checkFirmware();
     await until(() => sensor.storageSchema.some((f) => f.key === 'update'), 'the update button');
     assert.match(String(field(sensor, 'update').title), /1\.1\.0/);

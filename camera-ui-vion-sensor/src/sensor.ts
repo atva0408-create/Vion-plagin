@@ -1,5 +1,7 @@
 import { MotionSensor } from '@camera.ui/sdk';
 
+import { newer } from './firmware.js';
+
 import type { JsonSchema } from '@camera.ui/sdk';
 import type { SensorInfo, SensorState } from './device.js';
 import type { FirmwareRelease } from './firmware.js';
@@ -110,7 +112,8 @@ export class VionMotionSensor extends MotionSensor {
       },
     ];
     const release = this.release;
-    if (release && info && release.version !== info.firmware) {
+    // only a newer one: a board flashed by USB can be ahead of the list, and the update refuses to go back
+    if (release && info && newer(release.version, info.firmware)) {
       fields.push({
         type: 'button',
         key: 'update',
