@@ -90,6 +90,7 @@ export async function fakeBoard(id = 'AABBCCDDEEFF'): Promise<FakeBoard> {
       const restarting = body.camera !== undefined && body.camera !== board.info.camera.enabled;
       if (body.threshold !== undefined) board.info.config.threshold = board.state.threshold = body.threshold;
       if (body.hold_s !== undefined) board.info.config.hold_s = body.hold_s;
+      if (body.presence_sensitivity !== undefined) board.info.config.presence_sensitivity = body.presence_sensitivity;
       if (body.camera !== undefined) board.info.camera = { enabled: body.camera, state: body.camera ? 'on' : 'off' };
       return send(res, 200, { ...board.info, paired: true, restarting });
     }

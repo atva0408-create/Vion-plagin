@@ -12,7 +12,38 @@ export interface SensorInfo {
   rssi: number;
   uptime_s: number;
   camera: { enabled: boolean; state: 'off' | 'on' | 'error' };
-  config: { threshold: number; hold_s: number };
+  config: { threshold: number; hold_s: number; presence_sensitivity?: number };
+  /** A firmware that did not start: the board went back to the one it runs (firmware 1.1.0 and later). */
+  update_failed?: string;
+}
+
+/**
+ * Presence by the Espressif algorithm (esp-radar), firmware 1.1.0 and later. wander — how unlike the empty room the
+ * signal is (a person standing still is unlike it too), jitter — how much it shakes (a person moving).
+ */
+export interface PresenceState {
+  present: boolean;
+  /** Enough readings after the learning to decide. */
+  ready: boolean;
+  training: boolean;
+  training_left_s: number;
+  /** The learning on the empty room gave thresholds; without them presence is not decided. */
+  trained: boolean;
+  level: number;
+  wander: number;
+  wander_threshold: number;
+  jitter: number;
+  jitter_threshold: number;
+  motion: boolean;
+  windows_per_s: number;
+  sensitivity: number;
+}
+
+/** A person seen by the HLK-LD2450 radar: millimetres from it, x to the side, y ahead; speed in cm/s. */
+export interface RadarTarget {
+  x: number;
+  y: number;
+  speed: number;
 }
 
 export interface SensorState {
@@ -31,6 +62,9 @@ export interface SensorState {
   uptime_s: number;
   camera: 'off' | 'on' | 'error';
   update: { state: 'idle' | 'downloading' | 'done' | 'failed'; progress: number; error?: string };
+  presence?: PresenceState;
+  /** The radar on the board's UART; connected is false when none is wired or it went quiet. */
+  ld2450?: { connected: boolean; targets: RadarTarget[] };
 }
 
 export interface SensorConfigPatch {
@@ -39,6 +73,7 @@ export interface SensorConfigPatch {
   threshold?: number;
   hold_s?: number;
   camera?: boolean;
+  presence_sensitivity?: number;
 }
 
 const TIMEOUT_MS = 4000;

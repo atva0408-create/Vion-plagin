@@ -16,5 +16,13 @@
   "The sensor learns the empty room for 30 seconds: leave the room before pressing.": "The sensor learns the empty room for 30 seconds: leave the room before pressing.",
   "Firmware update": "Firmware update",
   "Reset the sensor": "Reset the sensor",
-  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup."
+  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.",
+  "Presence sensitivity": "Presence sensitivity",
+  "How readily a person standing still counts as present (the Espressif algorithm). Higher is more sensitive.": "How readily a person standing still counts as present (the Espressif algorithm). Higher is more sensitive.",
+  "Motion from": "Motion from",
+  "Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.": "Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.",
+  "ViON (signal changes)": "ViON (signal changes)",
+  "Espressif (esp-radar)": "Espressif (esp-radar)",
+  "Either of them": "Either of them",
+  "The new firmware did not start, and the board went back to the one it had.": "The new firmware did not start, and the board went back to the one it had."
 }

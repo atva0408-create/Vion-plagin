@@ -3,7 +3,7 @@ import { API_EVENT, BasePlugin, SensorType } from '@camera.ui/sdk';
 import { SensorClient, SensorRequestError } from './device.js';
 import { SensorFinder } from './discovery.js';
 import { DEFAULT_MANIFEST_URL, newer, readManifest } from './firmware.js';
-import { VionMotionSensor } from './sensor.js';
+import { VionMotionSensor, VionPresenceSensor } from './sensor.js';
 
 import type {
   AdoptedSensor,
@@ -22,9 +22,10 @@ import type {
   SnapshotInterface,
   StreamingInterface,
 } from '@camera.ui/sdk';
-import type { SensorConfigPatch, SensorInfo, SensorState } from './device.js';
+import type { RadarTarget, SensorConfigPatch, SensorInfo, SensorState } from './device.js';
 import type { FoundSensor } from './discovery.js';
 import type { FirmwareRelease } from './firmware.js';
+import type { MotionSource } from './sensor.js';
 
 export interface VionSensorConfig {
   /** Addresses typed by hand, for networks where the mDNS search does not reach. */
@@ -32,6 +33,8 @@ export interface VionSensorConfig {
   manifestUrl?: string;
   /** The token each board gave this ViON when it was added, by board id. Kept after a removal: adding it again works. */
   tokens?: Record<string, string>;
+  /** Which algorithm of each board makes its motion, by board id; none — ViON's own. */
+  motionSources?: Record<string, MotionSource>;
 }
 
 export interface VionSensorLive {
@@ -43,11 +46,19 @@ export interface VionSensorLive {
   threshold: number;
   rssi: number;
   packetsPerS: number;
+  /** Presence by the Espressif algorithm; null — the firmware has none (before 1.1.0) or the board is not read yet. */
+  presence: { state: 'present' | 'absent' | 'learning' | 'untrained'; level: number; threshold: number } | null;
+  /** The HLK-LD2450 radar; null — none is wired. Targets in millimetres from the radar: x to the side, y ahead. */
+  radar: { targets: RadarTarget[] } | null;
 }
 
 const SENSOR_PREFIX = 'vs:';
+const PRESENCE_PREFIX = 'vp:';
+/** The first firmware with presence (Espressif esp-radar) and the radar. */
+const PRESENCE_FIRMWARE = '1.1.0';
 const CAMERA_PREFIX = 'vs-cam:';
 const POLL_MS = 1000;
+const MOTION_SOURCE_NAMES: Record<MotionSource, string> = { vion: 'ViON', espressif: 'Espressif', any: 'either algorithm' };
 /** Polls that may fail before the sensor is shown as unavailable: one lost answer on Wi-Fi is not an outage. */
 const FAILURES_BEFORE_OFFLINE = 3;
 const PULSE_MS = 2000;
@@ -67,10 +78,26 @@ interface Bound {
   pulse?: NodeJS.Timeout;
   info?: SensorInfo;
   state?: SensorState;
+  /** Said once per learning: presence was not learned. */
+  untrainedTold?: boolean;
+  /** Said once per failed version: the update did not start. */
+  failedTold?: string;
 }
 
 function boardId(nativeId: string): string {
-  return nativeId.startsWith(SENSOR_PREFIX) ? nativeId.slice(SENSOR_PREFIX.length) : nativeId;
+  for (const prefix of [SENSOR_PREFIX, PRESENCE_PREFIX]) if (nativeId.startsWith(prefix)) return nativeId.slice(prefix.length);
+  return nativeId;
+}
+
+function hasPresence(info: SensorInfo): boolean {
+  return !newer(PRESENCE_FIRMWARE, info.firmware);
+}
+
+function presenceLive(state: SensorState | undefined): VionSensorLive['presence'] {
+  const p = state?.presence;
+  if (!p) return null;
+  const kind = p.training ? 'learning' : !p.trained ? 'untrained' : p.present ? 'present' : 'absent';
+  return { state: kind, level: Number.isFinite(p.level) ? p.level : 0, threshold: Number.isFinite(p.wander_threshold) ? p.wander_threshold : 0 };
 }
 
 function errorText(error: unknown): string {
@@ -84,6 +111,8 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
   );
 
   private bound = new Map<string, Bound>();
+  /** The presence sensors, by board id: kept apart from the motion ones, which can be removed while these stay. */
+  private presences = new Map<string, VionPresenceSensor>();
   private cameras = new Map<string, CameraDevice>();
   private probeTimer?: NodeJS.Timeout;
   private manifestTimer?: NodeJS.Timeout;
@@ -204,16 +233,37 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         manufacturer: 'ViON',
         model: info.model,
       });
+      // presence reads the same board as its motion sensor: it is offered once that one is added
+      if (this.bound.has(found.id) && !this.presences.has(found.id) && hasPresence(info)) {
+        result.push({
+          id: `${PRESENCE_PREFIX}${found.id}`,
+          address: found.address,
+          name: `${info.name || found.name} presence`,
+          type: SensorType.Occupancy,
+          room: info.room || undefined,
+          manufacturer: 'ViON',
+          model: info.model,
+        });
+      }
     }
     return result;
   }
 
   async configureAdoptedSensors(records: AdoptedSensor[]): Promise<Sensor<any, any, any>[]> {
-    return records.map((record) => this.bind(record).sensor);
+    const isPresence = (record: AdoptedSensor) => record.nativeId.startsWith(PRESENCE_PREFIX);
+    // motion first: a presence sensor finds its board through it
+    const motion = records.filter((record) => !isPresence(record)).map((record) => this.bind(record).sensor);
+    const presence = records.filter(isPresence).map((record) => this.bindPresence(record));
+    return [...motion, ...presence];
   }
 
   async onSensorAdopted(record: AdoptedSensor): Promise<Sensor<any, any, any>> {
     const id = boardId(record.nativeId);
+    if (record.nativeId.startsWith(PRESENCE_PREFIX)) {
+      if (!this.bound.has(id)) throw new Error(`Add the motion sensor of ${record.name} first: presence reads the same board`);
+      this.logger.log(`Added sensor ${record.name}`);
+      return this.bindPresence(record);
+    }
     if (!this.token(id)) {
       const address = this.finder.found.get(id)?.address ?? record.address;
       if (!address) throw new Error(`The sensor ${record.name} is not in the network now`);
@@ -233,6 +283,12 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
 
   async onSensorUnadopted(nativeId: string): Promise<void> {
     const id = boardId(nativeId);
+    if (nativeId.startsWith(PRESENCE_PREFIX)) {
+      this.presences.delete(id);
+      return;
+    }
+    // presence without its board says nothing: unknown, not "nobody"
+    this.presences.get(id)?.setSourceState('unavailable');
     const bound = this.bound.get(id);
     if (!bound) return;
     clearTimeout(bound.timer);
@@ -255,6 +311,12 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       },
       update: () => this.updateFirmware(bound),
       reset: () => this.reset(bound),
+      motionSource: () => this.motionSource(id),
+      setMotionSource: async (source) => {
+        await this.storage.setInternalValue('motionSources', { ...(this.storage.values.motionSources ?? {}), [id]: source });
+        this.logger.log(`${record.name}: motion now from ${MOTION_SOURCE_NAMES[source]}`);
+        if (bound.state) this.applyMotion(bound, bound.state);
+      },
     });
     if (address) bound.sensor.setAddress(address.split(':')[0]);
     this.bound.set(id, bound);
@@ -262,6 +324,23 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     // a sensor added now shows a newer firmware at once, not after the next scheduled reading of the list
     if (this.started && !this.release) void this.checkFirmware();
     return bound;
+  }
+
+  private bindPresence(record: AdoptedSensor): VionPresenceSensor {
+    const id = boardId(record.nativeId);
+    let sensor = this.presences.get(id);
+    if (!sensor) {
+      sensor = new VionPresenceSensor(record.name, record.nativeId);
+      this.presences.set(id, sensor);
+    }
+    const bound = this.bound.get(id);
+    if (bound?.client.address) sensor.setAddress(bound.client.address.split(':')[0]);
+    this.applyPresence(id, bound?.state);
+    return sensor;
+  }
+
+  private motionSource(id: string): MotionSource {
+    return this.storage.values.motionSources?.[id] ?? 'vion';
   }
 
   private startPolling(bound: Bound): void {
@@ -280,7 +359,14 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       bound.client.token ??= this.token(bound.id);
       if (!bound.client.address) throw new SensorRequestError('no address yet');
       // the settings show the board's own values: read them once, and again after it restarted
-      if (!bound.info || (bound.state && bound.state.uptime_s < 5)) bound.info = await bound.client.info();
+      if (!bound.info || (bound.state && bound.state.uptime_s < 5)) {
+        bound.info = await bound.client.info();
+        const failed = bound.info.update_failed;
+        if (failed && failed !== bound.failedTold) {
+          this.logger.warn(`${sensor.name}: firmware ${failed} did not start, the board went back to ${bound.info.firmware}`);
+        }
+        bound.failedTold = failed;
+      }
       const state = await bound.client.state();
       if (bound.failures >= FAILURES_BEFORE_OFFLINE) this.logger.log(`${sensor.name} is back`);
       bound.failures = 0;
@@ -289,6 +375,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       bound.state = state;
       sensor.setSourceState(state.blind ? 'unavailable' : 'connected');
       this.applyMotion(bound, state);
+      this.applyPresence(bound.id, state);
       sensor.show(bound.info, state, this.release);
     } catch (error) {
       bound.failures++;
@@ -296,6 +383,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         this.logger.warn(`${sensor.name} does not answer: ${errorText(error)}`);
         sensor.setSourceState('unavailable');
         this.applyMotion(bound, undefined);
+        this.applyPresence(bound.id, undefined);
       }
       if (error instanceof SensorRequestError && error.status === 401) {
         // the board was reset and added nowhere: its old token no longer opens it
@@ -308,8 +396,13 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
 
   /** Motion as ViON sees it: on while the board says so, and a short pulse for a motion that started and ended between two polls. */
   private applyMotion(bound: Bound, state: SensorState | undefined): void {
-    const motion = !!state && !state.calibrating && !state.blind && state.motion;
-    const missed = !!state && bound.events !== undefined && state.events > bound.events && !motion;
+    const source = this.motionSource(bound.id);
+    const espressif = !!state?.presence?.trained && state.presence.motion;
+    const vion = !!state?.motion;
+    const raw = source === 'espressif' ? espressif : source === 'any' ? vion || espressif : vion;
+    const motion = !!state && !state.calibrating && !state.blind && raw;
+    // the events counter is ViON's: a motion too short for a poll is caught only for it
+    const missed = source !== 'espressif' && !!state && bound.events !== undefined && state.events > bound.events && !motion;
     if (state) bound.events = state.events;
     if (missed && !bound.pulse) {
       bound.sensor.reportDetections(true);
@@ -322,6 +415,30 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       bound.motion = motion;
       if (!bound.pulse) bound.sensor.reportDetections(motion);
     }
+  }
+
+  /** Presence as ViON sees it: unknown while the board learns, could not learn, sees nothing or does not answer. */
+  private applyPresence(id: string, state: SensorState | undefined): void {
+    const presence = state?.presence;
+    const bound = this.bound.get(id);
+    if (bound && presence) {
+      if (presence.training) bound.untrainedTold = false;
+      else if (!presence.trained && !bound.untrainedTold) {
+        bound.untrainedTold = true;
+        this.logger.warn(
+          `${bound.sensor.name}: presence did not learn the empty room, the Wi-Fi signal was too uneven ` +
+          `(${presence.windows_per_s} readings/s); motion works as before. Calibrate again when the room is empty.`,
+        );
+      }
+    }
+    const sensor = this.presences.get(id);
+    if (!sensor) return;
+    if (!state || state.blind || !presence?.trained || presence.training) {
+      sensor.setSourceState('unavailable');
+      return;
+    }
+    sensor.setSourceState('connected');
+    if (sensor.detected !== presence.present) sensor.setDetected(presence.present);
   }
 
   private async configure(bound: Bound, patch: SensorConfigPatch): Promise<void> {
@@ -398,6 +515,8 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         level: cached && cached.baseline > 0 ? finite(cached.score / cached.baseline, 1) : 1,
         threshold: finite(cached?.threshold ?? bound.info?.config.threshold, 1.4),
         rssi: finite(cached?.rssi ?? bound.info?.rssi),
+        presence: presenceLive(cached),
+        radar: cached?.ld2450?.connected ? { targets: cached.ld2450.targets.map((t) => ({ x: t.x, y: t.y, speed: t.speed })) } : null,
         packetsPerS: Math.max(0, finite(cached?.packets_per_s)),
       };
     });

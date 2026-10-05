@@ -241,6 +241,119 @@ try {
     await h.plugin.onSensorUnadopted(`vs:${board.id}`);
   }
 
+  // ---- presence (firmware 1.1.0): a second sensor, the motion source, the radar, a failed update -----------------------
+  {
+    const { board, h } = await setup();
+    board.info.firmware = '1.1.0';
+    const presenceState = { present: false, ready: false, training: true, training_left_s: 20, trained: false, level: 0, wander: 0.01 };
+    Object.assign(board.state, {
+      presence: { ...presenceState, wander_threshold: 0, jitter: 0, jitter_threshold: 0, motion: false, windows_per_s: 5, sensitivity: 0.25 },
+      ld2450: { connected: false, targets: [] },
+    });
+    const offered = () => h.plugin.onDiscoverSensors().then((list) => list.map((s) => [s.id, s.type]));
+    assert.deepEqual(await offered(), [[`vs:${board.id}`, SensorType.Motion]], 'presence is not offered before its motion sensor is added');
+    await assert.rejects(
+      h.plugin.onSensorAdopted({ id: 'presence-1', nativeId: `vp:${board.id}`, address: board.address, name: 'Hall presence', type: SensorType.Occupancy }),
+      /motion sensor of Hall presence first/,
+      'presence alone is refused with the reason',
+    );
+    const motion = (await h.plugin.onSensorAdopted(adopted(board))) as MotionSensor;
+    await until(() => motion.sourceState === 'connected', 'the first poll');
+    assert.deepEqual(
+      await offered(),
+      [
+        [`vs:${board.id}`, SensorType.Motion],
+        [`vp:${board.id}`, SensorType.Occupancy],
+      ],
+      'with motion added, the board offers its presence',
+    );
+    const presence = (await h.plugin.onSensorAdopted({
+      id: 'presence-1',
+      nativeId: `vp:${board.id}`,
+      address: board.address,
+      name: 'Hall presence',
+      type: SensorType.Occupancy,
+    })) as unknown as { sourceState?: string; detected: boolean };
+    assert.deepEqual(await offered(), [[`vs:${board.id}`, SensorType.Motion]], 'an added presence is not offered again');
+
+    // learning, then not learned: presence is unknown, and it is said once
+    await until(() => presence.sourceState === 'unavailable', 'presence unknown while learning');
+    board.state.presence.training = false;
+    await until(() => h.lines.some((l) => l.includes('presence did not learn the empty room')), 'the warning about the learning');
+    await sleep(1_200);
+    assert.equal(h.lines.filter((l) => l.includes('presence did not learn')).length, 1, 'said once, not every poll');
+    assert.equal(presence.sourceState, 'unavailable', 'not learned: unknown, not "nobody"');
+
+    // learned: somebody stands in the room
+    Object.assign(board.state.presence, { trained: true, ready: true, present: true, level: 0.004, wander_threshold: 0.002 });
+    await until(() => presence.sourceState === 'connected' && presence.detected, 'presence on');
+    board.state.presence.present = false;
+    await until(() => !presence.detected, 'presence off');
+    board.state.blind = true;
+    await until(() => presence.sourceState === 'unavailable', 'no packets: presence unknown');
+    board.state.blind = false;
+
+    // the motion source: ViON by default, Espressif or either when chosen
+    assert.equal(field(motion, 'motionSource').defaultValue, 'vion');
+    board.state.presence.motion = true;
+    await sleep(1_200);
+    assert.equal(motion.detected, false, 'Espressif motion alone does not count while the source is ViON');
+    await field(motion, 'motionSource').onSet!('espressif', 'vion');
+    await until(() => motion.detected, 'motion from Espressif');
+    assert.deepEqual(h.values.motionSources, { [board.id]: 'espressif' }, 'the choice is kept for the next start');
+    board.state.presence.motion = false;
+    board.state.motion = true;
+    await until(() => !motion.detected, 'ViON motion alone does not count while the source is Espressif');
+    await field(motion, 'motionSource').onSet!('any', 'espressif');
+    await until(() => motion.detected, 'either algorithm');
+    board.state.motion = false;
+    await until(() => !motion.detected, 'motion off');
+
+    // presence sensitivity goes to the board
+    await field(motion, 'presenceSensitivity').onSet!(0.4, 0.25);
+    assert.equal(board.info.config.presence_sensitivity, 0.4, 'the presence sensitivity reached the board');
+
+    // the radar and presence reach the floor plan from the cache
+    board.state.ld2450 = { connected: true, targets: [{ x: -782, y: 1713, speed: -16 }] };
+    board.state.presence.present = true;
+    await until(() => presence.detected, 'presence on again');
+    const [live] = await h.plugin.vionSensorLive();
+    assert.deepEqual(live!.radar, { targets: [{ x: -782, y: 1713, speed: -16 }] }, 'the radar targets as the board gave them');
+    assert.deepEqual(live!.presence, { state: 'present', level: 0.004, threshold: 0.002 });
+    board.state.ld2450 = { connected: false, targets: [] };
+    await sleep(1_200);
+    assert.equal((await h.plugin.vionSensorLive())[0]!.radar, null, 'a radar that went quiet is none, not its last people');
+
+    // a firmware that did not start: said once and shown in the settings
+    board.info.update_failed = '1.1.1';
+    board.state.uptime_s = 2; // a restart: the plugin reads the info again
+    await until(() => h.lines.some((l) => l.includes('firmware 1.1.1 did not start')), 'the failed update is told');
+    await until(() => motion.storageSchema.some((f) => f.key === 'updateFailed'), 'the failed update in the settings');
+    assert.match(String(field(motion, 'updateFailed').defaultValue), /1\.1\.1 did not start: the board runs 1\.1\.0/);
+    await sleep(1_200);
+    assert.equal(h.lines.filter((l) => l.includes('firmware 1.1.1 did not start')).length, 1, 'told once');
+
+    // the motion sensor removed: presence is unknown; presence removed: offered again once motion is back
+    await h.plugin.onSensorUnadopted(`vs:${board.id}`);
+    assert.equal(presence.sourceState, 'unavailable');
+    await h.plugin.onSensorUnadopted(`vp:${board.id}`);
+    console.log('presence: second sensor, learning, motion source, sensitivity, radar, failed update OK');
+  }
+  {
+    // a board with an older firmware has no presence to offer
+    const { board, h } = await setup();
+    await h.plugin.onSensorAdopted(adopted(board));
+    assert.deepEqual(
+      (await h.plugin.onDiscoverSensors()).map((s) => s.id),
+      [`vs:${board.id}`],
+      'firmware 1.0.0: motion only',
+    );
+    await until(() => !!(h.plugin as any).bound.get(board.id)?.state, 'the first poll');
+    const [live] = await h.plugin.vionSensorLive();
+    assert.equal(live!.presence, null);
+    assert.equal(live!.radar, null);
+  }
+
   // ---- a board added to another ViON ----------------------------------------------------------------------------------
   {
     const { board, h } = await setup();

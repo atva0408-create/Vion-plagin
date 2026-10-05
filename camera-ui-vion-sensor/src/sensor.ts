@@ -1,4 +1,4 @@
-import { MotionSensor } from '@camera.ui/sdk';
+import { MotionSensor, OccupancySensor } from '@camera.ui/sdk';
 
 import { newer } from './firmware.js';
 
@@ -8,12 +8,24 @@ import type { FirmwareRelease } from './firmware.js';
 
 export const ORIGIN = 'vion-sensor';
 
+/** Which algorithm of the board makes the motion of this sensor in ViON. */
+export type MotionSource = 'vion' | 'espressif' | 'any';
+
 /** What the settings of one sensor can do; the plugin carries it out on the board. */
 export interface SensorActions {
-  configure(patch: { threshold?: number; hold_s?: number; camera?: boolean }): Promise<void>;
+  configure(patch: { threshold?: number; hold_s?: number; camera?: boolean; presence_sensitivity?: number }): Promise<void>;
   recalibrate(): Promise<void>;
   update(): Promise<void>;
   reset(): Promise<void>;
+  motionSource(): MotionSource;
+  setMotionSource(source: MotionSource): Promise<void>;
+}
+
+/** Presence of a person in the room, a person standing still too: the second sensor of a board (firmware 1.1.0+). */
+export class VionPresenceSensor extends OccupancySensor {
+  constructor(name: string, nativeId: string) {
+    super(name, { nativeId, origin: ORIGIN });
+  }
 }
 
 /** The motion sensor of a board, with the board's own settings in its settings in ViON. */
@@ -60,6 +72,12 @@ export class VionMotionSensor extends MotionSensor {
     if (state?.calibrating) parts.push(`calibrating, ${state.calibration_left_s} s left: keep the room empty`);
     else if (state?.blind) parts.push('no packets from the router: the sensor sees nothing');
     else if (state) parts.push(`level ${(state.baseline > 0 ? state.score / state.baseline : 0).toFixed(2)} of ${state.threshold.toFixed(2)}`);
+    const presence = state?.presence;
+    if (presence?.training) parts.push(`presence: learning the empty room, ${presence.training_left_s} s left`);
+    else if (presence && !presence.trained) parts.push(`presence: not learned, the Wi-Fi signal was too uneven (${presence.windows_per_s} readings/s)`);
+    else if (presence)
+      parts.push(`presence: ${presence.present ? 'someone is here' : 'nobody'} (${presence.level.toFixed(4)} of ${presence.wander_threshold.toFixed(4)})`);
+    if (state?.ld2450?.connected) parts.push(`radar: ${state.ld2450.targets.length} of 3 people`);
     return parts.join(' · ');
   }
 
@@ -103,6 +121,7 @@ export class VionMotionSensor extends MotionSensor {
         store: true,
         onSet: async (value) => this.actions.configure({ camera: Boolean(value) }),
       },
+      ...this.presenceFields(),
       {
         type: 'button',
         key: 'recalibrate',
@@ -120,6 +139,16 @@ export class VionMotionSensor extends MotionSensor {
         title: `Update the firmware to ${release.version}`,
         description: release.notes ?? 'A new firmware of the sensor is out.',
         onSet: async () => this.actions.update(),
+      });
+    }
+    if (info?.update_failed) {
+      fields.push({
+        type: 'string',
+        key: 'updateFailed',
+        title: 'Firmware update',
+        description: 'The new firmware did not start, and the board went back to the one it had.',
+        readonly: true,
+        defaultValue: `${info.update_failed} did not start: the board runs ${info.firmware}`,
       });
     }
     const update = this.state?.update;
@@ -142,5 +171,35 @@ export class VionMotionSensor extends MotionSensor {
       onSet: async () => this.actions.reset(),
     });
     return fields;
+  }
+
+  /** The settings of presence, on a board whose firmware has it. */
+  private presenceFields(): JsonSchema[] {
+    if (!this.state?.presence) return [];
+    return [
+      {
+        type: 'number',
+        key: 'presenceSensitivity',
+        title: 'Presence sensitivity',
+        description: 'How readily a person standing still counts as present (the Espressif algorithm). Higher is more sensitive.',
+        minimum: 0,
+        maximum: 1,
+        step: 0.05,
+        defaultValue: this.info?.config.presence_sensitivity ?? this.state.presence.sensitivity,
+        store: true,
+        onSet: async (value) => this.actions.configure({ presence_sensitivity: Number(value) }),
+      },
+      {
+        type: 'string',
+        key: 'motionSource',
+        title: 'Motion from',
+        description: 'Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.',
+        defaultValue: this.actions.motionSource(),
+        enum: ['vion', 'espressif', 'any'],
+        enumLabels: { vion: 'ViON (signal changes)', espressif: 'Espressif (esp-radar)', any: 'Either of them' },
+        store: true,
+        onSet: async (value) => this.actions.setMotionSource(value as MotionSource),
+      },
+    ];
   }
 }

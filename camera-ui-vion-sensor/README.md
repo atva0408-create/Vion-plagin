@@ -28,6 +28,17 @@ If the board does not appear, type its address in the settings of this plugin.
 
 Three quick power-ons in a row (each shorter than 10 seconds) also reset the board.
 
+## Presence and the radar (firmware 1.1.0)
+
+- **Presence** — the second sensor of a board, offered in **Sensors, Found** once its motion sensor is added. It
+  notices a person standing still too (the Espressif esp-radar algorithm) and learns the empty room in the same 30 s as
+  the calibration. When the Wi-Fi signal is too uneven it does not learn, and presence stays unknown until the next
+  calibration; motion works as before.
+- **Motion from** — which algorithm makes motion in ViON: ViON's own, Espressif's or either. Both run all the time.
+- **HLK-LD2450 radar** (optional): wired to the board (TX of the radar to GPIO13, RX to GPIO14, 5 V and GND), it gives
+  the positions of up to three people to the floor plan.
+- A firmware that does not start takes the board back to the previous one by itself; the settings say so.
+
 ## Placing it
 
 The sensor sees best what moves near the line between the board and the router. Fix the 2.4 GHz channel of the

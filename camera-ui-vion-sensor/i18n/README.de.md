@@ -28,6 +28,18 @@ Erscheint die Platine nicht, tragen Sie ihre Adresse in den Einstellungen dieses
 
 Dreimal schnell hintereinander einschalten (jeweils kürzer als 10 Sekunden) setzt die Platine ebenfalls zurück.
 
+## Anwesenheit und Radar (Firmware 1.1.0)
+
+- **Anwesenheit** — der zweite Sensor einer Platine, angeboten unter **„Sensoren → Gefunden“**, sobald ihr
+  Bewegungssensor hinzugefügt ist. Er erkennt auch eine still stehende Person (Algorithmus Espressif esp-radar) und
+  lernt den leeren Raum in denselben 30 s wie die Kalibrierung. Ist das WLAN-Signal zu ungleichmäßig, lernt er nicht,
+  und die Anwesenheit bleibt bis zur nächsten Kalibrierung unbekannt; die Bewegung funktioniert wie bisher.
+- **Bewegung aus** — welcher Algorithmus die Bewegung in ViON liefert: der eigene, der von Espressif oder einer von
+  beiden. Beide laufen ständig.
+- **Radar HLK-LD2450** (optional): an die Platine angeschlossen (TX des Radars an GPIO13, RX an GPIO14, 5 V und GND),
+  liefert er dem Grundriss die Positionen von bis zu drei Personen.
+- Eine Firmware, die nicht startet, bringt die Platine selbst zur vorherigen zurück; die Einstellungen zeigen es.
+
 ## Aufstellung
 
 Am besten sieht der Sensor, was sich nahe der Linie zwischen Platine und Router bewegt. Stellen Sie den
