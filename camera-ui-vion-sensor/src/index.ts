@@ -247,6 +247,8 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     if (address) bound.sensor.setAddress(address.split(':')[0]);
     this.bound.set(id, bound);
     if (this.started) this.startPolling(bound);
+    // a sensor added now shows a newer firmware at once, not after the next scheduled reading of the list
+    if (this.started && !this.release) void this.checkFirmware();
     return bound;
   }
 
