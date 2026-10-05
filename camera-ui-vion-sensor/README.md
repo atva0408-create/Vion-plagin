@@ -39,6 +39,24 @@ Three quick power-ons in a row (each shorter than 10 seconds) also reset the boa
   the positions of up to three people to the floor plan.
 - A firmware that does not start takes the board back to the previous one by itself; the settings say so.
 
+## Boards with the ESPectre firmware
+
+A board can run [ESPectre](https://github.com/francescopace/espectre) (by Francesco Pace, free software under GPLv3)
+instead of the ViON Sensor firmware: its official release, as is. ESPectre finds motion with a statistical detector or
+with a small neural network trained by its authors. This plugin only talks to the board over the network.
+
+1. Flash the official **Native** firmware for the chip of the board over USB at
+   [espectre.dev/tools/flash](https://espectre.dev/tools/flash/) (desktop Chrome) and set the Wi-Fi there: the board has
+   no Wi-Fi network of its own.
+2. In ViON open **Sensors**, **Found** and add the board (maker ESPectre). It is found by mDNS; if not, type its address
+   in the settings of this plugin.
+3. The settings of the sensor: **Detection** (Lightweight, or High accuracy — the neural network, no calibration),
+   **Motion threshold** (a probability, 0–1), **Readings to start motion** and **to end motion**, **Signal source**,
+   **Calibrate**, and the firmware update from the ESPectre releases.
+
+The ESPectre API has no password: any device in the home network can change these settings. ESPectre sees motion only:
+it does not tell a person from a pet, count people or prove that a room is empty.
+
 ## Placing it
 
 The sensor sees best what moves near the line between the board and the router. Fix the 2.4 GHz channel of the

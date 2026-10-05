@@ -1,18 +1,23 @@
 // The plugin as ViON drives it, against a stand-in of the board: a sensor found at a typed address, added (the board
 // gives this ViON its token), kept up to date by polling, a motion too short for a poll, a board added to another
 // ViON, a board that stops answering and comes back at another address, the settings sent to the board, the camera
-// offered once it is on, and a firmware update from the list of versions.
+// offered once it is on, and a firmware update from the list of versions. Then a board with the ESPectre firmware: found
+// at a typed address and by its mDNS record, added without pairing, motion from its event stream, the settings, its own
+// firmware update, a board that goes away, comes back and moves.
 // Run: npx tsx spec/plugin.spec.ts
 import assert from 'node:assert/strict';
 
 import { SensorType } from '@camera.ui/sdk';
 
 import VionSensorPlugin from '../src/index.js';
+import { espectreFromTxt } from '../src/espectre.js';
 import { newer } from '../src/firmware.js';
 import { fakeBoard } from './fake-board.js';
+import { fakeEspectre } from './fake-espectre.js';
 
 import type { AdoptedSensor, CameraDevice, DiscoveredCamera, JsonSchema, MotionSensor, SnapshotInterface, StreamingInterface } from '@camera.ui/sdk';
 import type { FakeBoard } from './fake-board.js';
+import type { FakeEspectre } from './fake-espectre.js';
 
 const silent = { log() {}, warn() {}, success() {}, debug() {}, trace() {}, attention() {}, error() {} };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +89,7 @@ function adopted(board: FakeBoard, name = 'Hall'): AdoptedSensor {
 }
 
 const boards: FakeBoard[] = [];
+const espectres: FakeEspectre[] = [];
 const hosts: ReturnType<typeof host>[] = [];
 async function setup(values: Record<string, unknown> = {}) {
   const board = await fakeBoard();
@@ -97,8 +103,10 @@ async function setup(values: Record<string, unknown> = {}) {
 try {
   // ---- cached floor-plan telemetry: real registry IDs, all states, and no board I/O ----------------------------------
   {
-    const board = await fakeBoard('AABBCCDDEE11'); boards.push(board);
-    const h = host({ tokens: { [board.id]: 'kept' } }); hosts.push(h);
+    const board = await fakeBoard('AABBCCDDEE11');
+    boards.push(board);
+    const h = host({ tokens: { [board.id]: 'kept' } });
+    hosts.push(h);
     await h.plugin.configureAdoptedSensors([adopted(board)]);
     const bound = (h.plugin as any).bound.get(board.id);
     const state = { ...board.state, score: 3, baseline: 2, threshold: 1.4, rssi: -65, packets_per_s: 30 };
@@ -111,7 +119,10 @@ try {
       assert.equal(live!.sensorId, 'sensor-1', 'the public ID is the adopted registry ID, not vs:board or a runtime UUID');
       assert.equal(live!.state, expected, `cached state: ${expected}`);
       assert.equal(live!.calibrationLeftS, expected === 'calibrating' ? 17 : 0);
-      assert.equal(live!.level, 1.5); assert.equal(live!.threshold, 1.4); assert.equal(live!.rssi, -65); assert.equal(live!.packetsPerS, 30);
+      assert.equal(live!.level, 1.5);
+      assert.equal(live!.threshold, 1.4);
+      assert.equal(live!.rssi, -65);
+      assert.equal(live!.packetsPerS, 30);
       assert.equal(live!.cameraId, null);
     }
     const camera = { id: 'attached-camera', nativeId: board.id, name: 'Sensor camera', implement: async () => {}, connect() {} } as unknown as CameraDevice;
@@ -394,6 +405,249 @@ try {
     assert.equal(board.calls.filter((c) => c.path === '/api/pair').length, 0, 'no new pairing on a start');
   }
 
+  // ---- a board with the ESPectre firmware ----------------------------------------------------------------------------
+  {
+    const board = await fakeEspectre();
+    espectres.push(board);
+    const h = host({ addresses: board.address });
+    hosts.push(h);
+    launch(h);
+    const offered = (await h.plugin.onDiscoverSensors()).map((s) => [s.id, s.type, s.name, s.address, s.manufacturer, s.model]);
+    assert.deepEqual(offered, [[`es:${board.id}`, SensorType.Motion, 'Kitchen', board.address, 'ESPectre', 'esp32']], 'the board at the typed address is offered');
+
+    const record: AdoptedSensor = { id: 'sensor-es', nativeId: `es:${board.id}`, address: board.address, name: 'Kitchen', type: SensorType.Motion };
+    const sensor = (await h.plugin.onSensorAdopted(record)) as MotionSensor;
+    await until(() => board.streams === 1 && sensor.sourceState === 'connected', 'the event stream and the first reading');
+    assert.equal(board.calls.filter((c) => c.method !== 'GET').length, 0, 'adding the board changes nothing on it');
+
+    board.motion = { state: 'motion', score: 0.91 };
+    await until(() => sensor.detected, 'motion from the stream');
+    board.motion = { state: 'idle', score: 0.1 };
+    await until(() => !sensor.detected, 'idle from the stream');
+    board.motion = { state: 'motion', score: 0.9 };
+    await until(() => sensor.detected, 'motion again');
+    board.pauseMotion = true;
+    await until(() => !sensor.detected, 'a motion whose readings stopped ends by itself', 8_000);
+    board.motion = { state: 'idle', score: 0.1 };
+    board.pauseMotion = false;
+    await until(() => sensor.sourceState === 'connected', 'readings again');
+
+    // calibrating: whatever the detector says, no motion, and the sensor is not lost
+    board.pauseMotion = true;
+    Object.assign(board.sensing, { calibrating: true, ready: false });
+    board.emit('sensing', board.sensing);
+    board.emit('motion', { timestamp_ms: 4, state: 'motion', score: 0.95 });
+    await sleep(300);
+    assert.equal(sensor.detected, false, 'no motion while the board calibrates');
+    assert.equal(sensor.sourceState, 'connected', 'calibrating is not an outage');
+    // not ready and not calibrating (no packets from the router): unknown, not quiet
+    board.sensing.calibrating = false;
+    board.emit('sensing', board.sensing);
+    await until(() => sensor.sourceState === 'unavailable', 'not ready: unknown');
+    board.sensing.ready = true;
+    board.emit('sensing', board.sensing);
+    await until(() => sensor.sourceState === 'connected', 'ready again');
+    await sleep(300);
+    assert.equal(sensor.detected, false, 'a reading taken while the board calibrated is not motion once it is ready');
+    board.pauseMotion = false;
+
+    // the settings go to the board, and the form shows what the board took
+    for (const key of ['detector', 'threshold', 'motionOnHits', 'motionOffHits', 'traffic']) {
+      assert.equal(field(sensor, key).store, false, `${key} is the board's: not stored, or a stored value would hide the board's`);
+    }
+    assert.equal(field(sensor, 'threshold').defaultValue, 0.66, 'the threshold shows the board value');
+    await field(sensor, 'threshold').onSet!(0.5, 0.66);
+    assert.deepEqual(board.calls.find((c) => c.method === 'PATCH')?.body, { threshold: 0.5 }, 'only the threshold is sent');
+    assert.equal(field(sensor, 'threshold').defaultValue, 0.5);
+    await field(sensor, 'detector').onSet!('high_accuracy', 'lightweight');
+    assert.equal(board.sensing.detector, 'high_accuracy', 'the neural network detector is chosen on the board');
+    await field(sensor, 'motionOnHits').onSet!(3, 2);
+    assert.deepEqual([board.sensing.motion_on_hits, board.sensing.motion_off_hits], [3, 4], 'the start count changed, the end count kept');
+    await field(sensor, 'motionOffHits').onSet!(6, 4);
+    assert.deepEqual([board.sensing.motion_on_hits, board.sensing.motion_off_hits], [3, 6], 'the end count changed, the start count kept');
+    // one save of both counts: the host calls both at the same time, and neither may be lost
+    await Promise.all([field(sensor, 'motionOnHits').onSet!(5, 3), field(sensor, 'motionOffHits').onSet!(7, 6)]);
+    assert.deepEqual([board.sensing.motion_on_hits, board.sensing.motion_off_hits], [5, 7], 'both counts of one save reached the board');
+    await field(sensor, 'traffic').onSet!('dns', 'ping');
+    assert.equal(board.sensing.traffic_generator_mode, 'dns');
+    await assert.rejects(field(sensor, 'threshold').onSet!(1.5, 0.5), /out of range/, 'a refused setting fails with the reason of the board');
+    assert.equal(field(sensor, 'threshold').defaultValue, 0.5, 'and the form shows the value the board kept');
+    await field(sensor, 'calibrate').onSet!(undefined, undefined);
+    assert.ok(
+      board.calls.some((c) => c.method === 'POST' && c.path === '/sensing/calibrations'),
+      'calibration asked',
+    );
+    board.busy = true;
+    await assert.rejects(field(sensor, 'calibrate').onSet!(undefined, undefined), /already running/, 'a busy board says so in words');
+    board.busy = false;
+
+    // its own firmware, from the ESPectre releases
+    await field(sensor, 'checkUpdate').onSet!(undefined, undefined);
+    assert.ok(
+      board.calls.some((c) => c.path === '/ota/checks'),
+      'the check asked',
+    );
+    board.ota = { ...board.ota, state: 'update_available', update_available: true, target_version: '3.0.0' };
+    board.emit('ota', board.ota);
+    await until(() => sensor.storageSchema.some((f) => f.key === 'update'), 'the update button');
+    assert.match(String(field(sensor, 'update').title), /3\.0\.0/);
+    assert.ok(
+      h.lines.some((l) => l.includes('ESPectre 3.0.0 is out')),
+      'the new firmware is told',
+    );
+    await field(sensor, 'update').onSet!(undefined, undefined);
+    assert.ok(
+      board.calls.some((c) => c.method === 'POST' && c.path === '/ota/updates'),
+      'the update asked',
+    );
+
+    // the floor plan: the probability over the threshold, against 1, and the signal as it is now, from the cache
+    const espectreBound = (h.plugin as any).espectre.get(board.id);
+    board.motion = { state: 'motion', score: 0.75 };
+    board.wifi.rssi_dbm = -85;
+    await until(() => sensor.detected && espectreBound.last?.score === 0.75, 'motion for the plan');
+    await (h.plugin as any).refreshEspectre(espectreBound);
+    const live = (await h.plugin.vionSensorLive()).find((l) => l.sensorId === 'sensor-es')!;
+    assert.deepEqual(
+      [live.state, live.level, live.threshold, live.rssi, live.packetsPerS, live.presence, live.radar, live.cameraId],
+      ['motion', 1.5, 1, -85, 97.5, null, null, null],
+    );
+    board.motion = { state: 'idle', score: 0.1 };
+
+    // the board goes away: unavailable once its stream stays closed, back by itself
+    board.setDown(true);
+    await until(() => sensor.sourceState === 'unavailable' && !sensor.detected, 'unavailable once the stream stays closed', 9_000);
+    assert.equal((await h.plugin.vionSensorLive()).find((l) => l.sensorId === 'sensor-es')!.state, 'offline');
+    assert.ok(
+      h.lines.some((l) => l.includes('Kitchen does not answer')),
+      'the loss is told',
+    );
+    board.setDown(false);
+    await until(() => sensor.sourceState === 'connected', 'the sensor is back', 15_000);
+    assert.ok(h.lines.some((l) => l.includes('Kitchen is back')));
+
+    // the power goes: nothing is closed, the sockets just hang, and the board must not stay "quiet" for long
+    board.motion = { state: 'motion', score: 0.9 };
+    await until(() => sensor.detected, 'motion before the power goes');
+    const silentAt = Date.now();
+    board.silent = true;
+    await until(() => sensor.sourceState === 'unavailable', 'a silent board is unavailable', 20_000);
+    assert.equal(sensor.detected, false, 'and its last motion is over');
+    assert.ok(Date.now() - silentAt < 16_000, `unavailable after ${Date.now() - silentAt} ms, not the half-minute of the socket`);
+    board.silent = false;
+    board.motion = { state: 'idle', score: 0.1 };
+    await until(() => sensor.sourceState === 'connected', 'back after the silence', 20_000);
+
+    // the router gave the address to another board: its readings and settings are not this sensor's
+    board.device = { ...board.device, device_id: 'ffffffffffffffff', name: 'Hall' };
+    board.setDown(true);
+    board.setDown(false);
+    await until(() => sensor.sourceState === 'unavailable', 'another board at the address: unknown', 9_000);
+    assert.ok(
+      h.lines.some((l) => l.includes('now answers as another ESPectre board, Hall')),
+      'the stranger is told',
+    );
+    board.motion = { state: 'motion', score: 0.99 };
+    await sleep(600);
+    assert.equal(sensor.detected, false, 'the motion of the other board is not this sensor');
+    const before = board.sensing.threshold;
+    await assert.rejects(field(sensor, 'threshold').onSet!(0.3, 0.5), /not reachable/, 'its settings do not go to the other board');
+    assert.equal(board.sensing.threshold, before);
+    assert.equal(board.streams, 0, 'no stream to the other board');
+    // the board itself is back at its address: found again, followed
+    board.device = { ...board.device, device_id: board.id, name: 'Kitchen' };
+    board.motion = { state: 'idle', score: 0.1 };
+    await (h.plugin as any).probeAddresses();
+    await until(() => sensor.sourceState === 'connected' && board.streams === 1, 'the sensor is back on its own board', 9_000);
+
+    // it moves to another address: the sensor follows
+    const moved = await fakeEspectre(board.id);
+    espectres.push(moved);
+    await board.close();
+    h.values.addresses = moved.address;
+    await (h.plugin as any).probeAddresses();
+    await until(() => moved.streams === 1, 'the stream opens at the new address', 15_000);
+    moved.motion = { state: 'motion', score: 0.8 };
+    await until(() => sensor.detected && sensor.sourceState === 'connected', 'motion from the new address');
+    assert.ok(
+      h.lines.some((l) => l.includes(`now at ${moved.address}`)),
+      'the move is told',
+    );
+
+    // removed: its stream is closed and it leaves the plan
+    await h.plugin.onSensorUnadopted(`es:${board.id}`);
+    await until(() => moved.streams === 0, 'the stream closed after the removal');
+    assert.deepEqual(await h.plugin.vionSensorLive(), []);
+    console.log('espectre: found, added, stream motion, stale motion, calibrating, not ready, settings, firmware, plan, lost, silent, stranger, moved, removed OK');
+  }
+  {
+    // what the network announces is asked first, and nothing is left running for a sensor that could not be added
+    const board = await fakeEspectre('0123456789abcdef');
+    // two Micro-ESPectre boards: one whose record says so, one whose record is older than its firmware
+    const micro = await fakeEspectre('cccccccccccccccc');
+    const microAnnounced = await fakeEspectre('eeeeeeeeeeeeeeee');
+    micro.device.frontend = microAnnounced.device.frontend = 'micro';
+    espectres.push(board, micro, microAnnounced);
+    const h = host({});
+    hosts.push(h);
+    launch(h);
+    const finder = (h.plugin as any).finder;
+    finder.rememberEspectre({ id: board.id, address: board.address, name: 'Kitchen', frontend: 'native' });
+    finder.rememberEspectre({ id: 'aaaaaaaaaaaaaaaa', address: '127.0.0.1:1', name: 'Gone', frontend: 'native' });
+    finder.rememberEspectre({ id: 'bbbbbbbbbbbbbbbb', address: board.address, name: 'Old record', frontend: 'native' });
+    finder.rememberEspectre({ id: micro.id, address: micro.address, name: 'Micro', frontend: 'native' });
+    finder.rememberEspectre({ id: microAnnounced.id, address: microAnnounced.address, name: 'Micro announced', frontend: 'micro' });
+    assert.deepEqual(
+      (await h.plugin.onDiscoverSensors()).map((s) => s.id),
+      [`es:${board.id}`],
+      'only a board that answers as itself is offered: not a gone one, not another one at its address, not a Micro',
+    );
+    assert.equal(microAnnounced.calls.length, 0, 'a board announced as Micro is not even asked');
+    await assert.rejects(
+      h.plugin.onSensorAdopted({ id: 'ghost', nativeId: 'es:dddddddddddddddd', name: 'Ghost', type: SensorType.Motion } as AdoptedSensor),
+      /not in the network now/,
+    );
+    assert.equal((h.plugin as any).espectre.size, 0, 'nothing runs for a sensor that was not added');
+    console.log('espectre: announced boards checked, nothing left after a refused add OK');
+  }
+  {
+    // the mDNS record of an ESPectre board, by its discovery rules: anything else is another protocol or not ESPectre
+    const txt = {
+      txtvers: '1',
+      protovers: '1.0',
+      device_id: '3cf79180d3a0aca4',
+      name: 'Kitchen',
+      frontend: 'native',
+      transport: 'http',
+      path: '/espectre/v1',
+      firmware: '3.0.0-rc3',
+      chip: 'esp32',
+    };
+    const expected = { id: '3cf79180d3a0aca4', address: '192.168.10.110:62587', name: 'Kitchen', firmware: '3.0.0-rc3', chip: 'esp32', frontend: 'native' };
+    assert.deepEqual(espectreFromTxt(txt, '192.168.10.110', 62587, 'svc'), expected);
+    assert.deepEqual(espectreFromTxt({ ...txt, path: Buffer.from('/espectre/v1') }, '192.168.10.110', 62587, 'svc'), expected, 'a value given as bytes');
+    assert.deepEqual(
+      espectreFromTxt(Object.fromEntries(Object.entries(txt).map(([k, v]) => [k.toUpperCase(), v])), '192.168.10.110', 62587, 'svc'),
+      expected,
+      'keys in any case',
+    );
+    for (const [key, bad] of [
+      ['txtvers', '2'],
+      ['protovers', '2.0'],
+      ['transport', 'https'],
+      ['path', '/espectre/v2'],
+      ['device_id', '3CF79180D3A0ACA4'],
+      ['device_id', 'abc'],
+      ['frontend', 'other'],
+    ]) {
+      assert.equal(espectreFromTxt({ ...txt, [key!]: bad }, '192.168.10.110', 62587, 'svc'), undefined, `${key}=${bad} is refused`);
+    }
+    assert.equal(espectreFromTxt(txt, 'fe80::1', 62587, 'svc'), undefined, 'an IPv6-only answer is skipped');
+    assert.equal(espectreFromTxt(txt, '192.168.10.110', 0, 'svc'), undefined, 'no port, no endpoint');
+    assert.equal(espectreFromTxt({ ...txt, name: '' }, '192.168.10.110', 62587, 'svc')!.name, 'svc', 'no name: the service name');
+    console.log('espectre: mDNS record rules OK');
+  }
+
   // ---- versions -------------------------------------------------------------------------------------------------------
   assert.equal(newer('1.0.10', '1.0.9'), true);
   assert.equal(newer('1.0.0', '1.0.0'), false);
@@ -404,4 +658,5 @@ try {
 } finally {
   for (const h of hosts) (h as any).stopFn?.();
   for (const board of boards) await board.close();
+  for (const board of espectres) await board.close();
 }

@@ -40,6 +40,25 @@ Dreimal schnell hintereinander einschalten (jeweils kürzer als 10 Sekunden) set
   liefert er dem Grundriss die Positionen von bis zu drei Personen.
 - Eine Firmware, die nicht startet, bringt die Platine selbst zur vorherigen zurück; die Einstellungen zeigen es.
 
+## Platinen mit der ESPectre-Firmware
+
+Statt der ViON-Sensor-Firmware kann auf einer Platine [ESPectre](https://github.com/francescopace/espectre) laufen (von
+Francesco Pace, freie Software unter GPLv3): die offizielle Version, unverändert. ESPectre erkennt Bewegung mit einem
+statistischen Detektor oder einem kleinen neuronalen Netz, das seine Autoren trainiert haben. Dieses Plugin spricht mit
+der Platine nur über das Netzwerk.
+
+1. Flashen Sie die offizielle **Native**-Firmware für den Chip der Platine per USB auf
+   [espectre.dev/tools/flash](https://espectre.dev/tools/flash/) (Chrome am Computer) und richten Sie dort das WLAN ein:
+   die Platine hat kein eigenes WLAN.
+2. Öffnen Sie in ViON **Sensoren**, **Gefunden** und fügen Sie die Platine hinzu (Hersteller ESPectre). Sie wird per
+   mDNS gefunden; sonst tragen Sie ihre Adresse in den Einstellungen dieses Plugins ein.
+3. Die Einstellungen des Sensors: **Erkennung** (Leicht oder Hohe Genauigkeit — das neuronale Netz, ohne Kalibrierung),
+   **Bewegungsschwelle** (eine Wahrscheinlichkeit, 0–1), **Messungen bis Bewegungsbeginn** und **bis Bewegungsende**,
+   **Signalquelle**, **Kalibrieren** und das Firmware-Update aus den ESPectre-Versionen.
+
+Die ESPectre-API hat kein Passwort: jedes Gerät im Heimnetz kann diese Einstellungen ändern. ESPectre sieht nur
+Bewegung: es unterscheidet keinen Menschen von einem Tier, zählt keine Personen und beweist keinen leeren Raum.
+
 ## Aufstellung
 
 Am besten sieht der Sensor, was sich nahe der Linie zwischen Platine und Router bewegt. Stellen Sie den

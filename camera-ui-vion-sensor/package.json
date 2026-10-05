@@ -1,7 +1,7 @@
 {
   "displayName": "ViON Sensor",
   "name": "@vionvision/camera-ui-vion-sensor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -55,6 +55,7 @@
     "sensor",
     "wifi-sensing",
     "esp32",
+    "espectre",
     "motion",
     "security"
   ],
