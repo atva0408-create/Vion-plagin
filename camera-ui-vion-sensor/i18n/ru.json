@@ -1,0 +1,20 @@
+{
+  "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.": "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.",
+  "Sensor addresses": "Адреса датчиков",
+  "Sensors are found in the network by themselves. If yours does not appear in Sensors, Found, type its address here (several separated by commas), e.g. 192.168.1.50.": "Датчики находятся в сети сами. Если ваш не появился в «Датчики → Найденные», впишите здесь его адрес (несколько — через запятую), например 192.168.1.50.",
+  "192.168.1.50": "192.168.1.50",
+  "Firmware updates": "Обновления прошивки",
+  "Where the list of firmware versions is read from.": "Откуда читается список версий прошивки.",
+  "Sensor": "Датчик",
+  "What the board reports now.": "Что плата сообщает сейчас.",
+  "Sensitivity threshold": "Порог чувствительности",
+  "How many times the Wi-Fi signal has to change more than in an empty room. Lower is more sensitive and gives more false alarms.": "Во сколько раз Wi-Fi-сигнал должен измениться сильнее, чем в пустой комнате. Меньше — чувствительнее, но больше ложных срабатываний.",
+  "Motion lasts, seconds": "Движение держится, секунд",
+  "How long the sensor stays in motion after the last movement.": "Сколько датчик остаётся в состоянии «движение» после последнего движения.",
+  "Camera": "Камера",
+  "Calibrate": "Откалибровать",
+  "The sensor learns the empty room for 30 seconds: leave the room before pressing.": "Датчик 30 секунд изучает пустую комнату: выйдите из неё перед нажатием.",
+  "Firmware update": "Обновление прошивки",
+  "Reset the sensor": "Сбросить датчик",
+  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "Плата забудет Wi-Fi и этот ViON и раздаст свою сеть для новой настройки."
+}

@@ -1,0 +1,20 @@
+{
+  "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.": "Ein ViON-Sicherheitssensor auf einem ESP32-CAM: erkennt Bewegung im Raum am WLAN-Signal, ohne Video. Die Platine wird im Netz von selbst gefunden und aus ViON eingerichtet und aktualisiert; ihre Kamera ist optional.",
+  "Sensor addresses": "Adressen der Sensoren",
+  "Sensors are found in the network by themselves. If yours does not appear in Sensors, Found, type its address here (several separated by commas), e.g. 192.168.1.50.": "Sensoren werden im Netz von selbst gefunden. Erscheint Ihrer nicht unter „Sensoren → Gefunden“, tragen Sie hier seine Adresse ein (mehrere durch Kommas getrennt), z. B. 192.168.1.50.",
+  "192.168.1.50": "192.168.1.50",
+  "Firmware updates": "Firmware-Updates",
+  "Where the list of firmware versions is read from.": "Woher die Liste der Firmware-Versionen gelesen wird.",
+  "Sensor": "Sensor",
+  "What the board reports now.": "Was die Platine gerade meldet.",
+  "Sensitivity threshold": "Empfindlichkeitsschwelle",
+  "How many times the Wi-Fi signal has to change more than in an empty room. Lower is more sensitive and gives more false alarms.": "Um wie viel stärker sich das WLAN-Signal ändern muss als im leeren Raum. Niedriger ist empfindlicher, gibt aber mehr Fehlalarme.",
+  "Motion lasts, seconds": "Bewegung hält an, Sekunden",
+  "How long the sensor stays in motion after the last movement.": "Wie lange der Sensor nach der letzten Bewegung auf „Bewegung“ bleibt.",
+  "Camera": "Kamera",
+  "Calibrate": "Kalibrieren",
+  "The sensor learns the empty room for 30 seconds: leave the room before pressing.": "Der Sensor lernt 30 Sekunden lang den leeren Raum: verlassen Sie ihn, bevor Sie drücken.",
+  "Firmware update": "Firmware-Update",
+  "Reset the sensor": "Sensor zurücksetzen",
+  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "Die Platine vergisst das WLAN und dieses ViON und öffnet ihr eigenes Netz für eine neue Einrichtung."
+}
