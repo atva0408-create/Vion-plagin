@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## [0.2.0]
+
+### Hinzugefügt
+
+- Im Grundriss lassen sich Bewegung, Kalibrierungszeit, fehlende Router-Pakete und Verbindungsstatus zusammen mit der Sensorkamera anzeigen. Die Live-Werte stammen aus dem Zwischenspeicher, ohne zusätzliche Anfragen an die Platine.
+
 ## [0.1.0]
 
 ### Hinzugefügt

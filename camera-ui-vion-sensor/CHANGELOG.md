@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0]
+
+### Added
+
+- Floor plans can show the sensor's motion, calibration countdown, missing router packets and connection state, together with its camera. Live readings reuse the existing cache without extra requests to the board.
+
 ## [0.1.0]
 
 ### Added

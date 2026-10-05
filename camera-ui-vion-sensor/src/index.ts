@@ -34,6 +34,17 @@ export interface VionSensorConfig {
   tokens?: Record<string, string>;
 }
 
+export interface VionSensorLive {
+  sensorId: string;
+  cameraId: string | null;
+  state: 'quiet' | 'motion' | 'calibrating' | 'blind' | 'offline';
+  calibrationLeftS: number;
+  level: number;
+  threshold: number;
+  rssi: number;
+  packetsPerS: number;
+}
+
 const SENSOR_PREFIX = 'vs:';
 const CAMERA_PREFIX = 'vs-cam:';
 const POLL_MS = 1000;
@@ -45,6 +56,7 @@ const MANIFEST_MS = 6 * 60 * 60_000;
 
 interface Bound {
   id: string;
+  sensorId: string;
   sensor: VionMotionSensor;
   client: SensorClient;
   timer?: NodeJS.Timeout;
@@ -234,7 +246,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     if (existing) return existing;
     const address = this.finder.found.get(id)?.address ?? record.address ?? '';
     const client = new SensorClient(address, this.token(id));
-    const bound: Bound = { id, client, failures: 0, motion: false } as Bound;
+    const bound: Bound = { id, sensorId: record.id, client, failures: 0, motion: false } as Bound;
     bound.sensor = new VionMotionSensor(record.name, record.nativeId, {
       configure: (patch) => this.configure(bound, patch),
       recalibrate: async () => {
@@ -362,6 +374,34 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
   }
 
   // ---- cameras of the boards ------------------------------------------------------------------------------------------
+
+  /** Cached telemetry only. Calling this method never starts a board request. */
+  public async vionSensorLive(): Promise<VionSensorLive[]> {
+    return [...this.bound.values()].map((bound) => {
+      const cached = bound.state;
+      const state: VionSensorLive['state'] =
+        !cached || bound.failures >= FAILURES_BEFORE_OFFLINE
+          ? 'offline'
+          : cached.calibrating
+            ? 'calibrating'
+            : cached.blind
+              ? 'blind'
+              : bound.motion || bound.pulse
+                ? 'motion'
+                : 'quiet';
+      const finite = (value: number | undefined, fallback = 0) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+      return {
+        sensorId: bound.sensorId,
+        cameraId: this.cameras.get(bound.id)?.id ?? null,
+        state,
+        calibrationLeftS: state === 'calibrating' ? Math.max(0, Math.ceil(finite(cached?.calibration_left_s))) : 0,
+        level: cached && cached.baseline > 0 ? finite(cached.score / cached.baseline, 1) : 1,
+        threshold: finite(cached?.threshold ?? bound.info?.config.threshold, 1.4),
+        rssi: finite(cached?.rssi ?? bound.info?.rssi),
+        packetsPerS: Math.max(0, finite(cached?.packets_per_s)),
+      };
+    });
+  }
 
   async configureCameras(cameras: CameraDevice[]): Promise<void> {
     for (const camera of cameras) await this.initializeCamera(camera);

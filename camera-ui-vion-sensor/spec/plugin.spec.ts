@@ -95,6 +95,36 @@ async function setup(values: Record<string, unknown> = {}) {
 }
 
 try {
+  // ---- cached floor-plan telemetry: real registry IDs, all states, and no board I/O ----------------------------------
+  {
+    const board = await fakeBoard('AABBCCDDEE11'); boards.push(board);
+    const h = host({ tokens: { [board.id]: 'kept' } }); hosts.push(h);
+    await h.plugin.configureAdoptedSensors([adopted(board)]);
+    const bound = (h.plugin as any).bound.get(board.id);
+    const state = { ...board.state, score: 3, baseline: 2, threshold: 1.4, rssi: -65, packets_per_s: 30 };
+    const calls = board.calls.length;
+    for (const expected of ['quiet', 'motion', 'calibrating', 'blind', 'offline'] as const) {
+      bound.state = { ...state, motion: expected === 'motion', calibrating: expected === 'calibrating', calibration_left_s: 17, blind: expected === 'blind' };
+      bound.motion = expected === 'motion';
+      bound.failures = expected === 'offline' ? 3 : 0;
+      const [live] = await h.plugin.vionSensorLive();
+      assert.equal(live!.sensorId, 'sensor-1', 'the public ID is the adopted registry ID, not vs:board or a runtime UUID');
+      assert.equal(live!.state, expected, `cached state: ${expected}`);
+      assert.equal(live!.calibrationLeftS, expected === 'calibrating' ? 17 : 0);
+      assert.equal(live!.level, 1.5); assert.equal(live!.threshold, 1.4); assert.equal(live!.rssi, -65); assert.equal(live!.packetsPerS, 30);
+      assert.equal(live!.cameraId, null);
+    }
+    const camera = { id: 'attached-camera', nativeId: board.id, name: 'Sensor camera', implement: async () => {}, connect() {} } as unknown as CameraDevice;
+    await h.plugin.onCameraAdded(camera);
+    assert.equal((await h.plugin.vionSensorLive())[0]!.cameraId, camera.id);
+    await h.plugin.onCameraReleased(camera.id);
+    await h.plugin.configureCameras([camera]);
+    assert.equal((await h.plugin.vionSensorLive())[0]!.cameraId, camera.id, 'restored cameras are linked too');
+    assert.equal(board.calls.length, calls, 'telemetry makes no board requests');
+    await h.plugin.onSensorUnadopted(`vs:${board.id}`);
+    assert.deepEqual(await h.plugin.vionSensorLive(), []);
+    console.log('presence live: five cached states, registry ID, camera restore and zero board requests OK');
+  }
   // ---- found, added, kept up to date ----------------------------------------------------------------------------------
   {
     const { board, h } = await setup();
