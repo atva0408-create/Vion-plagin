@@ -214,13 +214,23 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
 
   async onDiscoverSensors(): Promise<DiscoveredSensor[]> {
     await this.probeAddresses();
+    // an added board is polled at its known address: it stays a candidate when its mDNS answer does not come again
+    // (a weak Wi-Fi, a restart of the plugin), or its presence would never be offered
+    const candidates = new Map<string, { id: string; address: string; name: string }>();
+    for (const bound of this.bound.values()) {
+      if (bound.client.address) candidates.set(bound.id, { id: bound.id, address: bound.client.address, name: bound.sensor.name });
+    }
+    for (const found of this.finder.found.values()) candidates.set(found.id, found);
     const result: DiscoveredSensor[] = [];
-    for (const found of this.finder.found.values()) {
-      let info: SensorInfo | undefined;
-      try {
-        info = await new SensorClient(found.address).info();
-      } catch {
-        continue;
+    for (const found of candidates.values()) {
+      // what the polls already know: no extra request to a board on a weak Wi-Fi
+      let info: SensorInfo | undefined = this.bound.get(found.id)?.info;
+      if (!info) {
+        try {
+          info = await new SensorClient(found.address).info();
+        } catch {
+          continue;
+        }
       }
       // a board added to another ViON answers only that one: offering it here would end in a refusal
       if (info.paired && !this.token(found.id)) continue;
@@ -425,10 +435,8 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       if (presence.training) bound.untrainedTold = false;
       else if (!presence.trained && !bound.untrainedTold) {
         bound.untrainedTold = true;
-        this.logger.warn(
-          `${bound.sensor.name}: presence did not learn the empty room, the Wi-Fi signal was too uneven ` +
-          `(${presence.windows_per_s} readings/s); motion works as before. Calibrate again when the room is empty.`,
-        );
+        const why = `the Wi-Fi signal was too uneven (${presence.windows_per_s} readings/s)`;
+        this.logger.warn(`${bound.sensor.name}: presence did not learn the empty room, ${why}; motion works as before. Calibrate again when the room is empty.`);
       }
     }
     const sensor = this.presences.get(id);

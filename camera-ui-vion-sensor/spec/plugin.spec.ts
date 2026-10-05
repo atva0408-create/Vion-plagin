@@ -340,6 +340,23 @@ try {
     console.log('presence: second sensor, learning, motion source, sensitivity, radar, failed update OK');
   }
   {
+    // an added board whose mDNS answer did not come again (a weak Wi-Fi, a restart of the plugin) is still polled at its
+    // known address: its presence is offered all the same, from what the polls already know, without asking the board
+    const { board, h } = await setup();
+    board.info.firmware = '1.1.0';
+    await h.plugin.onSensorAdopted(adopted(board));
+    await until(() => !!(h.plugin as any).bound.get(board.id)?.info, 'the first poll');
+    h.values.addresses = '';
+    (h.plugin as any).finder.found.clear();
+    const infos = board.calls.filter((c) => c.path === '/api/info').length;
+    assert.deepEqual(
+      (await h.plugin.onDiscoverSensors()).map((s) => s.id),
+      [`vs:${board.id}`, `vp:${board.id}`],
+      'presence of an added board not found again by mDNS',
+    );
+    assert.equal(board.calls.filter((c) => c.path === '/api/info').length, infos, 'no extra request to a board already polled');
+  }
+  {
     // a board with an older firmware has no presence to offer
     const { board, h } = await setup();
     await h.plugin.onSensorAdopted(adopted(board));
