@@ -608,6 +608,12 @@ try {
       /not in the network now/,
     );
     assert.equal((h.plugin as any).espectre.size, 0, 'nothing runs for a sensor that was not added');
+    // after a restart of ViON the record has the host alone, as the sensor showed it: the board is asked on its port
+    const restored = (await h.plugin.configureAdoptedSensors([
+      { id: 'restored', nativeId: 'es:dddddddddddddddd', address: '192.168.10.110', name: 'Restored', type: SensorType.Motion } as AdoptedSensor,
+    ])) as MotionSensor[];
+    assert.equal((h.plugin as any).espectre.get('dddddddddddddddd').client.address, '192.168.10.110:62587', 'the port of ESPectre is added');
+    await h.plugin.onSensorUnadopted(restored[0]!.nativeId);
     console.log('espectre: announced boards checked, nothing left after a refused add OK');
   }
   {

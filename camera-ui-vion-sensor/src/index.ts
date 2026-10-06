@@ -622,7 +622,10 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
   private espectreAddress(record: AdoptedSensor): string {
     const id = record.nativeId.slice(ESPECTRE_PREFIX.length);
     // an empty address is none: the next place is asked
-    for (const address of [this.espectre.get(id)?.client.address, this.finder.espectre.get(id)?.address, record.address]) if (address) return address;
+    for (const address of [this.espectre.get(id)?.client.address, this.finder.espectre.get(id)?.address, record.address]) {
+      // ViON keeps the host alone (the sensor is shown by it): the board listens on its own port
+      if (address) return /:\d+$/.test(address) ? address : `${address}:${ESPECTRE_PORT}`;
+    }
     return '';
   }
 
