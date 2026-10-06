@@ -18,6 +18,7 @@ import type {
   JsonSchema,
   JsonSchemaWithoutCallbacks,
   LoggerService,
+  MotionSensor,
   PluginAPI,
   Sensor,
   SensorDiscoveryProvider,
@@ -39,6 +40,8 @@ export interface VionSensorConfig {
   tokens?: Record<string, string>;
   /** Which algorithm of each board makes its motion, by board id; none — ViON's own. */
   motionSources?: Record<string, MotionSource>;
+  /** How long an ESPectre board's motion lasts after its last reading, seconds, by device_id; none — ESPECTRE_HOLD_S. */
+  espectreHold?: Record<string, number>;
 }
 
 export interface VionSensorLive {
@@ -68,6 +71,11 @@ const ESPECTRE_PREFIX = 'es:';
 const ESPECTRE_OFFLINE_MS = 5_000;
 /** The board sends motion several times a second: a motion with no reading this long is over, whatever the last one said. */
 const ESPECTRE_MOTION_STALE_MS = 5_000;
+/**
+ * A motion lasts this long after the board's last reading of it, as with any security sensor: the board ends it after a
+ * few quiet readings (under a second), and a person walking past would make a burst of alarms and history entries.
+ */
+const ESPECTRE_HOLD_S = 8;
 /** Settings, signal and packet rate are read again this often; motion comes by the event stream. */
 const ESPECTRE_REFRESH_MS = 10_000;
 /**
@@ -134,6 +142,8 @@ interface EspectreBound {
   last?: EspectreMotion;
   lastAt: number;
   motion: boolean;
+  /** The motion lasts until then: the last reading of motion and the hold time. */
+  heldUntil: number;
   packetsPerS?: number;
   faultTold?: string;
 }
@@ -565,10 +575,18 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         if (!bound.motion) bound.sensor.reportDetections(false);
       }, PULSE_MS);
     }
-    if (motion !== bound.motion) {
+    if (motion !== bound.motion || (!bound.pulse && this.overwritten(bound.sensor, motion))) {
       bound.motion = motion;
       if (!bound.pulse) bound.sensor.reportDetections(motion);
     }
+  }
+
+  /**
+   * ViON wrote another state of a sensor with no camera: the coordinator of a camera just taken away ended its motion.
+   * Its own state is the board's again, so it is said again — the board would say it only on its next change.
+   */
+  private overwritten(sensor: MotionSensor, motion: boolean): boolean {
+    return sensor.assignedCameraIds.length === 0 && sensor.detected !== motion;
   }
 
   /** Presence as ViON sees it: unknown while the board learns, could not learn, sees nothing or does not answer. */
@@ -647,6 +665,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       ticks: 0,
       lastAt: 0,
       motion: false,
+      heldUntil: 0,
     } as EspectreBound;
     bound.sensor = new EspectreMotionSensor(record.name, record.nativeId, {
       configure: (patch) => this.configureEspectre(bound, patch),
@@ -660,6 +679,11 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       update: async () => {
         await this.espectreAction(bound, () => bound.client.update(), 'The firmware is already being checked or installed');
         this.logger.log(`${record.name}: installing ESPectre ${bound.ota?.target_version ?? ''}, the board restarts after it`);
+      },
+      holdS: () => this.espectreHold(id),
+      setHoldS: async (seconds) => {
+        await this.storage.setInternalValue('espectreHold', { ...(this.storage.values.espectreHold ?? {}), [id]: seconds });
+        this.applyEspectre(bound);
       },
     });
     bound.stream = new EspectreStream(client, {
@@ -871,11 +895,19 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     if (bound.unavailable || (sensing && !running)) bound.sensor.setSourceState('unavailable');
     else if (sensing) bound.sensor.setSourceState('connected');
     const fresh = !!bound.last && Date.now() - bound.lastAt < ESPECTRE_MOTION_STALE_MS;
-    const motion = !bound.unavailable && running && !sensing.calibrating && fresh && bound.last!.state === 'motion';
-    if (motion !== bound.motion) {
+    const watching = !bound.unavailable && running && !sensing.calibrating;
+    const reading = watching && fresh && bound.last!.state === 'motion';
+    if (reading) bound.heldUntil = Date.now() + this.espectreHold(bound.id) * 1000;
+    // held only while the board watches: gone, calibrating or blind, there is no motion to hold
+    const motion = reading || (watching && Date.now() < bound.heldUntil);
+    if (motion !== bound.motion || this.overwritten(bound.sensor, motion)) {
       bound.motion = motion;
       bound.sensor.reportDetections(motion);
     }
+  }
+
+  private espectreHold(id: string): number {
+    return this.storage.values.espectreHold?.[id] ?? ESPECTRE_HOLD_S;
   }
 
   private espectreLiveState(bound: EspectreBound): VionSensorLive['state'] {

@@ -4,7 +4,7 @@
 
 ### Hinzugefügt
 
-- **Platinen mit der ESPectre-Firmware** (deren offizielle Version, unverändert): im Netzwerk oder unter einer eingetragenen Adresse gefunden und als Bewegungssensoren hinzugefügt, ohne Kopplung; Bewegung kommt über den Ereignisstrom der Platine. In den Einstellungen wählt man den Detektor — Leicht oder Hohe Genauigkeit (ein kleines neuronales Netz) —, die Bewegungsschwelle, die Messungen bis Bewegungsbeginn und -ende und die Signalquelle; Kalibrierung und Firmware-Update aus den ESPectre-Versionen sind Schaltflächen. Der Grundriss zeigt ihren Zustand.
+- **Platinen mit der ESPectre-Firmware** (deren offizielle Version, unverändert): im Netzwerk oder unter einer eingetragenen Adresse gefunden und als Bewegungssensoren hinzugefügt, ohne Kopplung; Bewegung kommt über den Ereignisstrom der Platine. In den Einstellungen wählt man den Detektor — Leicht oder Hohe Genauigkeit (ein kleines neuronales Netz) —, die Bewegungsschwelle, die Messungen bis Bewegungsbeginn und -ende und die Signalquelle; Kalibrierung und Firmware-Update aus den ESPectre-Versionen sind Schaltflächen. Eine Bewegung dauert nach der letzten Bewegungsmessung der Platine eine eingestellte Zeit (ohne Einstellung 8 s). Der Grundriss zeigt ihren Zustand.
 
 ## [0.2.0]
 

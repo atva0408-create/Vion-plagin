@@ -52,7 +52,8 @@ with a small neural network trained by its authors. This plugin only talks to th
    in the settings of this plugin.
 3. The settings of the sensor: **Detection** (Lightweight, or High accuracy — the neural network, no calibration),
    **Motion threshold** (a probability, 0–1), **Readings to start motion** and **to end motion**, **Signal source**,
-   **Calibrate**, and the firmware update from the ESPectre releases.
+   **Calibrate**, and the firmware update from the ESPectre releases. **Motion lasts, seconds** (8 unless set) is kept by
+   ViON: how long the sensor stays in motion after the board's last reading of it.
 
 The ESPectre API has no password: any device in the home network can change these settings. ESPectre sees motion only:
 it does not tell a person from a pet, count people or prove that a room is empty.

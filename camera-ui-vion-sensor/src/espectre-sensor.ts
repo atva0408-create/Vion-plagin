@@ -11,6 +11,9 @@ export interface EspectreActions {
   calibrate(): Promise<void>;
   checkUpdate(): Promise<void>;
   update(): Promise<void>;
+  /** The hold time is ViON's, not the board's: kept by the plugin. */
+  holdS(): number;
+  setHoldS(seconds: number): Promise<void>;
 }
 
 /** What the plugin knows of the board now, for the settings. */
@@ -160,6 +163,18 @@ export class EspectreMotionSensor extends MotionSensor {
         defaultValue: sensing?.motion_off_hits ?? 1,
         store: false,
         onSet: async (value) => this.setHits({ off: Number(value) }),
+      },
+      {
+        type: 'number',
+        key: 'holdS',
+        title: 'Motion lasts, seconds',
+        description: 'How long the sensor stays in motion after the last movement.',
+        minimum: 0,
+        maximum: 600,
+        step: 1,
+        defaultValue: this.actions.holdS(),
+        store: true,
+        onSet: async (value) => this.actions.setHoldS(Number(value)),
       },
       {
         type: 'string',

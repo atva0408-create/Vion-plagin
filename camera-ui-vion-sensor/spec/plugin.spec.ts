@@ -155,6 +155,8 @@ try {
     board.state.motion = true;
     board.state.events = 1;
     await until(() => sensor.detected, 'motion on');
+    (sensor as any)._onBackendPropertyChanged('detected', false);
+    await until(() => sensor.detected, 'the motion said again after ViON overwrote it');
     board.state.motion = false;
     await until(() => !sensor.detected, 'motion off');
 
@@ -409,7 +411,8 @@ try {
   {
     const board = await fakeEspectre();
     espectres.push(board);
-    const h = host({ addresses: board.address });
+    // the board's own timing here; the hold has its own case below
+    const h = host({ addresses: board.address, espectreHold: { [board.id]: 0 } });
     hosts.push(h);
     launch(h);
     const offered = (await h.plugin.onDiscoverSensors()).map((s) => [s.id, s.type, s.name, s.address, s.manufacturer, s.model]);
@@ -422,6 +425,9 @@ try {
 
     board.motion = { state: 'motion', score: 0.91 };
     await until(() => sensor.detected, 'motion from the stream');
+    // a camera taken away just now: its coordinator ended the motion in ViON; the board's own state is said again
+    (sensor as any)._onBackendPropertyChanged('detected', false);
+    await until(() => sensor.detected, 'the motion said again after ViON overwrote it');
     board.motion = { state: 'idle', score: 0.1 };
     await until(() => !sensor.detected, 'idle from the stream');
     board.motion = { state: 'motion', score: 0.9 };
@@ -615,6 +621,42 @@ try {
     assert.equal((h.plugin as any).espectre.get('dddddddddddddddd').client.address, '192.168.10.110:62587', 'the port of ESPectre is added');
     await h.plugin.onSensorUnadopted(restored[0]!.nativeId);
     console.log('espectre: announced boards checked, nothing left after a refused add OK');
+  }
+  {
+    // a motion lasts the hold time after the board's last reading of it, as with any security sensor
+    const board = await fakeEspectre('1111222233334444');
+    espectres.push(board);
+    const h = host({ addresses: board.address });
+    hosts.push(h);
+    launch(h);
+    const sensor = (await h.plugin.onSensorAdopted({
+      id: 'held',
+      nativeId: `es:${board.id}`,
+      address: board.address,
+      name: 'Hall',
+      type: SensorType.Motion,
+    } as AdoptedSensor)) as MotionSensor;
+    await until(() => sensor.sourceState === 'connected', 'connected');
+    assert.equal(field(sensor, 'holdS').defaultValue, 8, 'eight seconds unless set, as the ViON board has');
+    await field(sensor, 'holdS').onSet!(2, 8);
+    assert.deepEqual(h.values.espectreHold, { [board.id]: 2 }, 'kept by the plugin for the next start');
+    board.motion = { state: 'motion', score: 0.9 };
+    await until(() => sensor.detected, 'motion');
+    board.motion = { state: 'idle', score: 0.1 };
+    const idleAt = Date.now();
+    await sleep(1_200);
+    assert.equal(sensor.detected, true, 'still in motion within the hold time');
+    await until(() => !sensor.detected, 'the motion ends after the hold', 4_000);
+    assert.ok(Date.now() - idleAt >= 1_800, `ended ${Date.now() - idleAt} ms after the last motion reading`);
+    // calibrating ends a held motion at once: the board does not watch
+    board.motion = { state: 'motion', score: 0.9 };
+    await until(() => sensor.detected, 'motion again');
+    board.motion = { state: 'idle', score: 0.1 };
+    Object.assign(board.sensing, { calibrating: true, ready: false });
+    board.emit('sensing', board.sensing);
+    await until(() => !sensor.detected, 'no held motion while calibrating', 1_500);
+    await h.plugin.onSensorUnadopted(`es:${board.id}`);
+    console.log('espectre: hold time OK');
   }
   {
     // the mDNS record of an ESPectre board, by its discovery rules: anything else is another protocol or not ESPectre

@@ -54,7 +54,9 @@ der Platine nur über das Netzwerk.
    mDNS gefunden; sonst tragen Sie ihre Adresse in den Einstellungen dieses Plugins ein.
 3. Die Einstellungen des Sensors: **Erkennung** (Leicht oder Hohe Genauigkeit — das neuronale Netz, ohne Kalibrierung),
    **Bewegungsschwelle** (eine Wahrscheinlichkeit, 0–1), **Messungen bis Bewegungsbeginn** und **bis Bewegungsende**,
-   **Signalquelle**, **Kalibrieren** und das Firmware-Update aus den ESPectre-Versionen.
+   **Signalquelle**, **Kalibrieren** und das Firmware-Update aus den ESPectre-Versionen. **Bewegung hält an, Sekunden**
+   (ohne Einstellung 8) speichert ViON: wie lange der Sensor nach der letzten Bewegungsmessung der Platine in Bewegung
+   bleibt.
 
 Die ESPectre-API hat kein Passwort: jedes Gerät im Heimnetz kann diese Einstellungen ändern. ESPectre sieht nur
 Bewegung: es unterscheidet keinen Menschen von einem Tier, zählt keine Personen und beweist keinen leeren Raum.

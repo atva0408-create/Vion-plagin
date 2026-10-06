@@ -4,7 +4,7 @@
 
 ### Added
 
-- **Boards with the ESPectre firmware** (its official release, as is): found in the network or at a typed address and added as motion sensors, without pairing; motion comes over the event stream of the board. The settings choose the detector — Lightweight or High accuracy (a small neural network) — the motion threshold, the readings to start and end motion and the signal source; calibration and the firmware update from the ESPectre releases are buttons. The floor plan shows their state.
+- **Boards with the ESPectre firmware** (its official release, as is): found in the network or at a typed address and added as motion sensors, without pairing; motion comes over the event stream of the board. The settings choose the detector — Lightweight or High accuracy (a small neural network) — the motion threshold, the readings to start and end motion and the signal source; calibration and the firmware update from the ESPectre releases are buttons. A motion lasts a set time after the board's last reading of it (8 s unless set). The floor plan shows their state.
 
 ## [0.2.0]
 
