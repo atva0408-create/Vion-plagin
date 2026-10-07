@@ -208,7 +208,7 @@ test('a person the detector finds 3 s after the start is announced, the wait for
   assert.equal(s.said.length, 1);
 });
 
-test('a decided event is kept 10 minutes, then forgotten; stop() leaves no timer behind', async () => {
+test('a decided event is forgotten at its end, or 10 minutes after its last message; stop() leaves no timer behind', async () => {
   const s = setup();
   const e = event('Оля');
   s.watcher.onEvent('start', e);
@@ -220,14 +220,63 @@ test('a decided event is kept 10 minutes, then forgotten; stop() leaves no timer
   assert.equal(timers(), 0, 'a stopped plugin keeps no timer: its process can end');
 
   const later = setup({ cooldownSeconds: 0 });
+  const laterTimers = () => (later.clock as unknown as { timers: unknown[] }).timers.length;
   later.watcher.onEvent('start', e);
   await later.clock.advance(FACE_WAIT_MS + 10);
   await later.clock.advance(9 * 60_000);
   later.watcher.onEvent('update', e);
   await later.clock.advance(FACE_WAIT_MS + 10);
-  assert.equal(later.said.length, 1, 'within 10 minutes the event is still decided');
+  assert.equal(later.said.length, 1, 'the event is still decided');
+  await later.clock.advance(9 * 60_000);
+  assert.equal(laterTimers(), 1, '9 minutes after its last message: still known');
   await later.clock.advance(2 * 60_000);
-  assert.equal((later.clock as unknown as { timers: unknown[] }).timers.length, 0, 'forgotten');
+  assert.equal(laterTimers(), 0, 'its end never came: forgotten 10 minutes after the last message');
+
+  const ended = setup();
+  ended.watcher.onEvent('start', e);
+  await ended.clock.advance(FACE_WAIT_MS + 10);
+  ended.watcher.onEvent('end', e);
+  assert.equal((ended.clock as unknown as { timers: unknown[] }).timers.length, 0, 'forgotten at its end');
+});
+
+test('two rules for one door: the rooms of the second do not wait for a room of the first that is busy', async () => {
+  const clock = new FakeClock(msk('2026-10-07T18:00:00'));
+  const said: string[] = [];
+  const rule = (speaker: string) => checkDoorRule({ doorCameras: ['door'], speakers: [speaker] }, ['door', 'kids', 'hall'], ['kids', 'hall']).value!;
+  const watcher = new DoorWatcher({
+    clock,
+    timeZone: () => 'Europe/Moscow',
+    language: () => 'ru',
+    people: () => [],
+    rules: () => [rule('kids'), rule('hall')],
+    quiet: () => [],
+    say: async (speaker) => {
+      // VOICE talks with the child in the kids' room: its phrase waits a minute
+      if (speaker === 'kids') await new Promise((resolve) => clock.setTimeout(() => resolve(undefined), 60_000));
+      said.push(speaker);
+      return { status: 'spoken' };
+    },
+    describe: async () => undefined,
+    log: () => undefined,
+  });
+  watcher.onEvent('start', event('Оля'));
+  await clock.advance(FACE_WAIT_MS + 10);
+  assert.deepEqual(said, ['hall']);
+  await clock.advance(60_000);
+  assert.deepEqual(said, ['hall', 'kids']);
+});
+
+test('a person at the door for half an hour, in one event: announced once', async () => {
+  const s = setup({ cooldownSeconds: 120 });
+  const start = motionStart('long-1');
+  s.watcher.onEvent('start', start);
+  s.watcher.onEvent('segment-start', withPerson(start));
+  for (let minute = 0; minute < 30; minute++) {
+    await s.clock.advance(60_000);
+    s.watcher.onEvent('segment-update', withPerson(start, 'unknown'));
+  }
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(s.said.length, 1, s.said.map((x) => x.text).join(' | '));
 });
 
 test('a motion event that never shows a person says nothing and is forgotten at its end', async () => {

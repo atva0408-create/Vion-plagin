@@ -92,12 +92,24 @@ const words = (text: string) =>
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 
-/** What the microphone heard is the camera's own phrase coming back, not the child. */
+/**
+ * What the microphone heard is the camera's own phrase coming back, not the child: a run of the phrase's words, in its
+ * order, makes most of what was heard. Shared words are not enough: "когда можно играть" after "…играть можно будет
+ * завтра" is the child's question, and taken for an echo it went unanswered. One word is never an echo: a "да" is.
+ */
 export function isEcho(heard: string, said: string | undefined): boolean {
   if (!said) return false;
-  const spoken = new Set(words(said));
+  const phrase = words(said);
   const got = words(heard);
-  return got.length > 0 && got.filter((word) => spoken.has(word)).length / got.length >= 0.6;
+  let longest = 0;
+  for (let i = 0; i < got.length; i++) {
+    for (let j = 0; j < phrase.length; j++) {
+      let run = 0;
+      while (i + run < got.length && j + run < phrase.length && got[i + run] === phrase[j + run]) run++;
+      longest = Math.max(longest, run);
+    }
+  }
+  return longest >= 2 && longest / got.length >= 0.6;
 }
 
 export class Voice {
@@ -106,6 +118,8 @@ export class Voice {
   private scenarios = new Map<string, Scenario>();
   /** Conversations running per camera: nothing else is said while VOICE listens for an answer. */
   private talking = new Map<string, Promise<void>>();
+  /** Phrases from outside waiting for a conversation per camera: it stops at the next exchange for them. */
+  private waiting = new Map<string, number>();
   /** The last phrase said on each camera: what its microphone may hear again. */
   private lastSaid = new Map<string, string>();
   private looking = new Set<string>();
@@ -145,7 +159,17 @@ export class Voice {
    * child goes first: a door phrase said into its listening window would be heard as the child's answer.
    */
   async say(cameraId: string, text: string, source: Exchange['source'] = 'owner'): Promise<SpeakResult> {
-    await this.talking.get(cameraId);
+    if (this.talking.has(cameraId)) {
+      // the conversation ends at its next exchange: three answers held "Пришёл папа" for a minute
+      this.waiting.set(cameraId, (this.waiting.get(cameraId) ?? 0) + 1);
+      try {
+        while (this.talking.has(cameraId)) await this.talking.get(cameraId);
+      } finally {
+        const left = (this.waiting.get(cameraId) ?? 1) - 1;
+        if (left > 0) this.waiting.set(cameraId, left);
+        else this.waiting.delete(cameraId);
+      }
+    }
     return this.speak(cameraId, text, source);
   }
 
@@ -321,15 +345,27 @@ export class Voice {
       return;
     }
     // the microphone hears the camera's own speaker: a phrase now would come back as the child's answer
-    await this.talking.get(camera.id);
-    const phrase = await nudgePhrase(this.deps.ask, action.facts, language, action.kind);
-    if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
-    const result = await this.speak(camera.id, phrase.text, phrase.source);
-    scenario.unspoken = result.status === 'spoken' ? undefined : (result.reason ?? result.status);
-    if (result.status === 'spoken' && scenario.engine.config.answerQuestions && !this.talking.has(camera.id)) {
+    while (this.talking.has(camera.id)) await this.talking.get(camera.id);
+    // a phrase that opens a conversation takes the camera before it is said: a door phrase that came while the reminder
+    // was synthesized or said queued right behind it and played into the listening window
+    let endTurn = () => {};
+    const converses = scenario.engine.config.answerQuestions;
+    if (converses) this.talking.set(camera.id, new Promise<void>((resolve) => (endTurn = resolve)));
+    let talk: Promise<void> | undefined;
+    try {
+      const phrase = await nudgePhrase(this.deps.ask, action.facts, language, action.kind);
+      if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
+      const result = await this.speak(camera.id, phrase.text, phrase.source);
+      scenario.unspoken = result.status === 'spoken' ? undefined : (result.reason ?? result.status);
       // the conversation runs beside the looks: the camera keeps being watched while the child answers
-      const talk = this.converse(key, scenario, camera).finally(() => this.talking.delete(camera.id));
-      this.talking.set(camera.id, talk);
+      if (result.status === 'spoken' && converses) talk = this.converse(key, scenario, camera);
+    } finally {
+      if (converses) {
+        void (talk ?? Promise.resolve()).finally(() => {
+          this.talking.delete(camera.id);
+          endTurn();
+        });
+      }
     }
   }
 
@@ -337,6 +373,10 @@ export class Voice {
     try {
       const language = this.deps.language();
       for (let exchange = 0; exchange < MAX_EXCHANGES; exchange++) {
+        if (this.waiting.get(camera.id)) {
+          this.deps.log(`${camera.name}: conversation ended for a phrase from outside`);
+          return;
+        }
         await new Promise((resolve) => this.deps.clock.setTimeout(() => resolve(undefined), LISTEN_DELAY_MS));
         const audio = await camera.listen(this.deps.listenSeconds() * 1000);
         if (!audio?.length) return;

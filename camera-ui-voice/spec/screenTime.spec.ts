@@ -81,10 +81,11 @@ test('2. away 90 s with a gap of 120 s: the session goes on; away 11 min with a 
   pass(run, 90_000, false);
   assert.equal(run.engine.state.present, true, 'a short absence does not end the session');
   pass(run, 20 * MINUTE, true);
-  // the 90 s away keep the session but are not time at the computer: they were counted and never taken back
+  // the 90 s away keep the session but are not time at the computer (only their first 15 s, a look the detector may
+  // have missed): they were counted and never taken back
   const work = run.engine.state.workMs / MINUTE;
-  assert.ok(work > 29.5 && work <= 30, `work ${work} min`);
-  assert.ok(run.engine.state.todayMs / MINUTE <= 30, 'nor time of the day');
+  assert.ok(work > 29.5 && work <= 30.3, `work ${work} min`);
+  assert.ok(run.engine.state.todayMs / MINUTE <= 30.3, 'nor time of the day');
 
   pass(run, 11 * MINUTE, false);
   assert.equal(run.engine.state.present, false);
@@ -93,35 +94,64 @@ test('2. away 90 s with a gap of 120 s: the session goes on; away 11 min with a 
   assert.ok(run.engine.state.workMs < MINUTE, `a new session from zero, got ${run.engine.state.workMs / 1000}s`);
 });
 
-test('2c. a camera that is blind (offline, its detector gone) stops the clock: no time counted, no session ended, no reminder', () => {
+test('2c. a camera blind for less than a break (offline, its detector gone) stops the clock: no time counted, no session ended, no reminder', () => {
   const run = start(config(), msk('2026-10-07T15:00:00'));
   pass(run, 30 * MINUTE, true);
   const before = run.engine.state.workMs;
-  // two hours the camera's Wi-Fi was down (not into bedtime): the last boxes of a still child stayed in the sensor
-  pass(run, 2 * 60 * MINUTE, undefined);
+  // 8 minutes the camera's Wi-Fi was down: the last boxes of a still child stayed in the sensor
+  pass(run, 8 * MINUTE, undefined);
   assert.equal(run.engine.state.workMs, before, 'no time at the computer while blind');
-  assert.equal(run.engine.state.present, true, 'nor an absence that ends the session and credits a break');
   assert.equal(speaks(run).length, 0, 'no reminder runs on time alone');
-  assert.equal(notifies(run).length, 0);
   pass(run, 16 * MINUTE, true);
-  assert.equal(speaks(run).length, 1, 'back in sight, the reminder comes at 45 minutes of real time at the computer');
+  assert.equal(speaks(run).length, 1, 'back in sight, the session goes on: the reminder comes at 45 minutes of real time at the computer');
   const work = run.engine.state.workMs / MINUTE;
   assert.ok(work > 45.5 && work <= 46, `work ${work} min`);
 });
 
-test('2d. blind during a break: the break does not pass meanwhile either', () => {
+test('2h. blind as long as a break or longer: the session ended where sight was lost, back in sight a new one starts', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 30 * MINUTE, true);
+  pass(run, 2 * 60 * MINUTE, undefined);
+  assert.ok(run.engine.state.workMs <= 30 * MINUTE + 5_000, 'no time at the computer while blind');
+  assert.equal(notifies(run).length, 0);
+  pass(run, 16 * MINUTE, true);
+  assert.equal(speaks(run).length, 0, 'a new session: 16 minutes, no reminder');
+  assert.ok(run.engine.state.workMs < 16 * MINUTE, `work ${run.engine.state.workMs / MINUTE} min`);
+});
+
+test('2i. a camera off for the night: in the morning no "the break is not over" and no notice to the parents with yesterday\'s minutes', () => {
+  // the break begun in the evening: reminder at 20:45, the child left at 20:46, the camera off from 20:49 to 07:49
+  const run = start(config(), msk('2026-10-07T20:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 3 * MINUTE, false);
+  pass(run, 11 * 60 * MINUTE, undefined);
+  pass(run, 2 * MINUTE, true);
+  assert.equal(speaks(run).length, 1, 'only the evening reminder: the break counts as taken');
+  assert.ok(run.engine.state.workMs < 3 * MINUTE, `a new session, got ${run.engine.state.workMs / MINUTE} min`);
+
+  // the reminders under way when the camera went off: 20:45 level 1, 20:48 level 2
+  const late = start(config(), msk('2026-10-07T20:00:00'));
+  pass(late, 49 * MINUTE, true);
+  assert.equal(speaks(late).length, 2);
+  pass(late, 11 * 60 * MINUTE, undefined);
+  pass(late, 5 * MINUTE, true);
+  assert.equal(speaks(late).length, 2, 'no level 3 in the morning');
+  assert.equal(notifies(late).length, 0, 'the parents are not told about yesterday');
+});
+
+test('2d. blind for a while during a break: the break does not pass meanwhile either', () => {
   const run = start(config(), msk('2026-10-07T15:00:00'));
   pass(run, 46 * MINUTE, true);
   pass(run, 3 * MINUTE, false);
-  pass(run, 30 * MINUTE, undefined);
+  pass(run, 8 * MINUTE, undefined);
   pass(run, 30_000, true);
-  assert.ok(run.engine.state.workMs >= 46 * MINUTE, 'the child was away 3 minutes of a 10 minute break, not 33');
+  assert.ok(run.engine.state.workMs >= 46 * MINUTE, 'the child was away 3 minutes of a 10 minute break, not 11');
 });
 
 test('2e. blind in a session, then the child is gone: the gap and the break count from when the camera sees again', () => {
   const run = start(config(), msk('2026-10-07T15:00:00'));
   pass(run, 20 * MINUTE, true);
-  pass(run, 60 * MINUTE, undefined);
+  pass(run, 8 * MINUTE, undefined);
   pass(run, MINUTE, false);
   assert.equal(run.engine.state.present, true, 'away 1 minute of a 2 minute gap: the session goes on');
   pass(run, 2 * MINUTE, false);
@@ -136,7 +166,7 @@ test('2f. blind in the middle of the reminders: the next one comes 3 minutes in 
   const run = start(config(), msk('2026-10-07T15:00:00'));
   pass(run, 46 * MINUTE, true);
   assert.equal(speaks(run).length, 1);
-  pass(run, 30 * MINUTE, undefined);
+  pass(run, 6 * MINUTE, undefined);
   pass(run, MINUTE, true);
   assert.equal(speaks(run).length, 1, 'a minute after sight came back: not yet');
   pass(run, 2.5 * MINUTE, true);
@@ -153,6 +183,27 @@ test('2g. what the attribute said about the person ends with the session: after 
   pass(run, 3 * MINUTE, false);
   assert.equal(run.engine.state.present, false);
   assert.equal(run.engine.state.attributeYes, undefined);
+});
+
+test('2k. bedtime reminders under way, then blind longer than a break: back in sight they start over, the parents are not told at once', () => {
+  const run = start(config(bedtime), msk('2026-10-07T21:20:00'));
+  pass(run, 15 * MINUTE, true);
+  // 21:30 level 1, 21:33 level 2
+  assert.equal(speaks(run).length, 2);
+  pass(run, 30 * MINUTE, undefined);
+  pass(run, 2 * MINUTE, true);
+  const after = speaks(run).slice(2);
+  assert.equal(after.length, 1, 'one phrase when the child is seen again');
+  assert.equal(after[0].action.type === 'speak' && after[0].action.facts.level, 1);
+  assert.equal(notifies(run).length, 0);
+});
+
+test('2j. a look the detector missed now and then is still time at the computer', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  // every sixth look (one in 30 s) without the child
+  for (let i = 0; i < 360; i++) pass(run, 5_000, i % 6 !== 5);
+  const work = run.engine.state.workMs / MINUTE;
+  assert.ok(work > 29.5, `30 minutes at the computer, counted ${work}`);
 });
 
 test('2b. a person passing by for 15 s starts no session', () => {

@@ -193,6 +193,11 @@ test('a reminder from the LLM: "more" next to an amount is refused, the facts of
 test('VOICE hearing its own phrase is no answer of the child', async () => {
   assert.equal(isEcho('Больше времени дают только родители', 'Артём, больше времени дают только родители, я им передам.'), true);
   assert.equal(isEcho('а когда можно играть', 'Артём, уже время сна. Пора выключать компьютер.'), false);
+  // the child's words that the phrase also has, in another order: the question and the request, not an echo
+  assert.equal(isEcho('когда можно играть', 'Артём, на сегодня хватит. Выключи компьютер, играть можно будет завтра в 08:30.'), false);
+  assert.equal(isEcho('можно ещё поиграть', 'Артём, пора спать. Выключи компьютер, поиграть можно завтра в 07:30.'), false);
+  assert.equal(isEcho('да', 'Артём, да, пора спать.'), false, 'one word is the child');
+  assert.equal(isEcho('поиграть можно завтра', 'Артём, пора спать. Выключи компьютер, поиграть можно завтра в 07:30.'), true, 'the tail of the phrase');
   const s = await setup(unconfigured, { answerQuestions: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T21:29:00'));
   s.camera.answers.push(new Float32Array(16_000));
   s.engine.heard.push('уже время сна пора выключать компьютер');
@@ -214,11 +219,14 @@ test('a camera that goes blind counts nothing: the look without a sighting', asy
   const s = await setup();
   await s.look(10 * MINUTE, true);
   const before = s.voice.scenariosOf(s.camera.id)[0].engine.state.todayMs;
+  const writes = s.saved.length;
   for (let i = 0; i < 120; i++) {
     await s.clock.advance(5_000);
     await s.voice.look(s.camera.id, undefined);
   }
   assert.equal(s.voice.scenariosOf(s.camera.id)[0].engine.state.todayMs, before);
+  // the state does not change while blind: written as when nothing happens, about once a minute, not on every look
+  assert.ok(s.saved.length - writes <= 12, `${s.saved.length - writes} writes in 10 minutes`);
 });
 
 test('a restart in a session bound to a face keeps who was seen: the child with the back to the camera still counts', async () => {
@@ -284,6 +292,59 @@ test('a phrase from outside (the door, a notification) waits while VOICE listens
   assert.equal(s.engine.said.length, 1, 'not into the listening window');
   answer(undefined);
   await door;
+  assert.equal(s.engine.said.at(-1), 'Пришёл папа.');
+});
+
+test('a door phrase that comes while the reminder is said goes after it, and VOICE does not listen over it', async () => {
+  const s = await setup(unconfigured, { answerQuestions: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T21:29:00'));
+  const order: string[] = [];
+  let finishReminder: () => void = () => undefined;
+  const speak = s.camera.speaker.speak;
+  s.camera.speaker.speak = async (...args: Parameters<typeof speak>) => {
+    const text = s.engine.said.at(-1);
+    order.push(`start:${text}`);
+    // the reminder sounds until the test lets it end, the door phrase 3 s
+    if (order.length === 1) await new Promise<void>((resolve) => (finishReminder = resolve));
+    else await new Promise((resolve) => s.clock.setTimeout(() => resolve(undefined), 3_000));
+    order.push(`end:${text}`);
+    return speak(...args);
+  };
+  s.camera.listen = async () => {
+    order.push('listen');
+    return undefined;
+  };
+  await s.look(70_000, true);
+  assert.equal(order.length, 1, 'the reminder is being said');
+  const door = s.voice.say(s.camera.id, 'Пришёл папа.', 'template');
+  await s.clock.advance(1_000);
+  finishReminder();
+  await s.clock.advance(5_000);
+  await door;
+  await s.clock.advance(5_000);
+  const doorAt = order.indexOf('start:Пришёл папа.');
+  assert.ok(doorAt > 0, order.join(' | '));
+  assert.ok(!order.slice(0, order.indexOf('end:Пришёл папа.')).includes('listen'), `no listening over the door phrase: ${order.join(' | ')}`);
+});
+
+test('a door phrase ends a conversation at its next exchange: the child answers three times, the door waits for one', async () => {
+  const s = await setup(unconfigured, { answerQuestions: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T21:29:00'));
+  let answer: (audio: Float32Array | undefined) => void = () => undefined;
+  let listened = 0;
+  s.camera.listen = () => {
+    listened++;
+    return new Promise((resolve) => (answer = resolve));
+  };
+  for (let i = 0; i < 3; i++) s.engine.heard.push('а когда можно играть?');
+  await s.look(70_000, true);
+  assert.equal(s.engine.said.length, 1, 'the reminder');
+  await s.clock.advance(2_000);
+  const door = s.voice.say(s.camera.id, 'Пришёл папа.', 'template');
+  await s.clock.advance(1_000);
+  answer(new Float32Array(16_000));
+  await s.clock.advance(5_000);
+  await door;
+  assert.equal(listened, 1, 'no second listening');
+  assert.equal(s.engine.said.length, 3, s.engine.said.join(' | '));
   assert.equal(s.engine.said.at(-1), 'Пришёл папа.');
 });
 

@@ -58,6 +58,8 @@ export interface ScreenTimeState {
   name?: string;
   /** The module attribute was seen "yes" in this session: kept over a restart like the name. */
   attributeYes?: boolean;
+  /** VOICE has been blind since then (camera offline, no detector, boxes frozen). */
+  blindSince?: number;
 }
 
 export interface Facts {
@@ -90,6 +92,8 @@ export function freshState(date: string): ScreenTimeState {
 
 /** Longest step counted as continuous: after a restart or a stalled timer the time between is not presence. */
 const MAX_STEP_MS = MINUTE;
+/** An absence this short is a look the detector missed, still time at the computer. */
+const FLICKER_MS = 15_000;
 const HISTORY_DAYS = 30;
 
 export interface TickInput {
@@ -114,20 +118,20 @@ export class ScreenTimeEngine {
   tick(input: TickInput): ScreenTimeAction[] {
     const { now, timeZone } = input;
     const s = this.state;
-    const step = s.lastTick === undefined ? 0 : Math.max(0, Math.min(now - s.lastTick, MAX_STEP_MS));
+    const previous = s.lastTick;
+    const step = previous === undefined ? 0 : Math.max(0, Math.min(now - previous, MAX_STEP_MS));
     s.lastTick = now;
     this.rollDate(now, timeZone);
 
     if (input.present === undefined) {
       // a camera that dropped (Wi-Fi, a crashed detector) keeps the last boxes of a still child for hours: they counted
-      // as a night at the computer, the next day's limit was spent and the parents were told. While VOICE is blind the
-      // clock of the scenario stands still: no time at the computer, no time away, no step of the escalation.
-      if (s.lastSeen !== undefined) s.lastSeen += step;
-      if (s.candidateSince !== undefined) s.candidateSince += step;
-      if (!s.present && s.leftAt !== undefined) s.leftAt += step;
-      if (s.escalation) s.escalation.at += step;
+      // as a night at the computer, the next day's limit was spent and the parents were told. While VOICE is blind
+      // nothing is counted and nothing changes (no write per look); what the blindness meant is settled when sight
+      // comes back.
+      s.blindSince ??= previous ?? now;
       return [];
     }
+    if (s.blindSince !== undefined) this.endBlindness(Math.max(0, (previous ?? now) - s.blindSince));
 
     if (input.present) {
       s.lastSeen = now;
@@ -142,8 +146,9 @@ export class ScreenTimeEngine {
     let returnedDuringBreak = false;
     if (s.present) {
       if (now - (s.lastSeen ?? now) < this.config.gapSeconds * 1000) {
-        // a short absence keeps the session, but is not time at the computer: it was counted and never taken back
-        if (input.present) this.count(step, now, timeZone);
+        // a short absence keeps the session, but is not time at the computer: it was counted and never taken back.
+        // A look or two the detector missed still is: a lost look cost every session 5 s.
+        if (input.present || now - (s.lastSeen ?? now) <= FLICKER_MS) this.count(step, now, timeZone);
       } else {
         // away longer than the gap: the session is over, the break starts when the child was last seen
         s.present = false;
@@ -251,6 +256,31 @@ export class ScreenTimeEngine {
       nextAllowedAt: formatClock(nextAllowed, timeZone),
       nextAllowedDay: localTime(nextAllowed, timeZone).date === today ? 'today' : 'tomorrow',
     };
+  }
+
+  /**
+   * Sight is back after `blindMs`. Shorter than a break, the blindness is cut out of the clock: the gap, the break and
+   * the reminders go on as if it never happened. As long as a break or longer, VOICE cannot vouch that the child
+   * stayed: the session ended where sight was lost. Frozen without a bound, a break begun in the evening and a camera
+   * off for the night said "the break is not over" in the morning and told the parents yesterday's minutes.
+   */
+  private endBlindness(blindMs: number): void {
+    const s = this.state;
+    s.blindSince = undefined;
+    if (blindMs < this.config.breakMinutes * MINUTE) {
+      if (s.lastSeen !== undefined) s.lastSeen += blindMs;
+      if (s.candidateSince !== undefined) s.candidateSince += blindMs;
+      if (!s.present && s.leftAt !== undefined) s.leftAt += blindMs;
+      if (s.escalation) s.escalation.at += blindMs;
+      return;
+    }
+    s.candidateSince = undefined;
+    if (!s.present) return;
+    s.present = false;
+    s.leftAt = s.lastSeen;
+    s.escalation = undefined;
+    s.name = undefined;
+    s.attributeYes = undefined;
   }
 
   private count(ms: number, now: number, timeZone: string): void {

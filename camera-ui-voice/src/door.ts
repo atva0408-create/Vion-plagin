@@ -52,7 +52,11 @@ interface Seen {
   timer?: unknown;
   /** Decided (said or not): later messages of the event change nothing. */
   done: boolean;
+  /** Forgets a decided event whose end never came, 10 minutes after its last message. */
+  forget?: unknown;
 }
+
+const FORGET_MS = 10 * 60_000;
 
 export class DoorWatcher {
   private events = new Map<string, Seen>();
@@ -78,14 +82,29 @@ export class DoorWatcher {
     if (!seen.done && seen.timer === undefined && this.wanted(seen)) {
       seen.timer = this.deps.clock.setTimeout(() => void this.decide(event.id), FACE_WAIT_MS);
     }
-    // an event that ended without anyone the rules want is forgotten; a decision under way finishes first
-    if (type === 'end' && seen.timer === undefined) this.events.delete(event.id);
+    // an event that ended is forgotten, unless its decision is under way: that finishes first
+    if (type === 'end' && (seen.done || seen.timer === undefined)) {
+      this.deps.clock.clearTimeout(seen.forget);
+      this.events.delete(event.id);
+    } else if (seen.done) this.forgetLater(event.id, seen);
   }
 
   /** Waiting decisions are dropped: the plugin stops. */
   stop(): void {
-    for (const { timer } of this.events.values()) if (timer !== undefined) this.deps.clock.clearTimeout(timer);
+    for (const { timer, forget } of this.events.values()) {
+      if (timer !== undefined) this.deps.clock.clearTimeout(timer);
+      if (forget !== undefined) this.deps.clock.clearTimeout(forget);
+    }
     this.events.clear();
+  }
+
+  /**
+   * A decided event stays known while its messages come, so the rest of it does not start it again: forgotten 10
+   * minutes after the decision, a person standing at the door for half an hour was announced every 10 minutes.
+   */
+  private forgetLater(eventId: string, seen: Seen): void {
+    this.deps.clock.clearTimeout(seen.forget);
+    seen.forget = this.deps.clock.setTimeout(() => this.events.delete(eventId), FORGET_MS);
   }
 
   private wanted(seen: Seen): boolean {
@@ -96,9 +115,7 @@ export class DoorWatcher {
     const seen = this.events.get(eventId);
     if (!seen || seen.done) return;
     seen.done = true;
-    // kept a while as decided, so the rest of the event does not start it again; then forgotten. Held in seen.timer
-    // so stop() clears it: a pending forget kept a stopped plugin's process alive for 10 minutes
-    seen.timer = this.deps.clock.setTimeout(() => this.events.delete(eventId), 10 * 60_000);
+    this.forgetLater(eventId, seen);
     const event = { cameraId: seen.cameraId };
     const now = this.deps.clock.now();
     const language = this.deps.language();
@@ -106,6 +123,8 @@ export class DoorWatcher {
     const faces = [...seen.faces];
     const known = faces.find((face) => face !== 'unknown');
 
+    // the rules at once: a room where VOICE talks with a child holds its phrase, the rooms of the next rule did wait
+    const work: Promise<void>[] = [];
     for (const [index, rule] of this.deps.rules().entries()) {
       if (!rule.doorCameras.includes(event.cameraId)) continue;
       if (!rule.labels.some((label) => labels.includes(label))) continue;
@@ -118,23 +137,27 @@ export class DoorWatcher {
       const last = this.lastSaid.get(key);
       if (last !== undefined && now - last < rule.cooldownSeconds * 1000) continue;
       this.lastSaid.set(key, now);
-
-      let text = this.phrase(known, faces.includes('unknown'), language);
-      if (!known && rule.describe) {
-        const description = await this.deps.describe(event.cameraId, language, DESCRIBE_TIMEOUT_MS).catch((error: Error) => {
-          this.deps.log(`door: no description: ${error.message}`);
-          return undefined;
-        });
-        if (description) text = description;
-      }
-      // every room at once: one after the other, the last room heard it seconds late
-      await Promise.all(
-        rule.speakers.map(async (speaker) => {
-          const result = await this.deps.say(speaker, text);
-          if (result.status !== 'spoken') this.deps.log(`door: ${speaker}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
-        }),
-      );
+      work.push(this.announce(rule, event.cameraId, known, faces.includes('unknown'), language));
     }
+    await Promise.all(work);
+  }
+
+  private async announce(rule: DoorRule, cameraId: string, known: string | undefined, stranger: boolean, language: Language): Promise<void> {
+    let text = this.phrase(known, stranger, language);
+    if (!known && rule.describe) {
+      const description = await this.deps.describe(cameraId, language, DESCRIBE_TIMEOUT_MS).catch((error: Error) => {
+        this.deps.log(`door: no description: ${error.message}`);
+        return undefined;
+      });
+      if (description) text = description;
+    }
+    // every room at once: one after the other, the last room heard it seconds late
+    await Promise.all(
+      rule.speakers.map(async (speaker) => {
+        const result = await this.deps.say(speaker, text);
+        if (result.status !== 'spoken') this.deps.log(`door: ${speaker}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+      }),
+    );
   }
 
   phrase(known: string | undefined, stranger: boolean, language: Language): string {
