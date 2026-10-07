@@ -1,3 +1,7 @@
+## [1.2.20]
+
+- Detector modules from the ViON store: a module installed on the Modules tab of the store appears among the object models of this plugin and is used like them; an updated module is loaded again
+
 ## [1.2.19]
 
 - Object detection gets frames of the size the chosen model expects: it was given 320×320 whatever the model, and switching the model could stop and start the detector twice
