@@ -52,6 +52,10 @@ class BaseModelManager(ABC):
     def reset(self) -> None:
         self._load_tasks.clear()
 
+    def forget(self, model_name: str) -> None:
+        """The files of the model changed under the same name: the next ensure_backend loads them again."""
+        self._load_tasks.pop(model_name, None)
+
     def compile_cache_dir(self, runtime_tag: str) -> str:
         """Directory for runtime compile artifacts (compiled blobs, optimized graphs).
         Lives inside the versioned model dir, so a model re-download clears it and the

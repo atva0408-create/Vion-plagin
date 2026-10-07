@@ -124,6 +124,8 @@ class OpenVinoPlugin(
         self._failed_models: dict[str, float] = {}
         self._trained_version = -1
         self._modules_version = -1
+        # the files each loaded module detector was built from: an update keeps the model name, not the files
+        self._module_files: dict[str, object] = {}
         self._modules_watch: asyncio.Task[None] | None = None
 
         self._sensors: dict[str, dict[str, Any]] = {}
@@ -231,6 +233,7 @@ class OpenVinoPlugin(
                 classes = trained.get("classes") if trained else None
             elif is_module(model_name):
                 module = installed_modules.entry(model_name, MODULE_BACKENDS)
+                self._module_files[model_name] = self._module_signature(model_name)
                 classes = module.get("labels") if module else None
             if classes:
                 detector.labels = {index: str(label) for index, label in enumerate(classes)}
@@ -947,6 +950,29 @@ class OpenVinoPlugin(
             obj = sensors.get("object")
             if obj is not None:
                 obj.refresh_model_choices()
+        for name in [n for n in self.object_detectors if is_module(n)]:
+            if self._module_signature(name) != self._module_files.get(name):
+                asyncio.create_task(self._reload_module_detector(name))
+
+    def _module_signature(self, model_name: str) -> object:
+        entry = installed_modules.entry(model_name, MODULE_BACKENDS)
+        return (entry.get("version"), installed_modules.files(entry, MODULE_BACKENDS)) if entry else None
+
+    async def _reload_module_detector(self, model_name: str) -> None:
+        """An updated module: the new files load while the old detector keeps serving, then it is closed."""
+        old = self.object_detectors.pop(model_name, None)
+        self._module_files.pop(model_name, None)
+        self._failed_models.pop(model_name, None)
+        self.model_manager.forget(model_name)
+        try:
+            if installed_modules.entry(model_name, MODULE_BACKENDS):
+                await self.get_object_detector(model_name)
+                self.logger.success(f"Модуль {model_name} загружен заново")
+        except Exception as error:
+            self.logger.error(f"Модуль {model_name} не загрузился заново: {error}")
+        finally:
+            if old is not None:
+                await old.close()
 
     async def _watch_modules(self) -> None:
         # the settings show a module before any camera detects again: detection only runs while something moves

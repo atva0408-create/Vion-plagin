@@ -15,6 +15,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import types
 from pathlib import Path
@@ -74,23 +75,29 @@ def write_installed(directory: Path, entries: list[dict[str, Any]]) -> None:
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
 
 
-def module_entry(directory: Path, module_id: str, backends: tuple[str, ...] = ("onnx",)) -> dict[str, Any]:
+def module_entry(
+    directory: Path,
+    module_id: str,
+    backends: tuple[str, ...] = ("onnx",),
+    version: str = "1.0.0",
+    size: int = 32,
+) -> dict[str, Any]:
     files: dict[str, list[dict[str, Any]]] = {}
     for backend in backends:
-        folder = directory / module_id / "1.0.0" / backend
+        folder = directory / module_id / version / "light" / backend
         folder.mkdir(parents=True, exist_ok=True)
         names = ["model.onnx"] if backend == "onnx" else ["model.xml", "model.bin"]
         files[backend] = []
         for name in names:
-            (folder / name).write_bytes(tiny_onnx() if name.endswith(".onnx") else b"ir")
+            (folder / name).write_bytes(tiny_onnx(size) if name.endswith(".onnx") else b"ir")
             files[backend].append({"name": name, "path": str(folder / name), "sha256": "0" * 64, "size": 1})
     return {
         "id": module_id,
-        "version": "1.0.0",
+        "version": version,
         "task": "detector",
         "name": {"ru": "Велосипеды", "en": "Bicycles", "de": "Fahrräder"},
         "labels": ["bicycle", "scooter"],
-        "input": {"width": 32, "height": 32},
+        "input": {"width": size, "height": size},
         "tier": "light",
         "device": "cpu",
         "files": files,
@@ -121,7 +128,7 @@ def test_an_installed_detector_is_one_more_model(tmp_path: Path, store: Any):
     assert store.choices(("onnx",)) == {"vion-module-bikes": "Велосипеды"}
     backend, paths = store.paths("vion-module-bikes", ("onnx",))
     assert backend == "onnx"
-    assert paths[".onnx"] == str(tmp_path / "bikes" / "1.0.0" / "onnx" / "model.onnx")
+    assert paths[".onnx"] == str(tmp_path / "bikes" / "1.0.0" / "light" / "onnx" / "model.onnx")
     assert store.entry("vion-module-bikes", ("onnx",))["labels"] == ["bicycle", "scooter"]
 
 
@@ -196,7 +203,7 @@ def test_the_onnx_plugin_loads_the_module_from_its_path(tmp_path: Path):
     )
     files = manager.model_files("vion-module-bikes")
     assert files == {
-        "model": ("", str(Path(installed_modules.dir) / "bikes" / "1.0.0" / "onnx" / "model.onnx"))
+        "model": ("", str(Path(installed_modules.dir) / "bikes" / "1.0.0" / "light" / "onnx" / "model.onnx"))
     }
 
     # the whole load of the plugin: the download step finds the file, the backend builds from it
@@ -237,10 +244,112 @@ def test_the_openvino_plugin_takes_the_ir_pair_or_the_onnx_graph(
     )
 
     manager = object.__new__(model_manager.OpenVinoModelManager)
-    ir = tmp_path / "ir" / "1.0.0" / "openvino"
+    ir = tmp_path / "ir" / "1.0.0" / "light" / "openvino"
     assert manager.model_files("vion-module-ir") == {
         "xml": ("", str(ir / "model.xml")),
         "bin": ("", str(ir / "model.bin")),
     }
-    graph = str(tmp_path / "graph" / "1.0.0" / "onnx" / "model.onnx")
+    graph = str(tmp_path / "graph" / "1.0.0" / "light" / "onnx" / "model.onnx")
     assert manager.model_files("vion-module-graph") == {"xml": ("", graph), "bin": ("", graph)}
+
+
+def onnx_plugin(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
+    """main.py of the ONNX plugin, imported afresh (the plugins share module names); CLIP is not needed here."""
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("aiohttp")
+    if not SDK.is_dir():
+        pytest.skip(f"camera_ui_sdk (python) not found at {SDK}")
+    if importlib.util.find_spec("transformers") is None:
+        monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(CLIPProcessor=object))
+    for name in ("main", "model_manager", "defaults", "modules", "trained", "inference"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.syspath_prepend(str(ONNX_SRC))
+    monkeypatch.syspath_prepend(str(SDK))
+    monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    import main  # type: ignore[import-not-found]
+
+    return main
+
+
+def test_two_modules_with_the_same_file_name_keep_their_own_optimized_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Every module ships a model.onnx: the cache of optimized graphs must not hand one module the other's graph."""
+    main = onnx_plugin(monkeypatch)
+    import model_manager  # type: ignore[import-not-found]
+    from modules import installed_modules  # type: ignore[import-not-found]
+
+    installed_modules.dir = str(tmp_path / "modules")
+    installed_modules._checked = float("-inf")
+    os.makedirs(installed_modules.dir)
+    directory = Path(installed_modules.dir)
+    write_installed(
+        directory, [module_entry(directory, "bikes", size=32), module_entry(directory, "cats", size=64)]
+    )
+
+    logger = types.SimpleNamespace(log=print, warn=print, error=print, debug=print, success=print)
+    manager = model_manager.OnnxModelManager(
+        str(tmp_path / "storage"), logger, lambda: [["CPUExecutionProvider"]]
+    )
+
+    async def sizes() -> list[Any]:
+        result = []
+        for name in ("vion-module-bikes", "vion-module-cats"):
+            detector = main.BoxDetector(manager, logger, name="object detector", multiclass=True)
+            await detector.initialize(name)
+            result.append(detector.backend._input_size)  # type: ignore[union-attr]
+            await detector.close()
+        return result
+
+    assert asyncio.run(sizes()) == [(32, 32), (64, 64)]
+    # a second start reads the optimized copies: still each module its own graph
+    manager.reset()
+    assert asyncio.run(sizes()) == [(32, 32), (64, 64)]
+
+
+def test_an_updated_module_is_loaded_again_without_a_restart(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """An update keeps the model name vion-module-<id>: the plugin sees other files and swaps the detector."""
+    main = onnx_plugin(monkeypatch)
+    import model_manager  # type: ignore[import-not-found]
+    from modules import installed_modules  # type: ignore[import-not-found]
+
+    installed_modules.dir = str(tmp_path / "modules")
+    installed_modules._checked = float("-inf")
+    os.makedirs(installed_modules.dir)
+    directory = Path(installed_modules.dir)
+    write_installed(directory, [module_entry(directory, "bikes", version="1.0.0", size=32)])
+
+    logger = types.SimpleNamespace(log=print, warn=print, error=print, debug=print, success=print)
+    plugin = object.__new__(main.ONNXPlugin)
+    plugin.logger = logger
+    plugin.model_manager = model_manager.OnnxModelManager(
+        str(tmp_path / "storage"), logger, lambda: [["CPUExecutionProvider"]]
+    )
+    plugin.object_detectors = {}
+    plugin._sensors = {}
+    plugin._failed_models = {}
+    plugin._module_files = {}
+    plugin._modules_version = -1
+
+    async def scenario() -> None:
+        old = await plugin.get_object_detector("vion-module-bikes")
+        assert old.backend._input_size == (32, 32)
+        plugin.check_modules()
+        await asyncio.sleep(0)
+        assert plugin.object_detectors["vion-module-bikes"] is old  # nothing changed, nothing reloaded
+
+        # the server installs 1.1.0 and removes the files of 1.0.0
+        write_installed(directory, [module_entry(directory, "bikes", version="1.1.0", size=64)])
+        shutil.rmtree(directory / "bikes" / "1.0.0")
+        installed_modules._checked = float("-inf")
+        plugin.check_modules()
+        for _ in range(100):
+            new = plugin.object_detectors.get("vion-module-bikes")
+            if new is not None and new is not old and new.initialized:
+                break
+            await asyncio.sleep(0.01)
+        assert new is not old and new.backend._input_size == (64, 64)
+        assert new.labels == {0: "bicycle", 1: "scooter"}
+        assert old.closed
+
+    asyncio.run(scenario())

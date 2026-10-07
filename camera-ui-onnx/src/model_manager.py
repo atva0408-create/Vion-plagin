@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -119,9 +120,17 @@ class OnnxModelManager(BaseModelManager):
             "(CUDA 12) вместе с плагином ONNX Legacy"
         )
 
+    def _cache_name(self, path: str) -> str:
+        """The optimized copy's name. Files of the store's modules all have names like model.onnx and lie outside
+        the models folder, by module, version and variant: the folder they lie in tells them apart."""
+        name = os.path.basename(path)
+        if os.path.abspath(path).startswith(os.path.join(os.path.abspath(self.model_path), "")):
+            return name
+        return f"{hashlib.sha256(os.path.abspath(path).encode()).hexdigest()[:16]}-{name}"
+
     def _create_cpu_session(self, path: str) -> Any:
         cache_dir = self.compile_cache_dir(f"onnxruntime-{ort.__version__}")
-        optimized = os.path.join(cache_dir, os.path.basename(path))
+        optimized = os.path.join(cache_dir, self._cache_name(path))
         if os.path.isfile(optimized):
             try:
                 options = ort.SessionOptions()
