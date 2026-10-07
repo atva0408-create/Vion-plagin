@@ -1,0 +1,68 @@
+{
+  "displayName": "VOICE",
+  "name": "@vionvision/camera-ui-voice",
+  "version": "0.1.0",
+  "description": "Голос ViON через динамик камеры: напоминает ребёнку о перерыве и времени сна, отвечает на его вопросы, говорит, кто пришёл, и произносит фразы из чата, автоматизаций и уведомлений. Речь синтезируется и распознаётся на сервере, без облака.",
+  "author": "ViON (https://vionvision.tech)",
+  "main": "./bundle/dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "bundle": "npm run format && npm run lint && npm run build && cui bundle",
+    "bundle:dev": "npm run format && npm run lint && npm run build && cross-env MODE=development cui bundle",
+    "format": "prettier --write \"src/\" --ignore-unknown --no-error-on-unmatched-pattern",
+    "install-updates": "npm i --save --force",
+    "lint": "eslint --fix .",
+    "prepublishOnly": "node -e \"if(!process.env.SAFE_PUBLISH){console.error('Error: Please use @camera.ui/cli to publish the plugin:\\n  npm run publish:alpha\\n  npm run publish:beta\\n  npm run publish:latest\\n');process.exit(1)}\"",
+    "publish:alpha": "npm i --save --force && npm run bundle && cui publish --alpha",
+    "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
+    "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
+    "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
+    "test": "tsx spec/time.spec.ts && tsx spec/speaker.spec.ts && tsx spec/screenTime.spec.ts && tsx spec/voice.spec.ts && tsx spec/door.spec.ts && tsx spec/plugin.spec.ts && tsx spec/models.spec.ts"
+  },
+  "dependencies": {
+    "sherpa-onnx-node": "1.13.8"
+  },
+  "devDependencies": {
+    "@camera.ui/cli": "^0.0.113",
+    "@camera.ui/sdk": "^1.3.4",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "26.6.2",
+    "@typescript-eslint/parser": "^8.70.1",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "eslint": "9.39.2",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "rimraf": "^6.1.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "updates": "^19.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/atva0408-create/Vion-plagin/issues"
+  },
+  "engines": {
+    "camera.ui": ">=2.3.4",
+    "node": ">=22.0.0"
+  },
+  "os": [],
+  "cpu": [],
+  "homepage": "https://github.com/atva0408-create/Vion-plagin/tree/main/camera-ui-voice#readme",
+  "keywords": [
+    "vion-plugin",
+    "voice",
+    "speaker",
+    "tts",
+    "speech",
+    "screen-time",
+    "notifications"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
+    "directory": "camera-ui-voice"
+  }
+}

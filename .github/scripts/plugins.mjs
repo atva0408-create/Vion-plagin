@@ -12,6 +12,7 @@ export const NODE = {
   'camera-ui-tuya': '',
   'camera-ui-wasm-motion': '',
   'camera-ui-yandex': '',
+  'camera-ui-voice': '',
 };
 
 export const GO = {

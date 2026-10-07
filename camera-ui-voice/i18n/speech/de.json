@@ -1,0 +1,77 @@
+{
+  "minutes": {
+    "one": "Minute",
+    "other": "Minuten"
+  },
+  "days": {
+    "today": "heute",
+    "tomorrow": "morgen"
+  },
+  "nudge": {
+    "break": [
+      "{name}, du sitzt schon {session} {sessionWord} am Computer. Zeit für {break} Minuten Pause, deine Augen brauchen Ruhe.",
+      "{name}, Pause. Verlass jetzt den Computer, du kannst um {next} zurückkommen.",
+      "{name}, du hast keine Pause gemacht. Ich habe deinen Eltern Bescheid gegeben. Verlass bitte den Computer."
+    ],
+    "bedtime": [
+      "{name}, es ist Schlafenszeit. Zeit, den Computer auszuschalten und ins Bett zu gehen.",
+      "{name}, ab ins Bett. Schalte den Computer aus, spielen kannst du {day} um {next}.",
+      "{name}, die Schlafenszeit ist längst da. Ich habe deinen Eltern Bescheid gegeben. Schalte den Computer aus."
+    ],
+    "daily_limit": [
+      "{name}, deine Computerzeit für heute ist vorbei. Zeit für etwas anderes.",
+      "{name}, für heute reicht es. Schalte den Computer aus, spielen kannst du {day} um {next}.",
+      "{name}, deine Zeit für heute ist schon lange vorbei. Ich habe deinen Eltern Bescheid gegeben. Schalte den Computer aus."
+    ]
+  },
+  "remaining": "{name}, die Pause ist noch nicht vorbei, noch {left} {leftWord}.",
+  "answer": {
+    "break": "{name}, du kannst um {next} wieder spielen, nach der Pause.",
+    "bedtime": "{name}, du kannst {day} um {next} spielen.",
+    "daily_limit": "{name}, du kannst {day} um {next} spielen."
+  },
+  "askParents": "Mehr Zeit können nur deine Eltern geben. Ich habe ihnen deine Bitte weitergegeben.",
+  "moreTimeWords": [
+    "mehr zeit",
+    "länger",
+    "erlaubt",
+    "verlänger",
+    "noch eine stunde",
+    "noch ein bisschen",
+    "noch etwas"
+  ],
+  "notify": {
+    "title": "{name} am Computer",
+    "break": "{name} macht keine Pause: {session} {sessionWord} am Computer.",
+    "bedtime": "{name} sitzt zur Schlafenszeit am Computer ({now}).",
+    "daily_limit": "{name} sitzt über das Tageslimit hinaus am Computer: heute {today} {todayWord}.",
+    "moreTimeTitle": "{name} bittet um mehr Zeit",
+    "moreTime": "{name} bittet um mehr Zeit: „{text}“"
+  },
+  "door": {
+    "male": "{name} ist da.",
+    "female": "{name} ist da.",
+    "neutral": "{name} ist an der Tür.",
+    "unknown": "Ein Fremder ist an der Tür.",
+    "label": "Jemand ist an der Tür."
+  },
+  "status": {
+    "today": "Heute: {duration}",
+    "free": "Jetzt: darf spielen",
+    "away": "Jetzt: nicht am Computer",
+    "break": "Jetzt: Pause bis {time}",
+    "bedtime": "Jetzt: Schlafenszeit bis {time}",
+    "daily_limit": "Jetzt: Tageslimit erreicht",
+    "granted": "Jetzt: die Eltern haben Zeit bis {time} gegeben",
+    "hours": "{hours} Std. {minutes} Min.",
+    "onlyMinutes": "{minutes} Min."
+  },
+  "test": "Sprachtest. Kannst du mich gut hören?",
+  "speakerYes": "VOICE kann über diese Kamera sprechen.",
+  "speakerNo": "VOICE kann über diese Kamera nicht sprechen: {reason}",
+  "problems": {
+    "no_channel": "sie hat keinen Tonkanal zum Lautsprecher",
+    "channel_off": "der Sprechkanal ist in den Kameraeinstellungen ausgeschaltet",
+    "offline": "die Kamera ist offline"
+  }
+}

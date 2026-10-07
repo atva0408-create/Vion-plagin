@@ -1,0 +1,77 @@
+{
+  "minutes": {
+    "one": "minute",
+    "other": "minutes"
+  },
+  "days": {
+    "today": "today",
+    "tomorrow": "tomorrow"
+  },
+  "nudge": {
+    "break": [
+      "{name}, you have been at the computer for {session} {sessionWord}. Time for a {break} minute break, your eyes need a rest.",
+      "{name}, break time. Leave the computer now, you can come back at {next}.",
+      "{name}, you did not take your break. I have told your parents. Please leave the computer."
+    ],
+    "bedtime": [
+      "{name}, it is bedtime. Time to switch off the computer and get ready for bed.",
+      "{name}, time to sleep. Switch off the computer, you can play {day} at {next}.",
+      "{name}, it is long past bedtime. I have told your parents. Switch off the computer."
+    ],
+    "daily_limit": [
+      "{name}, your computer time for today is over. Time to do something else.",
+      "{name}, that is enough for today. Switch off the computer, you can play {day} at {next}.",
+      "{name}, your time for today ended a while ago. I have told your parents. Switch off the computer."
+    ]
+  },
+  "remaining": "{name}, the break is not over yet, {left} {leftWord} to go.",
+  "answer": {
+    "break": "{name}, you can play again at {next}, after the break.",
+    "bedtime": "{name}, you can play {day} at {next}.",
+    "daily_limit": "{name}, you can play {day} at {next}."
+  },
+  "askParents": "Only your parents can give you more time. I have passed your request on to them.",
+  "moreTimeWords": [
+    "more time",
+    "longer",
+    "allowed",
+    "extra",
+    "another hour",
+    "a bit more",
+    "more minutes"
+  ],
+  "notify": {
+    "title": "{name} at the computer",
+    "break": "{name} is not taking a break: {session} {sessionWord} at the computer.",
+    "bedtime": "{name} is at the computer at bedtime ({now}).",
+    "daily_limit": "{name} is at the computer past the daily limit: {today} {todayWord} today.",
+    "moreTimeTitle": "{name} asks for more time",
+    "moreTime": "{name} asks for more time: \"{text}\""
+  },
+  "door": {
+    "male": "{name} has arrived.",
+    "female": "{name} has arrived.",
+    "neutral": "{name} is at the door.",
+    "unknown": "There is a stranger at the door.",
+    "label": "Someone is at the door."
+  },
+  "status": {
+    "today": "Today: {duration}",
+    "free": "Now: free to play",
+    "away": "Now: not at the computer",
+    "break": "Now: break until {time}",
+    "bedtime": "Now: bedtime until {time}",
+    "daily_limit": "Now: the daily limit is used up",
+    "granted": "Now: the parents gave time until {time}",
+    "hours": "{hours} h {minutes} min",
+    "onlyMinutes": "{minutes} min"
+  },
+  "test": "Voice check. Can you hear me well?",
+  "speakerYes": "VOICE can speak through this camera.",
+  "speakerNo": "VOICE cannot speak through this camera: {reason}",
+  "problems": {
+    "no_channel": "it has no channel to its speaker",
+    "channel_off": "the talk channel is turned off in the camera settings",
+    "offline": "the camera is offline"
+  }
+}

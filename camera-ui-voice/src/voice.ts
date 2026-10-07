@@ -1,0 +1,313 @@
+/**
+ * The core of VOICE, free of the plugin host: phrases through the queue of each camera, the screen time of every child,
+ * the short conversation after a phrase, and what the status shows. The plugin (index.ts) gives it the cameras, the
+ * sensors, the clock and the outside world; tests give it fakes of the same.
+ */
+import { Severity } from '@camera.ui/sdk';
+
+import { PresenceTracker } from './presence.js';
+import { PhraseQueue } from './queue.js';
+import { ScreenTimeEngine, freshState } from './screenTime.js';
+import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, saidText, templateNotify, texts } from './speech.js';
+import { MINUTE, activeInterval, formatClock, localTime } from './time.js';
+
+import type { Notification } from '@camera.ui/sdk';
+import type { SpeechEngine } from './engine.js';
+import type { Point, Sighting } from './presence.js';
+import type { Facts, ScreenTimeAction, ScreenTimeConfig, ScreenTimeState } from './screenTime.js';
+import type { SpeakResult } from './speaker.js';
+import type { Ask, Language } from './speech.js';
+import type { Clock, WeeklyInterval } from './time.js';
+
+export interface SpeakerPort {
+  /** Why the camera cannot speak, or undefined. */
+  problem(): string | undefined;
+  speak(samples: Float32Array, sampleRate: number): Promise<SpeakResult>;
+}
+
+export interface CameraPort {
+  id: string;
+  name: string;
+  speaker: SpeakerPort;
+  zone(name: string): Point[] | undefined;
+  snapshot(): Promise<Uint8Array | undefined>;
+  /** The first utterance heard within the window. */
+  listen(windowMs: number): Promise<Float32Array | undefined>;
+}
+
+export interface VoiceDeps {
+  clock: Clock;
+  engine: SpeechEngine;
+  ask: Ask;
+  publish: (notification: Notification) => Promise<void>;
+  timeZone: () => string;
+  language: () => Language;
+  speed: () => number;
+  listenSeconds: () => number;
+  maxPerMinute: () => number;
+  quiet: () => WeeklyInterval[];
+  saveState: (state: SavedState) => Promise<void>;
+  log: (message: string) => void;
+}
+
+export interface SavedState {
+  screenTime: Record<string, ScreenTimeState>;
+}
+
+export interface Exchange {
+  at: number;
+  cameraId: string;
+  child?: string;
+  heard?: string;
+  said: string;
+  source: 'llm' | 'template' | 'owner';
+  result: string;
+}
+
+interface Scenario {
+  cameraId: string;
+  engine: ScreenTimeEngine;
+  tracker: PresenceTracker;
+}
+
+/** Recent phrases and answers kept for the parents' status; never the sound. */
+const RECENT = 20;
+const MAX_EXCHANGES = 3;
+/** The camera's microphone hears its own speaker: listening starts this long after a phrase ends. */
+export const LISTEN_DELAY_MS = 300;
+
+export class Voice {
+  private cameras = new Map<string, CameraPort>();
+  private queues = new Map<string, PhraseQueue>();
+  private scenarios = new Map<string, Scenario>();
+  private talking = new Set<string>();
+  private lastSaved = '';
+  private lastSavedAt = 0;
+  readonly recent: Exchange[] = [];
+
+  constructor(
+    private deps: VoiceDeps,
+    private saved: SavedState = { screenTime: {} },
+  ) {}
+
+  // ---- cameras ----
+
+  addCamera(camera: CameraPort): void {
+    this.cameras.set(camera.id, camera);
+  }
+
+  removeCamera(cameraId: string): void {
+    this.cameras.delete(cameraId);
+    this.queues.delete(cameraId);
+    for (const [key, scenario] of this.scenarios) if (scenario.cameraId === cameraId) this.scenarios.delete(key);
+  }
+
+  camera(cameraId: string): CameraPort | undefined {
+    return this.cameras.get(cameraId);
+  }
+
+  listCameras(): CameraPort[] {
+    return [...this.cameras.values()];
+  }
+
+  // ---- speaking ----
+
+  /** Says the text on the camera: synthesized, then queued behind earlier phrases of that camera. */
+  async say(cameraId: string, text: string, source: Exchange['source'] = 'owner'): Promise<SpeakResult> {
+    const camera = this.cameras.get(cameraId);
+    if (!camera) return { status: 'failed', reason: `unknown camera ${cameraId}` };
+    const problem = camera.speaker.problem();
+    if (problem) {
+      this.remember({ at: this.deps.clock.now(), cameraId, said: text, source, result: `no_backchannel: ${problem}` });
+      return { status: 'no_backchannel', reason: problem };
+    }
+    let queue = this.queues.get(cameraId);
+    if (!queue) {
+      queue = new PhraseQueue(this.deps.clock, this.deps.maxPerMinute, (message) => this.deps.log(`${camera.name}: ${message}`));
+      this.queues.set(cameraId, queue);
+    }
+    const result = await queue.add({
+      text,
+      run: async () => {
+        const audio = await this.deps.engine.synthesize(text, this.deps.language(), this.deps.speed());
+        return camera.speaker.speak(audio.samples, audio.sampleRate);
+      },
+    });
+    this.remember({ at: this.deps.clock.now(), cameraId, said: text, source, result: result.status + (result.reason ? `: ${result.reason}` : '') });
+    if (result.status === 'spoken') this.deps.log(`${camera.name}: said "${text}"`);
+    else this.deps.log(`${camera.name}: not said (${result.status}${result.reason ? `, ${result.reason}` : ''}): "${text}"`);
+    return result;
+  }
+
+  /** The LLM writes what to say from an instruction of the owner ("tell Artem dinner is ready"), then it is said. */
+  async sayInstructed(cameraId: string, instruction: string): Promise<SpeakResult & { text?: string }> {
+    const language = this.deps.language();
+    const result = await this.deps.ask({
+      system:
+        `You are VOICE, the voice of a home camera. Turn the owner's request into one short phrase to say aloud in ${LANGUAGE_NAMES[language]}, ` +
+        'at most 30 words, friendly and natural. Say only what the request asks, add nothing. Answer as JSON {"say": "..."}.',
+      prompt: `Request: ${JSON.stringify(instruction)}`,
+      outputSchema: { type: 'object', properties: { say: { type: 'string', maxLength: 300 } }, required: ['say'] },
+      timeoutMs: 20_000,
+    });
+    if (!result.ok) return { status: 'failed', reason: `the assistant did not answer (${result.reason})` };
+    const text = saidText(result);
+    if (!text) return { status: 'failed', reason: 'the assistant wrote nothing' };
+    return { ...(await this.say(cameraId, text, 'llm')), text };
+  }
+
+  // ---- screen time ----
+
+  /** Puts the scenarios of a camera in place; the state of a child who stays is kept. */
+  setScreenTime(cameraId: string, configs: ScreenTimeConfig[]): void {
+    const wanted = new Set(configs.map((c) => `${cameraId}/${c.id}`));
+    for (const [key, scenario] of this.scenarios) if (scenario.cameraId === cameraId && !wanted.has(key)) this.scenarios.delete(key);
+    for (const config of configs) {
+      const key = `${cameraId}/${config.id}`;
+      const existing = this.scenarios.get(key);
+      if (existing) {
+        existing.engine.config = config;
+        existing.tracker.setSource(config.source);
+        continue;
+      }
+      const state = this.saved.screenTime[key] ?? freshState(localTime(this.deps.clock.now(), this.deps.timeZone()).date);
+      this.saved.screenTime[key] = state;
+      const camera = () => this.cameras.get(cameraId);
+      this.scenarios.set(key, {
+        cameraId,
+        engine: new ScreenTimeEngine(config, state),
+        tracker: new PresenceTracker(config.source, () => camera()?.zone(config.source.zone)),
+      });
+    }
+  }
+
+  scenariosOf(cameraId: string): { key: string; engine: ScreenTimeEngine }[] {
+    return [...this.scenarios.entries()].filter(([, s]) => s.cameraId === cameraId).map(([key, s]) => ({ key, engine: s.engine }));
+  }
+
+  findScenario(cameraId: string, child?: string): { key: string; engine: ScreenTimeEngine } | undefined {
+    const all = this.scenariosOf(cameraId);
+    if (!child) return all.length === 1 ? all[0] : undefined;
+    const wanted = child.trim().toLowerCase();
+    return all.find(({ engine }) => engine.config.childName.toLowerCase() === wanted || engine.config.id === wanted);
+  }
+
+  /** One look at a camera: presence of each child, and whatever the scenarios decide. */
+  async look(cameraId: string, sighting: Sighting): Promise<void> {
+    const now = this.deps.clock.now();
+    const timeZone = this.deps.timeZone();
+    const quiet = Boolean(activeInterval(this.deps.quiet(), now, timeZone));
+    for (const [key, scenario] of this.scenarios) {
+      if (scenario.cameraId !== cameraId || !scenario.engine.config.enabled) continue;
+      const wasPresent = scenario.engine.state.present;
+      const present = scenario.tracker.look(sighting);
+      const actions = scenario.engine.tick({ now, present, name: scenario.tracker.seenName(), quiet, timeZone, language: this.deps.language() });
+      if (wasPresent && !scenario.engine.state.present) scenario.tracker.sessionEnded();
+      for (const action of actions) await this.act(key, scenario, action);
+    }
+    await this.persist(now);
+  }
+
+  /** A parent gives more time, or lets the next break go. */
+  extend(key: string, minutes: number | undefined, skipBreak: boolean): void {
+    const scenario = this.scenarios.get(key);
+    if (!scenario) throw new Error(`unknown scenario ${key}`);
+    if (minutes) scenario.engine.extend(minutes, this.deps.clock.now());
+    if (skipBreak) scenario.engine.skipBreak();
+    void this.persist(this.deps.clock.now(), true);
+  }
+
+  /** "Today: 1 h 20 min. Now: break until 18:40" for a child. */
+  statusOf(key: string): string {
+    const scenario = this.scenarios.get(key);
+    if (!scenario) return '';
+    const language = this.deps.language();
+    const t = texts(language).status;
+    const now = this.deps.clock.now();
+    const timeZone = this.deps.timeZone();
+    const { engine } = scenario;
+    const today = Math.floor(engine.state.todayMs / MINUTE);
+    const duration = today >= 60 ? fill(t.hours, { hours: Math.floor(today / 60), minutes: today % 60 }) : fill(t.onlyMinutes, { minutes: today });
+    const parts = [fill(t.today, { duration })];
+    const grant = engine.state.grantUntil;
+    const reason = engine.reason(now, timeZone);
+    if (grant !== undefined && now < grant) parts.push(fill(t.granted, { time: formatClock(grant, timeZone) }));
+    else if (reason === 'bedtime') parts.push(fill(t.bedtime, { time: engine.facts(now, { timeZone, language }).wakeAt }));
+    else if (reason === 'daily_limit') parts.push(t.daily_limit);
+    else if (reason === 'break' || (engine.state.leftAt !== undefined && engine.state.workMs >= engine.config.sessionMinutes * MINUTE)) {
+      parts.push(fill(t.break, { time: engine.facts(now, { timeZone, language }).breakEndsAt ?? '' }));
+    } else parts.push(engine.state.present ? t.free : t.away);
+    return `${engine.config.childName}: ${parts.join('. ')}`;
+  }
+
+  // ---- inside ----
+
+  private async act(key: string, scenario: Scenario, action: ScreenTimeAction): Promise<void> {
+    const language = this.deps.language();
+    const camera = this.cameras.get(scenario.cameraId);
+    if (!camera) return;
+    if (action.type === 'notify') {
+      const { title, body } = templateNotify(action.facts, language);
+      await this.notifyParents(camera, title, body, `voice:${key}`);
+      return;
+    }
+    const phrase = await nudgePhrase(this.deps.ask, action.facts, language, action.kind);
+    if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
+    const result = await this.say(camera.id, phrase.text, phrase.source);
+    if (result.status === 'spoken' && scenario.engine.config.answerQuestions && !this.talking.has(camera.id)) {
+      // the conversation runs beside the looks: the camera keeps being watched while the child answers
+      void this.converse(key, scenario, camera);
+    }
+  }
+
+  private async converse(key: string, scenario: Scenario, camera: CameraPort): Promise<void> {
+    this.talking.add(camera.id);
+    try {
+      const language = this.deps.language();
+      for (let exchange = 0; exchange < MAX_EXCHANGES; exchange++) {
+        await new Promise((resolve) => this.deps.clock.setTimeout(() => resolve(undefined), LISTEN_DELAY_MS));
+        const audio = await camera.listen(this.deps.listenSeconds() * 1000);
+        if (!audio?.length) return;
+        const heard = (await this.deps.engine.transcribe(audio, language)).trim();
+        if (!heard) return;
+        const facts: Facts = scenario.engine.facts(this.deps.clock.now(), { timeZone: this.deps.timeZone(), language });
+        const answer = await answerChild(this.deps.ask, facts, heard, language);
+        if (answer.intent === 'asks_more_time') {
+          const t = texts(language).notify;
+          const values = { name: facts.childName, text: heard };
+          await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${key}:more`);
+        }
+        const result = await this.say(camera.id, answer.text, answer.source);
+        const last = this.recent[this.recent.length - 1];
+        if (last) last.heard = heard;
+        if (last) last.child = facts.childName;
+        if (result.status !== 'spoken') return;
+      }
+    } catch (error) {
+      this.deps.log(`${camera.name}: conversation stopped: ${(error as Error).message}`);
+    } finally {
+      this.talking.delete(camera.id);
+    }
+  }
+
+  private async notifyParents(camera: CameraPort, title: string, body: string, tag: string): Promise<void> {
+    const thumbnail = await camera.snapshot().catch(() => undefined);
+    await this.deps
+      .publish({ title, body, severity: Severity.Warn, tag, ...(thumbnail ? { thumbnail } : {}) })
+      .catch((error: Error) => this.deps.log(`notification not sent: ${error.message}`));
+  }
+
+  private remember(exchange: Exchange): void {
+    this.recent.push(exchange);
+    if (this.recent.length > RECENT) this.recent.splice(0, this.recent.length - RECENT);
+  }
+
+  /** Written when something besides the clock changed, and at least once a minute while a session runs. */
+  private async persist(now: number, force = false): Promise<void> {
+    const snapshot = JSON.stringify(this.saved, (key, value: unknown) => (key === 'lastTick' ? undefined : value));
+    if (!force && snapshot === this.lastSaved && now - this.lastSavedAt < MINUTE) return;
+    this.lastSaved = snapshot;
+    this.lastSavedAt = now;
+    await this.deps.saveState(this.saved).catch((error: Error) => this.deps.log(`state not saved: ${error.message}`));
+  }
+}
