@@ -26,7 +26,7 @@ test('A-law: reference values of G.711 (as ffmpeg encodes and decodes them) and 
   assert.equal(alawEncodeSample(-32768), 0x2a);
   assert.equal(alawEncodeSample(1000), 0xfa);
   assert.equal(alawEncodeSample(-1000), 0x7a);
-  // decoding as ffmpeg's pcm_alaw decodes (checked with ffmpeg 7)
+  // decoding as ffmpeg's pcm_alaw decodes (checked with ffmpeg 6.1)
   assert.deepEqual([0xd5, 0xaa, 0x2a, 0x55, 0xfa].map(alawDecodeSample), [8, 32256, -32256, -8, 1008]);
   for (let x = -32768; x <= 32767; x += 97) {
     const back = alawDecodeSample(alawEncodeSample(x));
