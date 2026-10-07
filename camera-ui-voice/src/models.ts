@@ -5,12 +5,12 @@
  * Where each file comes from and under which license: docs/VOICE_IMPLEMENTATION.md in the ViON repository.
  */
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { closeSync, createReadStream, createWriteStream, mkdirSync, openSync, writeSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, sep } from 'node:path';
-import { Readable, Transform } from 'node:stream';
+import { Readable, Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { gunzipSync } from 'node:zlib';
+import { createGunzip } from 'node:zlib';
 
 import type { Language } from './speech.js';
 
@@ -48,12 +48,67 @@ export function modelsHost(): string {
   return (process.env.VION_MODELS_HOST ?? 'https://models.vionvision.tech').replace(/\/+$/, '');
 }
 
-/** Files of a tar archive (ustar, as `tar --format=ustar` writes), refusing paths that leave the target folder. */
-export function untar(archive: Buffer): { path: string; data: Buffer }[] {
-  const files: { path: string; data: Buffer }[] = [];
-  for (let offset = 0; offset + 512 <= archive.length;) {
-    const header = archive.subarray(offset, offset + 512);
-    if (header.every((byte) => byte === 0)) break;
+/**
+ * Unpacks a tar stream (ustar, as `tar --format=ustar` writes) into a folder as it arrives, so a 90 MB model never sits
+ * in memory whole. Entries that would leave the folder are refused.
+ */
+export class TarExtractor extends Writable {
+  private pending: Buffer = Buffer.alloc(0);
+  private file: { fd: number; left: number; pad: number } | undefined;
+  private skip = 0;
+  private ended = false;
+
+  constructor(private target: string) {
+    super();
+  }
+
+  override _write(chunk: Buffer, _encoding: BufferEncoding, done: (error?: Error | null) => void): void {
+    try {
+      this.pending = this.pending.length ? Buffer.concat([this.pending, chunk]) : chunk;
+      this.drain();
+      done();
+    } catch (error) {
+      this.closeFile();
+      done(error as Error);
+    }
+  }
+
+  override _final(done: (error?: Error | null) => void): void {
+    const cut = Boolean(this.file) || this.skip > 0 || (!this.ended && this.pending.length > 0);
+    this.closeFile();
+    done(cut ? new Error('the archive ends in the middle of a file') : null);
+  }
+
+  private drain(): void {
+    for (;;) {
+      if (this.skip) {
+        const n = Math.min(this.skip, this.pending.length);
+        this.skip -= n;
+        this.pending = this.pending.subarray(n);
+        if (this.skip) return;
+      }
+      if (this.file) {
+        const n = Math.min(this.file.left, this.pending.length);
+        if (n) writeSync(this.file.fd, this.pending, 0, n);
+        this.file.left -= n;
+        this.pending = this.pending.subarray(n);
+        if (this.file.left) return;
+        this.skip = this.file.pad;
+        this.closeFile();
+        continue;
+      }
+      if (this.ended || this.pending.length < 512) return;
+      const header = this.pending.subarray(0, 512);
+      this.pending = this.pending.subarray(512);
+      if (header.every((byte) => byte === 0)) {
+        this.ended = true;
+        return;
+      }
+      this.entry(header);
+    }
+  }
+
+  private entry(header: Buffer): void {
     const text = (start: number, length: number) =>
       header
         .subarray(start, start + length)
@@ -63,17 +118,24 @@ export function untar(archive: Buffer): { path: string; data: Buffer }[] {
     const type = text(156, 1) || '0';
     const prefix = header.subarray(257, 263).toString('latin1').startsWith('ustar') ? text(345, 155) : '';
     const name = prefix ? `${prefix}/${text(0, 100)}` : text(0, 100);
-    const body = offset + 512;
-    if (type === '0' || type === '\0') {
-      const path = normalize(name).replace(/^(\.\/)+/, '');
-      if (!path || isAbsolute(path) || path.split(sep).includes('..')) throw new Error(`archive entry outside the folder: ${name}`);
-      files.push({ path, data: archive.subarray(body, body + size) });
-    } else if (type !== '5') {
-      throw new Error(`unsupported archive entry ${name} (type ${type})`);
+    const pad = Math.ceil(size / 512) * 512 - size;
+    if (type === '5') return;
+    if (type !== '0') throw new Error(`unsupported archive entry ${name} (type ${type})`);
+    const path = normalize(name).replace(/^(\.\/)+/, '');
+    if (!path || isAbsolute(path) || path.split(sep).includes('..')) throw new Error(`archive entry outside the folder: ${name}`);
+    const full = join(this.target, path);
+    mkdirSync(dirname(full), { recursive: true });
+    this.file = { fd: openSync(full, 'w'), left: size, pad };
+    if (!size) {
+      this.closeFile();
+      this.skip = pad;
     }
-    offset = body + Math.ceil(size / 512) * 512;
   }
-  return files;
+
+  private closeFile(): void {
+    if (this.file) closeSync(this.file.fd);
+    this.file = undefined;
+  }
 }
 
 export type Fetcher = (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
@@ -136,11 +198,7 @@ export class ModelStore {
       if (sha256 !== pack.sha256) throw new Error(`${url}: checksum mismatch`);
 
       await rm(unpacking, { recursive: true, force: true });
-      for (const file of untar(gunzipSync(await readFile(part)))) {
-        const path = join(unpacking, file.path);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, file.data);
-      }
+      await pipeline(createReadStream(part), createGunzip(), new TarExtractor(unpacking));
       await writeFile(join(unpacking, '.sha256'), pack.sha256);
       await rm(target, { recursive: true, force: true });
       await rename(unpacking, target);

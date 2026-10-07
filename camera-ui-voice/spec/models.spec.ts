@@ -6,9 +6,11 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { gunzipSync, gzipSync } from 'node:zlib';
 
-import { ModelStore, untar } from '../src/models.js';
+import { ModelStore, TarExtractor } from '../src/models.js';
 import { runTests, test } from './helpers.js';
 
 import type { AddressInfo } from 'node:net';
@@ -82,7 +84,7 @@ test('two callers at once share one download', async () => {
   assert.equal(requests, 1);
 });
 
-test('an archive entry that leaves the folder is refused', () => {
+test('an archive entry that leaves the folder is refused, and nothing is written outside', async () => {
   const header = Buffer.alloc(512);
   header.write('../evil.txt', 0);
   header.write('0000644\0', 100);
@@ -90,7 +92,22 @@ test('an archive entry that leaves the folder is refused', () => {
   header.write('0', 156);
   header.write('ustar\0', 257);
   const tar = Buffer.concat([header, Buffer.from('evil'.padEnd(512, '\0')), Buffer.alloc(1024)]);
-  assert.throws(() => untar(tar), /outside the folder/);
+  const root = mkdtempSync(join(tmpdir(), 'voice-models-'));
+  const target = join(root, 'pack');
+  await assert.rejects(pipeline(Readable.from([tar]), new TarExtractor(target)), /outside the folder/);
+  assert.deepEqual(readdirSync(root), []);
+});
+
+test('the archive is unpacked as it streams, in pieces of any size', async () => {
+  const tar = gunzipSync(archive({ 'big.bin': 'x'.repeat(70_000), 'dir/small.txt': 'ok', 'empty.txt': '' }));
+  const target = mkdtempSync(join(tmpdir(), 'voice-unpack-'));
+  const pieces = [];
+  for (let i = 0; i < tar.length; i += 777) pieces.push(tar.subarray(i, i + 777));
+  await pipeline(Readable.from(pieces), new TarExtractor(target));
+  assert.equal(readFileSync(join(target, 'big.bin'), 'utf8').length, 70_000);
+  assert.equal(readFileSync(join(target, 'dir', 'small.txt'), 'utf8'), 'ok');
+  assert.equal(readFileSync(join(target, 'empty.txt'), 'utf8'), '');
+  await assert.rejects(pipeline(Readable.from([tar.subarray(0, 40_000)]), new TarExtractor(mkdtempSync(join(tmpdir(), 'voice-cut-')))), /ends in the middle/);
 });
 
 await runTests();
