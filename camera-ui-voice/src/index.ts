@@ -69,11 +69,12 @@ const LOOK_EVERY_MS = 5_000;
 /** A name or an attribute from an event counts for presence this long. */
 const SEEN_FOR_MS = 2 * 60_000;
 /**
- * Boxes not changed by a byte for this long are a picture that stopped, not a child: a camera that lost its Wi-Fi stays
- * "connected" (go2rtc keeps the session, the camera plugins never report a stall) and its sensor keeps the last boxes.
- * A child at the computer moves, and any motion runs the detector again, which changes the boxes.
+ * Boxes not changed by a byte for this long are a picture that stopped: a camera that lost its Wi-Fi stays "connected"
+ * (go2rtc keeps the session, the camera plugins never report a stall) and its sensor keeps the last boxes, which
+ * counted a whole night at the computer. Not shorter: without motion the detector does not run at all (cascade), so a
+ * child watching a video almost still has the same boxes too, and at 10 minutes got a free break without standing up.
  */
-const FROZEN_MS = 10 * 60_000;
+const FROZEN_MS = 60 * 60_000;
 
 export default class VoicePlugin extends BasePlugin<PluginValues> implements NotifierInterface, AssistantToolProvider {
   private cameras = new Map<string, CameraEntry>();

@@ -93,9 +93,10 @@ const words = (text: string) =>
     .filter(Boolean);
 
 /**
- * What the microphone heard is the camera's own phrase coming back, not the child: a run of the phrase's words, in its
- * order, makes most of what was heard. Shared words are not enough: "когда можно играть" after "…играть можно будет
- * завтра" is the child's question, and taken for an echo it went unanswered. One word is never an echo: a "да" is.
+ * What the microphone heard is the camera's own phrase coming back, not the child: a run of three or more of the
+ * phrase's words, in its order, makes most of what was heard. Shared words are not enough: "когда можно играть" after
+ * "…играть можно будет завтра" is the child's question, and taken for an echo it went unanswered; nor two words in a
+ * row: "ещё десять минут" after "…перерыв на десять минут" is the child asking for more time.
  */
 export function isEcho(heard: string, said: string | undefined): boolean {
   if (!said) return false;
@@ -109,7 +110,7 @@ export function isEcho(heard: string, said: string | undefined): boolean {
       longest = Math.max(longest, run);
     }
   }
-  return longest >= 2 && longest / got.length >= 0.6;
+  return longest >= 3 && longest / got.length >= 0.6;
 }
 
 export class Voice {

@@ -439,12 +439,12 @@ test('VOICE is blind, not "nobody there", while the camera is offline, snoozed, 
   assert.equal(plugin.sighting(entry), undefined, 'the analysis of the camera stopped');
   s.kids.device.frameWorkerConnected = true;
 
-  // the camera lost its Wi-Fi but stays "connected": the same boxes, not changed for 10 minutes
+  // the camera lost its Wi-Fi but stays "connected": the same boxes, not changed for an hour
   assert.equal(plugin.sighting(entry).detections.length, 1);
-  entry.boxes.since -= 9 * 60_000;
-  assert.equal(plugin.sighting(entry).detections.length, 1, '9 minutes still: a child sitting still');
-  entry.boxes.since -= 2 * 60_000;
-  assert.equal(plugin.sighting(entry), undefined, 'frozen for 11 minutes: a picture that stopped');
+  entry.boxes.since -= 50 * 60_000;
+  assert.equal(plugin.sighting(entry).detections.length, 1, '50 minutes the same boxes: a child sitting still, the detector does not run without motion');
+  entry.boxes.since -= 11 * 60_000;
+  assert.equal(plugin.sighting(entry), undefined, 'frozen for 61 minutes: a picture that stopped');
   trackAge++;
   assert.equal(plugin.sighting(entry).detections.length, 1, 'the detector ran again: sight is back');
 

@@ -197,6 +197,8 @@ test('VOICE hearing its own phrase is no answer of the child', async () => {
   assert.equal(isEcho('когда можно играть', 'Артём, на сегодня хватит. Выключи компьютер, играть можно будет завтра в 08:30.'), false);
   assert.equal(isEcho('можно ещё поиграть', 'Артём, пора спать. Выключи компьютер, поиграть можно завтра в 07:30.'), false);
   assert.equal(isEcho('да', 'Артём, да, пора спать.'), false, 'one word is the child');
+  // a phrase the assistant wrote with the number in words: the child's request shares two words in a row with it
+  assert.equal(isEcho('ещё десять минут', 'Артём, ты играешь уже 45 минут. Сделай перерыв на десять минут, глазам нужен отдых.'), false);
   assert.equal(isEcho('поиграть можно завтра', 'Артём, пора спать. Выключи компьютер, поиграть можно завтра в 07:30.'), true, 'the tail of the phrase');
   const s = await setup(unconfigured, { answerQuestions: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T21:29:00'));
   s.camera.answers.push(new Float32Array(16_000));
