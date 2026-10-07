@@ -56,6 +56,8 @@ export interface ScreenTimeState {
   /** Limits are lifted until then: a parent gave more time. */
   grantUntil?: number;
   name?: string;
+  /** The module attribute was seen "yes" in this session: kept over a restart like the name. */
+  attributeYes?: boolean;
 }
 
 export interface Facts {
@@ -92,8 +94,10 @@ const HISTORY_DAYS = 30;
 
 export interface TickInput {
   now: number;
-  present: boolean;
+  /** undefined: the camera or its detector is not there, nothing is known of the child. */
+  present: boolean | undefined;
   name?: string;
+  attributeYes?: boolean;
   /** VOICE quiet hours: nothing is said except about bedtime. */
   quiet: boolean;
   timeZone: string;
@@ -114,10 +118,22 @@ export class ScreenTimeEngine {
     s.lastTick = now;
     this.rollDate(now, timeZone);
 
+    if (input.present === undefined) {
+      // a camera that dropped (Wi-Fi, a crashed detector) keeps the last boxes of a still child for hours: they counted
+      // as a night at the computer, the next day's limit was spent and the parents were told. While VOICE is blind the
+      // clock of the scenario stands still: no time at the computer, no time away, no step of the escalation.
+      if (s.lastSeen !== undefined) s.lastSeen += step;
+      if (s.candidateSince !== undefined) s.candidateSince += step;
+      if (!s.present && s.leftAt !== undefined) s.leftAt += step;
+      if (s.escalation) s.escalation.at += step;
+      return [];
+    }
+
     if (input.present) {
       s.lastSeen = now;
       s.candidateSince ??= now;
       if (input.name) s.name = input.name;
+      if (input.attributeYes !== undefined) s.attributeYes = input.attributeYes;
     } else {
       s.candidateSince = undefined;
     }
@@ -126,13 +142,15 @@ export class ScreenTimeEngine {
     let returnedDuringBreak = false;
     if (s.present) {
       if (now - (s.lastSeen ?? now) < this.config.gapSeconds * 1000) {
-        this.count(step, now, timeZone);
+        // a short absence keeps the session, but is not time at the computer: it was counted and never taken back
+        if (input.present) this.count(step, now, timeZone);
       } else {
         // away longer than the gap: the session is over, the break starts when the child was last seen
         s.present = false;
         s.leftAt = s.lastSeen;
         s.escalation = undefined;
         s.name = undefined;
+        s.attributeYes = undefined;
       }
     } else if (s.candidateSince !== undefined && now - s.candidateSince >= this.config.minPresenceSeconds * 1000) {
       s.present = true;

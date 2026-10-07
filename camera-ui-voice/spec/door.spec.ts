@@ -154,4 +154,90 @@ test('11h. the quiet hours of VOICE silence the door too', async () => {
   assert.equal(s.said.length, 0);
 });
 
+/** An event as the server sends it: started by motion, no segment yet. */
+function motionStart(id: string): DetectionEvent {
+  return {
+    id,
+    cameraId: 'door',
+    state: 'active',
+    startTime: 0,
+    lastUpdate: 0,
+    types: ['motion'],
+    triggers: [{ type: 'motion' as never, firstSeen: 0, lastSeen: 0 }],
+    segments: [],
+  };
+}
+const withPerson = (event: DetectionEvent, face?: string): DetectionEvent => ({
+  ...event,
+  segments: [{ firstSeen: 0, lastSeen: 0, detections: [{ label: 'person', score: 0.9, maxCount: 1 }], attributes: face ? [{ type: 'face', label: face }] : [] }],
+});
+
+test('the order the server sends: a motion start, the person in a segment message, then updates with no segment', async () => {
+  const s = setup({}, [{ name: 'папа', gender: 'male' }]);
+  const start = motionStart('real-1');
+  s.watcher.onEvent('start', start);
+  await s.clock.advance(500);
+  s.watcher.onEvent('segment-start', withPerson(start, 'папа'));
+  await s.clock.advance(300);
+  // a thumbnail or keep-alive update carries no segments again
+  s.watcher.onEvent('update', start);
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.deepEqual(
+    s.said.map((x) => x.text),
+    ['Пришёл папа.'],
+  );
+});
+
+test('a person the detector finds 3 s after the start is announced, the wait for a face counted from then', async () => {
+  const s = setup();
+  const start = motionStart('slow-1');
+  s.watcher.onEvent('start', start);
+  await s.clock.advance(3_000);
+  assert.equal(s.said.length, 0, 'nobody yet: motion only');
+  s.watcher.onEvent('segment-start', withPerson(start));
+  await s.clock.advance(1_000);
+  s.watcher.onEvent('segment-update', withPerson(start, 'unknown'));
+  await s.clock.advance(FACE_WAIT_MS);
+  assert.deepEqual(
+    s.said.map((x) => x.text),
+    ['У двери незнакомый человек.'],
+  );
+  // the rest of the event says nothing again
+  s.watcher.onEvent('segment-update', withPerson(start, 'unknown'));
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(s.said.length, 1);
+});
+
+test('a decided event is kept 10 minutes, then forgotten; stop() leaves no timer behind', async () => {
+  const s = setup();
+  const e = event('Оля');
+  s.watcher.onEvent('start', e);
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(s.said.length, 1);
+  const timers = () => (s.clock as unknown as { timers: unknown[] }).timers.length;
+  assert.equal(timers(), 1, 'the forget timer');
+  s.watcher.stop();
+  assert.equal(timers(), 0, 'a stopped plugin keeps no timer: its process can end');
+
+  const later = setup({ cooldownSeconds: 0 });
+  later.watcher.onEvent('start', e);
+  await later.clock.advance(FACE_WAIT_MS + 10);
+  await later.clock.advance(9 * 60_000);
+  later.watcher.onEvent('update', e);
+  await later.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(later.said.length, 1, 'within 10 minutes the event is still decided');
+  await later.clock.advance(2 * 60_000);
+  assert.equal((later.clock as unknown as { timers: unknown[] }).timers.length, 0, 'forgotten');
+});
+
+test('a motion event that never shows a person says nothing and is forgotten at its end', async () => {
+  const s = setup();
+  const start = motionStart('cat-1');
+  s.watcher.onEvent('start', start);
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  s.watcher.onEvent('end', start);
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(s.said.length, 0);
+});
+
 void runTests();

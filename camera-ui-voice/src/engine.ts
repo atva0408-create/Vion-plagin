@@ -159,13 +159,20 @@ export class SherpaEngine implements SpeechEngine {
         this.log(`speech model ${String(key)} loaded in ${Date.now() - started} ms`);
         return loaded;
       });
-      entry = { value };
-      cache.set(key, entry);
-      value.catch(() => cache.delete(key));
+      const created: Loaded<Promise<T>> = { value };
+      entry = created;
+      cache.set(key, created);
+      // only this entry: the timer of a load that failed later took out the good one loaded after it
+      value.catch(() => {
+        clearTimeout(created.timer);
+        if (cache.get(key) === created) cache.delete(key);
+      });
     }
     clearTimeout(entry.timer);
+    const current = entry;
     // the native memory goes with the object
     entry.timer = setTimeout(() => {
+      if (cache.get(key) !== current) return;
       cache.delete(key);
       this.log(`speech model ${String(key)} unloaded`);
     }, IDLE_UNLOAD_MS);

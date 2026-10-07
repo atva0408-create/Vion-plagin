@@ -15,6 +15,8 @@ export interface ScreenTimeValues {
   enabled?: boolean;
   childName?: string;
   zone?: string;
+  /** VOICE's own area of the computer: "x, y, width, height" in percent. */
+  area?: string;
   sessionMinutes?: number;
   breakMinutes?: number;
   dailyMinutes?: number;
@@ -76,8 +78,11 @@ export function checkScreenTime(values: ScreenTimeValues, zones: string[]): Chec
   const v = { ...SCREEN_TIME_DEFAULTS, ...dropEmpty(values) };
   const name = (v.childName ?? '').trim();
   if (!name) errors.push('childName: the name the child is called by is required');
-  if (!v.zone) errors.push(`zone: choose the zone of the computer${zones.length ? ` (${zones.join(', ')})` : '; the camera has no object zones yet, draw one first'}`);
-  else if (!zones.includes(v.zone)) errors.push(`zone: "${v.zone}" is not a zone of this camera${zones.length ? ` (${zones.join(', ')})` : ''}`);
+  // no zone and no area: the whole picture. A zone drawn only for VOICE would limit where the camera detects at all.
+  if (v.zone && !zones.includes(v.zone)) errors.push(`zone: "${v.zone}" is not a zone of this camera${zones.length ? ` (${zones.join(', ')})` : ''}`);
+  const area = parseArea(v.area);
+  if (v.area?.trim() && !area) errors.push('area: four numbers in percent of the picture, "x, y, width, height", e.g. "0, 30, 50, 60", inside the picture');
+  if (v.zone && v.area?.trim()) errors.push('zone/area: give the zone of the camera or an area of VOICE, not both');
   for (const [key, [min, max]] of Object.entries(LIMITS) as [keyof ScreenTimeValues, [number, number]][]) {
     const n = v[key];
     if (typeof n !== 'number' || !Number.isFinite(n) || n < min || n > max) errors.push(`${key}: a number from ${min} to ${max}`);
@@ -99,7 +104,8 @@ export function checkScreenTime(values: ScreenTimeValues, zones: string[]): Chec
   const free = DAYS.filter((d) => !school.includes(d));
   if (v.freeFrom && v.freeTo && free.length) bedtime.push({ days: free, from: v.freeFrom, to: v.freeTo });
   const source: PresenceSource = {
-    zone: v.zone!,
+    ...(v.zone ? { zone: v.zone } : {}),
+    ...(area ? { area } : {}),
     labels: v.labels,
     ...(v.face?.trim() ? { face: v.face.trim() } : {}),
     ...(v.attribute?.trim() ? { attribute: v.attribute.trim() } : {}),
@@ -123,6 +129,19 @@ export function checkScreenTime(values: ScreenTimeValues, zones: string[]): Chec
       gapSeconds: v.gapSeconds,
     },
   };
+}
+
+/** "x, y, width, height" in percent of the picture, inside it; undefined when empty or not that. */
+export function parseArea(text: string | undefined): { x: number; y: number; width: number; height: number } | undefined {
+  if (!text?.trim()) return undefined;
+  const parts = text
+    .split(/[,;\s]+/)
+    .filter(Boolean)
+    .map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n) || n < 0 || n > 100)) return undefined;
+  const [x, y, width, height] = parts;
+  if (width <= 0 || height <= 0 || x + width > 100 || y + height > 100) return undefined;
+  return { x, y, width, height };
 }
 
 function dropEmpty(values: ScreenTimeValues): ScreenTimeValues {
@@ -157,6 +176,7 @@ export interface PersonValues {
 }
 
 export interface PluginValues {
+  timeZone?: string;
   language?: string;
   speed?: number;
   listenSeconds?: number;

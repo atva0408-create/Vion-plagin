@@ -44,40 +44,66 @@ export function labelsOf(event: DetectionEvent): string[] {
   return [...out];
 }
 
+/** What an event of a door camera showed so far, gathered over its messages. */
+interface Seen {
+  cameraId: string;
+  labels: Set<string>;
+  faces: Set<string>;
+  timer?: unknown;
+  /** Decided (said or not): later messages of the event change nothing. */
+  done: boolean;
+}
+
 export class DoorWatcher {
-  private pending = new Map<string, { event: DetectionEvent; timer: unknown }>();
+  private events = new Map<string, Seen>();
   private lastSaid = new Map<string, number>();
 
   constructor(private deps: DoorDeps) {}
 
-  /** Every event of every camera passes here; only the start of an event at a door camera leads to speech. */
+  /**
+   * Every message of every event passes here. The server starts an event with the motion and no segment, sends the
+   * person in a later segment message, and then updates that carry no segments again: deciding on the last message,
+   * once, 2.5 s after the start, said nothing for a person who came a moment later. So what each message shows is
+   * gathered, and the wait for a face starts when the first box of a rule's label arrives.
+   */
   onEvent(type: DetectionEventType, event: DetectionEvent): void {
-    const waiting = this.pending.get(event.id);
-    if (waiting) {
-      waiting.event = event;
-      return;
+    let seen = this.events.get(event.id);
+    if (!seen) {
+      if (type === 'end' || !this.deps.rules().some((rule) => rule.doorCameras.includes(event.cameraId))) return;
+      seen = { cameraId: event.cameraId, labels: new Set(), faces: new Set(), done: false };
+      this.events.set(event.id, seen);
     }
-    if (type !== 'start') return;
-    if (!this.deps.rules().some((rule) => rule.doorCameras.includes(event.cameraId))) return;
-    const timer = this.deps.clock.setTimeout(() => void this.decide(event.id), FACE_WAIT_MS);
-    this.pending.set(event.id, { event, timer });
+    for (const label of labelsOf(event)) seen.labels.add(label);
+    for (const face of facesOf(event)) seen.faces.add(face);
+    if (!seen.done && seen.timer === undefined && this.wanted(seen)) {
+      seen.timer = this.deps.clock.setTimeout(() => void this.decide(event.id), FACE_WAIT_MS);
+    }
+    // an event that ended without anyone the rules want is forgotten; a decision under way finishes first
+    if (type === 'end' && seen.timer === undefined) this.events.delete(event.id);
   }
 
   /** Waiting decisions are dropped: the plugin stops. */
   stop(): void {
-    for (const { timer } of this.pending.values()) this.deps.clock.clearTimeout(timer);
-    this.pending.clear();
+    for (const { timer } of this.events.values()) if (timer !== undefined) this.deps.clock.clearTimeout(timer);
+    this.events.clear();
+  }
+
+  private wanted(seen: Seen): boolean {
+    return this.deps.rules().some((rule) => rule.doorCameras.includes(seen.cameraId) && rule.labels.some((label) => seen.labels.has(label)));
   }
 
   private async decide(eventId: string): Promise<void> {
-    const entry = this.pending.get(eventId);
-    this.pending.delete(eventId);
-    if (!entry) return;
-    const { event } = entry;
+    const seen = this.events.get(eventId);
+    if (!seen || seen.done) return;
+    seen.done = true;
+    // kept a while as decided, so the rest of the event does not start it again; then forgotten. Held in seen.timer
+    // so stop() clears it: a pending forget kept a stopped plugin's process alive for 10 minutes
+    seen.timer = this.deps.clock.setTimeout(() => this.events.delete(eventId), 10 * 60_000);
+    const event = { cameraId: seen.cameraId };
     const now = this.deps.clock.now();
     const language = this.deps.language();
-    const labels = labelsOf(event);
-    const faces = facesOf(event);
+    const labels = [...seen.labels];
+    const faces = [...seen.faces];
     const known = faces.find((face) => face !== 'unknown');
 
     for (const [index, rule] of this.deps.rules().entries()) {
@@ -101,10 +127,13 @@ export class DoorWatcher {
         });
         if (description) text = description;
       }
-      for (const speaker of rule.speakers) {
-        const result = await this.deps.say(speaker, text);
-        if (result.status !== 'spoken') this.deps.log(`door: ${speaker}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
-      }
+      // every room at once: one after the other, the last room heard it seconds late
+      await Promise.all(
+        rule.speakers.map(async (speaker) => {
+          const result = await this.deps.say(speaker, text);
+          if (result.status !== 'spoken') this.deps.log(`door: ${speaker}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+        }),
+      );
     }
   }
 

@@ -54,8 +54,8 @@ export const TOOLS: AssistantToolSpec[] = [
   {
     name: 'voice_set_screen_time',
     description:
-      'Create or change the screen-time scenario of one child at one camera, in one call with all values the owner gave: who, which zone of the ' +
-      'camera is the computer, how long to play before a break, how long the break is, a daily limit, bedtime. Values not given keep their current ' +
+      'Create or change the screen-time scenario of one child at one camera, in one call with all values the owner gave: who, where the computer is in the picture, ' +
+      'how long to play before a break, how long the break is, a daily limit, bedtime. Values not given keep their current ' +
       'value (defaults for a new scenario: break every 45 min for 10 min, no daily limit, school nights 21:30-07:30, free nights 22:30-08:30). ' +
       'If the owner gave a bedtime but no wake-up time, keep the current wake-up time and say so in your answer.',
     inputSchema: {
@@ -63,7 +63,18 @@ export const TOOLS: AssistantToolSpec[] = [
       properties: {
         camera: CAMERA,
         child: { type: 'string', description: 'The name the child is called by, e.g. "Артём".' },
-        zone: { type: 'string', description: 'The object zone of the camera where the computer is; voice_status lists the zones.' },
+        zone: {
+          type: 'string',
+          description:
+            'An object zone of the camera around the computer (voice_status lists them). Omit with area for the whole picture. ' +
+            'An object zone also limits where the camera detects at all: never ask the owner to draw one for VOICE, use area.',
+        },
+        area: {
+          type: 'string',
+          description:
+            'The own area of VOICE around the computer, "x, y, width, height" in percent of the picture from the top left, e.g. "0, 30, 50, 60"; ' +
+            'read it off get_camera_snapshot when the owner names a place. Empty string removes it.',
+        },
         sessionMinutes: { type: 'integer', minimum: 5, maximum: 240, description: 'Minutes at the computer before a break.' },
         breakMinutes: { type: 'integer', minimum: 3, maximum: 120, description: 'Length of the break in minutes.' },
         dailyMinutes: { type: 'integer', minimum: 0, maximum: 1440, description: 'Minutes a day at most; 0 for no daily limit.' },
@@ -240,6 +251,7 @@ async function setScreenTime(host: ToolHost, input: Record<string, unknown>): Pr
   const changes: ScreenTimeValues = {};
   for (const key of [
     'zone',
+    'area',
     'sessionMinutes',
     'breakMinutes',
     'dailyMinutes',

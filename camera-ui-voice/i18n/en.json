@@ -126,5 +126,11 @@
   "Phrase": "Phrase",
   "What VOICE says.": "What VOICE says.",
   "Let the assistant phrase it": "Let the assistant phrase it",
-  "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase.": "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase."
+  "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase.": "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase.",
+  "Time zone": "Time zone",
+  "The time zone of the household, e.g. Europe/Moscow: bedtimes and quiet hours follow it. Empty: the time zone of the server.": "The time zone of the household, e.g. Europe/Moscow: bedtimes and quiet hours follow it. Empty: the time zone of the server.",
+  "Optional: an object zone of this camera around the computer. An object zone also limits where the camera detects at all, so do not draw one only for VOICE: use the area below, or leave both empty for the whole picture.": "Optional: an object zone of this camera around the computer. An object zone also limits where the camera detects at all, so do not draw one only for VOICE: use the area below, or leave both empty for the whole picture.",
+  "Computer area, %": "Computer area, %",
+  "Optional: the part of the picture with the computer, \"x, y, width, height\" in percent from the top left, e.g. 0, 30, 50, 60. Empty: the whole picture.": "Optional: the part of the picture with the computer, \"x, y, width, height\" in percent from the top left, e.g. 0, 30, 50, 60. Empty: the whole picture.",
+  "0, 30, 50, 60": "0, 30, 50, 60"
 }

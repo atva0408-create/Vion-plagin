@@ -1,9 +1,9 @@
 // The whole plugin with a fake host: cameras with and without a speaker, the notification channel, the assistant
 // tools, the buttons of the camera drawer. Run: npx tsx spec/plugin.spec.ts
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import VoicePlugin from '../src/index.js';
 import { TOOLS } from '../src/tools.js';
@@ -191,7 +191,8 @@ test('9. a camera without a talk channel: no scenario there, voice_speakers says
 
 test('12. notifications: a speaker that is off says nothing, one that is on says only what is addressed to it, silent ones never', async () => {
   const s = await setup();
-  const devices = await s.plugin.getDevices(['owner']);
+  // the admins' list (no owner filter)
+  const devices = await s.plugin.getDevices([]);
   assert.deepEqual(
     devices.map((d) => [d.id, d.active]),
     [['voice:kids', false]],
@@ -209,7 +210,7 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
   assert.deepEqual(s.engine.said, ['Ужин. готов']);
 
   assert.deepEqual(
-    (await s.plugin.getDevices(['owner'])).map((d) => d.active),
+    (await s.plugin.getDevices([])).map((d) => d.active),
     [false],
     'still inactive when it speaks',
   );
@@ -367,6 +368,8 @@ test('door events of the cameras reach the door rules', async () => {
   await new Promise((resolve) => setTimeout(resolve, 2_700));
   await flush();
   assert.deepEqual(s.engine.said, ['У двери незнакомый человек.']);
+  // the shutdown of the server clears the timers of the door: the process ends
+  s.stop();
 });
 
 test('after a server restart the talk channel is known only later: screen time switches on then', async () => {
@@ -391,10 +394,77 @@ test('a camera that is offline for a while keeps its scenario: it speaks again w
   assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 1);
 });
 
-test('the notification device has the same owner when asked for alone', async () => {
+test('the speakers belong to no user: not the target of "send me a notification", not seen or switched by a non-admin', async () => {
   const s = await setup();
-  const [listed] = await s.plugin.getDevices(['user-1']);
-  assert.equal((await s.plugin.getDevice(listed.id))?.ownerUserId, 'user-1');
+  assert.deepEqual(await s.plugin.getDevices(['user-1']), [], 'a user (or the fan-out to users) gets no speaker');
+  const [listed] = await s.plugin.getDevices([]);
+  assert.equal(listed.ownerUserId, '');
+  assert.equal((await s.plugin.getDevice(listed.id))?.ownerUserId, '', 'asked for alone, the same');
+});
+
+test('a notification too long to be said is not said', async () => {
+  const s = await setup();
+  await s.plugin.updateDevice('voice:kids', { active: true });
+  await s.plugin.sendNotification(['voice:kids'], { title: 'Отчёт', body: 'слово '.repeat(80) });
+  assert.equal(s.engine.said.length, 0);
+  assert.ok(s.logs.some((line) => /not said: \d+ characters/.test(line)));
+});
+
+test('VOICE is blind, not "nobody there", while the camera is offline or its object detection is gone', async () => {
+  const s = await setup();
+  const plugin = s.plugin as any;
+  const sensor = {
+    id: 'obj',
+    type: 'object',
+    connected: true,
+    assignedCameraIds: ['kids'],
+    getValue: (key: string) => (key === 'staticDetections' ? [{ label: 'person', box: { x: 0.1, y: 0.2, width: 0.2, height: 0.5 } }] : []),
+  };
+  await s.plugin.onSensorAdded(sensor as never);
+  const entry = plugin.cameras.get('kids');
+  assert.equal(plugin.sighting(entry).detections.length, 1, 'a still child in the static boxes');
+  sensor.connected = false;
+  assert.equal(plugin.sighting(entry), undefined, 'the detector is gone: its last boxes are no presence');
+  sensor.connected = true;
+  s.kids.device.connected = false;
+  assert.equal(plugin.sighting(entry), undefined, 'the camera is offline');
+  s.kids.device.connected = true;
+  await s.plugin.onSensorReleased('obj');
+  assert.equal(plugin.sighting(entry), undefined, 'no object detection on the camera at all');
+});
+
+test('a door rule keeps its other rooms when one speaker is offline', async () => {
+  const s = await setup();
+  const third = camera('hall', 'Прихожая', true);
+  await s.plugin.configureCameras([third.device]);
+  await s.pluginStorage.setValue('doorRules', [{ doorCameras: ['door'], speakers: ['kids', 'hall'] }]);
+  s.kids.device.connected = false;
+  const rules = (s.plugin as any).doorRules();
+  assert.equal(rules.length, 1);
+  assert.deepEqual(rules[0].speakers, ['kids', 'hall']);
+});
+
+test('state writes one after the other: the last asked lands last, even after a slow big one, and no temporary file stays', async () => {
+  const s = await setup();
+  const plugin = s.plugin as any;
+  // the first write takes longer: written at once, the older state renamed over the newer one
+  const big = { screenTime: { a: 'x'.repeat(20_000_000) } };
+  await Promise.all([plugin.saveState(big), plugin.saveState({ screenTime: { b: 2 } }), plugin.saveState({ screenTime: { c: 3 } })]);
+  const dir = dirname(plugin.stateFile);
+  assert.deepEqual(JSON.parse(readFileSync(plugin.stateFile, 'utf8')), { screenTime: { c: 3 } });
+  assert.deepEqual(
+    readdirSync(dir).filter((name) => name.endsWith('.tmp')),
+    [],
+  );
+});
+
+test('the time zone of the household: the setting, else the server; a wrong name is not taken', async () => {
+  const s = await setup();
+  const plugin = s.plugin as any;
+  await s.pluginStorage.setValue('timeZone', 'Asia/Vladivostok');
+  assert.equal(plugin.timeZone(), 'Asia/Vladivostok');
+  await s.pluginStorage.setValue('timeZone', 'Mars/Olympus');
+  assert.equal(plugin.timeZone(), Intl.DateTimeFormat().resolvedOptions().timeZone);
 });
 
 void runTests();

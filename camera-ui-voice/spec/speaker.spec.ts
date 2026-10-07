@@ -173,4 +173,63 @@ test('a talk channel that fails to start does not leave the camera stream open',
   assert.equal(stopped, 1, 'the stream opened for the phrase is stopped');
 });
 
+test('a packet the server refuses fails the phrase, in the middle or as the last one', async () => {
+  for (const failing of [2, 3]) {
+    const clock = new FakeClock(0);
+    let calls = 0;
+    const packets = [Buffer.alloc(1), Buffer.alloc(1), Buffer.alloc(1)];
+    const done = sendPaced(
+      packets,
+      async () => {
+        if (++calls === failing) throw new Error('backchannel closed');
+      },
+      clock,
+    ).then(
+      () => 'said',
+      (error: Error) => error.message,
+    );
+    await clock.advance(200);
+    assert.equal(await done, 'backchannel closed', `packet ${failing} refused`);
+  }
+});
+
+test('a talk channel the server ends during a phrase: the phrase failed, and the next one opens a new channel', async () => {
+  const { CameraSpeaker } = await import('../src/speaker.js');
+  let opened = 0;
+  const source = {
+    backchannelAudioCodec: 'opus',
+    createRtpSession: () => {
+      const session = ++opened;
+      const ended = new Set<() => void>();
+      let sent = 0;
+      return {
+        hasBackchannel: true,
+        onError: { subscribe: () => ({ unsubscribe() {} }) },
+        onEnded: {
+          subscribe: (listener: () => void) => {
+            ended.add(listener);
+            return { unsubscribe() {} };
+          },
+        },
+        startStream: async () => undefined,
+        startBackchannel: async () => undefined,
+        // the first channel ends after its third packet; the server drops the rest without an error
+        sendAudioPacket: async () => {
+          if (session === 1 && ++sent === 3) ended.forEach((listener) => listener());
+        },
+        stop: async () => undefined,
+      };
+    },
+  };
+  const clock = new FakeClock(0);
+  const speaker = new CameraSpeaker({ name: 'Детская', connected: true, sources: [source] } as never, clock, () => undefined);
+  const first = speaker.speak(new Float32Array(1600), 16_000);
+  await clock.advance(1_000);
+  assert.deepEqual(await first, { status: 'failed', reason: 'the talk channel of the camera ended' });
+  const second = speaker.speak(new Float32Array(1600), 16_000);
+  await clock.advance(1_000);
+  assert.equal((await second).status, 'spoken');
+  assert.equal(opened, 2);
+});
+
 void runTests();

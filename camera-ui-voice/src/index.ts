@@ -12,7 +12,7 @@ import { CameraSpeaker, PROBLEM_TEXT, speakerProblem, speakerProblemCode } from 
 import { LANGUAGES, LANGUAGE_NAMES, asLanguage, fill, saidText, texts } from './speech.js';
 import { DAY_LABELS, PLUGIN_DEFAULTS, SCREEN_TIME_DEFAULTS, checkDoorRule, checkScreenTime, quietHours } from './settings.js';
 import { TOOLS, callTool } from './tools.js';
-import { DAYS, activeInterval, formatClock, serverTimeZone, systemClock } from './time.js';
+import { DAYS, activeInterval, formatClock, serverTimeZone, systemClock, validTimeZone } from './time.js';
 import { Voice } from './voice.js';
 
 import type {
@@ -56,6 +56,7 @@ interface CameraEntry {
 }
 
 const DEVICE_PREFIX = 'voice:';
+const MAX_NOTIFICATION_CHARS = 300;
 
 type Field = Record<string, unknown> & { type: string; title: string; description: string };
 // the SDK types array items as Omit<union, 'key'>, which keeps only the keys common to all field kinds (no enum,
@@ -76,8 +77,8 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private listener: FfmpegListener;
   private stateFile: string;
   private lookTimer: NodeJS.Timeout | undefined;
+  private writing: Promise<void> = Promise.resolve();
   private started = false;
-  private deviceOwner = '';
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginValues>) {
     super(logger, api, storage);
@@ -92,7 +93,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         engine: this.engine,
         ask: (request) => this.api.coreManager.assistantAsk(request),
         publish: (notification) => this.api.notificationManager.publish(notification),
-        timeZone: serverTimeZone,
+        timeZone: () => this.timeZone(),
         language: () => this.language(),
         speed: () => this.values().speed ?? PLUGIN_DEFAULTS.speed,
         listenSeconds: () => this.values().listenSeconds ?? PLUGIN_DEFAULTS.listenSeconds,
@@ -105,7 +106,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     );
     this.door = new DoorWatcher({
       clock: systemClock,
-      timeZone: serverTimeZone,
+      timeZone: () => this.timeZone(),
       language: () => this.language(),
       people: () => this.values().people ?? [],
       rules: () => this.doorRules(),
@@ -129,6 +130,15 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     const speakers = this.speakerOptions();
     const cameras = this.cameraOptions();
     return [
+      {
+        type: 'string',
+        key: 'timeZone',
+        title: 'Time zone',
+        description: 'The time zone of the household, e.g. Europe/Moscow: bedtimes and quiet hours follow it. Empty: the time zone of the server.',
+        store: true,
+        placeholder: serverTimeZone(),
+        group: 'Voice',
+      },
       {
         type: 'string',
         key: 'language',
@@ -438,8 +448,17 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
             item('zone', {
               type: 'string',
               title: 'Computer zone',
-              description: zones.length ? 'The object zone of this camera around the computer.' : 'Draw an object zone around the computer in the camera settings first.',
+              description:
+                'Optional: an object zone of this camera around the computer. An object zone also limits where the camera detects at all, ' +
+                'so do not draw one only for VOICE: use the area below, or leave both empty for the whole picture.',
               enum: zones,
+            }),
+            item('area', {
+              type: 'string',
+              title: 'Computer area, %',
+              description:
+                'Optional: the part of the picture with the computer, "x, y, width, height" in percent from the top left, e.g. 0, 30, 50, 60. Empty: the whole picture.',
+              placeholder: '0, 30, 50, 60',
             }),
             item('sessionMinutes', {
               type: 'number',
@@ -614,6 +633,16 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     return this.storage.values ?? {};
   }
 
+  /**
+   * The zone of the household's clock: the setting, else the server process's. In Docker the process runs on UTC unless
+   * TZ is set, and a bedtime of 21:30 would then begin at 00:30 in Moscow.
+   */
+  private timeZone(): string {
+    const wanted = this.values().timeZone?.trim();
+    if (wanted && validTimeZone(wanted)) return wanted;
+    return serverTimeZone();
+  }
+
   private language(): Language {
     return asLanguage(this.values().language, 'ru');
   }
@@ -637,12 +666,20 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     this.door.onEvent(type, event);
   }
 
-  private sighting(entry: CameraEntry): Sighting {
+  /**
+   * What the camera sees now; undefined when VOICE cannot know: the camera is offline or its object detection is not
+   * there. The sensor keeps the last boxes of a still child when the camera or the detector drops, and those counted
+   * as a whole night at the computer.
+   */
+  private sighting(entry: CameraEntry): Sighting | undefined {
     const now = Date.now();
+    if (!entry.device.connected) return undefined;
+    const objects = [...this.sensors.values()].filter((s) => s.type === SensorType.Object && s.assignedCameraIds.includes(entry.device.id));
+    if (!objects.some((sensor) => sensor.connected)) return undefined;
     const detections: SeenDetection[] = [];
     const faces = new Set<string>();
     for (const sensor of this.sensors.values()) {
-      if (!sensor.assignedCameraIds.includes(entry.device.id)) continue;
+      if (!sensor.assignedCameraIds.includes(entry.device.id) || !sensor.connected) continue;
       if (sensor.type === SensorType.Object) {
         // a still child is "static": it is in staticDetections, not in detections
         for (const key of ['detections', 'staticDetections']) {
@@ -702,7 +739,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   }
 
   private recentText(): string {
-    const timeZone = serverTimeZone();
+    const timeZone = this.timeZone();
     const lines = this.voice.recent
       .slice()
       .reverse()
@@ -824,7 +861,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   private doorRules(): DoorRule[] {
     const cameras = this.cameraOptions().map((c) => c.id);
-    const speakers = this.speakerOptions().map((c) => c.id);
+    // a speaker that is offline for now stays in its rule: dropping the rule silenced every other room as well, and
+    // saying into an offline camera only fails for that camera
+    const speakers = [...this.cameras.values()]
+      .filter((e) => speakerProblemCode(e.device) !== 'no_channel' && speakerProblemCode(e.device) !== 'channel_off')
+      .map((e) => e.device.id);
     const rules: DoorRule[] = [];
     for (const values of this.values().doorRules ?? []) {
       if (values.enabled === false) continue;
@@ -860,17 +901,20 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
    * all channels, and a camera that says every detection aloud at night is the opposite of what VOICE is for. An
    * automation that picks the speaker still reaches it (the server delivers addressed notifications to any device);
    * whether it speaks is the "Speakers for notifications" setting.
+   *
+   * The speakers belong to nobody: they are the household's, and only admins see and switch them (the server lets an
+   * admin change any device). Owned by whoever the last fan-out named, they were the target of the assistant's "send
+   * me a notification" and readable by any user, who could then make the camera say anything.
    */
   async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
-    // the server checks who may change a device by its owner: the device asked for alone must have the same one
-    if (ownerUserIds[0]) this.deviceOwner = ownerUserIds[0];
-    return this.speakerOptions().map((c) => this.device(c.id, c.name, ownerUserIds[0] ?? this.deviceOwner));
+    if (ownerUserIds.length) return [];
+    return this.speakerOptions().map((c) => this.device(c.id, c.name));
   }
 
   async getDevice(deviceId: string): Promise<NotifierDevice | null> {
     if (!deviceId.startsWith(DEVICE_PREFIX)) return null;
     const entry = this.cameras.get(deviceId.slice(DEVICE_PREFIX.length));
-    return entry && !speakerProblem(entry.device) ? this.device(entry.device.id, entry.device.name, this.deviceOwner) : null;
+    return entry && !speakerProblem(entry.device) ? this.device(entry.device.id, entry.device.name) : null;
   }
 
   async sendNotification(deviceIds: string[], n: Notification): Promise<void> {
@@ -880,6 +924,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     const rewrite = new Set(values.channelRewrite ?? []);
     const text = [n.title, n.subtitle, n.body].filter((part) => part?.trim()).join('. ');
     if (!text) return;
+    // a speaker is no reader of long texts: a page would hold the camera for minutes
+    if (text.length > MAX_NOTIFICATION_CHARS) {
+      this.logger.warn(`notification not said: ${text.length} characters, more than ${MAX_NOTIFICATION_CHARS}`);
+      return;
+    }
     await Promise.all(
       deviceIds.map(async (deviceId) => {
         const cameraId = deviceId.slice(DEVICE_PREFIX.length);
@@ -906,9 +955,9 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     return this.getDevice(deviceId);
   }
 
-  private device(cameraId: string, name: string, owner: string): NotifierDevice {
+  private device(cameraId: string, name: string): NotifierDevice {
     const speaks = (this.values().channelSpeakers ?? []).includes(cameraId);
-    return { id: `${DEVICE_PREFIX}${cameraId}`, ownerUserId: owner, name: `${name} (VOICE)`, active: false, metadata: { speaks } };
+    return { id: `${DEVICE_PREFIX}${cameraId}`, ownerUserId: '', name: `${name} (VOICE)`, active: false, metadata: { speaks } };
   }
 
   private async setChannel(deviceId: string, on: boolean): Promise<void> {
@@ -922,7 +971,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   private inQuietHours(): boolean {
     const v = this.values();
-    return Boolean(activeInterval(quietHours(v.quietFrom, v.quietTo), Date.now(), serverTimeZone()));
+    return Boolean(activeInterval(quietHours(v.quietFrom, v.quietTo), Date.now(), this.timeZone()));
   }
 
   // ---- assistant tools ----
@@ -970,9 +1019,19 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     }
   }
 
-  private async saveState(state: SavedState): Promise<void> {
-    const tmp = `${this.stateFile}.tmp`;
-    await writeFile(tmp, JSON.stringify(state));
-    await rename(tmp, this.stateFile);
+  /**
+   * One write after the other, in the order asked: a parent's "more time" and a look wrote the same .tmp at once, one
+   * rename found it gone and that state was lost, or an older state landed last. The chain only waits: a failed write
+   * is the caller's, and the next one still runs.
+   */
+  private saveState(state: SavedState): Promise<void> {
+    const data = JSON.stringify(state);
+    const write = this.writing.then(async () => {
+      const tmp = `${this.stateFile}.tmp`;
+      await writeFile(tmp, data);
+      await rename(tmp, this.stateFile);
+    });
+    this.writing = write.catch(() => undefined);
+    return write;
   }
 }

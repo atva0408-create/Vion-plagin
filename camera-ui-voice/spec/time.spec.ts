@@ -1,8 +1,12 @@
 // Local time of the server: wall-clock times around daylight saving, nights over midnight. Run: npx tsx spec/time.spec.ts
 import assert from 'node:assert/strict';
 
-import { activeInterval, dayOf, formatClock, instantOf, nextIntervalStart } from '../src/time.js';
+import { activeInterval, dayOf, formatClock, instantOf, isClock, nextIntervalStart } from '../src/time.js';
 import { runTests, test } from './helpers.js';
+
+import type { Day } from '../src/time.js';
+
+const MOSCOW = 'Europe/Moscow';
 
 test('the day of the week of a date', () => {
   assert.equal(dayOf('2026-10-07'), 'wed');
@@ -35,6 +39,30 @@ test('a day interval (quiet hours 13:00-15:00) does not wrap', () => {
   const rules = [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as ('mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun')[], from: '13:00', to: '15:00' }];
   assert.ok(activeInterval(rules, Date.parse('2026-10-07T14:00:00+03:00'), 'Europe/Moscow'));
   assert.equal(activeInterval(rules, Date.parse('2026-10-07T16:00:00+03:00'), 'Europe/Moscow'), undefined);
+});
+
+test('a bedtime that starts after midnight belongs to the night after the evening named: school evenings Sun-Thu, 00:30-07:00', () => {
+  const night = [{ days: ['sun', 'mon', 'tue', 'wed', 'thu'] as Day[], from: '00:30', to: '07:00' }];
+  const at = (iso: string) => instantOf(iso.slice(0, 10), iso.slice(11, 16), MOSCOW);
+  // Thursday evening, the night into Friday: a school night
+  assert.ok(activeInterval(night, at('2026-10-09T00:45'), MOSCOW), 'Friday 00:45 is the night after Thursday evening');
+  // Saturday evening, the night into Sunday: free
+  assert.equal(activeInterval(night, at('2026-10-11T00:45'), MOSCOW), undefined, 'Sunday 00:45 is the night after Saturday evening');
+  // Sunday evening, the night into Monday
+  assert.ok(activeInterval(night, at('2026-10-12T06:59'), MOSCOW));
+  assert.equal(formatClock(nextIntervalStart(night, at('2026-10-10T12:00'), MOSCOW)!, MOSCOW), '00:30', 'the next school night starts Monday 00:30');
+  assert.equal(new Date(nextIntervalStart(night, at('2026-10-10T12:00'), MOSCOW)!).toISOString().slice(0, 10), '2026-10-11', 'Sunday 21:30 UTC = Monday 00:30 Moscow');
+  // Monday 00:10: the night after Sunday evening starts in 20 minutes, not a week later
+  const sundayOnly = [{ days: ['sun'] as Day[], from: '00:30', to: '07:00' }];
+  assert.equal(nextIntervalStart(sundayOnly, at('2026-10-12T00:10'), MOSCOW), at('2026-10-12T00:30'));
+});
+
+test('a time written with one hour digit ("7:00") is a time: it switched quiet hours and bedtimes off', () => {
+  assert.equal(isClock('7:00'), true);
+  assert.equal(isClock('07:00'), true);
+  assert.equal(isClock('24:00'), false);
+  assert.equal(isClock('7:5'), false);
+  assert.ok(activeInterval([{ days: ['wed'], from: '23:00', to: '7:00' }], instantOf('2026-10-08', '06:30', MOSCOW), MOSCOW));
 });
 
 void runTests();

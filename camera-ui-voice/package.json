@@ -64,5 +64,13 @@
     "type": "git",
     "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-voice"
+  },
+  "overrides": {
+    "sherpa-onnx-darwin-arm64": "1.13.8",
+    "sherpa-onnx-darwin-x64": "1.13.8",
+    "sherpa-onnx-linux-x64": "1.13.8",
+    "sherpa-onnx-linux-arm64": "1.13.8",
+    "sherpa-onnx-win-x64": "1.13.8",
+    "sherpa-onnx-win-ia32": "1.13.8"
   }
 }

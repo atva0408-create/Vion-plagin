@@ -111,10 +111,21 @@ export function sendPaced(packets: Buffer[], send: (packet: Buffer) => Promise<v
   return new Promise((resolve, reject) => {
     const start = clock.now();
     let index = 0;
+    // a packet the server refused ends the phrase: it was reported "said" though nothing reached the camera
+    let failure: unknown;
+    const sent: Promise<void>[] = [];
     const next = () => {
+      if (failure !== undefined) {
+        reject(failure);
+        return;
+      }
       try {
         while (index < packets.length && clock.now() >= start + index * PACKET_MS) {
-          void Promise.resolve(send(packets[index])).catch(() => undefined);
+          sent.push(
+            Promise.resolve(send(packets[index])).catch((error: unknown) => {
+              failure ??= error;
+            }),
+          );
           index++;
         }
       } catch (error) {
@@ -122,7 +133,7 @@ export function sendPaced(packets: Buffer[], send: (packet: Buffer) => Promise<v
         return;
       }
       if (index >= packets.length) {
-        resolve();
+        void Promise.all(sent).then(() => (failure === undefined ? resolve() : reject(failure)));
         return;
       }
       clock.setTimeout(next, Math.max(0, start + index * PACKET_MS - clock.now()));
@@ -173,6 +184,8 @@ export class CameraSpeaker {
   private session: RtpSession | undefined;
   private closeTimer: unknown;
   private rtp = newRtpState();
+  /** Why the open session broke (the server ended or failed its talk channel), noticed while a phrase was sent. */
+  private broken: string | undefined;
 
   constructor(
     private camera: CameraDevice,
@@ -197,7 +210,14 @@ export class CameraSpeaker {
       audio.set(pcm, lead.length);
       const packets = packetize(alawEncode(audio), this.rtp);
       const latencyMs = this.clock.now() - started;
+      this.broken = undefined;
       await sendPaced(packets, (packet) => session.sendAudioPacket(packet), this.clock);
+      // the server drops packets of an ended channel without an error: its end or failure is the only sign
+      if (this.broken) {
+        const reason = this.broken;
+        await this.close();
+        return { status: 'failed', reason };
+      }
       this.closeTimer = this.clock.setTimeout(() => void this.close(), DRAIN_MS);
       return { status: 'spoken', latencyMs, durationMs: packets.length * PACKET_MS };
     } catch (error) {
@@ -219,9 +239,14 @@ export class CameraSpeaker {
     if (!source) throw new Error('no source with a talk channel');
     // the talk channel rides on an open stream: audio only, nothing of it is read
     const session = source.createRtpSession({ video: false, audio: true, backchannel: true });
-    session.onError.subscribe((error) => this.log(`speaker of ${this.camera.name}: ${error.message}`));
+    session.onError.subscribe((error) => {
+      this.log(`speaker of ${this.camera.name}: ${error.message}`);
+      if (this.session === session) this.broken = error.message;
+    });
     session.onEnded.subscribe(() => {
-      if (this.session === session) this.session = undefined;
+      if (this.session !== session) return;
+      this.session = undefined;
+      this.broken ??= 'the talk channel of the camera ended';
     });
     try {
       // no codec asked for the incoming audio: it is not read, and asking would make the server transcode it

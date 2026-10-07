@@ -53,7 +53,8 @@
     "bedtime": "{name} за компьютером во время сна ({now}).",
     "daily_limit": "{name} за компьютером сверх дневного лимита: сегодня {today} {todayWord}.",
     "moreTimeTitle": "{name} просит ещё времени",
-    "moreTime": "{name} просит ещё времени: «{text}»"
+    "moreTime": "{name} просит ещё времени: «{text}»",
+    "notSaid": "(Сказать ребёнку не получилось: {reason}.)"
   },
   "door": {
     "male": "Пришёл {name}.",

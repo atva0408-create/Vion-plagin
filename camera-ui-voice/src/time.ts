@@ -28,6 +28,16 @@ export function serverTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
+/** Whether the name is a time zone the runtime knows ("Europe/Moscow"). */
+export function validTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface LocalTime {
   /** YYYY-MM-DD */
   date: string;
@@ -83,8 +93,9 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+/** A wall-clock time; "7:00" as well as "07:00": the short form switched quiet hours and bedtimes off without a word. */
 export function isClock(value: unknown): value is string {
-  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  return typeof value === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function minutesOf(clock: string): number {
@@ -136,18 +147,22 @@ export interface ActiveInterval {
   to: number;
 }
 
+/** A start before noon belongs to the night after the evening named in the rule: "evenings Sun-Thu, 00:30" is 00:30 on Mon-Fri. */
+const NOON = 12 * 60;
+
+/** The interval of a rule for the evening of `date`. */
 function occurrence(rule: WeeklyInterval, date: string, timeZone: string): ActiveInterval {
-  const from = instantOf(date, rule.from, timeZone);
-  const endDate = minutesOf(rule.to) <= minutesOf(rule.from) ? addDays(date, 1) : date;
-  return { from, to: instantOf(endDate, rule.to, timeZone) };
+  const startDate = minutesOf(rule.from) < NOON ? addDays(date, 1) : date;
+  const endDate = minutesOf(rule.to) <= minutesOf(rule.from) ? addDays(startDate, 1) : startDate;
+  return { from: instantOf(startDate, rule.from, timeZone), to: instantOf(endDate, rule.to, timeZone) };
 }
 
-/** The interval of the rules the moment falls into: one started today or, crossing midnight, yesterday. */
+/** The interval of the rules the moment falls into: of this evening, or of one of the two before (crossing midnight). */
 export function activeInterval(rules: WeeklyInterval[], ms: number, timeZone: string): ActiveInterval | undefined {
   const today = localTime(ms, timeZone).date;
   let found: ActiveInterval | undefined;
   for (const rule of rules) {
-    for (const date of [addDays(today, -1), today]) {
+    for (const date of [addDays(today, -2), addDays(today, -1), today]) {
       if (!rule.days.includes(dayOf(date))) continue;
       const span = occurrence(rule, date, timeZone);
       if (ms >= span.from && ms < span.to && (!found || span.to > found.to)) found = span;
@@ -160,11 +175,11 @@ export function activeInterval(rules: WeeklyInterval[], ms: number, timeZone: st
 export function nextIntervalStart(rules: WeeklyInterval[], ms: number, timeZone: string): number | undefined {
   const today = localTime(ms, timeZone).date;
   let best: number | undefined;
-  for (let offset = 0; offset <= 7; offset++) {
+  for (let offset = -1; offset <= 7; offset++) {
     const date = addDays(today, offset);
     for (const rule of rules) {
       if (!rule.days.includes(dayOf(date))) continue;
-      const from = instantOf(date, rule.from, timeZone);
+      const { from } = occurrence(rule, date, timeZone);
       if (from > ms && (best === undefined || from < best)) best = from;
     }
   }

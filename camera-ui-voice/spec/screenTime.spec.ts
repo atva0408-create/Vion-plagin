@@ -29,7 +29,7 @@ function start(c: ScreenTimeConfig, at: number): Run {
 }
 
 /** Looks every 5 s for `ms`, with the child there or not. */
-function pass(run: Run, ms: number, present: boolean, timeZone = MOSCOW): void {
+function pass(run: Run, ms: number, present: boolean | undefined, timeZone = MOSCOW): void {
   const end = run.t + ms;
   while (run.t < end) {
     run.t += 5_000;
@@ -81,13 +81,78 @@ test('2. away 90 s with a gap of 120 s: the session goes on; away 11 min with a 
   pass(run, 90_000, false);
   assert.equal(run.engine.state.present, true, 'a short absence does not end the session');
   pass(run, 20 * MINUTE, true);
-  assert.ok(run.engine.state.workMs >= 31 * MINUTE, `work ${run.engine.state.workMs / MINUTE} min`);
+  // the 90 s away keep the session but are not time at the computer: they were counted and never taken back
+  const work = run.engine.state.workMs / MINUTE;
+  assert.ok(work > 29.5 && work <= 30, `work ${work} min`);
+  assert.ok(run.engine.state.todayMs / MINUTE <= 30, 'nor time of the day');
 
   pass(run, 11 * MINUTE, false);
   assert.equal(run.engine.state.present, false);
   pass(run, 30_000, true);
   assert.equal(run.engine.state.present, true);
   assert.ok(run.engine.state.workMs < MINUTE, `a new session from zero, got ${run.engine.state.workMs / 1000}s`);
+});
+
+test('2c. a camera that is blind (offline, its detector gone) stops the clock: no time counted, no session ended, no reminder', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 30 * MINUTE, true);
+  const before = run.engine.state.workMs;
+  // two hours the camera's Wi-Fi was down (not into bedtime): the last boxes of a still child stayed in the sensor
+  pass(run, 2 * 60 * MINUTE, undefined);
+  assert.equal(run.engine.state.workMs, before, 'no time at the computer while blind');
+  assert.equal(run.engine.state.present, true, 'nor an absence that ends the session and credits a break');
+  assert.equal(speaks(run).length, 0, 'no reminder runs on time alone');
+  assert.equal(notifies(run).length, 0);
+  pass(run, 16 * MINUTE, true);
+  assert.equal(speaks(run).length, 1, 'back in sight, the reminder comes at 45 minutes of real time at the computer');
+  const work = run.engine.state.workMs / MINUTE;
+  assert.ok(work > 45.5 && work <= 46, `work ${work} min`);
+});
+
+test('2d. blind during a break: the break does not pass meanwhile either', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 3 * MINUTE, false);
+  pass(run, 30 * MINUTE, undefined);
+  pass(run, 30_000, true);
+  assert.ok(run.engine.state.workMs >= 46 * MINUTE, 'the child was away 3 minutes of a 10 minute break, not 33');
+});
+
+test('2e. blind in a session, then the child is gone: the gap and the break count from when the camera sees again', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 20 * MINUTE, true);
+  pass(run, 60 * MINUTE, undefined);
+  pass(run, MINUTE, false);
+  assert.equal(run.engine.state.present, true, 'away 1 minute of a 2 minute gap: the session goes on');
+  pass(run, 2 * MINUTE, false);
+  assert.equal(run.engine.state.present, false);
+  pass(run, 5 * MINUTE, false);
+  pass(run, 30_000, true);
+  const work = run.engine.state.workMs / MINUTE;
+  assert.ok(work >= 19.5, `back 7 minutes into a 10 minute break: the session goes on, got ${work} min`);
+});
+
+test('2f. blind in the middle of the reminders: the next one comes 3 minutes in sight after the last, not at once', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  assert.equal(speaks(run).length, 1);
+  pass(run, 30 * MINUTE, undefined);
+  pass(run, MINUTE, true);
+  assert.equal(speaks(run).length, 1, 'a minute after sight came back: not yet');
+  pass(run, 2.5 * MINUTE, true);
+  assert.equal(speaks(run).length, 2);
+});
+
+test('2g. what the attribute said about the person ends with the session: after a restart the next person is not taken for the child', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  for (let i = 0; i < 12; i++) {
+    run.t += 5_000;
+    run.engine.tick({ now: run.t, present: true, attributeYes: true, quiet: false, timeZone: MOSCOW, language: 'ru' });
+  }
+  assert.equal(run.engine.state.attributeYes, true);
+  pass(run, 3 * MINUTE, false);
+  assert.equal(run.engine.state.present, false);
+  assert.equal(run.engine.state.attributeYes, undefined);
 });
 
 test('2b. a person passing by for 15 s starts no session', () => {

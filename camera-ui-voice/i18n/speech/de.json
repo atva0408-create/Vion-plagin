@@ -46,7 +46,8 @@
     "bedtime": "{name} sitzt zur Schlafenszeit am Computer ({now}).",
     "daily_limit": "{name} sitzt über das Tageslimit hinaus am Computer: heute {today} {todayWord}.",
     "moreTimeTitle": "{name} bittet um mehr Zeit",
-    "moreTime": "{name} bittet um mehr Zeit: „{text}“"
+    "moreTime": "{name} bittet um mehr Zeit: „{text}“",
+    "notSaid": "(VOICE konnte es dem Kind nicht sagen: {reason}.)"
   },
   "door": {
     "male": "{name} ist da.",

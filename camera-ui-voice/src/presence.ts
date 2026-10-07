@@ -23,7 +23,13 @@ export interface SeenDetection {
 }
 
 export interface PresenceSource {
-  zone: string;
+  /**
+   * An object zone of the camera, or none: the whole picture, or `area`. An object zone also limits where the camera
+   * detects at all, so a zone drawn only for VOICE would blind the rest of the room: `area` is VOICE's own.
+   */
+  zone?: string;
+  /** VOICE's own rectangle, in percent of the picture (0-100), used when no zone is named. */
+  area?: Box;
   /** Detector labels that count as the child, `person` by default; a trained module adds its own label. */
   labels: string[];
   /** A trained attribute that must have been seen with "yes" ("за компьютером"). */
@@ -86,18 +92,37 @@ export class PresenceTracker {
 
   constructor(
     private source: PresenceSource,
-    private zone: () => Point[] | undefined,
+    private zone: (name: string) => Point[] | undefined,
   ) {}
 
   setSource(source: PresenceSource): void {
     this.source = source;
   }
 
+  /** The name and attribute of a session that was running before a restart: a child with the back to the camera shows neither again. */
+  restore(name: string | undefined, attributeYes: boolean | undefined): void {
+    this.name = name;
+    this.attributeYes = attributeYes ?? false;
+  }
+
+  /** The polygon the child must be in, in percent; undefined: the whole picture. Null: the named zone is gone. */
+  private polygon(): Point[] | undefined | null {
+    if (this.source.zone) return this.zone(this.source.zone) ?? null;
+    const area = this.source.area;
+    if (!area) return undefined;
+    return [
+      [area.x, area.y],
+      [area.x + area.width, area.y],
+      [area.x + area.width, area.y + area.height],
+      [area.x, area.y + area.height],
+    ];
+  }
+
   /** Whether the look counts as the child at the computer. */
   look(sighting: Sighting): boolean {
-    const zone = this.zone();
-    if (!zone) return false;
-    const inZone = sighting.detections.some((d) => this.source.labels.includes(d.label) && boxCrossesZone(d.box, zone));
+    const polygon = this.polygon();
+    if (polygon === null) return false;
+    const inZone = sighting.detections.some((d) => this.source.labels.includes(d.label) && (!polygon || boxCrossesZone(d.box, polygon)));
     if (!inZone) return false;
 
     const faces = sighting.faces.filter((face) => face && face !== 'unknown');
@@ -115,6 +140,11 @@ export class PresenceTracker {
   /** The name seen in this session, if any. */
   seenName(): string | undefined {
     return this.name;
+  }
+
+  /** Whether the module attribute was seen "yes" in this session (only when the source asks for one). */
+  attributeHeld(): boolean | undefined {
+    return this.source.attribute ? this.attributeYes : undefined;
   }
 
   sessionEnded(): void {

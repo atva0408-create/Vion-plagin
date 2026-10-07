@@ -46,7 +46,8 @@
     "bedtime": "{name} is at the computer at bedtime ({now}).",
     "daily_limit": "{name} is at the computer past the daily limit: {today} {todayWord} today.",
     "moreTimeTitle": "{name} asks for more time",
-    "moreTime": "{name} asks for more time: \"{text}\""
+    "moreTime": "{name} asks for more time: \"{text}\"",
+    "notSaid": "(VOICE could not say it to the child: {reason}.)"
   },
   "door": {
     "male": "{name} has arrived.",

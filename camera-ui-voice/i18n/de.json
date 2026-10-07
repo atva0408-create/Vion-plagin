@@ -126,5 +126,11 @@
   "Phrase": "Satz",
   "What VOICE says.": "Was VOICE sagt.",
   "Let the assistant phrase it": "Der Assistent formuliert",
-  "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase.": "Schreiben Sie, was gesagt werden soll, z. B. „sag Artem, dass das Essen fertig ist“, und der Assistent macht daraus einen Satz."
+  "Write what to say, e.g. \"tell Artem dinner is ready\", and the assistant turns it into a phrase.": "Schreiben Sie, was gesagt werden soll, z. B. „sag Artem, dass das Essen fertig ist“, und der Assistent macht daraus einen Satz.",
+  "Optional: an object zone of this camera around the computer. An object zone also limits where the camera detects at all, so do not draw one only for VOICE: use the area below, or leave both empty for the whole picture.": "Optional: eine Objektzone dieser Kamera um den Computer. Eine Objektzone begrenzt auch, wo die Kamera überhaupt erkennt, also zeichnen Sie keine nur für VOICE: nutzen Sie den Bereich unten oder lassen Sie beide leer für das ganze Bild.",
+  "Computer area, %": "Computerbereich, %",
+  "Optional: the part of the picture with the computer, \"x, y, width, height\" in percent from the top left, e.g. 0, 30, 50, 60. Empty: the whole picture.": "Optional: der Bildteil mit dem Computer, „x, y, Breite, Höhe“ in Prozent von oben links, z. B. 0, 30, 50, 60. Leer: das ganze Bild.",
+  "Time zone": "Zeitzone",
+  "The time zone of the household, e.g. Europe/Moscow: bedtimes and quiet hours follow it. Empty: the time zone of the server.": "Die Zeitzone des Haushalts, z. B. Europe/Berlin: Schlafenszeiten und Ruhezeiten richten sich danach. Leer: die Zeitzone des Servers.",
+  "0, 30, 50, 60": "0, 30, 50, 60"
 }
