@@ -13,10 +13,12 @@ from defaults import (
     LEGACY_RUNTIME,
     MODEL_BASE_URL,
     MODEL_LFS_URL,
+    MODULE_BACKENDS,
     STATIC_INPUT_SHAPES,
     model_version,
 )
 from inference import OpenVinoBackend
+from modules import installed_modules, is_module
 from trained import is_trained, trained_models
 
 
@@ -38,6 +40,13 @@ class OpenVinoModelManager(BaseModelManager):
             # points to the same file so nothing is downloaded)
             path = trained_models.path(model_name)
             return {"xml": ("", path), "bin": ("", path)}
+        if is_module(model_name):
+            # a module of the store, downloaded by the ViON server: its IR pair, or its ONNX graph read the same
+            # way as a trained model
+            backend, paths = installed_modules.paths(model_name, MODULE_BACKENDS)
+            if backend == "openvino":
+                return {"xml": ("", paths[".xml"]), "bin": ("", paths[".bin"])}
+            return {"xml": ("", paths[".onnx"]), "bin": ("", paths[".onnx"])}
         xml_rel, bin_rel = self._rel_files(model_name)
         return {
             "xml": (f"{MODEL_BASE_URL}/{xml_rel}", xml_rel),

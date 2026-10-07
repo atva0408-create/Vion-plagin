@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, TypedDict
 
 from camera_ui_ml import detect_objects, model_runtime, reset_stored_settings
@@ -11,7 +12,8 @@ from camera_ui_sdk import (
     VideoFrameData,
 )
 
-from defaults import DEFAULT_OBJECT_MODEL, DEFAULT_OPTION, OBJECT_MODELS
+from defaults import DEFAULT_OBJECT_MODEL, DEFAULT_OPTION, MODULE_BACKENDS, OBJECT_MODELS
+from modules import installed_modules, usable_choice
 from trained import resolve_object_model, trained_models
 
 if TYPE_CHECKING:
@@ -41,18 +43,7 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
     @property
     def storage_schema(self) -> list[JsonSchema]:
         return [
-            {
-                "type": "string",
-                "key": "model",
-                "title": "Модель",
-                "description": "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.",
-                "group": "Обнаружение объектов",
-                "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
-                "store": True,
-                "defaultValue": DEFAULT_OPTION,
-                "required": True,
-                "onSet": self._on_change_model,
-            },
+            self._model_schema(),
             {
                 "type": "button",
                 "key": "reset_defaults",
@@ -64,8 +55,38 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             },
         ]
 
+    def _model_schema(self) -> JsonSchema:
+        # the stock models, then the modules added in the store (their titles from the passport)
+        modules = installed_modules.choices(MODULE_BACKENDS)
+        return {
+            "type": "string",
+            "key": "model",
+            "title": "Модель",
+            "description": "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.",
+            "group": "Обнаружение объектов",
+            "enum": [DEFAULT_OPTION, *OBJECT_MODELS, *modules],
+            "enumLabels": modules,
+            "store": True,
+            "defaultValue": DEFAULT_OPTION,
+            "required": True,
+            "onSet": self._on_change_model,
+        }
+
+    def refresh_model_choices(self) -> None:
+        """A module was added or removed in the store: the model setting offers what is installed now."""
+        if getattr(self, "_storage", None) is None:
+            return  # not registered yet: the schema is built with the current list when it is
+        task = asyncio.ensure_future(self.storage.changeSchema("model", dict(self._model_schema())))
+        task.add_done_callback(self._schema_changed)
+
+    def _schema_changed(self, task: asyncio.Future[None]) -> None:
+        if not task.cancelled() and task.exception():
+            self._logger.error(f"Список моделей не обновлён: {task.exception()}")
+
     def _wanted_model(self) -> str:
-        return resolve_object_model(self.storage.values.get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+        # a module removed in the store leaves the camera on the default model, not on a missing file
+        requested = usable_choice(self.storage.values.get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
+        return resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
 
     @property
     def modelSpec(self) -> ObjectModelSpec:
@@ -104,10 +125,8 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         except Exception as error:
             if model_name == DEFAULT_OBJECT_MODEL:
                 raise
-            # a broken trained model must not leave the camera without detection
-            self._logger.error(
-                f"Обученная модель {model_name} не загрузилась ({error}), используется стандартная"
-            )
+            # a broken trained model or module must not leave the camera without detection
+            self._logger.error(f"Модель {model_name} не загрузилась ({error}), используется стандартная")
             model_name = DEFAULT_OBJECT_MODEL
             await self._plugin.get_object_detector(model_name)
         self._active_model = model_name
@@ -117,7 +136,8 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
 
     async def _on_change_model(self, new_model: str, _old_model: str) -> None:
         if new_model != _old_model:
-            resolved = resolve_object_model(new_model, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+            requested = usable_choice(new_model, MODULE_BACKENDS, DEFAULT_OPTION)
+            resolved = resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
             await self._plugin.get_object_detector(resolved)
             self._active_model = resolved
             self.updateModelSpec()

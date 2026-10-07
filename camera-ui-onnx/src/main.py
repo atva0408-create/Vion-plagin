@@ -66,6 +66,7 @@ from defaults import (
     FACE_LANDMARK_MODEL,
     LPD_DETECTOR_MODELS,
     MODEL_BASE_URL,
+    MODULE_BACKENDS,
     OBJECT_MODELS,
     OCR_ALPHABET,
     OCR_INPUT_HEIGHT,
@@ -79,6 +80,7 @@ from defaults import (
     resolve_model,
 )
 from model_manager import OnnxModelManager, ProviderList
+from modules import installed_modules, is_module, usable_choice
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import ONNXClipSensor
 from sensors.face_embedder_sensor import ONNXFaceEmbedderSensor
@@ -114,6 +116,8 @@ class ONNXPlugin(
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         self._trained_version = -1
+        self._modules_version = -1
+        self._modules_watch: asyncio.Task[None] | None = None
 
         self._sensors: dict[str, dict[str, Any]] = {}
         self._warned_provider: str | None = None
@@ -224,9 +228,15 @@ class ONNXPlugin(
             except Exception:
                 self.object_detectors.pop(model_name, None)
                 raise
-            entry = trained_models.entry(model_name) if is_trained(model_name) else None
-            if entry and entry.get("classes") and not detector.labels:
-                detector.labels = {index: str(label) for index, label in enumerate(entry["classes"])}
+            classes = None
+            if is_trained(model_name):
+                trained = trained_models.entry(model_name)
+                classes = trained.get("classes") if trained else None
+            elif is_module(model_name):
+                module = installed_modules.entry(model_name, MODULE_BACKENDS)
+                classes = module.get("labels") if module else None
+            if classes and not detector.labels:
+                detector.labels = {index: str(label) for index, label in enumerate(classes)}
         else:
             await detector.initialize(model_name)
         return detector
@@ -352,8 +362,8 @@ class ONNXPlugin(
                 "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
-                "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
-                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
+                "enum": [DEFAULT_OPTION, *OBJECT_MODELS, *installed_modules.choices(MODULE_BACKENDS)],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию", **installed_modules.choices(MODULE_BACKENDS)},
                 "store": False,
             },
         ]
@@ -361,7 +371,8 @@ class ONNXPlugin(
     async def testObjectDetection(
         self, image_data: bytes, metadata: ImageMetadata, config: dict[str, Any]
     ) -> ObjectDetectionPluginResponse | None:
-        model_name: str = resolve_object_model(config.get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+        requested = usable_choice(config.get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
+        model_name: str = resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -380,7 +391,8 @@ class ONNXPlugin(
     async def detectObjects(
         self, frame: VideoFrameData, config: dict[str, Any] | None = None
     ) -> ObjectDetectionPluginResponse | None:
-        model_name = resolve_object_model((config or {}).get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+        requested = usable_choice((config or {}).get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
+        model_name = resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -954,6 +966,28 @@ class ONNXPlugin(
             if attribute is not None:
                 attribute.refresh()
 
+    # ---- modules of the store (modules.py) ----
+
+    def check_modules(self) -> None:
+        """Cheap check: when a module was added or removed in the store, the model choices follow."""
+        installed_modules.installed()
+        if installed_modules.version == self._modules_version:
+            return
+        self._modules_version = installed_modules.version
+        for sensors in self._sensors.values():
+            obj = sensors.get("object")
+            if obj is not None:
+                obj.refresh_model_choices()
+
+    async def _watch_modules(self) -> None:
+        # the settings show a module before any camera detects again: detection only runs while something moves
+        while True:
+            try:
+                self.check_modules()
+            except Exception as error:
+                self.logger.error(f"Список модулей не прочитан: {error}")
+            await asyncio.sleep(5)
+
     async def get_attribute_backend(self, entry: dict[str, Any]) -> Any:
         name = trained_model_name(entry)
         backend = self.attribute_backends.get(name)
@@ -983,6 +1017,7 @@ class ONNXPlugin(
 
     async def _on_start(self) -> None:
         asyncio.create_task(self._preload_clip())
+        self._modules_watch = asyncio.create_task(self._watch_modules())
 
     async def _preload_clip(self) -> None:
         try:
@@ -992,6 +1027,8 @@ class ONNXPlugin(
             self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
 
     async def _on_shutdown(self) -> None:
+        if self._modules_watch:
+            self._modules_watch.cancel()
         for sensors in self._sensors.values():
             for sensor in sensors.values():
                 await sensor.destroy()

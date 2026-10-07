@@ -54,7 +54,8 @@
     "onnx",
     "cuda",
     "legacy",
-    "detection"
+    "detection",
+    "vion-module-onnx"
   ],
   "license": "MIT",
   "repository": {

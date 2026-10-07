@@ -53,7 +53,9 @@
     "ocr",
     "alpr",
     "openvino",
-    "detection"
+    "detection",
+    "vion-module-openvino",
+    "vion-module-onnx"
   ],
   "license": "MIT",
   "repository": {

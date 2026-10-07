@@ -10,6 +10,10 @@ LEGACY_RUNTIME = False
 
 model_version = "v1"
 
+# formats of the store's modules this plugin loads (modules.py); the server learns them from the package
+# keywords "vion-module-<backend>" in package.json, keep both in step
+MODULE_BACKENDS: tuple[str, ...] = ("onnx",)
+
 # ViON models mirror (deploy/models-mirror in VIONN-); VION_MODELS_HOST points to another one
 _MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.vionvision.tech").rstrip("/")
 MODEL_BASE_URL = f"{_MODELS_HOST}/{model_version}/onnx"

@@ -14,9 +14,11 @@ from defaults import (
     LEGACY_RUNTIME,
     MODEL_BASE_URL,
     MODEL_LFS_URL,
+    MODULE_BACKENDS,
     model_version,
 )
 from inference import OnnxBackend
+from modules import installed_modules, is_module
 from trained import is_trained, trained_models
 
 # onnxruntime provider list, e.g. ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -48,6 +50,10 @@ class OnnxModelManager(BaseModelManager):
         if is_trained(model_name):
             # downloaded by the ViON server; an absolute path makes the base download a no-op
             return {"model": ("", trained_models.path(model_name))}
+        if is_module(model_name):
+            # a module of the store, downloaded by the ViON server: same absolute path, nothing to fetch
+            _, paths = installed_modules.paths(model_name, MODULE_BACKENDS)
+            return {"model": ("", paths[".onnx"])}
         rel = self._rel_path(model_name)
         return {"model": (f"{MODEL_LFS_URL}/{rel}", rel)}
 
