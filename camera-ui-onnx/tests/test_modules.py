@@ -123,6 +123,18 @@ def test_the_plugins_carry_the_same_file():
     assert (ONNX_SRC / "modules.py").read_text() == (OPENVINO_SRC / "modules.py").read_text()
 
 
+def test_a_replaced_list_is_seen_even_when_its_mtime_did_not_change(tmp_path: Path, store: Any):
+    write_installed(tmp_path, [module_entry(tmp_path, "bikes")])
+    assert list(fresh(store).choices(("onnx",))) == ["vion-module-bikes"]
+    mtime_ns = (tmp_path / "installed.json").stat().st_mtime_ns
+
+    # the server replaced the file within the clock's resolution: same mtime, another file
+    write_installed(tmp_path, [module_entry(tmp_path, "bikes"), module_entry(tmp_path, "cats")])
+    os.utime(tmp_path / "installed.json", ns=(mtime_ns, mtime_ns))
+    assert (tmp_path / "installed.json").stat().st_mtime_ns == mtime_ns
+    assert sorted(fresh(store).choices(("onnx",))) == ["vion-module-bikes", "vion-module-cats"]
+
+
 def test_an_installed_detector_is_one_more_model(tmp_path: Path, store: Any):
     write_installed(tmp_path, [module_entry(tmp_path, "bikes")])
     assert store.choices(("onnx",)) == {"vion-module-bikes": "Велосипеды"}

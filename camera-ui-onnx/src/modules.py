@@ -15,7 +15,7 @@ import time
 from typing import Any
 
 MODULE_PREFIX = "vion-module-"
-# installed.json changes when the owner adds or removes a module: a look at its mtime every few seconds is plenty
+# installed.json changes when the owner adds or removes a module: a look at its stamp every few seconds is plenty
 _CHECK_EVERY_S = 5.0
 # the files a backend's model is made of, by extension (server/src/api/schemas/modules.schema.ts BACKEND_FILES)
 BACKEND_FILES: dict[str, tuple[str, ...]] = {"onnx": (".onnx",), "openvino": (".xml", ".bin")}
@@ -33,7 +33,7 @@ class InstalledModules:
     def __init__(self, directory: str | None = None) -> None:
         self.dir = os.environ.get("VION_MODULES_DIR", "") if directory is None else directory
         self._checked = -_CHECK_EVERY_S
-        self._mtime: float | None = None
+        self._stamp: tuple[int, int, int] | None = None
         self._installed: list[dict[str, Any]] = []
         self.version = 0
         """bumps whenever the list of installed modules changes"""
@@ -45,20 +45,23 @@ class InstalledModules:
         self._checked = now
         path = os.path.join(self.dir, "installed.json")
         try:
-            mtime = os.stat(path).st_mtime
+            stat = os.stat(path)
         except OSError:
             if self._installed:
                 self._installed = []
-                self._mtime = None
+                self._stamp = None
                 self.version += 1
             return self._installed
-        if mtime != self._mtime:
+        # not the mtime alone: the server replaces the file atomically, and two replacements within the clock's
+        # resolution (coarse on some file systems) keep the mtime; the new file has another inode, mostly another size
+        stamp = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        if stamp != self._stamp:
             try:
                 with open(path, encoding="utf-8") as handle:
                     data = json.load(handle)
             except (OSError, ValueError):
                 return self._installed  # being replaced right now: keep the previous list
-            self._mtime = mtime
+            self._stamp = stamp
             modules = data.get("modules") if isinstance(data, dict) else None
             self._installed = [m for m in modules or [] if isinstance(m, dict) and m.get("id")]
             self.version += 1
