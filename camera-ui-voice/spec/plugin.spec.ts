@@ -412,16 +412,15 @@ test('a notification too long to be said is not said', async () => {
   assert.ok(s.logs.some((line) => /not said: \d+ characters/.test(line)));
 });
 
-test('VOICE is blind, not "nobody there", while the camera is offline, snoozed, not analysed, its object detection is gone or its boxes froze', async () => {
+test('VOICE is blind, not "nobody there", while the camera is offline, snoozed, not analysed or its object detection is gone', async () => {
   const s = await setup();
   const plugin = s.plugin as any;
-  let trackAge = 1;
   const sensor = {
     id: 'obj',
     type: 'object',
     connected: true,
     assignedCameraIds: ['kids'],
-    getValue: (key: string) => (key === 'staticDetections' ? [{ label: 'person', box: { x: 0.1, y: 0.2, width: 0.2, height: 0.5 }, trackAge }] : []),
+    getValue: (key: string) => (key === 'staticDetections' ? [{ label: 'person', box: { x: 0.1, y: 0.2, width: 0.2, height: 0.5 } }] : []),
   };
   await s.plugin.onSensorAdded(sensor as never);
   const entry = plugin.cameras.get('kids');
@@ -439,27 +438,31 @@ test('VOICE is blind, not "nobody there", while the camera is offline, snoozed, 
   assert.equal(plugin.sighting(entry), undefined, 'the analysis of the camera stopped');
   s.kids.device.frameWorkerConnected = true;
 
-  // the camera lost its Wi-Fi but stays "connected": the same boxes, not changed for an hour
-  assert.equal(plugin.sighting(entry).detections.length, 1);
-  entry.boxes.since -= 50 * 60_000;
-  assert.equal(plugin.sighting(entry).detections.length, 1, '50 minutes the same boxes: a child sitting still, the detector does not run without motion');
-  entry.boxes.since -= 11 * 60_000;
-  assert.equal(plugin.sighting(entry), undefined, 'frozen for 61 minutes: a picture that stopped');
-  trackAge++;
-  assert.equal(plugin.sighting(entry).detections.length, 1, 'the detector ran again: sight is back');
-
   await s.plugin.onSensorReleased('obj');
   assert.equal(plugin.sighting(entry), undefined, 'no object detection on the camera at all');
 });
 
-test('an empty room that does not change is no blindness: nobody there', async () => {
+test('a child sitting still for hours, the same static boxes all the time (no motion, no detector run), is still seen', async () => {
   const s = await setup();
   const plugin = s.plugin as any;
-  await s.plugin.onSensorAdded({ id: 'obj', type: 'object', connected: true, assignedCameraIds: ['kids'], getValue: () => [] } as never);
+  const still = [{ label: 'person', box: { x: 0.1, y: 0.2, width: 0.2, height: 0.5 }, stationarySince: 1 }];
+  await s.plugin.onSensorAdded({
+    id: 'obj',
+    type: 'object',
+    connected: true,
+    assignedCameraIds: ['kids'],
+    getValue: (key: string) => (key === 'staticDetections' ? still : []),
+  } as never);
   const entry = plugin.cameras.get('kids');
-  assert.deepEqual(plugin.sighting(entry).detections, []);
-  entry.boxes.since -= 60 * 60_000;
-  assert.deepEqual(plugin.sighting(entry)?.detections, []);
+  const realNow = Date.now;
+  try {
+    for (const hours of [0, 1, 3]) {
+      Date.now = () => realNow() + hours * 3_600_000;
+      assert.equal(plugin.sighting(entry)?.detections.length, 1, `${hours} h`);
+    }
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test('a door rule keeps its other rooms when one speaker is offline', async () => {

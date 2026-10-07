@@ -53,8 +53,6 @@ interface CameraEntry {
   /** Faces and attributes seen in the camera's events, with when: the object sensor knows boxes, not names. */
   faces: Map<string, number>;
   attributes: Map<string, { yes: boolean; at: number }>;
-  /** What the object sensors last held, and since when unchanged. */
-  boxes: { key: string; since: number };
 }
 
 const DEVICE_PREFIX = 'voice:';
@@ -68,13 +66,6 @@ const field = (key: string, schema: Field) => ({ key, ...schema }) as unknown as
 const LOOK_EVERY_MS = 5_000;
 /** A name or an attribute from an event counts for presence this long. */
 const SEEN_FOR_MS = 2 * 60_000;
-/**
- * Boxes not changed by a byte for this long are a picture that stopped: a camera that lost its Wi-Fi stays "connected"
- * (go2rtc keeps the session, the camera plugins never report a stall) and its sensor keeps the last boxes, which
- * counted a whole night at the computer. Not shorter: without motion the detector does not run at all (cascade), so a
- * child watching a video almost still has the same boxes too, and at 10 minutes got a free break without standing up.
- */
-const FROZEN_MS = 60 * 60_000;
 
 export default class VoicePlugin extends BasePlugin<PluginValues> implements NotifierInterface, AssistantToolProvider {
   private cameras = new Map<string, CameraEntry>();
@@ -376,7 +367,6 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
       disposers: [],
       faces: new Map(),
       attributes: new Map(),
-      boxes: { key: '', since: Date.now() },
     };
     entry.storage = device.createStorage<CameraValues>(this.cameraSchema(entry));
     this.cameras.set(device.id, entry);
@@ -677,9 +667,10 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   }
 
   /**
-   * What the camera sees now; undefined when VOICE cannot know: the camera is offline, snoozed, its analysis stopped,
-   * its object detection is not there or its boxes froze. The sensor keeps the last boxes of a still child when the
-   * camera or the detector drops, and those counted as a whole night at the computer.
+   * What the camera sees now; undefined when VOICE cannot know: the camera is offline, snoozed, its analysis stopped or
+   * its object detection is not there. The sensor keeps the last boxes of a still child when the camera or the detector
+   * drops, and those counted as a whole night at the computer. A video that stalls while the camera stays "connected"
+   * the server clears itself after 30 s: the boxes are gone, the child is not seen.
    */
   private sighting(entry: CameraEntry): Sighting | undefined {
     const now = Date.now();
@@ -688,7 +679,6 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     const objects = [...this.sensors.values()].filter((s) => s.type === SensorType.Object && s.assignedCameraIds.includes(entry.device.id));
     if (!objects.some((sensor) => sensor.connected)) return undefined;
     const detections: SeenDetection[] = [];
-    const raw: unknown[] = [];
     const faces = new Set<string>();
     for (const sensor of this.sensors.values()) {
       if (!sensor.assignedCameraIds.includes(entry.device.id) || !sensor.connected) continue;
@@ -696,7 +686,6 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         // a still child is "static": it is in staticDetections, not in detections
         for (const key of ['detections', 'staticDetections']) {
           const list = sensor.getValue(key);
-          raw.push(list);
           if (Array.isArray(list)) for (const d of list) if (d?.box && d.label) detections.push({ label: String(d.label), box: d.box });
         }
       } else if (sensor.type === SensorType.Face) {
@@ -704,9 +693,6 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         if (Array.isArray(names)) for (const name of names) if (typeof name === 'string') faces.add(name);
       }
     }
-    const key = JSON.stringify(raw);
-    if (key !== entry.boxes.key) entry.boxes = { key, since: now };
-    else if (detections.length && now - entry.boxes.since >= FROZEN_MS) return undefined;
     for (const [name, at] of entry.faces) if (now - at < SEEN_FOR_MS) faces.add(name);
     const attributes: Record<string, boolean> = {};
     for (const [type, seen] of entry.attributes) if (now - seen.at < SEEN_FOR_MS) attributes[type] = seen.yes;
