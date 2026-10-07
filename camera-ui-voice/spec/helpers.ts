@@ -16,8 +16,17 @@ export async function runTests(): Promise<void> {
     console.error('not ok - the specs hang');
     process.exit(1);
   }, 120_000).unref();
+  // a test waiting on a promise nothing will resolve lets Node exit quietly with 0: count that as a failure
+  let finished = false;
+  let current = '';
+  process.on('exit', () => {
+    if (finished) return;
+    console.log(`not ok - ${current} (never finished)`);
+    process.exitCode = 1;
+  });
   let passed = 0;
   for (const [name, run] of tests) {
+    current = name;
     try {
       await run();
       passed++;
@@ -27,6 +36,7 @@ export async function runTests(): Promise<void> {
       console.log(error);
     }
   }
+  finished = true;
   console.log(`${passed}/${tests.length} passed`);
   if (passed !== tests.length) process.exit(1);
 }

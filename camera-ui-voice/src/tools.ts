@@ -65,7 +65,7 @@ export const TOOLS: AssistantToolSpec[] = [
         child: { type: 'string', description: 'The name the child is called by, e.g. "Артём".' },
         zone: { type: 'string', description: 'The object zone of the camera where the computer is; voice_status lists the zones.' },
         sessionMinutes: { type: 'integer', minimum: 5, maximum: 240, description: 'Minutes at the computer before a break.' },
-        breakMinutes: { type: 'integer', minimum: 1, maximum: 120, description: 'Length of the break in minutes.' },
+        breakMinutes: { type: 'integer', minimum: 3, maximum: 120, description: 'Length of the break in minutes.' },
         dailyMinutes: { type: 'integer', minimum: 0, maximum: 1440, description: 'Minutes a day at most; 0 for no daily limit.' },
         schoolFrom: CLOCK('Bedtime on school nights'),
         schoolTo: CLOCK('Wake-up after school nights'),

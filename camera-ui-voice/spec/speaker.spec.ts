@@ -152,4 +152,25 @@ test('10b. a phrase that fails does not stop the ones behind it', async () => {
   assert.equal((await second).status, 'spoken');
 });
 
+test('a talk channel that fails to start does not leave the camera stream open', async () => {
+  const { CameraSpeaker } = await import('../src/speaker.js');
+  let stopped = 0;
+  const session = {
+    hasBackchannel: false,
+    onError: { subscribe: () => ({ unsubscribe() {} }) },
+    onEnded: { subscribe: () => ({ unsubscribe() {} }) },
+    startStream: async () => undefined,
+    startBackchannel: async () => Promise.reject(new Error('no encoder for the camera codec')),
+    sendAudioPacket: async () => undefined,
+    stop: async () => void stopped++,
+  };
+  const source = { backchannelAudioCodec: 'opus', createRtpSession: () => session };
+  const camera = { name: 'Детская', connected: true, sources: [source] } as never;
+  const speaker = new CameraSpeaker(camera, new FakeClock(0), () => undefined);
+  const result = await speaker.speak(new Float32Array(160), 8000);
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason ?? '', /no encoder/);
+  assert.equal(stopped, 1, 'the stream opened for the phrase is stopped');
+});
+
 void runTests();

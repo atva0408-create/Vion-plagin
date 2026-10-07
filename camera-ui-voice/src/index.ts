@@ -8,7 +8,7 @@ import { DoorWatcher } from './door.js';
 import { SherpaEngine } from './engine.js';
 import { FfmpegListener } from './listen.js';
 import { ModelStore } from './models.js';
-import { CameraSpeaker, speakerProblem, speakerProblemCode } from './speaker.js';
+import { CameraSpeaker, PROBLEM_TEXT, speakerProblem, speakerProblemCode } from './speaker.js';
 import { LANGUAGES, LANGUAGE_NAMES, asLanguage, fill, saidText, texts } from './speech.js';
 import { DAY_LABELS, PLUGIN_DEFAULTS, SCREEN_TIME_DEFAULTS, checkDoorRule, checkScreenTime, quietHours } from './settings.js';
 import { TOOLS, callTool } from './tools.js';
@@ -77,6 +77,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private stateFile: string;
   private lookTimer: NodeJS.Timeout | undefined;
   private started = false;
+  private deviceOwner = '';
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginValues>) {
     super(logger, api, storage);
@@ -108,6 +109,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
       language: () => this.language(),
       people: () => this.values().people ?? [],
       rules: () => this.doorRules(),
+      quiet: () => quietHours(this.values().quietFrom, this.values().quietTo),
       say: (speakerId, text) => this.voice.say(speakerId, text, 'template'),
       describe: (cameraId, language, timeoutMs) => this.describe(cameraId, language, timeoutMs),
       log,
@@ -372,7 +374,12 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     };
     this.voice.addCamera(port);
     entry.disposers.push(device.onDetectionEvent.subscribe(({ type, event }) => this.onDetection(entry, type, event)));
-    entry.disposers.push(device.onPropertyChange(['zones', 'sources']).subscribe(() => void this.refreshSchemas()));
+    // the talk channel of a stream is known only once the server has probed it (after a restart, a while after start)
+    const changed = () => {
+      this.applyScreenTime(entry);
+      void this.refreshSchemas();
+    };
+    entry.disposers.push(device.onPropertyChange(['zones', 'sources']).subscribe(changed));
     this.applyScreenTime(entry);
     await this.refreshSchemas();
   }
@@ -447,7 +454,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
               title: 'Break length, minutes',
               description: 'A break counts only if the child is away all this time.',
               defaultValue: d.breakMinutes,
-              minimum: 1,
+              minimum: 3,
               maximum: 120,
             }),
             item('dailyMinutes', {
@@ -673,10 +680,12 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
       if (checked.value) configs.push(checked.value);
       else this.logger.warn(`${entry.device.name}: screen time of ${values.childName ?? 'a child'} is not used: ${checked.errors.join('; ')}`);
     }
-    const problem = speakerProblem(entry.device);
-    if (configs.length && problem) this.logger.warn(`${entry.device.name}: screen time is not used, VOICE cannot speak here: ${problem}`);
-    // a camera that cannot speak gets no scenario: nobody would hear the reminders
-    this.voice.setScreenTime(entry.device.id, problem ? [] : configs);
+    // a camera without a talk channel gets no scenario: nobody would hear the reminders. One that is offline keeps it,
+    // a camera that reconnects speaks again without the owner touching anything
+    const problem = speakerProblemCode(entry.device);
+    const mute = problem === 'no_channel' || problem === 'channel_off';
+    if (configs.length && mute) this.logger.warn(`${entry.device.name}: screen time is not used, VOICE cannot speak here: ${PROBLEM_TEXT[problem]}`);
+    this.voice.setScreenTime(entry.device.id, mute ? [] : configs);
   }
 
   // ---- texts of the settings ----
@@ -853,13 +862,15 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
    * whether it speaks is the "Speakers for notifications" setting.
    */
   async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
-    return this.speakerOptions().map((c) => this.device(c.id, c.name, ownerUserIds[0] ?? ''));
+    // the server checks who may change a device by its owner: the device asked for alone must have the same one
+    if (ownerUserIds[0]) this.deviceOwner = ownerUserIds[0];
+    return this.speakerOptions().map((c) => this.device(c.id, c.name, ownerUserIds[0] ?? this.deviceOwner));
   }
 
   async getDevice(deviceId: string): Promise<NotifierDevice | null> {
     if (!deviceId.startsWith(DEVICE_PREFIX)) return null;
     const entry = this.cameras.get(deviceId.slice(DEVICE_PREFIX.length));
-    return entry && !speakerProblem(entry.device) ? this.device(entry.device.id, entry.device.name, '') : null;
+    return entry && !speakerProblem(entry.device) ? this.device(entry.device.id, entry.device.name, this.deviceOwner) : null;
   }
 
   async sendNotification(deviceIds: string[], n: Notification): Promise<void> {

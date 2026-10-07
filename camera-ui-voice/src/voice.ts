@@ -68,6 +68,8 @@ interface Scenario {
   cameraId: string;
   engine: ScreenTimeEngine;
   tracker: PresenceTracker;
+  /** Phrases of this child, one after the other, beside the looks. */
+  acting: Promise<void>;
 }
 
 /** Recent phrases and answers kept for the parents' status; never the sound. */
@@ -75,12 +77,15 @@ const RECENT = 20;
 const MAX_EXCHANGES = 3;
 /** The camera's microphone hears its own speaker: listening starts this long after a phrase ends. */
 export const LISTEN_DELAY_MS = 300;
+const MAX_INSTRUCTED = 300;
 
 export class Voice {
   private cameras = new Map<string, CameraPort>();
   private queues = new Map<string, PhraseQueue>();
   private scenarios = new Map<string, Scenario>();
-  private talking = new Set<string>();
+  /** Conversations running per camera: nothing else is said while VOICE listens for an answer. */
+  private talking = new Map<string, Promise<void>>();
+  private looking = new Set<string>();
   private lastSaved = '';
   private lastSavedAt = 0;
   readonly recent: Exchange[] = [];
@@ -153,6 +158,8 @@ export class Voice {
     if (!result.ok) return { status: 'failed', reason: `the assistant did not answer (${result.reason})` };
     const text = saidText(result);
     if (!text) return { status: 'failed', reason: 'the assistant wrote nothing' };
+    // models do not always keep to maxLength: a page of text would hold the camera for minutes
+    if (text.length > MAX_INSTRUCTED) return { status: 'failed', reason: `the assistant wrote ${text.length} characters, more than ${MAX_INSTRUCTED}` };
     return { ...(await this.say(cameraId, text, 'llm')), text };
   }
 
@@ -176,6 +183,7 @@ export class Voice {
       this.scenarios.set(key, {
         cameraId,
         engine: new ScreenTimeEngine(config, state),
+        acting: Promise.resolve(),
         tracker: new PresenceTracker(config.source, () => camera()?.zone(config.source.zone)),
       });
     }
@@ -194,6 +202,17 @@ export class Voice {
 
   /** One look at a camera: presence of each child, and whatever the scenarios decide. */
   async look(cameraId: string, sighting: Sighting): Promise<void> {
+    // a look still running (a slow save) is not overtaken by the next one: two ticks of one moment would count twice
+    if (this.looking.has(cameraId)) return;
+    this.looking.add(cameraId);
+    try {
+      await this.lookNow(cameraId, sighting);
+    } finally {
+      this.looking.delete(cameraId);
+    }
+  }
+
+  private async lookNow(cameraId: string, sighting: Sighting): Promise<void> {
     const now = this.deps.clock.now();
     const timeZone = this.deps.timeZone();
     const quiet = Boolean(activeInterval(this.deps.quiet(), now, timeZone));
@@ -203,7 +222,12 @@ export class Voice {
       const present = scenario.tracker.look(sighting);
       const actions = scenario.engine.tick({ now, present, name: scenario.tracker.seenName(), quiet, timeZone, language: this.deps.language() });
       if (wasPresent && !scenario.engine.state.present) scenario.tracker.sessionEnded();
-      for (const action of actions) await this.act(key, scenario, action);
+      // said beside the looks: a phrase takes seconds, the camera keeps being watched meanwhile
+      for (const action of actions) {
+        scenario.acting = scenario.acting
+          .then(() => this.act(key, scenario, action))
+          .catch((error: Error) => this.deps.log(`${scenario.engine.config.childName}: ${error.message}`));
+      }
     }
     await this.persist(now);
   }
@@ -251,17 +275,19 @@ export class Voice {
       await this.notifyParents(camera, title, body, `voice:${key}`);
       return;
     }
+    // the microphone hears the camera's own speaker: a phrase now would come back as the child's answer
+    await this.talking.get(camera.id);
     const phrase = await nudgePhrase(this.deps.ask, action.facts, language, action.kind);
     if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
     const result = await this.say(camera.id, phrase.text, phrase.source);
     if (result.status === 'spoken' && scenario.engine.config.answerQuestions && !this.talking.has(camera.id)) {
       // the conversation runs beside the looks: the camera keeps being watched while the child answers
-      void this.converse(key, scenario, camera);
+      const talk = this.converse(key, scenario, camera).finally(() => this.talking.delete(camera.id));
+      this.talking.set(camera.id, talk);
     }
   }
 
   private async converse(key: string, scenario: Scenario, camera: CameraPort): Promise<void> {
-    this.talking.add(camera.id);
     try {
       const language = this.deps.language();
       for (let exchange = 0; exchange < MAX_EXCHANGES; exchange++) {
@@ -285,8 +311,6 @@ export class Voice {
       }
     } catch (error) {
       this.deps.log(`${camera.name}: conversation stopped: ${(error as Error).message}`);
-    } finally {
-      this.talking.delete(camera.id);
     }
   }
 

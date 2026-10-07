@@ -9,7 +9,7 @@ import type { DetectionEvent, DetectionEventType } from '@camera.ui/sdk';
 import type { DoorRule, PersonValues } from './settings.js';
 import type { SpeakResult } from './speaker.js';
 import type { Language } from './speech.js';
-import type { Clock } from './time.js';
+import type { Clock, WeeklyInterval } from './time.js';
 
 export interface DoorDeps {
   clock: Clock;
@@ -17,6 +17,8 @@ export interface DoorDeps {
   language: () => Language;
   people: () => PersonValues[];
   rules: () => DoorRule[];
+  /** Quiet hours of VOICE: nothing is said then, whatever the rule. */
+  quiet: () => WeeklyInterval[];
   say: (speakerId: string, text: string) => Promise<SpeakResult>;
   /** A short description of who is at the door from a snapshot ("a courier with a box"), or undefined. */
   describe: (cameraId: string, language: Language, timeoutMs: number) => Promise<string | undefined>;
@@ -81,7 +83,7 @@ export class DoorWatcher {
     for (const [index, rule] of this.deps.rules().entries()) {
       if (!rule.doorCameras.includes(event.cameraId)) continue;
       if (!rule.labels.some((label) => labels.includes(label))) continue;
-      if (activeInterval(rule.quiet, now, this.deps.timeZone())) {
+      if (activeInterval([...rule.quiet, ...this.deps.quiet()], now, this.deps.timeZone())) {
         this.deps.log(`door: quiet hours, not saying who came (${known ?? 'not recognized'})`);
         continue;
       }

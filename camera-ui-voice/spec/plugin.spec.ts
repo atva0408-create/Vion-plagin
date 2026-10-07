@@ -56,6 +56,7 @@ function storage(schemas: JsonSchema[]) {
 function camera(id: string, name: string, talks: boolean) {
   const packets: Buffer[] = [];
   const events = subject<{ type: string; event: unknown }>();
+  const changes = subject<unknown>();
   const source = {
     backchannelAudioCodec: talks ? 'opus' : undefined,
     audioCodecs: ['opus'],
@@ -102,7 +103,9 @@ function camera(id: string, name: string, talks: boolean) {
       ],
     },
     onDetectionEvent: events,
-    onPropertyChange: () => subject<unknown>(),
+    changes,
+    onConnected: subject<boolean>(),
+    onPropertyChange: () => changes,
     createStorage: (schemas: JsonSchema[]) => {
       device.storage = storage(schemas);
       return device.storage;
@@ -242,6 +245,7 @@ test('13b. wrong input gets an error that says what to fix', async () => {
     ['voice_set_screen_time', { camera: 'Детская', child: 'Артём', zone: 'sofa' }, /zone: "sofa" is not a zone of this camera \(desk\)/],
     ['voice_set_screen_time', { camera: 'Детская', child: 'Артём', zone: 'desk', schoolFrom: '25:00' }, /schoolFrom: a time HH:MM/],
     ['voice_set_screen_time', { camera: 'Детская', child: 'Артём', zone: 'desk', sessionMinutes: 1 }, /sessionMinutes: a number from 5 to 240/],
+    ['voice_set_screen_time', { camera: 'Детская', child: 'Артём', zone: 'desk', breakMinutes: 2 }, /^Not saved. Fix: breakMinutes: a number from 3 to 120$/],
     ['voice_set_screen_time', { camera: 'Входная дверь', child: 'Артём', zone: 'desk' }, /cannot speak through "Входная дверь"/],
     ['voice_extend', { child: 'Артём' }, /give minutes/],
     ['voice_set_door', { doorCameras: ['Входная дверь'], speakers: ['Входная дверь'] }, /speakers: camera door cannot speak/],
@@ -363,6 +367,34 @@ test('door events of the cameras reach the door rules', async () => {
   await new Promise((resolve) => setTimeout(resolve, 2_700));
   await flush();
   assert.deepEqual(s.engine.said, ['У двери незнакомый человек.']);
+});
+
+test('after a server restart the talk channel is known only later: screen time switches on then', async () => {
+  const s = await setup();
+  // as at boot: the server has not probed the stream yet, the codec of the talk channel is unknown
+  s.kids.device.sources[0].backchannelAudioCodec = undefined;
+  await s.plugin.onCameraAdded(s.kids.device);
+  await s.kids.device.storage.setValue('screenTime', [{ childName: 'Артём', zone: 'desk' }]);
+  assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 0);
+
+  s.kids.device.sources[0].backchannelAudioCodec = 'opus';
+  s.kids.device.changes.next({ property: 'sources' });
+  await flush();
+  assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 1, 'switched on once the stream was probed');
+});
+
+test('a camera that is offline for a while keeps its scenario: it speaks again when it is back', async () => {
+  const s = await setup();
+  s.kids.device.connected = false;
+  await s.plugin.onCameraAdded(s.kids.device);
+  await s.kids.device.storage.setValue('screenTime', [{ childName: 'Артём', zone: 'desk' }]);
+  assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 1);
+});
+
+test('the notification device has the same owner when asked for alone', async () => {
+  const s = await setup();
+  const [listed] = await s.plugin.getDevices(['user-1']);
+  assert.equal((await s.plugin.getDevice(listed.id))?.ownerUserId, 'user-1');
 });
 
 void runTests();

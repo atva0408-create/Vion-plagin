@@ -56,7 +56,8 @@ export const SCREEN_TIME_DEFAULTS = {
 
 const LIMITS: Partial<Record<keyof ScreenTimeValues, [number, number]>> = {
   sessionMinutes: [5, 240],
-  breakMinutes: [1, 120],
+  // longer than the short absence (2 min by default), or no break could ever count
+  breakMinutes: [3, 120],
   dailyMinutes: [0, 1440],
   repeatMinutes: [1, 60],
   maxRepeats: [0, 20],
@@ -81,7 +82,8 @@ export function checkScreenTime(values: ScreenTimeValues, zones: string[]): Chec
     const n = v[key];
     if (typeof n !== 'number' || !Number.isFinite(n) || n < min || n > max) errors.push(`${key}: a number from ${min} to ${max}`);
   }
-  if (v.gapSeconds >= v.breakMinutes * 60) errors.push('gapSeconds: must be shorter than the break, or a break would never count');
+  if (!errors.some((e) => e.startsWith('breakMinutes')) && v.gapSeconds >= v.breakMinutes * 60)
+    errors.push('gapSeconds: must be shorter than the break, or a break would never count');
   for (const key of ['schoolFrom', 'schoolTo', 'freeFrom', 'freeTo'] as const) {
     if (v[key] !== '' && v[key] !== undefined && !isClock(v[key])) errors.push(`${key}: a time HH:MM, e.g. 21:30, or empty for no bedtime`);
   }

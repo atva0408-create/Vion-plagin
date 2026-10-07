@@ -3,10 +3,10 @@
  * server. Models load on first use and are let go after a few idle minutes, so an idle plugin holds no model memory
  * and uses no processor.
  */
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import { PACKS, VOICES } from './models.js';
+import { nativeRequire } from './runtime.js';
 
 import type { ModelStore } from './models.js';
 import type { Language } from './speech.js';
@@ -40,7 +40,7 @@ type Sherpa = any;
 
 function loadSherpa(): Sherpa {
   try {
-    return createRequire(import.meta.url)('sherpa-onnx-node');
+    return nativeRequire('sherpa-onnx-node');
   } catch (error) {
     throw new Error(`the speech engine (sherpa-onnx-node) is not installed for this system: ${(error as Error).message}`);
   }

@@ -158,8 +158,12 @@ export function talkSource(camera: Pick<CameraDevice, 'sources'>): CameraDeviceS
 
 /** Leading silence: the talk channel of some cameras swallows the first fraction of a second. */
 const LEAD_MS = 200;
-/** The session stays open a while after a phrase: the next one starts without a new RTSP handshake. */
-const KEEP_OPEN_MS = 20_000;
+/**
+ * The session closes shortly after a phrase: the last packets still have to pass the server's transcoder. It is not
+ * kept for the next phrase, because the server ends its talk channel when packets stop, and a phrase sent into an
+ * ended channel is lost without an error.
+ */
+const DRAIN_MS = 1_000;
 
 /**
  * One RTP session into the camera, opened for a phrase and kept for a while. Phrases are given to it one at a time by
@@ -194,7 +198,7 @@ export class CameraSpeaker {
       const packets = packetize(alawEncode(audio), this.rtp);
       const latencyMs = this.clock.now() - started;
       await sendPaced(packets, (packet) => session.sendAudioPacket(packet), this.clock);
-      this.closeTimer = this.clock.setTimeout(() => void this.close(), KEEP_OPEN_MS);
+      this.closeTimer = this.clock.setTimeout(() => void this.close(), DRAIN_MS);
       return { status: 'spoken', latencyMs, durationMs: packets.length * PACKET_MS };
     } catch (error) {
       await this.close();
@@ -219,8 +223,15 @@ export class CameraSpeaker {
     session.onEnded.subscribe(() => {
       if (this.session === session) this.session = undefined;
     });
-    await session.startStream({ audio: { codec: 'pcma', sampleRate: RTP_CLOCK, channels: 1 } });
-    await session.startBackchannel({ decoderCodec: 'pcm_alaw', payloadType: PAYLOAD_TYPE_PCMA, clockRate: RTP_CLOCK, channels: 1 });
+    try {
+      // no codec asked for the incoming audio: it is not read, and asking would make the server transcode it
+      await session.startStream();
+      await session.startBackchannel({ decoderCodec: 'pcm_alaw', payloadType: PAYLOAD_TYPE_PCMA, clockRate: RTP_CLOCK, channels: 1 });
+    } catch (error) {
+      // the stream is open by now and would keep pulling the camera until it drops it
+      await session.stop().catch(() => undefined);
+      throw error;
+    }
     this.session = session;
     this.rtp = newRtpState();
     return session;

@@ -200,4 +200,87 @@ test('the state is saved when something besides the clock changes', async () => 
   assert.equal(Object.values(last.screenTime)[0].present, true);
 });
 
+test('only-this-face: someone else seen first does not lock the child out', async () => {
+  const s = await setup(unconfigured, { face: 'Артём', sessionMinutes: 5 });
+  const at = (faces: string[]) => ({ ...AT_DESK, faces });
+  // his sister sat down first, then Artem
+  for (let i = 0; i < 6; i++) {
+    await s.clock.advance(5_000);
+    await s.voice.look(s.camera.id, at(['Маша']));
+  }
+  for (let i = 0; i < 12 * 7; i++) {
+    await s.clock.advance(5_000);
+    await s.voice.look(s.camera.id, at(i % 4 === 0 ? ['Артём'] : []));
+  }
+  const engine = s.voice.scenariosOf(s.camera.id)[0].engine;
+  assert.equal(engine.state.present, true);
+  assert.ok(engine.state.todayMs >= 6 * MINUTE, `counted ${engine.state.todayMs / MINUTE} min`);
+  assert.equal(s.engine.said.length, 1, 'the break phrase came');
+});
+
+test('a slow phrase does not hold the looks back, and a look is not run twice at once', async () => {
+  const s = await setup(unconfigured, { sessionMinutes: 5 });
+  let release: () => void = () => undefined;
+  let speaking = 0;
+  s.camera.speaker.speak = async () => {
+    speaking++;
+    await new Promise<void>((resolve) => (release = resolve));
+    return { status: 'spoken' };
+  };
+  await s.look(6 * MINUTE, true);
+  assert.equal(speaking, 1, 'the phrase is being said');
+  // the camera keeps being watched while the phrase plays
+  const before = s.voice.scenariosOf(s.camera.id)[0].engine.state.lastTick;
+  await s.look(10_000, true);
+  assert.ok(s.voice.scenariosOf(s.camera.id)[0].engine.state.lastTick! > before!, 'looks went on');
+  release();
+  await s.clock.advance(1);
+});
+
+test('two looks at one camera at the same time: the second waits for nothing and counts nothing', async () => {
+  const s = await setup();
+  await s.look(MINUTE, true);
+  const scenario = [...(s.voice as any).scenarios.values()][0];
+  let looks = 0;
+  const original = scenario.tracker.look.bind(scenario.tracker);
+  scenario.tracker.look = (sighting: unknown) => {
+    looks++;
+    return original(sighting);
+  };
+  let unblock: () => void = () => undefined;
+  (s.voice as any).deps.saveState = () => new Promise<void>((resolve) => (unblock = resolve));
+  (s.voice as any).lastSaved = '';
+  await s.clock.advance(5_000);
+  const first = s.voice.look(s.camera.id, AT_DESK);
+  const second = s.voice.look(s.camera.id, AT_DESK);
+  await second;
+  assert.equal(looks, 1, 'the second look did not run beside the first');
+  unblock();
+  await first;
+});
+
+test('a new phrase waits while VOICE listens for the answer: the microphone would hear VOICE itself', async () => {
+  const s = await setup(unconfigured, { answerQuestions: true, sessionMinutes: 5, repeatMinutes: 1 });
+  let answer: (audio: Float32Array | undefined) => void = () => undefined;
+  s.camera.listen = () => new Promise((resolve) => (answer = resolve));
+  await s.look(6 * MINUTE, true);
+  assert.equal(s.engine.said.length, 1);
+  // the firm phrase falls due while the window is still open
+  await s.look(2 * MINUTE, true);
+  assert.equal(s.engine.said.length, 1, 'nothing said over the listening');
+  answer(undefined);
+  await s.clock.advance(1);
+  await s.look(5_000, true);
+  assert.equal(s.engine.said.length, 2, 'said once the conversation is over');
+});
+
+test('an instruction the assistant turns into an endless text is not said', async () => {
+  const { ask } = fakeAsk(() => ({ ok: true, text: '', json: { say: 'а'.repeat(400) }, usage: { promptTokens: 1, completionTokens: 1 } }));
+  const s = await setup();
+  (s.voice as any).deps.ask = ask;
+  const result = await s.voice.sayInstructed(s.camera.id, 'скажи что-нибудь');
+  assert.equal(result.status, 'failed');
+  assert.equal(s.engine.said.length, 0);
+});
+
 void runTests();

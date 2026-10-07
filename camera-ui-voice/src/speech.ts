@@ -7,7 +7,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import { codeDir } from './runtime.js';
 
 import type { AssistantAskRequest, AssistantAskResult } from '@camera.ui/sdk';
 import type { Facts, Reason } from './screenTime.js';
@@ -36,7 +37,7 @@ const cache = new Map<Language, SpeechTexts>();
 
 /** The speech folder next to the code: i18n/speech in the plugin, in the source tree and in the bundle. */
 function speechDir(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
+  let dir = codeDir();
   for (let i = 0; i < 4; i++) {
     const candidate = join(dir, 'i18n', 'speech');
     try {

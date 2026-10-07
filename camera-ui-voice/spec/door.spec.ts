@@ -7,8 +7,14 @@ import { FakeClock, msk, runTests, test } from './helpers.js';
 
 import type { DetectionEvent } from '@camera.ui/sdk';
 import type { DoorRuleValues, PersonValues } from '../src/settings.js';
+import type { WeeklyInterval } from '../src/time.js';
 
-function setup(rule: DoorRuleValues = {}, people: PersonValues[] = [], describe?: (timeoutMs: number, clock: FakeClock) => Promise<string | undefined>) {
+function setup(
+  rule: DoorRuleValues = {},
+  people: PersonValues[] = [],
+  describe?: (timeoutMs: number, clock: FakeClock) => Promise<string | undefined>,
+  quiet: WeeklyInterval[] = [],
+) {
   const clock = new FakeClock(msk('2026-10-07T18:00:00'));
   const said: { speaker: string; text: string }[] = [];
   const logs: string[] = [];
@@ -20,6 +26,7 @@ function setup(rule: DoorRuleValues = {}, people: PersonValues[] = [], describe?
     language: () => 'ru',
     people: () => people,
     rules: () => [checked.value!],
+    quiet: () => quiet,
     say: async (speaker, text) => {
       said.push({ speaker, text });
       return { status: 'spoken' };
@@ -136,6 +143,13 @@ test('11g. other cameras and other labels do not speak', async () => {
   const s = setup();
   s.watcher.onEvent('start', event('Оля', 'person', 'garden'));
   s.watcher.onEvent('start', event(undefined, 'vehicle'));
+  await s.clock.advance(FACE_WAIT_MS + 10);
+  assert.equal(s.said.length, 0);
+});
+
+test('11h. the quiet hours of VOICE silence the door too', async () => {
+  const s = setup({}, [], undefined, [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], from: '17:00', to: '19:00' }]);
+  s.watcher.onEvent('start', event('Оля'));
   await s.clock.advance(FACE_WAIT_MS + 10);
   assert.equal(s.said.length, 0);
 });
