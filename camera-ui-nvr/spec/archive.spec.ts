@@ -222,6 +222,21 @@ for (const [i, row] of [...cam, kept].entries()) {
 {
   const preview = await nvr.nvrPreviewFrames('cam', cam[0].start_us, cam[1].start_us + 3 * S, 13);
   assert.ok(preview.frames.some((f) => inside(cam[0], f.ts)) && preview.frames.some((f) => inside(cam[1], f.ts)), 'the preview strip has pictures of both files');
+  const start = cam[0].start_us + 1.5 * S;
+  const motion = await nvr.nvrPreviewFrames('cam', start, start + 20 * S, 12, 'motion');
+  assert.equal(motion.frames[0]?.keyframe, true, 'motion starts with a decodable keyframe');
+  assert.equal(motion.frames[0]?.ts, cam[0].start_us + S, 'include keyframe preroll');
+  assert.ok(
+    motion.frames.some((frame) => !frame.keyframe),
+    'motion preserves intermediate frames',
+  );
+  assert.ok(
+    motion.frames.every((frame, i, all) => frame.ts <= start + 4 * S && (!i || frame.ts > all[i - 1].ts)),
+    'motion is bounded and ordered',
+  );
+  assert.ok(motion.frames.length <= 360 && motion.frames.reduce((n, frame) => n + frame.frame.byteLength, 0) <= 12 * 1024 * 1024, 'motion has a fixed data budget');
+  assert.equal((await nvr.nvrPreviewFrames('cam', NaN, start, 12, 'motion')).noData, true);
+  assert.equal((await nvr.nvrPreviewFrames('cam', start, start, 12, 'motion')).noData, true);
 }
 
 // ------------------------------------------------------------------ exported

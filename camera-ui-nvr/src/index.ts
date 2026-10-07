@@ -11,7 +11,7 @@ import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './expo
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
 import { PlaybackManager } from './playback.js';
-import { keyframeAtOrBefore, readGop, readKeyframe } from './reader.js';
+import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
 import { parseKeyframes, Store } from './store.js';
@@ -1091,13 +1091,41 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     startUs: number,
     endUs: number,
     count = 12,
+    mode: 'keyframes' | 'motion' = 'keyframes',
   ): Promise<{ frames: NvrFrame[]; videoCodec: string; codecString?: string; width?: number; height?: number; noData?: boolean }> {
     await this.ready;
     const role = this.resolveRole(cameraId, 'low');
     const frames: NvrFrame[] = [];
     let meta: { videoCodec: string; codecString: string; width: number; height: number } | undefined;
+    if (!Number.isFinite(startUs) || !Number.isFinite(endUs) || endUs <= startUs) return { frames, videoCodec: '', noData: true };
+    if (mode === 'motion') {
+      // A hover plays a short, bounded excerpt. Include the preceding keyframe
+      // for decoding, while the client only displays frames in the requested range.
+      const until = Math.min(endUs, startUs + 4_000_000);
+      let bytes = 0;
+      let budgetReached = false;
+      const segments = this.store.segments(cameraId, role, startUs, until).slice(0, 3);
+      for (const seg of segments) {
+        if (meta && (meta.codecString !== seg.codec_string || meta.width !== seg.width || meta.height !== seg.height)) break;
+        const from = keyframeAtOrBefore(seg, Math.max(startUs, seg.start_us));
+        if (!from) continue;
+        meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
+        for await (const frame of readFrames(this.store.located(seg), from)) {
+          if (frame.tsUs > until) break;
+          if (frames.length >= 360 || bytes + frame.data.byteLength > 12 * 1024 * 1024) {
+            budgetReached = true;
+            break;
+          }
+          if (frames.length && frame.tsUs <= frames.at(-1)!.ts) continue;
+          frames.push({ frame: frame.data, ts: frame.tsUs, keyframe: frame.keyframe });
+          bytes += frame.data.byteLength;
+        }
+        if (budgetReached) break;
+      }
+      return meta && frames.length ? { ...meta, frames } : { frames: [], videoCodec: '', noData: true };
+    }
     const seen = new Set<string>();
-    const n = Math.max(1, Math.min(count, 60));
+    const n = Math.max(1, Math.min(Number.isFinite(count) ? Math.floor(count) : 12, 60));
     for (let i = 0; i < n; i++) {
       const t = startUs + ((endUs - startUs) * i) / Math.max(1, n - 1);
       const seg = this.store.segmentAt(cameraId, role, t);
