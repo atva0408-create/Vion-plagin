@@ -1,3 +1,7 @@
+## [0.11.3]
+
+- The hover preview of an event finds the event where it is recorded: an event recorded only from its middle, or from a camera that sends a keyframe rarely, showed "no preview"; the excerpt now starts where the recording of the event begins, at the next keyframe when the one before is further back than the excerpt is long
+
 ## [0.11.2]
 
 - Hovering an event on the home page plays a short motion excerpt of it, together with ViON's new event cards: up to 4 seconds of consecutive frames from the keyframe before the event, instead of a few keyframes

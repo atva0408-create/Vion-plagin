@@ -87,6 +87,7 @@ const stream = readFileSync(join(dir, 'stream.ts'));
 interface Internals {
   cameras: Map<string, unknown>;
   store: Store & { sql: DatabaseSync };
+  previewPrerollUs: number;
   enforceRetention(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -104,7 +105,7 @@ function start(storagePath: string): { nvr: VionNvr; internals: Internals } {
   };
   const nvr = new VionNvr({ log: noop, warn: (...a: unknown[]) => console.warn('[warn]', ...a), error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
   const internals = nvr as unknown as Internals;
-  for (const id of ['cam', 'aged', 'full', 'kept', 'porch']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+  for (const id of ['cam', 'aged', 'full', 'kept', 'porch', 'sparse']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
   return { nvr, internals };
 }
 
@@ -237,6 +238,41 @@ for (const [i, row] of [...cam, kept].entries()) {
   assert.ok(motion.frames.length <= 360 && motion.frames.reduce((n, frame) => n + frame.frame.byteLength, 0) <= 12 * 1024 * 1024, 'motion has a fixed data budget');
   assert.equal((await nvr.nvrPreviewFrames('cam', NaN, start, 12, 'motion')).noData, true);
   assert.equal((await nvr.nvrPreviewFrames('cam', start, start, 12, 'motion')).noData, true);
+
+  const ordered = (frames: { ts: number }[]) => frames.every((frame, i) => !i || frame.ts > frames[i - 1].ts);
+  // an event that began before its recording (recorded by events): the excerpt is where the recording is
+  const late = await nvr.nvrPreviewFrames('cam', cam[1].start_us - 20 * S, cam[1].start_us + 3 * S, 12, 'motion');
+  assert.equal(late.noData, undefined, 'an event recorded only from its middle has a preview');
+  assert.equal(late.frames[0]?.ts, cam[1].start_us, 'from the first keyframe of its recording');
+  assert.ok(late.frames.every((frame) => frame.ts <= cam[1].start_us + 3 * S) && ordered(late.frames));
+  // a camera that sends keyframes rarely: here one in each 4 s file
+  const sparse = cam.map(({ id: _row, ...row }) =>
+    internals.store.segment(internals.store.addSegment({ ...row, camera_id: 'sparse', keyframes: JSON.stringify(JSON.parse(row.keyframes).slice(0, 1)) }))!,
+  );
+  // a part of an episode is shorter than the way back to its keyframe, and is still decoded from it
+  const part = await nvr.nvrPreviewFrames('sparse', sparse[0].start_us + 2.5 * S, sparse[0].start_us + 2.9 * S, 12, 'motion', 0.3 * S);
+  assert.equal(part.frames[0]?.ts, sparse[0].start_us, 'a short excerpt decodes from the keyframe before it');
+  assert.ok(part.frames.some((frame) => frame.ts >= sparse[0].start_us + 2.5 * S), 'and reaches it');
+  const preroll = internals.previewPrerollUs;
+  internals.previewPrerollUs = 0.5 * S;
+  // further back than the bound: no frame budget is spent before the event, the excerpt starts at its next keyframe
+  const forward = await nvr.nvrPreviewFrames('cam', cam[0].start_us + 2.7 * S, cam[0].start_us + 4 * S, 12, 'motion', 0.3 * S);
+  assert.equal(forward.frames[0]?.ts, cam[0].start_us + 3 * S, 'the excerpt starts at the next keyframe');
+  assert.equal(forward.frames[0]?.keyframe, true);
+  assert.ok(forward.frames.length > 1 && forward.frames.every((frame) => frame.ts <= cam[0].start_us + 3.3 * S), 'and is as long as asked');
+  const near = await nvr.nvrPreviewFrames('cam', cam[0].start_us + 2.4 * S, cam[0].start_us + 4 * S, 12, 'motion', 0.3 * S);
+  assert.equal(near.frames[0]?.ts, cam[0].start_us + 2 * S, 'within the bound the keyframe before is decoded from');
+  // no keyframe left in its file after the start: the next file of the event
+  const next = await nvr.nvrPreviewFrames('sparse', sparse[0].start_us + 2.5 * S, sparse[1].start_us + 2 * S, 12, 'motion', 0.3 * S);
+  assert.equal(next.frames[0]?.ts, sparse[1].start_us, 'the next file of the event');
+  assert.ok(next.frames.every((frame) => frame.ts >= sparse[1].start_us && frame.ts <= sparse[1].start_us + 0.3 * S));
+  // and no later keyframe in the whole event: decoded from the far one, as before, rather than no preview at all
+  const only = await nvr.nvrPreviewFrames('sparse', sparse[0].start_us + 2.5 * S, sparse[0].start_us + 2.9 * S, 12, 'motion');
+  assert.equal(only.frames[0]?.ts, sparse[0].start_us, 'the keyframe before, however far');
+  assert.ok(only.frames.some((frame) => frame.ts >= sparse[0].start_us + 2.5 * S));
+  internals.previewPrerollUs = preroll;
+  // the recording is looked for in the first 10 minutes of an event, not through the whole index
+  assert.equal((await nvr.nvrPreviewFrames('cam', cam[0].start_us - 700 * S, cam[1].start_us + 2 * S, 12, 'motion')).noData, true);
 }
 
 // ------------------------------------------------------------------ exported

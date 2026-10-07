@@ -1,3 +1,7 @@
+## [0.11.3]
+
+- Die Vorschau eines Ereignisses beim Überfahren findet das Ereignis dort, wo es aufgezeichnet ist: ein erst ab der Mitte aufgezeichnetes Ereignis oder eines von einer Kamera, die selten ein Schlüsselbild sendet, zeigte „keine Vorschau“; der Ausschnitt beginnt jetzt dort, wo die Aufzeichnung des Ereignisses beginnt, und am nächsten Schlüsselbild, wenn das vorherige weiter zurückliegt, als der Ausschnitt lang ist
+
 ## [0.11.2]
 
 - Beim Überfahren eines Ereignisses auf der Startseite läuft ein kurzer Bewegungsausschnitt, zusammen mit den neuen Ereigniskarten von ViON: bis zu 4 Sekunden aufeinanderfolgender Bilder ab dem Schlüsselbild vor dem Ereignis statt einiger Schlüsselbilder

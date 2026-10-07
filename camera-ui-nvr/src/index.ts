@@ -33,7 +33,7 @@ import type { EventDescription } from './describer.js';
 import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
-import type { EventRow, SegmentRow } from './store.js';
+import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
@@ -182,6 +182,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private episodes!: Episodes;
   private episodeTimer: NodeJS.Timeout | undefined;
   private readonly proxies = new Map<string, unknown>();
+  /**
+   * How far back a hover preview decodes from the keyframe before the event: 8 s is 240 frames at 30 fps, so the
+   * excerpt still fits the 360-frame budget behind it. Further back it starts at a later keyframe.
+   */
+  private previewPrerollUs = 8_000_000;
   private clipStatus: ClipReindexStatus = { running: false, total: 0, done: 0, skipped: 0 };
   private clipCancel = false;
   private clipAutoTimer: NodeJS.Timeout | undefined;
@@ -1092,6 +1097,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     endUs: number,
     count = 12,
     mode: 'keyframes' | 'motion' = 'keyframes',
+    spanUs = 4_000_000,
   ): Promise<{ frames: NvrFrame[]; videoCodec: string; codecString?: string; width?: number; height?: number; noData?: boolean }> {
     await this.ready;
     const role = this.resolveRole(cameraId, 'low');
@@ -1101,16 +1107,40 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (mode === 'motion') {
       // A hover plays a short, bounded excerpt. Include the preceding keyframe
       // for decoding, while the client only displays frames in the requested range.
-      const until = Math.min(endUs, startUs + 4_000_000);
+      const span = Number.isFinite(spanUs) && spanUs > 0 ? Math.min(spanUs, 4_000_000) : 4_000_000;
+      // Searched over the event, not only its first seconds: a recording made by events can begin after the event,
+      // and such a card had no preview. Bounded: a range of years would read the whole index of the camera.
+      const segments = this.store.segments(cameraId, role, startUs, Math.min(endUs, startUs + 600_000_000));
+      let first = -1;
+      let from: Keyframe | undefined;
+      let fallback: { index: number; from: Keyframe } | undefined;
+      for (const [i, seg] of segments.entries()) {
+        const begin = Math.max(startUs, seg.start_us);
+        const before = keyframeAtOrBefore(seg, begin);
+        // A camera with a long or irregular keyframe interval (seen: 80 s) spent the whole frame budget before the
+        // event: from that far back the excerpt starts at the next keyframe of the event, in this file or a later one.
+        const far = before !== undefined && begin - before.tsUs > this.previewPrerollUs;
+        const chosen = far ? parseKeyframes(seg.keyframes).find((kf) => kf.tsUs >= begin && kf.tsUs < endUs) : before;
+        if (chosen) {
+          first = i;
+          from = chosen;
+          break;
+        }
+        if (before) fallback ??= { index: i, from: before };
+      }
+      // No later keyframe in the event: decoding from the far one, as before, may still reach it within the budget.
+      if (!from && fallback) ({ index: first, from } = fallback);
+      if (!from) return { frames, videoCodec: '', noData: true };
+      const until = Math.min(endUs, Math.max(startUs, segments[first].start_us, from.tsUs) + span);
       let bytes = 0;
       let budgetReached = false;
-      const segments = this.store.segments(cameraId, role, startUs, until).slice(0, 3);
-      for (const seg of segments) {
+      for (const [i, seg] of segments.slice(first, first + 3).entries()) {
+        if (seg.start_us > until) break;
         if (meta && (meta.codecString !== seg.codec_string || meta.width !== seg.width || meta.height !== seg.height)) break;
-        const from = keyframeAtOrBefore(seg, Math.max(startUs, seg.start_us));
-        if (!from) continue;
+        const at = i === 0 ? from : keyframeAtOrBefore(seg, seg.start_us);
+        if (!at) continue;
         meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
-        for await (const frame of readFrames(this.store.located(seg), from)) {
+        for await (const frame of readFrames(this.store.located(seg), at)) {
           if (frame.tsUs > until) break;
           if (frames.length >= 360 || bytes + frame.data.byteLength > 12 * 1024 * 1024) {
             budgetReached = true;
