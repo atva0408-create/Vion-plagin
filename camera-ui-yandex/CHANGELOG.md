@@ -1,3 +1,7 @@
+## [0.2.1]
+
+- The assistant: a phrase said on a station, a command to Alice and a scenario of the Smart Home are an admin's and ask for approval in the chat, so neither a user nor a schedule nor Alice can make a station say something
+
 ## [0.2.0]
 
 - Air conditioners, TVs and IR remotes: the mode, temperature and fan of an air conditioner, the volume, channel, input and mute of a TV and the learned buttons of an IR remote are in the settings of their switch in ViON. A remote of buttons only becomes a switch of its own that holds them

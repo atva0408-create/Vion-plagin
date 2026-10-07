@@ -1,7 +1,7 @@
 {
   "displayName": "Яндекс Умный дом",
   "name": "@vionvision/camera-ui-yandex",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Связывает ViON с Умным домом Яндекса и станциями Алисы: датчики и реле хаба становятся датчиками ViON, сценарии запускаются из автоматизаций, станции произносят уведомления, камеры Умного дома показываются в ViON.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

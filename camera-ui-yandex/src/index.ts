@@ -861,6 +861,10 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
           },
           required: ['text'],
         },
+        // A station speaks in someone's home: a stranger's phrase is an action, not a read. Only an action asked for
+        // in the chat with its card reaches it, never a schedule or Alice, and only an admin's.
+        approval: true,
+        adminOnly: true,
         timeoutMs: 20_000,
       },
       {
@@ -875,6 +879,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
           required: ['text'],
         },
         approval: true,
+        adminOnly: true,
         timeoutMs: 20_000,
       },
       {
@@ -882,6 +887,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         description: 'Run a scenario of the Yandex Smart Home by its name.',
         inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Name of the scenario.' } }, required: ['name'] },
         approval: true,
+        adminOnly: true,
       },
       {
         name: 'yandex_devices',
