@@ -1,3 +1,7 @@
+## [0.11.2]
+
+- Hovering an event on the home page plays a short motion excerpt of it, together with ViON's new event cards: up to 4 seconds of consecutive frames from the keyframe before the event, instead of a few keyframes
+
 ## [0.11.1]
 
 - The search re-index counts only its own work: events that already had their vector were shown as failures ("3 of 3, 2 failed"), and a search index that was up to date was never said to be

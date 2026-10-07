@@ -1,3 +1,7 @@
+## [0.11.2]
+
+- Beim Überfahren eines Ereignisses auf der Startseite läuft ein kurzer Bewegungsausschnitt, zusammen mit den neuen Ereigniskarten von ViON: bis zu 4 Sekunden aufeinanderfolgender Bilder ab dem Schlüsselbild vor dem Ereignis statt einiger Schlüsselbilder
+
 ## [0.11.1]
 
 - Die Neuindizierung der Suche zählt nur ihre eigene Arbeit: Ereignisse, die ihren Vektor schon hatten, erschienen als Fehler („3 von 3, 2 fehlgeschlagen“), und ein aktueller Suchindex wurde nie so genannt
