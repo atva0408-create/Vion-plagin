@@ -53,7 +53,8 @@
     "ocr",
     "alpr",
     "onnx",
-    "detection"
+    "detection",
+    "vion-module-onnx"
   ],
   "license": "MIT",
   "repository": {

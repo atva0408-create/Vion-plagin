@@ -63,6 +63,7 @@ from defaults import (
     FACE_LANDMARK_MODEL,
     LPD_DETECTOR_MODELS,
     MODEL_BASE_URL,
+    MODULE_BACKENDS,
     OBJECT_LABELS,
     OBJECT_MODELS,
     OCR_ALPHABET,
@@ -78,6 +79,7 @@ from defaults import (
     resolve_model,
 )
 from model_manager import OpenVinoModelManager
+from modules import installed_modules, is_module, usable_choice
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import OpenVinoClipSensor
 from sensors.face_embedder_sensor import OpenVinoFaceEmbedderSensor
@@ -121,6 +123,10 @@ class OpenVinoPlugin(
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         self._trained_version = -1
+        self._modules_version = -1
+        # the files each loaded module detector was built from: an update keeps the model name, not the files
+        self._module_files: dict[str, object] = {}
+        self._modules_watch: asyncio.Task[None] | None = None
 
         self._sensors: dict[str, dict[str, Any]] = {}
 
@@ -219,10 +225,18 @@ class OpenVinoPlugin(
                 self.object_detectors.pop(model_name, None)
                 raise
             # OpenVINO IR has no embedded class names; inject the trained labels (a model trained on
-            # ViON Cloud brings its own class list in the manifest, custom classes included)
-            entry = trained_models.entry(model_name) if is_trained(model_name) else None
-            if entry and entry.get("classes"):
-                detector.labels = {index: str(label) for index, label in enumerate(entry["classes"])}
+            # ViON Cloud brings its own class list in the manifest, custom classes included, a module of the
+            # store its labels in installed.json)
+            classes = None
+            if is_trained(model_name):
+                trained = trained_models.entry(model_name)
+                classes = trained.get("classes") if trained else None
+            elif is_module(model_name):
+                module = installed_modules.entry(model_name, MODULE_BACKENDS)
+                self._module_files[model_name] = self._module_signature(model_name)
+                classes = module.get("labels") if module else None
+            if classes:
+                detector.labels = {index: str(label) for index, label in enumerate(classes)}
             else:
                 detector.labels = {index: str(label) for index, label in OBJECT_LABELS.items()}
         else:
@@ -350,8 +364,8 @@ class OpenVinoPlugin(
                 "description": "Модель YOLO для тестирования",
                 "required": True,
                 "defaultValue": DEFAULT_OPTION,
-                "enum": [DEFAULT_OPTION, *OBJECT_MODELS],
-                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
+                "enum": [DEFAULT_OPTION, *OBJECT_MODELS, *installed_modules.choices(MODULE_BACKENDS)],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию", **installed_modules.choices(MODULE_BACKENDS)},
                 "store": False,
             },
         ]
@@ -359,7 +373,8 @@ class OpenVinoPlugin(
     async def testObjectDetection(
         self, image_data: bytes, metadata: ImageMetadata, config: dict[str, Any]
     ) -> ObjectDetectionPluginResponse | None:
-        model_name: str = resolve_object_model(config.get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+        requested = usable_choice(config.get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
+        model_name: str = resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -378,7 +393,8 @@ class OpenVinoPlugin(
     async def detectObjects(
         self, frame: VideoFrameData, config: dict[str, Any] | None = None
     ) -> ObjectDetectionPluginResponse | None:
-        model_name = resolve_object_model((config or {}).get("model"), DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+        requested = usable_choice((config or {}).get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
+        model_name = resolve_object_model(requested, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
         detector = await self.get_object_detector(model_name)
         if not detector.initialized:
             return None
@@ -922,6 +938,51 @@ class OpenVinoPlugin(
             if attribute is not None:
                 attribute.refresh()
 
+    # ---- modules of the store (modules.py) ----
+
+    def check_modules(self) -> None:
+        """Cheap check: when a module was added or removed in the store, the model choices follow."""
+        installed_modules.installed()
+        if installed_modules.version == self._modules_version:
+            return
+        self._modules_version = installed_modules.version
+        for sensors in self._sensors.values():
+            obj = sensors.get("object")
+            if obj is not None:
+                obj.refresh_model_choices()
+        for name in [n for n in self.object_detectors if is_module(n)]:
+            if self._module_signature(name) != self._module_files.get(name):
+                asyncio.create_task(self._reload_module_detector(name))
+
+    def _module_signature(self, model_name: str) -> object:
+        entry = installed_modules.entry(model_name, MODULE_BACKENDS)
+        return (entry.get("version"), installed_modules.files(entry, MODULE_BACKENDS)) if entry else None
+
+    async def _reload_module_detector(self, model_name: str) -> None:
+        """An updated module: the new files load while the old detector keeps serving, then it is closed."""
+        old = self.object_detectors.pop(model_name, None)
+        self._module_files.pop(model_name, None)
+        self._failed_models.pop(model_name, None)
+        self.model_manager.forget(model_name)
+        try:
+            if installed_modules.entry(model_name, MODULE_BACKENDS):
+                await self.get_object_detector(model_name)
+                self.logger.success(f"Модуль {model_name} загружен заново")
+        except Exception as error:
+            self.logger.error(f"Модуль {model_name} не загрузился заново: {error}")
+        finally:
+            if old is not None:
+                await old.close()
+
+    async def _watch_modules(self) -> None:
+        # the settings show a module before any camera detects again: detection only runs while something moves
+        while True:
+            try:
+                self.check_modules()
+            except Exception as error:
+                self.logger.error(f"Список модулей не прочитан: {error}")
+            await asyncio.sleep(5)
+
     async def get_attribute_backend(self, entry: dict[str, Any]) -> Any:
         name = trained_model_name(entry)
         backend = self.attribute_backends.get(name)
@@ -951,6 +1012,7 @@ class OpenVinoPlugin(
 
     async def _on_start(self) -> None:
         asyncio.create_task(self._preload_clip())
+        self._modules_watch = asyncio.create_task(self._watch_modules())
 
     async def _preload_clip(self) -> None:
         try:
@@ -960,6 +1022,8 @@ class OpenVinoPlugin(
             self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
 
     async def _on_shutdown(self) -> None:
+        if self._modules_watch:
+            self._modules_watch.cancel()
         for sensors in self._sensors.values():
             for sensor in sensors.values():
                 await sensor.destroy()

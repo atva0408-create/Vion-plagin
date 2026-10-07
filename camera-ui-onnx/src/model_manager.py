@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -14,9 +15,11 @@ from defaults import (
     LEGACY_RUNTIME,
     MODEL_BASE_URL,
     MODEL_LFS_URL,
+    MODULE_BACKENDS,
     model_version,
 )
 from inference import OnnxBackend
+from modules import installed_modules, is_module
 from trained import is_trained, trained_models
 
 # onnxruntime provider list, e.g. ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -48,6 +51,10 @@ class OnnxModelManager(BaseModelManager):
         if is_trained(model_name):
             # downloaded by the ViON server; an absolute path makes the base download a no-op
             return {"model": ("", trained_models.path(model_name))}
+        if is_module(model_name):
+            # a module of the store, downloaded by the ViON server: same absolute path, nothing to fetch
+            _, paths = installed_modules.paths(model_name, MODULE_BACKENDS)
+            return {"model": ("", paths[".onnx"])}
         rel = self._rel_path(model_name)
         return {"model": (f"{MODEL_LFS_URL}/{rel}", rel)}
 
@@ -113,9 +120,17 @@ class OnnxModelManager(BaseModelManager):
             "(CUDA 12) вместе с плагином ONNX Legacy"
         )
 
+    def _cache_name(self, path: str) -> str:
+        """The optimized copy's name. Files of the store's modules all have names like model.onnx and lie outside
+        the models folder, by module, version and variant: the folder they lie in tells them apart."""
+        name = os.path.basename(path)
+        if os.path.abspath(path).startswith(os.path.join(os.path.abspath(self.model_path), "")):
+            return name
+        return f"{hashlib.sha256(os.path.abspath(path).encode()).hexdigest()[:16]}-{name}"
+
     def _create_cpu_session(self, path: str) -> Any:
         cache_dir = self.compile_cache_dir(f"onnxruntime-{ort.__version__}")
-        optimized = os.path.join(cache_dir, os.path.basename(path))
+        optimized = os.path.join(cache_dir, self._cache_name(path))
         if os.path.isfile(optimized):
             try:
                 options = ort.SessionOptions()
