@@ -103,8 +103,10 @@ for (const t of nvr.assistantTools()) {
   assert.match(t.name, /^[a-z][a-z0-9_]{1,63}$/, 'the host drops names outside this pattern');
   assert.equal(t.inputSchema.type, 'object');
   assert.ok(t.description.trim().length > 20);
-  // a tool that changes something asks in the chat and is an admin's; the rest only read and run unasked
-  assert.equal(!!t.approval, !!t.adminOnly, `${t.name}: approval and adminOnly go together here`);
+  // a tool that changes something asks in the chat and is an admin's; the rest only read and run unasked, and only
+  // list_faces is an admin's read: the faces of every camera, as on the Faces page
+  if (t.approval) assert.ok(t.adminOnly, `${t.name}: a change is an admin's`);
+  else assert.equal(!!t.adminOnly, t.name === 'list_faces', `${t.name}: adminOnly`);
 }
 const reading = nvr
   .assistantTools()

@@ -1,3 +1,10 @@
+## [0.12.1]
+
+- Eine Uhrzeit ohne Zeitzone, die der Assistent nennt („lösche die Aufnahmen von 2 bis 3“), ist die Zeit der fragenden Person, nicht die des Servers: Auf einem Server in UTC wurde 5 bis 6 Uhr Moskauer Zeit gelöscht
+- Die Speicherprognose des Assistenten berücksichtigt Kameras, die bei Ereignissen aufzeichnen, nach dem, was sie pro Tag geschrieben haben: Sie fehlten, und die Prognose versprach mehr Tage, als der Speicher hält
+- Eine manuelle Aufnahme über den Assistenten bei einer Kamera, die durchgehend aufzeichnen soll, aber über dem Tarif liegt oder pausiert ist, sagt das, statt „sie zeichnet ohnehin durchgehend auf“
+- Die Liste der Gesichter über den Assistenten ist Administratoren vorbehalten, wie die Seite „Gesichter“
+
 ## [0.12.0]
 
 - Der Assistent beantwortet Fragen zur Aufzeichnung selbst, zusammen mit dem Assistenten-Update von ViON: ob Kameras über einen Zeitraum aufgezeichnet haben (Anteil der Aufzeichnung, Lücken länger als eine Minute und ihre Ursache, wenn der Rekorder eine vermerkt hat) und wie viele Tage der Speicher beim aktuellen Datenstrom reicht oder dass die Aufbewahrungsdauer das Archiv früher begrenzt

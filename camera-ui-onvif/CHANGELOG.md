@@ -1,3 +1,7 @@
+## [1.3.1]
+
+- Saving or deleting a preset through the assistant works on a camera whose presets are named with digits ("1", "2"): the name was read as a number and every save and delete of that camera failed
+
 ## [1.3.0]
 
 - The ViON assistant reads the presets of a PTZ camera, saves the current position as a preset or deletes one, and reboots an ONVIF camera that stopped answering; each change is confirmed in the chat and only an administrator can make it

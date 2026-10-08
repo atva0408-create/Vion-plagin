@@ -208,6 +208,23 @@ await assert.rejects(nvr.nvrStartRecording('off'), /Recording is off/);
 await assert.rejects(nvr.nvrStartRecording('limit'), /No free recording slot/);
 await assert.rejects(nvr.nvrStartRecording('nope'), /not recorded by ViON NVR/);
 
+// what the assistant hears of a camera is what it does: one set to continuous but over the plan or paused writes
+// nothing, and "records all the time" was the answer to a manual recording of it
+cams.set('co-limit', {
+  device: { id: 'co-limit', name: 'Постоянно сверх тарифа', recordingSettings: { enabled: true, mode: 'continuous' } },
+  recorders: new Map(),
+  subscriptions: [],
+  overLimit: true,
+});
+const host = (nvr as unknown as { assistantHost(): { recordingMode(id: string): string } }).assistantHost();
+assert.equal(host.recordingMode('co'), 'continuous');
+assert.equal(host.recordingMode('co-limit'), 'over_plan');
+assert.equal(host.recordingMode('off'), 'off');
+(nvr as unknown as { paused: boolean }).paused = true;
+assert.equal(host.recordingMode('co'), 'paused');
+(nvr as unknown as { paused: boolean }).paused = false;
+cams.delete('co-limit');
+
 // time up: the recording ends by itself
 const realSetTimeout = globalThis.setTimeout;
 let fire: (() => void) | undefined;

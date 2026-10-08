@@ -1,3 +1,7 @@
+## [1.3.1]
+
+- Das Speichern und Löschen eines Presets über den Assistenten funktioniert bei einer Kamera, deren Presets mit Ziffern benannt sind („1“, „2“): Der Name wurde als Zahl gelesen, und jedes Speichern und Löschen bei dieser Kamera schlug fehl
+
 ## [1.3.0]
 
 - Der ViON-Assistent liest die Presets einer PTZ-Kamera, speichert die aktuelle Position als Preset oder löscht eines und startet eine ONVIF-Kamera neu, die nicht mehr antwortet; jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt

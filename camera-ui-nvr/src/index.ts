@@ -1933,9 +1933,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       manual: (cameraId) => this.getManualRecording(cameraId),
       startManual: (cameraId, minutes) => this.nvrStartRecording(cameraId, minutes),
       stopManual: (cameraId) => this.nvrStopRecording(cameraId),
+      // what the camera does now, not only what it is set to: over the plan or paused it writes nothing, and the
+      // assistant answered "records all the time" to a manual recording of such a camera
       recordingMode: (cameraId) => {
-        const device = this.cameras.get(cameraId)?.device;
-        return device && isRecordingWanted(device) ? (effectiveMode(device.recordingSettings?.mode) ?? device.recordingSettings.mode) : 'off';
+        const managed = this.cameras.get(cameraId);
+        const device = managed?.device;
+        if (!device || !isRecordingWanted(device)) return 'off';
+        if (managed.overLimit) return 'over_plan';
+        if (this.paused) return 'paused';
+        return effectiveMode(device.recordingSettings?.mode) ?? device.recordingSettings.mode;
       },
       deletable: (cameraId, startMs, endMs) => {
         const segments = this.deletableSegments(cameraId, startMs * 1000, endMs * 1000);

@@ -48,6 +48,7 @@ export interface AssistantHost {
   manual(cameraId: string): Promise<ManualRecording>;
   startManual(cameraId: string, minutes: number): Promise<ManualRecording>;
   stopManual(cameraId: string): Promise<ManualRecording>;
+  /** continuous, event, adhoc; off; over_plan (no free slot in the plan); paused (the disk guard stopped recording) */
   recordingMode(cameraId: string): string;
   /** What deleting a range would remove: the segments wholly inside it, past the protected last minutes. */
   deletable(cameraId: string, startMs: number, endMs: number): { segments: number; bytes: number };
@@ -166,6 +167,8 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     description:
       'The faces the recorder knows: each known person with the number of pictures, and the groups of unknown faces (how many, on which ' +
       'cameras, when last seen, and an event id with that face for name_face or ignore_face).',
+    // the faces of every camera and the names of the household: the Faces page is the admin's, so is this list
+    adminOnly: true,
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -293,7 +296,7 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
     case 'manual_recording':
       return manualRecording(host, input, preview);
     case 'delete_recordings':
-      return deleteRecordings(host, input, preview);
+      return deleteRecordings(host, input, preview, ctx.timezone);
     default:
       return { error: `Unknown tool ${name}` };
   }
@@ -302,7 +305,7 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
 // ------------------------------------------------------------------ tools
 
 function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContext): AssistantToolResult {
-  const range = timeRange(input, DAY_MS);
+  const range = timeRange(input, DAY_MS, ctx.timezone);
   if ('error' in range) return range;
   const camera = resolveCamera(host, input.camera);
   if ('error' in camera) return camera;
@@ -418,7 +421,7 @@ async function searchByText(host: AssistantHost, input: Input, ctx: AssistantToo
 }
 
 function listPlates(host: AssistantHost, input: Input, ctx: AssistantToolContext): AssistantToolResult {
-  const range = timeRange(input, 7 * DAY_MS);
+  const range = timeRange(input, 7 * DAY_MS, ctx.timezone);
   if ('error' in range) return range;
   const camera = resolveCamera(host, input.camera);
   if ('error' in camera) return camera;
@@ -472,7 +475,7 @@ const CAUSE_SLACK_MS = 2 * 60_000;
 const MAX_GAPS = 20;
 
 async function recordingHealth(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
-  const range = timeRange(input, DAY_MS);
+  const range = timeRange(input, DAY_MS, ctx.timezone);
   if ('error' in range) return range;
   const cameras = resolveCameras(host, input.cameras);
   if ('error' in cameras) return cameras;
@@ -502,6 +505,8 @@ async function recordingHealth(host: AssistantHost, input: Input, ctx: Assistant
       ...(gaps.length ? { longestGaps: gaps.sort((a, b) => b.minutes - a.minutes).slice(0, MAX_GAPS) } : {}),
       ...(mode === 'event' || mode === 'adhoc' ? { note: 'Records on events: time between events is not recorded by design, gaps are expected.' } : {}),
       ...(mode === 'off' ? { note: 'Recording is off for this camera.' } : {}),
+      ...(mode === 'over_plan' ? { note: 'Not recorded: the plan has no free recording slot for this camera.' } : {}),
+      ...(mode === 'paused' ? { note: 'Recording is paused: not enough free disk space.' } : {}),
     });
   }
   return {
@@ -566,9 +571,7 @@ async function storageForecast(host: AssistantHost, ctx: AssistantToolContext): 
  * when it is shorter.
  */
 export function forecast(stats: StorageStats, minFreePercent: number): Record<string, unknown> {
-  const mbPerDay = Object.values(stats.cameras)
-    .filter((cam) => cam.isRecording)
-    .reduce((sum, cam) => sum + cam.bandwidthMBh * 24, 0);
+  const mbPerDay = Object.values(stats.cameras).reduce((sum, cam) => sum + cameraMBPerDay(cam), 0);
   const reserveGB = (stats.diskTotalGB * minFreePercent) / 100;
   const diskRoomGB = stats.nvrUsedGB + Math.max(0, stats.diskFreeGB - reserveGB);
   const roomGB = stats.nvrQuotaGB > 0 ? Math.min(stats.nvrQuotaGB, diskRoomGB) : diskRoomGB;
@@ -587,6 +590,16 @@ export function forecast(stats: StorageStats, minFreePercent: number): Record<st
         ? `The retention of ${stats.retentionDays} days ends the archive before the space does: older recordings are deleted at ${stats.retentionDays} days.`
         : `At the current rate the space holds about ${daysOfSpace} days; then the oldest recordings are deleted to make room.`,
   };
+}
+
+/**
+ * What a camera writes a day. One recording all the time: its stream around the clock. One recording on events writes
+ * only while something happens and is not recording between them, so it was left out and the forecast promised more
+ * days than the disk holds: it counts by what it wrote, its archive over its days.
+ */
+function cameraMBPerDay(cam: StorageStats['cameras'][string]): number {
+  if (cam.recordingMode === 'event') return cam.daysCount > 0 ? cam.usedBytes / 1024 ** 2 / cam.daysCount : 0;
+  return cam.isRecording ? cam.bandwidthMBh * 24 : 0;
 }
 
 // ------------------------------------------------------------------ faces
@@ -717,7 +730,13 @@ async function manualRecording(host: AssistantHost, input: Input, preview: boole
   if (!action) return { error: 'action must be "start" or "stop".' };
   const minutes = clampInt(input.minutes, 1, 120, 5);
   const mode = host.recordingMode(camera.id);
-  if (action === 'start' && mode === 'continuous') return { content: { done: false, reason: `${camera.name} records all the time: there is nothing to start.` } };
+  if (action === 'start') {
+    if (mode === 'over_plan') {
+      return { content: { done: false, camera: camera.name, reason: `${camera.name} is not recorded: the plan has no free recording slot for it.` } };
+    }
+    if (mode === 'paused') return { content: { done: false, camera: camera.name, reason: 'Recording is paused: not enough free disk space.' } };
+    if (mode === 'continuous') return { content: { done: false, reason: `${camera.name} records all the time: there is nothing to start.` } };
+  }
   if (preview)
     return { content: { preview: { action: 'manual_recording', camera: camera.name, start: action === 'start', ...(action === 'start' ? { minutes } : {}) } } };
 
@@ -735,11 +754,11 @@ async function manualRecording(host: AssistantHost, input: Input, preview: boole
 
 const MAX_DELETE_MS = DAY_MS;
 
-async function deleteRecordings(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+async function deleteRecordings(host: AssistantHost, input: Input, preview: boolean, timezone: string): Promise<AssistantToolResult> {
   const camera = resolveOneCamera(host, input.camera);
   if ('error' in camera) return camera;
-  const from = parseTime(input.from);
-  const to = parseTime(input.to);
+  const from = parseTime(input.from, timezone);
+  const to = parseTime(input.to, timezone);
   if (from === undefined || to === undefined) return { error: 'from and to are required, ISO 8601 date-times.' };
   if (to <= from) return { error: 'to must be after from.' };
   if (to - from > MAX_DELETE_MS) return { error: 'At most 24 hours of one camera per call. Deleting everything is not possible here.' };
@@ -890,19 +909,40 @@ function resolveCameras(host: AssistantHost, value: unknown): { id: string; name
   return out;
 }
 
-function timeRange(input: Input, span: number): { from: number; to: number } | { error: string } {
-  const to = parseTime(input.to) ?? Date.now();
-  const from = parseTime(input.from) ?? to - span;
-  if (input.to !== undefined && parseTime(input.to) === undefined) return { error: `to is not a date-time: ${JSON.stringify(input.to)}` };
-  if (input.from !== undefined && parseTime(input.from) === undefined) return { error: `from is not a date-time: ${JSON.stringify(input.from)}` };
+function timeRange(input: Input, span: number, timezone: string): { from: number; to: number } | { error: string } {
+  const to = parseTime(input.to, timezone) ?? Date.now();
+  const from = parseTime(input.from, timezone) ?? to - span;
+  if (input.to !== undefined && parseTime(input.to, timezone) === undefined) return { error: `to is not a date-time: ${JSON.stringify(input.to)}` };
+  if (input.from !== undefined && parseTime(input.from, timezone) === undefined) return { error: `from is not a date-time: ${JSON.stringify(input.from)}` };
   if (from > to) return { error: 'from is after to' };
   return { from, to };
 }
 
-function parseTime(value: unknown): number | undefined {
+const LOCAL_TIME = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3})\d*)?)?)?$/;
+const WITH_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+
+/**
+ * A time from the model: with an offset it is that instant; without one ("2026-10-08T02:00") it is the wall clock
+ * of the person's zone, never of the server: a server in UTC read "delete 2 to 3" as 5–6 in Moscow. Anything else is
+ * not a time.
+ */
+export function parseTime(value: unknown, timezone: string): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value !== 'string' || !value.trim()) return undefined;
-  const ms = Date.parse(value);
+  const text = value.trim();
+  const local = LOCAL_TIME.exec(text);
+  if (local) {
+    const [, date, hours = '00', minutes = '00', seconds = '00', millis = '0'] = local;
+    const wall = Date.parse(`${date}T${hours}:${minutes}:${seconds}.${millis.padEnd(3, '0')}Z`);
+    if (Number.isNaN(wall)) return undefined;
+    const zone = safeZone(timezone);
+    // two rounds: across a clock change the offset at the guess differs from the one at the answer
+    let guess = wall - offsetAt(wall, zone);
+    guess = wall - offsetAt(guess, zone);
+    return guess;
+  }
+  if (!WITH_OFFSET.test(text)) return undefined;
+  const ms = Date.parse(text);
   return Number.isNaN(ms) ? undefined : ms;
 }
 

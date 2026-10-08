@@ -4,7 +4,7 @@
 // Run: npx tsx spec/assistant.spec.ts
 import assert from 'node:assert/strict';
 
-import { callOnvifTool, ONVIF_TOOLS } from '../src/assistant.js';
+import { callOnvifTool, ONVIF_TOOLS, presetsOf } from '../src/assistant.js';
 
 import type { AssistantToolContext } from '@camera.ui/sdk';
 import type { OnvifAssistantCamera } from '../src/assistant.js';
@@ -95,3 +95,24 @@ assert.equal(calls.at(-1), 'reboot Улица');
 const offline = { cameras: () => [fakeCamera('Склад', { connected: false })] };
 assert.match(String((await callOnvifTool(offline, 'reboot', { camera: 'Склад' }, admin)).error), /does not answer/);
 console.log('onvif assistant: reboot OK');
+
+// a preset named with digits: the library reads the name as a number, and saving or deleting broke
+assert.deepEqual(
+  presetsOf({ a: { name: 1, token: 1 }, b: { name: 'Двор', token: '2' }, c: { token: 3 }, d: { name: 'x' } }),
+  [
+    { name: '1', token: '1' },
+    { name: 'Двор', token: '2' },
+    { name: '3', token: '3' },
+  ],
+);
+const numbered = fakeCamera('Склад');
+numbered.presets = async () => presetsOf({ p: { name: 1 as unknown as string, token: 7 } });
+const numberedHost = { cameras: () => [numbered] };
+calls.length = 0;
+assert.equal((await callOnvifTool(numberedHost, 'save_preset', { camera: 'Склад', name: '1' }, admin)).content?.overwritten, true);
+assert.equal((await callOnvifTool(numberedHost, 'delete_preset', { camera: 'Склад', name: '1' }, admin)).content?.deleted, '1');
+assert.deepEqual(calls, ['save Склад 1 7', 'remove Склад 7']);
+// and a name the library left a number is still found
+numbered.presets = async () => [{ name: 1 as unknown as string, token: '7' }];
+assert.equal((await callOnvifTool(numberedHost, 'delete_preset', { camera: 'Склад', name: '1' }, admin)).content?.deleted, 1);
+console.log('onvif assistant: presets named with digits OK');

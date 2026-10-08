@@ -8,6 +8,7 @@ import {
   parseDetectionEvent,
   parseMotionEvent,
 } from '@seydx/onvif';
+import { presetsOf } from './assistant.js';
 import { OnvifAudioSensor, OnvifFaceSensor, OnvifMotionSensor, OnvifObjectSensor, OnvifPTZSensor } from './sensors/index.js';
 
 import type { CameraDevice, DeviceStorage, LoggerService } from '@camera.ui/sdk';
@@ -168,10 +169,7 @@ export class OnvifCamera {
       name: this.camera.name,
       connected: this.device !== undefined,
       hasPTZ: this.capabilities?.hasPTZ === true,
-      presets: async () =>
-        Object.values((await device().ptz.getPresets()) ?? {})
-          .filter((preset) => preset.token !== undefined)
-          .map((preset) => ({ name: preset.name ?? String(preset.token), token: String(preset.token) })),
+      presets: async () => presetsOf(await device().ptz.getPresets()),
       savePreset: async (name, token) => {
         const saved = await device().ptz.setPreset({ presetName: name, ...(token ? { presetToken: token } : {}) });
         await this.ptzSensor?.reloadPresets();

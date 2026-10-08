@@ -178,6 +178,13 @@ const content = <T>(result: AssistantToolResult) => {
   const quota = forecast(storage({ retentionDays: 30, nvrQuotaGB: 480 }), 5);
   assert.deepEqual([quota.daysOfSpace, quota.limitedBy], [10, 'quota'], 'a quota under the disk room is the limit');
   assert.equal(forecast(storage({ cameras: {} }), 5).writingMBPerDay, 0, 'nothing recording, nothing fills');
+  // a camera on events is not recording between them and still fills the disk: by what it wrote, 150 GB in 15 days
+  const base = storage();
+  const onEvents = forecast(
+    storage({ retentionDays: 30, cameras: { ...base.cameras, 'cam-gate': { ...base.cameras['cam-yard'], usedBytes: 150 * 1024 ** 3, recordingMode: 'event', isRecording: false } } }),
+    5,
+  );
+  assert.deepEqual([onEvents.writingGBPerDay, onEvents.daysOfSpace], [58, 14], 'the event camera counts its 10 GB a day');
 
   const { host } = fakeHost({ storage: async () => storage({ paused: true }) });
   const answer = content<Record<string, unknown>>(await call(host, 'storage_forecast', {}));
@@ -283,6 +290,15 @@ const content = <T>(result: AssistantToolResult) => {
     },
   });
   assert.match((await call(off.host, 'manual_recording', { camera: 'Двор', action: 'start' })).error ?? '', /Двор: Recording is off/, 'the recorder says why');
+
+  // set to record all the time, but over the plan or paused: it writes nothing, and the answer says why
+  for (const [mode, why] of [['over_plan', /no free recording slot/], ['paused', /paused/]] as const) {
+    const stuck = fakeHost({ recordingMode: () => mode });
+    const answer = content<{ done: boolean; reason: string }>(await call(stuck.host, 'manual_recording', { camera: 'Дверь', action: 'start' }));
+    assert.equal(answer.done, false);
+    assert.match(answer.reason, why, mode);
+    assert.doesNotMatch(answer.reason, /all the time/, mode);
+  }
 }
 
 // ------------------------------------------------------------------ delete_recordings
@@ -322,6 +338,12 @@ const content = <T>(result: AssistantToolResult) => {
   assert.match(JSON.stringify(content(await call(nothing.host, 'delete_recordings', { camera: 'Двор', from, to }))), /Nothing recorded/);
   assert.deepEqual(nothing.calls, [], 'nothing to delete: the recorder is not asked');
   assert.deepEqual(calls, []);
+
+  // "delete from 2 to 3" without an offset is 2 to 3 in Moscow, whatever the clock of the server says
+  const local = fakeHost();
+  await call(local.host, 'delete_recordings', { camera: 'Двор', from: '2026-10-07T05:00', to: '2026-10-07T06:00' });
+  assert.deepEqual(local.calls, [['deleteRange', 'cam-yard', T0 + 2 * H, T0 + 3 * H]], 'local time of the person');
+  assert.match((await call(local.host, 'delete_recordings', { camera: 'Двор', from: '7 октября 5:00', to: '2026-10-07T06:00' })).error ?? '', /ISO/);
 }
 
 console.log('assistant-actions.spec: recording_health, storage_forecast, faces, manual_recording, delete_recordings OK');

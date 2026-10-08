@@ -119,7 +119,20 @@ function ptzCamera(host: OnvifAssistantHost, value: unknown): OnvifAssistantCame
   return camera;
 }
 
-const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const sameName = (a: unknown, b: unknown) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+/**
+ * The presets as the camera answers them, with names as text. The ONVIF library reads a name of digits ("1", "2") as a
+ * number: `.trim()` of it threw, and saving or deleting any preset of such a camera failed.
+ */
+export function presetsOf(raw: Record<string, { name?: string | number; token?: string | number }> | null | undefined): { name: string; token: string }[] {
+  return Object.values(raw ?? {})
+    .filter((preset) => preset.token !== undefined && preset.token !== null)
+    .map((preset) => {
+      const name = preset.name === undefined || preset.name === null ? '' : String(preset.name).trim();
+      return { name: name || String(preset.token), token: String(preset.token) };
+    });
+}
 
 export async function callOnvifTool(host: OnvifAssistantHost, name: string, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
   try {

@@ -1,3 +1,10 @@
+## [0.12.1]
+
+- A time without an offset the assistant names ("delete the recordings from 2 to 3") is the time of the person who asked, not of the server: on a server in UTC it deleted 5 to 6 in Moscow
+- The disk forecast of the assistant counts the cameras that record on events, by what they wrote a day: it left them out and promised more days than the disk holds
+- A manual recording asked through the assistant of a camera set to record all the time but over the plan or paused says so, instead of "it records all the time anyway"
+- The list of faces through the assistant is an administrator's, as the Faces page is
+
 ## [0.12.0]
 
 - The assistant answers about the recording itself, together with ViON's assistant update: whether cameras recorded through a period (the share recorded, the gaps longer than a minute and their cause when the recorder logged one) and how many days the disk holds at the current rate, or that the retention ends the archive first
