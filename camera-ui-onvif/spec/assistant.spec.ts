@@ -3,6 +3,8 @@
 // nothing; a name that would break into the SOAP body is refused; a preset of the same name is overwritten, not doubled.
 // Run: npx tsx spec/assistant.spec.ts
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { callOnvifTool, ONVIF_TOOLS, presetsOf } from '../src/assistant.js';
 
@@ -94,6 +96,15 @@ assert.match(JSON.stringify((await callOnvifTool(host, 'reboot', { camera: 'Ул
 assert.equal(calls.at(-1), 'reboot Улица');
 const offline = { cameras: () => [fakeCamera('Склад', { connected: false })] };
 assert.match(String((await callOnvifTool(offline, 'reboot', { camera: 'Склад' }, admin)).error), /does not answer/);
+// the release notes of 1.3.0 promised the reboot of a camera that stopped answering, the one the tool refuses:
+// those of 1.3.2 say what it does, in each language
+const notes = (path: string, version: string) =>
+  readFileSync(resolve(import.meta.dirname, '..', path), 'utf8')
+    .split(/^## /m)
+    .find((entry) => entry.startsWith(`[${version}]`)) ?? '';
+assert.match(notes('CHANGELOG.md', '1.3.2'), /does not answer over ONVIF/);
+assert.match(notes('i18n/CHANGELOG.ru.md', '1.3.2'), /не отвечает по ONVIF/);
+assert.match(notes('i18n/CHANGELOG.de.md', '1.3.2'), /nicht über ONVIF antwortet/);
 console.log('onvif assistant: reboot OK');
 
 // a preset named with digits: the library reads the name as a number, and saving or deleting broke
