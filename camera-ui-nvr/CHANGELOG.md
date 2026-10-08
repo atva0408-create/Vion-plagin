@@ -1,3 +1,8 @@
+## [0.12.2]
+
+- Naming a face through the assistant counts a person seen twice in one event once: someone the camera lost and found again was offered as "2 faces: unknown, unknown". Faces with the same known name, or in the same group of unknown faces, are one person and all of them get the name; unknown faces nothing tells apart are still offered to choose from, with a word that they may be the same person
+- The recording check of the assistant tells what a camera does now apart from the period asked about: a camera that recorded the whole day and is over the plan or paused only now was reported as recorded 100% and "not recorded" at once
+
 ## [0.12.1]
 
 - A time without an offset the assistant names ("delete the recordings from 2 to 3") is the time of the person who asked, not of the server: on a server in UTC it deleted 5 to 6 in Moscow

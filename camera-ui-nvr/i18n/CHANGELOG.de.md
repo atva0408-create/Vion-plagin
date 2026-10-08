@@ -1,3 +1,8 @@
+## [0.12.2]
+
+- Beim Benennen eines Gesichts über den Assistenten zählt eine Person, die in einem Ereignis zweimal zu sehen ist, einmal: Wen die Kamera verloren und wiedergefunden hatte, bot er als „2 Gesichter: unbekannt, unbekannt“ an. Gesichter mit demselben bekannten Namen oder aus derselben Gruppe unbekannter Gesichter sind eine Person und erhalten alle den Namen; unbekannte Gesichter, die nichts unterscheidet, werden weiterhin zur Auswahl gestellt, mit dem Hinweis, dass es dieselbe Person sein kann
+- Die Aufzeichnungsprüfung des Assistenten nennt den Zustand einer Kamera jetzt getrennt vom gefragten Zeitraum: Eine Kamera, die den ganzen Tag aufgezeichnet hat und erst jetzt über dem Tarif liegt oder pausiert ist, wurde zugleich als „zu 100 % aufgezeichnet“ und „nicht aufgezeichnet“ gemeldet
+
 ## [0.12.1]
 
 - Eine Uhrzeit ohne Zeitzone, die der Assistent nennt („lösche die Aufnahmen von 2 bis 3“), ist die Zeit der fragenden Person, nicht die des Servers: Auf einem Server in UTC wurde 5 bis 6 Uhr Moskauer Zeit gelöscht
