@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0]
+
+### Added
+
+- **The ViON assistant** reads what a sensor feels now (motion level against its threshold, presence, signal, firmware), calibrates it on the empty room and changes its threshold, how long motion lasts and which algorithm makes it. Every change is confirmed in the chat and only an administrator can make it; the firmware is still installed on the settings page only.
+
 ## [0.3.0]
 
 ### Added

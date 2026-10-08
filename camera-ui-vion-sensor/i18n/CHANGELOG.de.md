@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## [0.4.0]
+
+### Hinzugefügt
+
+- **Der ViON-Assistent** liest, was ein Sensor gerade misst (Bewegungspegel gegen die Schwelle, Anwesenheit, Signal, Firmware), kalibriert ihn auf den leeren Raum und ändert Schwelle, Haltezeit der Bewegung und den Bewegungsalgorithmus. Jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt; die Firmware wird weiterhin nur auf der Einstellungsseite installiert.
+
 ## [0.3.0]
 
 ### Hinzugefügt

@@ -1,7 +1,7 @@
 {
   "displayName": "ViON Sensor",
   "name": "@vionvision/camera-ui-vion-sensor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -18,7 +18,7 @@
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
-    "test": "tsx spec/plugin.spec.ts"
+    "test": "tsx spec/plugin.spec.ts && tsx spec/assistant.spec.ts"
   },
   "dependencies": {
     "bonjour-service": "^1.4.4"
