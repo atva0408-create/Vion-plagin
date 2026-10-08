@@ -1,3 +1,7 @@
+## [1.3.0]
+
+- Der ViON-Assistent liest die Presets einer PTZ-Kamera, speichert die aktuelle Position als Preset oder löscht eines und startet eine ONVIF-Kamera neu, die nicht mehr antwortet; jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt
+
 ## [1.2.8]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche
