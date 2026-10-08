@@ -1,12 +1,28 @@
 // Tools the assistant can call on the NVR: the recorded events, a day's summary, search by description,
-// the license plates read and an event's picture. The server's skills and the daily recap already name
-// them (nvr__query_events, nvr__summarize_day...); without them the assistant has no way into the archive.
-// Everything here reads; nothing deletes or changes events.
+// the license plates read and an event's picture; whether the cameras recorded and how long the disk lasts; the faces.
+// The server's skills and the daily recap already name them (nvr__query_events, nvr__summarize_day...); without them
+// the assistant has no way into the archive.
+// Reading tools run without asking, also in schedules. The ones that change something (name or forget a face, record
+// by hand, delete recordings) declare `approval` and `adminOnly`: the server asks the person in the chat and offers
+// them to admins only. Each also answers `__preview` (set only by the server, for the confirmation card) with what it
+// would do, and does nothing.
 // i18n-skip-file: the descriptions below are read by the model, not shown in the interface.
 
-import type { AssistantToolContext, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
+import type { AssistantToolContext, AssistantToolImage, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
+import type { FaceProfile } from './faces.js';
 import type { ClipSearchResult } from './semantic.js';
-import type { GetEventsOptions, RecordedEvent } from './types.js';
+import type { GetEventsOptions, ManualRecording, RecordedEvent, RecordingSegment, StorageStats, SystemEvent } from './types.js';
+
+/** An unknown face where it was seen: the event, the segment and the place among the segment's attributes. */
+export interface UnknownSighting {
+  id: string;
+  eventId: string;
+  seg: number;
+  attr: number;
+  cameraId: string;
+  timestamp: number;
+  clusterId?: string;
+}
 
 /** What the tools need from the NVR; kept narrow so they are testable without a running plugin. */
 export interface AssistantHost {
@@ -15,6 +31,27 @@ export interface AssistantHost {
   cameras(): { id: string; name: string }[];
   search(text: string, limit: number): Promise<ClipSearchResult[]>;
   picture(event: RecordedEvent): Promise<Uint8Array | undefined>;
+  /** Recorded time of a camera, any stream, joined where the gap is under 2 s. */
+  coverage(cameraId: string, startMs: number, endMs: number): Promise<RecordingSegment[]>;
+  /** Stream, storage and plan events since the plugin started (kept in memory only). */
+  systemEvents(cameraIds: string[], startMs: number, endMs: number): Promise<SystemEvent[]>;
+  storage(timezone: string): Promise<StorageStats>;
+  /** The share of the disk the recorder keeps free: what it deletes the oldest recordings for. */
+  minFreePercent(): number;
+  knownFaces(): Promise<FaceProfile[]>;
+  unknownFaces(): UnknownSighting[];
+  faceCrop(eventId: string, seg: number, attr: number): Uint8Array | undefined;
+  /** Gives a face of an event a name (learns it) or, with an empty name, puts it back among the unknown. */
+  nameFace(eventId: string, seg: number, attr: number, oldName: string, newName: string): Promise<number>;
+  ignoreFaces(sighting: UnknownSighting): Promise<void>;
+  forgetFace(name: string): Promise<void>;
+  manual(cameraId: string): Promise<ManualRecording>;
+  startManual(cameraId: string, minutes: number): Promise<ManualRecording>;
+  stopManual(cameraId: string): Promise<ManualRecording>;
+  recordingMode(cameraId: string): string;
+  /** What deleting a range would remove: the segments wholly inside it, past the protected last minutes. */
+  deletable(cameraId: string, startMs: number, endMs: number): { segments: number; bytes: number };
+  deleteRange(cameraId: string, startMs: number, endMs: number): Promise<{ startMs: number; endMs: number }>;
 }
 
 const DAY_MS = 24 * 3600_000;
@@ -101,9 +138,125 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       required: ['eventId'],
     },
   },
+  {
+    name: 'recording_health',
+    description:
+      'Whether cameras recorded through a period: per camera the share of the time recorded, every gap longer than 60 s (start, end, length) ' +
+      'with its cause when the recorder logged one (stream lost, recording paused for disk space, plan limit), and the recording mode. ' +
+      'A camera recording on events has gaps between events by design. Default: all cameras, the last 24 hours.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cameras: { type: 'array', items: { type: 'string' }, description: 'Camera names, all cameras when omitted' },
+        from: { type: 'string', format: 'date-time', description: 'Start of the range, ISO 8601; default 24 hours before `to`' },
+        to: { type: 'string', format: 'date-time', description: 'End of the range, ISO 8601; default now' },
+      },
+    },
+  },
+  {
+    name: 'storage_forecast',
+    description:
+      'How long the archive lasts: the disk (total, used, free), the recorder quota and retention, per camera the days in the archive and the ' +
+      'stream in MB/h, and how many days of recording the space holds at the current rate, or that the retention limits the archive first. ' +
+      'Says first when recording is paused for lack of space.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_faces',
+    description:
+      'The faces the recorder knows: each known person with the number of pictures, and the groups of unknown faces (how many, on which ' +
+      'cameras, when last seen, and an event id with that face for name_face or ignore_face).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'name_face',
+    description:
+      'Names the face in an event ("this is Masha, remember her", "that is not dad, it is Ivan"): an unknown face is learned under the name, ' +
+      'a face recognized as someone else is corrected. The event id comes from query_events or list_faces. When the event shows several ' +
+      'faces the answer lists them and `face` picks one.',
+    approval: true,
+    adminOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Event id' },
+        name: { type: 'string', description: 'The name of the person' },
+        face: { type: 'integer', minimum: 1, description: 'Which face of the event, 1-based, when it has several' },
+      },
+      required: ['eventId', 'name'],
+    },
+  },
+  {
+    name: 'ignore_face',
+    description:
+      'Stops offering an unknown face for naming: the group of unknown faces the face of the event belongs to is ignored (a passer-by, a ' +
+      'poster). The event id comes from list_faces or query_events.',
+    approval: true,
+    adminOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Event id' },
+        face: { type: 'integer', minimum: 1, description: 'Which face of the event, 1-based, when it has several' },
+      },
+      required: ['eventId'],
+    },
+  },
+  {
+    name: 'forget_face',
+    description:
+      'Forgets a known person: their pictures are deleted and new events no longer recognize them. Past events keep the name. ' +
+      'Renaming a known person or joining two known people is only possible in the app (Faces page).',
+    approval: true,
+    adminOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'The name of the known person' } },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'manual_recording',
+    description:
+      'Starts recording a camera by hand for some minutes (1 to 120, default 5; starting again extends it) or stops it. For cameras that ' +
+      'record on events or on demand; a camera in continuous recording records anyway.',
+    approval: true,
+    adminOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: { type: 'string', description: 'Camera name' },
+        action: { type: 'string', enum: ['start', 'stop'] },
+        minutes: { type: 'integer', minimum: 1, maximum: 120, description: 'How long, for start; default 5' },
+      },
+      required: ['camera', 'action'],
+    },
+  },
+  {
+    name: 'delete_recordings',
+    description:
+      'Deletes the recordings of one camera in a range of at most 24 hours. Cannot be undone. Only whole recorded segments inside the ' +
+      'range go, the last 3 minutes stay, events stay. Refuses when favorite events fall in the range, listing them; pass ' +
+      '`includeFavorites: true` only when the user said in so many words that favorites go too.',
+    approval: true,
+    adminOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: { type: 'string', description: 'Camera name' },
+        from: { type: 'string', format: 'date-time', description: 'Start, ISO 8601' },
+        to: { type: 'string', format: 'date-time', description: 'End, ISO 8601' },
+        includeFavorites: { type: 'boolean', description: 'Delete also where favorite events are; only when the user said so' },
+      },
+      required: ['camera', 'from', 'to'],
+    },
+  },
 ];
 
 type Input = Record<string, unknown>;
+
+/** The tools that change something: asked for in the chat, admins only. */
+const ACTING_TOOLS = new Set(ASSISTANT_TOOLS.filter((tool) => tool.approval).map((tool) => tool.name));
 
 export async function callAssistantTool(host: AssistantHost, name: string, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
   switch (name) {
@@ -117,6 +270,30 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
       return listPlates(host, input, ctx);
     case 'get_event_image':
       return eventImage(host, input, ctx);
+    case 'recording_health':
+      return recordingHealth(host, input, ctx);
+    case 'storage_forecast':
+      return storageForecast(host, ctx);
+    case 'list_faces':
+      return listFaces(host, ctx);
+    default:
+      break;
+  }
+  if (!ACTING_TOOLS.has(name)) return { error: `Unknown tool ${name}` };
+  // the server offers these to admins only; a call that gets here otherwise is refused here too
+  if (ctx.role !== 'admin' && ctx.role !== 'master') return { error: 'Only an administrator can do this.' };
+  const preview = input.__preview === true;
+  switch (name) {
+    case 'name_face':
+      return nameFace(host, input, preview);
+    case 'ignore_face':
+      return ignoreFace(host, input, preview);
+    case 'forget_face':
+      return forgetFace(host, input, preview);
+    case 'manual_recording':
+      return manualRecording(host, input, preview);
+    case 'delete_recordings':
+      return deleteRecordings(host, input, preview);
     default:
       return { error: `Unknown tool ${name}` };
   }
@@ -286,6 +463,326 @@ async function eventImage(host: AssistantHost, input: Input, ctx: AssistantToolC
   };
 }
 
+// ------------------------------------------------------------------ recording health and the disk
+
+/** A gap shorter than this is a camera reconnecting, not a hole worth reporting. */
+const GAP_MS = 60_000;
+/** A cause logged this long before a gap began still explains it: the recorder notices a lost stream late. */
+const CAUSE_SLACK_MS = 2 * 60_000;
+const MAX_GAPS = 20;
+
+async function recordingHealth(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  const range = timeRange(input, DAY_MS);
+  if ('error' in range) return range;
+  const cameras = resolveCameras(host, input.cameras);
+  if ('error' in cameras) return cameras;
+  const to = Math.min(range.to, Date.now());
+  const span = Math.max(1, to - range.from);
+  const system = await host.systemEvents(
+    cameras.map((c) => c.id),
+    range.from - CAUSE_SLACK_MS,
+    to,
+  );
+
+  const rows = [];
+  for (const camera of cameras) {
+    const mode = host.recordingMode(camera.id);
+    const recorded = await host.coverage(camera.id, range.from, to);
+    let covered = 0;
+    for (const seg of recorded) covered += Math.max(0, Math.min(seg.endTime, to) - Math.max(seg.startTime, range.from));
+    const gaps = gapsOf(recorded, range.from, to).map((gap) => {
+      const cause = causeOf(system, camera.id, gap.start, gap.end);
+      return { start: iso(gap.start), end: iso(gap.end), minutes: Math.round((gap.end - gap.start) / 60_000), ...(cause ? { cause } : {}) };
+    });
+    rows.push({
+      camera: camera.name,
+      mode,
+      recordedPercent: Math.round((covered / span) * 1000) / 10,
+      gaps: gaps.length,
+      ...(gaps.length ? { longestGaps: gaps.sort((a, b) => b.minutes - a.minutes).slice(0, MAX_GAPS) } : {}),
+      ...(mode === 'event' || mode === 'adhoc' ? { note: 'Records on events: time between events is not recorded by design, gaps are expected.' } : {}),
+      ...(mode === 'off' ? { note: 'Recording is off for this camera.' } : {}),
+    });
+  }
+  return {
+    content: {
+      from: iso(range.from),
+      to: iso(to),
+      timezone: ctx.timezone,
+      cameras: rows,
+      causes: 'Causes come from what the recorder logged since it last started; an older gap has no known cause.',
+    },
+  };
+}
+
+/** The stretches of [from, to] no segment covers, longer than GAP_MS. */
+export function gapsOf(segments: RecordingSegment[], from: number, to: number): { start: number; end: number }[] {
+  const sorted = [...segments].sort((a, b) => a.startTime - b.startTime);
+  const gaps: { start: number; end: number }[] = [];
+  let cursor = from;
+  for (const seg of sorted) {
+    if (seg.endTime <= cursor) continue;
+    if (seg.startTime > cursor) gaps.push({ start: cursor, end: Math.min(seg.startTime, to) });
+    cursor = Math.max(cursor, seg.endTime);
+    if (cursor >= to) break;
+  }
+  if (to > cursor) gaps.push({ start: cursor, end: to });
+  return gaps.filter((gap) => gap.end - gap.start > GAP_MS);
+}
+
+function causeOf(events: SystemEvent[], cameraId: string, start: number, end: number): string | undefined {
+  // the camera's own event first (its stream), then one of the whole recorder (the disk, the plan)
+  const near = events.filter((e) => e.severity !== 'success' && e.severity !== 'info' && e.timestamp >= start - CAUSE_SLACK_MS && e.timestamp <= end);
+  const event = near.find((e) => e.cameraId === cameraId) ?? near.find((e) => !e.cameraId);
+  return event ? `${event.type}: ${event.message}` : undefined;
+}
+
+async function storageForecast(host: AssistantHost, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  const stats = await host.storage(ctx.timezone);
+  const names = cameraNames(host);
+  const cameras = Object.entries(stats.cameras).map(([id, cam]) => ({
+    camera: names.get(id) ?? id,
+    mode: cam.recordingMode,
+    recording: cam.isRecording,
+    usedGB: Math.round((cam.usedBytes / 1024 ** 3) * 100) / 100,
+    daysInArchive: cam.daysCount,
+    ...(cam.oldestDay ? { oldestDay: cam.oldestDay } : {}),
+    streamMBh: cam.bandwidthMBh,
+  }));
+  return {
+    content: {
+      ...(stats.paused ? { paused: 'Recording is paused: there is not enough free disk space. Free space or lower the retention.' } : {}),
+      disk: { totalGB: stats.diskTotalGB, usedGB: stats.diskUsedGB, freeGB: stats.diskFreeGB, freePercent: stats.diskFreePercent },
+      archive: { usedGB: stats.nvrUsedGB, quotaGB: stats.nvrQuotaGB || 'none', retentionDays: stats.retentionDays },
+      forecast: forecast(stats, host.minFreePercent()),
+      cameras,
+    },
+  };
+}
+
+/**
+ * How many days of recording the space holds at the current rate: what the archive may use (the quota, or the disk
+ * past the share the recorder keeps free) over what the recording cameras write a day. The retention cuts first
+ * when it is shorter.
+ */
+export function forecast(stats: StorageStats, minFreePercent: number): Record<string, unknown> {
+  const mbPerDay = Object.values(stats.cameras)
+    .filter((cam) => cam.isRecording)
+    .reduce((sum, cam) => sum + cam.bandwidthMBh * 24, 0);
+  const reserveGB = (stats.diskTotalGB * minFreePercent) / 100;
+  const diskRoomGB = stats.nvrUsedGB + Math.max(0, stats.diskFreeGB - reserveGB);
+  const roomGB = stats.nvrQuotaGB > 0 ? Math.min(stats.nvrQuotaGB, diskRoomGB) : diskRoomGB;
+  if (mbPerDay <= 0) return { writingMBPerDay: 0, note: 'No camera is recording now: nothing fills the disk.' };
+  const daysOfSpace = Math.floor((roomGB * 1024) / mbPerDay);
+  const limitedBy =
+    stats.retentionDays > 0 && stats.retentionDays <= daysOfSpace ? 'retention' : stats.nvrQuotaGB > 0 && stats.nvrQuotaGB <= diskRoomGB ? 'quota' : 'disk';
+  return {
+    writingGBPerDay: Math.round((mbPerDay / 1024) * 100) / 100,
+    archiveRoomGB: Math.round(roomGB * 100) / 100,
+    daysOfSpace,
+    limitedBy,
+    archiveDays: limitedBy === 'retention' ? stats.retentionDays : daysOfSpace,
+    note:
+      limitedBy === 'retention'
+        ? `The retention of ${stats.retentionDays} days ends the archive before the space does: older recordings are deleted at ${stats.retentionDays} days.`
+        : `At the current rate the space holds about ${daysOfSpace} days; then the oldest recordings are deleted to make room.`,
+  };
+}
+
+// ------------------------------------------------------------------ faces
+
+async function listFaces(host: AssistantHost, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  const names = cameraNames(host);
+  const known = await host.knownFaces();
+  const groups = new Map<string, UnknownSighting[]>();
+  const loose: UnknownSighting[] = [];
+  for (const face of host.unknownFaces()) {
+    if (!face.clusterId) loose.push(face);
+    else groups.set(face.clusterId, [...(groups.get(face.clusterId) ?? []), face]);
+  }
+  const describe = (faces: UnknownSighting[]) => {
+    const last = faces.reduce((a, b) => (b.timestamp > a.timestamp ? b : a));
+    return {
+      faces: faces.length,
+      cameras: [...new Set(faces.map((f) => names.get(f.cameraId) ?? f.cameraId))],
+      lastSeen: iso(last.timestamp),
+      eventId: last.eventId,
+    };
+  };
+  return {
+    content: {
+      timezone: ctx.timezone,
+      known: known.map((face) => ({ name: face.name, pictures: face.imageCount })),
+      unknownGroups: [...groups.values()]
+        .sort((a, b) => b.length - a.length)
+        .slice(0, 20)
+        .map(describe),
+      ...(loose.length ? { unknownAlone: { faces: loose.length, latest: loose.slice(0, 5).map((f) => ({ eventId: f.eventId, seen: iso(f.timestamp) })) } } : {}),
+    },
+  };
+}
+
+interface EventFace {
+  seg: number;
+  attr: number;
+  name: string;
+}
+
+/** The faces of an event in the order the recorder saw them; "unknown" for one nobody matched. */
+function facesIn(ev: RecordedEvent): EventFace[] {
+  const out: EventFace[] = [];
+  (ev.segments ?? []).forEach((seg, segIndex) =>
+    (seg?.attributes ?? []).forEach((a, attr) => {
+      if (a?.type === 'face') out.push({ seg: segIndex, attr, name: typeof a.label === 'string' && a.label ? a.label : 'unknown' });
+    }),
+  );
+  return out;
+}
+
+/** The one face of an event the call means, or why there is none. */
+function pickFace(host: AssistantHost, input: Input): { event: RecordedEvent; face: EventFace } | { error: string } {
+  const id = typeof input.eventId === 'string' ? input.eventId.trim() : '';
+  const event = id ? host.event(id) : undefined;
+  if (!event) return { error: `No event with id "${id}". Take the id from query_events or list_faces.` };
+  const faces = facesIn(event);
+  if (!faces.length) return { error: 'This event has no face. Take an event with a face from list_faces or query_events.' };
+  if (faces.length === 1) return { event, face: faces[0] };
+  const which = Math.round(Number(input.face));
+  if (Number.isInteger(which) && which >= 1 && which <= faces.length) return { event, face: faces[which - 1] };
+  return {
+    error: `The event shows ${faces.length} faces: ${faces.map((f, i) => `${i + 1}. ${f.name}`).join('; ')}. ` + 'Ask the user which one and call again with `face`.',
+  };
+}
+
+function facePicture(host: AssistantHost, event: RecordedEvent, face: EventFace): AssistantToolImage[] {
+  return jpeg(host.faceCrop(event.id, face.seg, face.attr), face.name);
+}
+
+function jpeg(data: Uint8Array | undefined, caption: string): AssistantToolImage[] {
+  return data?.length ? [{ data: Buffer.from(data).toString('base64'), mimeType: 'image/jpeg', caption }] : [];
+}
+
+async function nameFace(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name || name.toLowerCase() === 'unknown') return { error: 'name is required: the name of the person.' };
+  const picked = pickFace(host, input);
+  if ('error' in picked) return picked;
+  const { event, face } = picked;
+  const camera = cameraNames(host).get(event.cameraId) ?? event.cameraId;
+  const current = face.name === 'unknown' ? undefined : face.name;
+  if (current?.toLowerCase() === name.toLowerCase()) return { content: { done: false, reason: `This face is already recognized as ${current}.` } };
+  if (preview)
+    return {
+      content: { preview: { action: 'name_face', camera, at: iso(event.startTime), name, ...(current ? { was: current } : {}) } },
+      images: facePicture(host, event, face),
+    };
+
+  const changed = await host.nameFace(event.id, face.seg, face.attr, face.name, name);
+  if (!changed) return { error: 'The face could not be named: the event changed meanwhile. Read it again with query_events.' };
+  return { content: { done: true, name, ...(current ? { was: current } : {}), note: 'Learned: new events recognize this face under the name.' } };
+}
+
+async function ignoreFace(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+  const picked = pickFace(host, input);
+  if ('error' in picked) return picked;
+  const { event, face } = picked;
+  if (face.name !== 'unknown') return { error: `This face is recognized as ${face.name}: forget_face forgets a known person, name_face corrects the name.` };
+  const sighting = host.unknownFaces().find((f) => f.eventId === event.id && f.seg === face.seg && f.attr === face.attr);
+  if (!sighting) return { error: 'This face is no longer among the unknown faces: it was named, ignored or removed.' };
+  const group = sighting.clusterId ? host.unknownFaces().filter((f) => f.clusterId === sighting.clusterId).length : 1;
+  const camera = cameraNames(host).get(event.cameraId) ?? event.cameraId;
+  if (preview) return { content: { preview: { action: 'ignore_face', camera, at: iso(event.startTime), faces: group } }, images: facePicture(host, event, face) };
+  await host.ignoreFaces(sighting);
+  return { content: { done: true, ignored: group, note: 'These faces are no longer offered for naming; the Faces page lists them under ignored.' } };
+}
+
+async function forgetFace(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+  const wanted = typeof input.name === 'string' ? input.name.trim().toLowerCase() : '';
+  const known = await host.knownFaces();
+  const face = known.find((f) => f.name.toLowerCase() === wanted);
+  if (!face) return { error: `Nobody is known as "${String(input.name)}". Known: ${known.map((f) => f.name).join(', ') || 'nobody'}.` };
+  if (preview) {
+    return { content: { preview: { action: 'forget_face', name: face.name, pictures: face.imageCount } }, images: jpeg(face.thumbnail, face.name) };
+  }
+  await host.forgetFace(face.name);
+  return { content: { done: true, forgotten: face.name, note: 'Past events keep the name; new events no longer recognize this person.' } };
+}
+
+// ------------------------------------------------------------------ recording by hand, deleting
+
+async function manualRecording(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+  const camera = resolveOneCamera(host, input.camera);
+  if ('error' in camera) return camera;
+  const action = input.action === 'stop' ? 'stop' : input.action === 'start' ? 'start' : undefined;
+  if (!action) return { error: 'action must be "start" or "stop".' };
+  const minutes = clampInt(input.minutes, 1, 120, 5);
+  const mode = host.recordingMode(camera.id);
+  if (action === 'start' && mode === 'continuous') return { content: { done: false, reason: `${camera.name} records all the time: there is nothing to start.` } };
+  if (preview)
+    return { content: { preview: { action: 'manual_recording', camera: camera.name, start: action === 'start', ...(action === 'start' ? { minutes } : {}) } } };
+
+  try {
+    const state = action === 'start' ? await host.startManual(camera.id, minutes) : await host.stopManual(camera.id);
+    if (action === 'stop') return { content: { done: true, camera: camera.name, recording: false } };
+    if (state.reason === 'paused') return { content: { done: false, camera: camera.name, reason: 'Recording is paused: not enough free disk space.' } };
+    if (!state.active) return { content: { done: false, reason: `${camera.name} records all the time: there is nothing to start.` } };
+    return { content: { done: true, camera: camera.name, recording: true, until: iso(state.untilMs ?? Date.now() + minutes * 60_000) } };
+  } catch (error) {
+    // the recorder says why in its own words: recording off, no slot in the plan, paused
+    return { error: `${camera.name}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+const MAX_DELETE_MS = DAY_MS;
+
+async function deleteRecordings(host: AssistantHost, input: Input, preview: boolean): Promise<AssistantToolResult> {
+  const camera = resolveOneCamera(host, input.camera);
+  if ('error' in camera) return camera;
+  const from = parseTime(input.from);
+  const to = parseTime(input.to);
+  if (from === undefined || to === undefined) return { error: 'from and to are required, ISO 8601 date-times.' };
+  if (to <= from) return { error: 'to must be after from.' };
+  if (to - from > MAX_DELETE_MS) return { error: 'At most 24 hours of one camera per call. Deleting everything is not possible here.' };
+
+  const favorites = host.events([camera.id], { startMs: from, endMs: to, favoritesOnly: true, limit: MAX_EVENTS }, MAX_EVENTS).events;
+  if (favorites.length && input.includeFavorites !== true)
+    return {
+      error:
+        `Favorite events fall in this range, their video would go too: ${favorites.map((ev) => `${titleOf(ev)} at ${iso(ev.startTime)}`).join('; ')}. ` +
+        'Ask the user; only when they say favorites go too, call again with includeFavorites: true, or narrow the range.',
+    };
+
+  const size = host.deletable(camera.id, from, to);
+  if (preview)
+    return {
+      content: {
+        preview: {
+          action: 'delete_recordings',
+          camera: camera.name,
+          from: iso(from),
+          to: iso(to),
+          segments: size.segments,
+          bytes: size.bytes,
+          favorites: favorites.length,
+        },
+      },
+    };
+  if (!size.segments) return { content: { deleted: false, reason: 'Nothing recorded lies wholly in this range (the last 3 minutes are never deleted).' } };
+
+  const result = await host.deleteRange(camera.id, from, to);
+  if (!result.endMs) return { content: { deleted: false, reason: 'Nothing was deleted.' } };
+  return {
+    content: {
+      deleted: true,
+      camera: camera.name,
+      from: iso(result.startMs),
+      to: iso(result.endMs),
+      segments: size.segments,
+      megabytes: Math.round(size.bytes / 1024 ** 2),
+    },
+  };
+}
+
 // ------------------------------------------------------------------ event fields
 
 export function labelsOf(ev: RecordedEvent): string[] {
@@ -302,6 +799,11 @@ export function platesOf(ev: RecordedEvent): string[] {
 export function facesOf(ev: RecordedEvent): string[] {
   // an unrecognized face has no identity name; "unknown" is not a person to report
   return attributeLabels(ev, 'face').filter((name) => name && name.toLowerCase() !== 'unknown');
+}
+
+/** Faces nobody was matched to: name_face names them. */
+function unknownFacesOf(ev: RecordedEvent): number {
+  return facesIn(ev).filter((face) => face.name.toLowerCase() === 'unknown').length;
 }
 
 function attributeLabels(ev: RecordedEvent, type: string): string[] {
@@ -325,6 +827,7 @@ function brief(ev: RecordedEvent, names: Map<string, string>) {
     labels: labelsOf(ev),
     ...(platesOf(ev).length ? { plates: platesOf(ev) } : {}),
     ...(facesOf(ev).length ? { faces: facesOf(ev) } : {}),
+    ...(unknownFacesOf(ev) ? { unknownFaces: unknownFacesOf(ev) } : {}),
     ...(ev.ai?.title ? { title: ev.ai.title } : {}),
     ...(ev.favorite ? { favorite: true } : {}),
   };
@@ -363,6 +866,28 @@ function resolveCamera(host: AssistantHost, value: unknown): { ids: string[] | u
   const partial = cameras.filter((c) => c.name.toLowerCase().includes(wanted));
   if (partial.length === 1) return { ids: [partial[0].id] };
   return { error: `Unknown camera "${value}". Cameras: ${cameras.map((c) => c.name).join(', ') || 'none'}` };
+}
+
+/** One camera by its exact name (or id): an action must not land on the wrong one of two similar names. */
+function resolveOneCamera(host: AssistantHost, value: unknown): { id: string; name: string } | { error: string } {
+  const cameras = host.cameras();
+  const wanted = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  const match = cameras.find((c) => c.name.toLowerCase() === wanted || c.id === value);
+  return match ?? { error: `Unknown camera "${String(value)}". Give its exact name: ${cameras.map((c) => c.name).join(', ') || 'none'}` };
+}
+
+/** Cameras by name, every camera when none is given. */
+function resolveCameras(host: AssistantHost, value: unknown): { id: string; name: string }[] | { error: string } {
+  const all = host.cameras();
+  const wanted = Array.isArray(value) ? value : typeof value === 'string' && value.trim() ? [value] : [];
+  if (!wanted.length) return all;
+  const out: { id: string; name: string }[] = [];
+  for (const name of wanted) {
+    const found = resolveCamera(host, name);
+    if ('error' in found) return found;
+    for (const id of found.ids ?? []) if (!out.some((c) => c.id === id)) out.push(all.find((c) => c.id === id)!);
+  }
+  return out;
 }
 
 function timeRange(input: Input, span: number): { from: number; to: number } | { error: string } {

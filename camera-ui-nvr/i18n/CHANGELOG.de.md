@@ -1,3 +1,9 @@
+## [0.12.0]
+
+- Der Assistent beantwortet Fragen zur Aufzeichnung selbst, zusammen mit dem Assistenten-Update von ViON: ob Kameras über einen Zeitraum aufgezeichnet haben (Anteil der Aufzeichnung, Lücken länger als eine Minute und ihre Ursache, wenn der Rekorder eine vermerkt hat) und wie viele Tage der Speicher beim aktuellen Datenstrom reicht oder dass die Aufbewahrungsdauer das Archiv früher begrenzt
+- Der Assistent listet bekannte und unbekannte Gesichter und benennt nach einer Bestätigung im Chat durch einen Administrator ein Gesicht eines Ereignisses („das ist Mascha“), korrigiert einen falschen Namen, blendet eine Gruppe unbekannter Gesichter aus oder vergisst eine Person. Die Bestätigungskarte zeigt das Gesicht
+- Der Assistent startet und stoppt eine manuelle Aufnahme und löscht die Aufnahmen einer Kamera in einem Zeitraum von bis zu 24 Stunden, beides für Administratoren und nach Bestätigung. Ein Zeitraum mit Favoriten wird abgelehnt, solange der Nutzer nicht ausdrücklich sagt, dass auch sie gelöscht werden; die Karte zeigt, wie viel gelöscht wird und dass es nicht rückgängig zu machen ist
+
 ## [0.11.3]
 
 - Die Vorschau eines Ereignisses beim Überfahren findet das Ereignis dort, wo es aufgezeichnet ist: ein erst ab der Mitte aufgezeichnetes Ereignis oder eines von einer Kamera, die selten ein Schlüsselbild sendet, zeigte „keine Vorschau“; der Ausschnitt beginnt jetzt dort, wo die Aufzeichnung des Ereignisses beginnt, und am nächsten Schlüsselbild, wenn das vorherige weiter zurückliegt, als der Ausschnitt lang ist

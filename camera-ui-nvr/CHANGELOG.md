@@ -1,3 +1,9 @@
+## [0.12.0]
+
+- The assistant answers about the recording itself, together with ViON's assistant update: whether cameras recorded through a period (the share recorded, the gaps longer than a minute and their cause when the recorder logged one) and how many days the disk holds at the current rate, or that the retention ends the archive first
+- The assistant lists the known and unknown faces and, after a confirmation in the chat by an administrator, names a face of an event («this is Masha»), corrects a wrong name, ignores a group of unknown faces or forgets a person. The confirmation card shows the face
+- The assistant starts and stops a manual recording and deletes the recordings of one camera in a range of up to 24 hours, both for administrators and after a confirmation. A range with favorite events is refused unless the user said favorites go too; the card says how much goes and that it cannot be undone
+
 ## [0.11.3]
 
 - The hover preview of an event finds the event where it is recorded: an event recorded only from its middle, or from a camera that sends a keyframe rarely, showed "no preview"; the excerpt now starts where the recording of the event begins, at the next keyframe when the one before is further back than the excerpt is long
