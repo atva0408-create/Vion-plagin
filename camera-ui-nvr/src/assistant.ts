@@ -652,23 +652,64 @@ function facesIn(ev: RecordedEvent): EventFace[] {
   return out;
 }
 
-/** The one face of an event the call means, or why there is none. */
-function pickFace(host: AssistantHost, input: Input): { event: RecordedEvent; face: EventFace } | { error: string } {
+/** One person of an event: the name and every place among the segments' attributes their face was seen at. */
+interface EventPerson {
+  name: string;
+  at: { seg: number; attr: number }[];
+  /** The group of unknown faces (as the Faces page shows them) the face is in. */
+  cluster?: string;
+}
+
+/**
+ * The people of an event. An event that loses someone and finds them again has a segment for each time, with their
+ * face among the attributes of each: one person was offered as "2 faces: 1. unknown; 2. unknown". Faces are one
+ * person when they carry the same known name, or when the face store put them in one group of unknown faces (by their
+ * vectors). Nothing else in the event tells: the vectors are not kept in it, and the track id is the tracker's, not
+ * known to hold from one segment to the next.
+ */
+function peopleIn(ev: RecordedEvent, unknown: UnknownSighting[]): EventPerson[] {
+  const people: EventPerson[] = [];
+  for (const { seg, attr, name } of facesIn(ev)) {
+    const cluster = name === 'unknown' ? unknown.find((u) => u.eventId === ev.id && u.seg === seg && u.attr === attr)?.clusterId : undefined;
+    const same = people.find((p) => p.name === name && (name !== 'unknown' || (!!cluster && p.cluster === cluster)));
+    if (same) same.at.push({ seg, attr });
+    else people.push({ name, at: [{ seg, attr }], ...(cluster ? { cluster } : {}) });
+  }
+  return people;
+}
+
+/**
+ * Unknown faces of different moments of the event that nothing tells apart (not both in a group of unknown faces)
+ * may be one person seen again: said, so that the user is not told of two strangers where there was one.
+ */
+function maybeOnePerson(people: EventPerson[]): string {
+  const apart = (a: EventPerson, b: EventPerson) => !a.at.some((x) => b.at.some((y) => x.seg === y.seg));
+  const alike = people.flatMap((p, i) =>
+    p.name === 'unknown' && people.some((q) => q !== p && q.name === 'unknown' && !(p.cluster && q.cluster) && apart(p, q)) ? [i + 1] : [],
+  );
+  return alike.length ? `Faces ${alike.join(', ')} are unknown, seen at different moments of the event, and nothing tells them apart: they may be the same person. ` : '';
+}
+
+/** The one person of an event the call means, or why there is none. */
+function pickFace(host: AssistantHost, input: Input): { event: RecordedEvent; face: EventPerson } | { error: string } {
   const id = typeof input.eventId === 'string' ? input.eventId.trim() : '';
   const event = id ? host.event(id) : undefined;
   if (!event) return { error: `No event with id "${id}". Take the id from query_events or list_faces.` };
-  const faces = facesIn(event);
+  const faces = peopleIn(event, host.unknownFaces());
   if (!faces.length) return { error: 'This event has no face. Take an event with a face from list_faces or query_events.' };
   if (faces.length === 1) return { event, face: faces[0] };
   const which = Math.round(Number(input.face));
   if (Number.isInteger(which) && which >= 1 && which <= faces.length) return { event, face: faces[which - 1] };
   return {
-    error: `The event shows ${faces.length} faces: ${faces.map((f, i) => `${i + 1}. ${f.name}`).join('; ')}. ` + 'Ask the user which one and call again with `face`.',
+    error:
+      `The event shows ${faces.length} faces: ${faces.map((f, i) => `${i + 1}. ${f.name}`).join('; ')}. ` +
+      maybeOnePerson(faces) +
+      'Ask the user which one and call again with `face`.',
   };
 }
 
-function facePicture(host: AssistantHost, event: RecordedEvent, face: EventFace): AssistantToolImage[] {
-  return jpeg(host.faceCrop(event.id, face.seg, face.attr), face.name);
+function facePicture(host: AssistantHost, event: RecordedEvent, face: EventPerson): AssistantToolImage[] {
+  return jpeg(host.faceCrop(event.id, face.at[0].seg, face.at[0].attr), face.name);
 }
 
 function jpeg(data: Uint8Array | undefined, caption: string): AssistantToolImage[] {
@@ -690,7 +731,9 @@ async function nameFace(host: AssistantHost, input: Input, preview: boolean): Pr
       images: facePicture(host, event, face),
     };
 
-  const changed = await host.nameFace(event.id, face.seg, face.attr, face.name, name);
+  let changed = 0;
+  // every sighting of the person: one left with the old name would be offered again as a face of the event
+  for (const { seg, attr } of face.at) changed += await host.nameFace(event.id, seg, attr, face.name, name);
   if (!changed) return { error: 'The face could not be named: the event changed meanwhile. Read it again with query_events.' };
   return { content: { done: true, name, ...(current ? { was: current } : {}), note: 'Learned: new events recognize this face under the name.' } };
 }
@@ -700,7 +743,7 @@ async function ignoreFace(host: AssistantHost, input: Input, preview: boolean): 
   if ('error' in picked) return picked;
   const { event, face } = picked;
   if (face.name !== 'unknown') return { error: `This face is recognized as ${face.name}: forget_face forgets a known person, name_face corrects the name.` };
-  const sighting = host.unknownFaces().find((f) => f.eventId === event.id && f.seg === face.seg && f.attr === face.attr);
+  const sighting = host.unknownFaces().find((f) => f.eventId === event.id && face.at.some((a) => f.seg === a.seg && f.attr === a.attr));
   if (!sighting) return { error: 'This face is no longer among the unknown faces: it was named, ignored or removed.' };
   const group = sighting.clusterId ? host.unknownFaces().filter((f) => f.clusterId === sighting.clusterId).length : 1;
   const camera = cameraNames(host).get(event.cameraId) ?? event.cameraId;

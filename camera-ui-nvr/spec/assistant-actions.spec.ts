@@ -35,6 +35,19 @@ function event(id: string, cameraId: string, start: number, faces: string[] = []
   } as unknown as RecordedEvent;
 }
 
+/** An event the camera lost someone in and found them again: a segment each time, with the faces seen in it. */
+function segmented(id: string, cameraId: string, start: number, segments: string[][]): RecordedEvent {
+  return {
+    ...event(id, cameraId, start),
+    segments: segments.map((faces, i) => ({
+      firstSeen: start + i * 10_000,
+      lastSeen: start + i * 10_000 + 5000,
+      detections: [{ label: 'person' }],
+      attributes: faces.map((label) => ({ type: 'face', label, confidence: 0.9 })),
+    })),
+  } as unknown as RecordedEvent;
+}
+
 /** A recorder in memory; `calls` lists what the tools asked it to do. */
 function fakeHost(over: Partial<AssistantHost> = {}) {
   const calls: unknown[][] = [];
@@ -250,6 +263,71 @@ const content = <T>(result: AssistantToolResult) => {
 
   assert.match((await call(host, 'name_face', { eventId: 'ev-one', name: 'Маша' }, user)).error ?? '', /administrator/, 'a user cannot, even if a call gets here');
   assert.deepEqual(calls, []);
+}
+
+// ------------------------------------------------------------------ name_face: one person over several segments
+{
+  const events = new Map<string, RecordedEvent>([
+    ['ev-back', segmented('ev-back', 'cam-yard', T0 + 6 * H, [['unknown'], ['unknown']])],
+    ['ev-dad-back', segmented('ev-dad-back', 'cam-door', T0 + 7 * H, [['Папа'], ['Папа']])],
+    ['ev-loose', segmented('ev-loose', 'cam-yard', T0 + 8 * H, [['unknown'], ['unknown']])],
+    ['ev-half', segmented('ev-half', 'cam-yard', T0 + 9 * H, [['unknown'], ['unknown']])],
+    ['ev-groups', segmented('ev-groups', 'cam-yard', T0 + 10 * H, [['unknown'], ['unknown']])],
+    ['ev-pair', segmented('ev-pair', 'cam-yard', T0 + 11 * H, [['unknown', 'unknown']])],
+  ]);
+  const at = (eventId: string, seg: number, clusterId?: string): UnknownSighting => ({
+    id: `u-${eventId}-${seg}`,
+    eventId,
+    seg,
+    attr: 0,
+    cameraId: 'cam-yard',
+    timestamp: T0,
+    ...(clusterId ? { clusterId } : {}),
+  });
+  // ev-loose and ev-pair have no sighting in the list (older than it, or no vector): nothing identifies their faces
+  const unknown = [at('ev-back', 0, 'c-9'), at('ev-back', 1, 'c-9'), at('ev-half', 0, 'c-7'), at('ev-groups', 0, 'c-7'), at('ev-groups', 1, 'c-8')];
+  const { host, calls } = fakeHost({ event: (id) => events.get(id), unknownFaces: () => unknown });
+
+  const named = await call(host, 'name_face', { eventId: 'ev-back', name: 'Маша' });
+  assert.equal(named.error, undefined, 'one person seen twice is one face, not "2 faces: 1. unknown; 2. unknown"');
+  assert.deepEqual(
+    calls,
+    [
+      ['nameFace', 'ev-back', 0, 0, 'unknown', 'Маша'],
+      ['nameFace', 'ev-back', 1, 0, 'unknown', 'Маша'],
+    ],
+    'the same group of unknown faces: both sightings get the name',
+  );
+
+  calls.length = 0;
+  const corrected = content<{ was: string }>(await call(host, 'name_face', { eventId: 'ev-dad-back', name: 'Иван' }));
+  assert.equal(corrected.was, 'Папа');
+  assert.deepEqual(
+    calls,
+    [
+      ['nameFace', 'ev-dad-back', 0, 0, 'Папа', 'Иван'],
+      ['nameFace', 'ev-dad-back', 1, 0, 'Папа', 'Иван'],
+    ],
+    'one known name twice is one person, corrected in both',
+  );
+
+  calls.length = 0;
+  for (const id of ['ev-loose', 'ev-half']) {
+    const loose = await call(host, 'name_face', { eventId: id, name: 'Маша' });
+    assert.match(loose.error ?? '', /2 faces: 1\. unknown; 2\. unknown/, `${id}: unknown faces nothing identifies are still asked about`);
+    assert.match(loose.error ?? '', /may be the same person/, `${id}: and said to be maybe one`);
+  }
+  const groups = await call(host, 'name_face', { eventId: 'ev-groups', name: 'Маша' });
+  assert.match(groups.error ?? '', /2 faces/);
+  assert.doesNotMatch(groups.error ?? '', /same person/, 'two groups of unknown faces are two people');
+  const pair = await call(host, 'name_face', { eventId: 'ev-pair', name: 'Маша' });
+  assert.match(pair.error ?? '', /2 faces/);
+  assert.doesNotMatch(pair.error ?? '', /same person/, 'two faces at the same moment are two people');
+  assert.deepEqual(calls, [], 'nothing named while asking');
+
+  const ignored = content<{ ignored: number }>(await call(host, 'ignore_face', { eventId: 'ev-back' }));
+  assert.equal(ignored.ignored, 2, 'ignore_face takes the person seen twice too');
+  assert.deepEqual(calls, [['ignoreFaces', 'u-ev-back-0', 'c-9']]);
 }
 
 // ------------------------------------------------------------------ ignore_face, forget_face
