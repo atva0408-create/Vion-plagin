@@ -968,6 +968,23 @@ class ONNXPlugin(
             attribute = sensors.get("attributes")
             if attribute is not None:
                 attribute.refresh()
+        # a trained model given out no more (a module's newer version, a module turned off): its detector goes, unless
+        # a camera still detects with it while its next model loads
+        in_use = {getattr(sensors.get("object"), "_active_model", None) for sensors in self._sensors.values()}
+        for name in [
+            n
+            for n in self.object_detectors
+            if is_trained(n) and n not in in_use and trained_models.entry(n) is None
+        ]:
+            asyncio.create_task(self._drop_trained_detector(name))
+
+    async def _drop_trained_detector(self, model_name: str) -> None:
+        detector = self.object_detectors.pop(model_name, None)
+        self._failed_models.pop(model_name, None)
+        self.model_manager.forget(model_name)
+        if detector is not None:
+            await detector.close()
+            self.logger.log(f"Модель {model_name} больше не выдаётся и выгружена")
 
     # ---- modules of the store (modules.py) ----
 

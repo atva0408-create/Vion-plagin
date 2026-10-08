@@ -48,9 +48,11 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
 
     @property
     def modelSpec(self) -> ModelSpec:
-        self._labels = trained_models.trigger_labels()
+        # only what works on this camera: a module the owner turned on elsewhere triggers nothing here
+        self._labels = trained_models.trigger_labels(self._camera.id)
         size = max(
-            (int(e.get("imgsz") or DEFAULT_INPUT) for e in trained_models.attributes()), default=DEFAULT_INPUT
+            (int(e.get("imgsz") or DEFAULT_INPUT) for e in trained_models.attributes(self._camera.id)),
+            default=DEFAULT_INPUT,
         )
         return {
             "input": {"width": size, "height": size, "format": "rgb"},
@@ -60,11 +62,11 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
 
     def refresh(self) -> None:
         """Called by the plugin when the manifest changed: new classes of objects to classify."""
-        if trained_models.trigger_labels() != self._labels:
+        if trained_models.trigger_labels(self._camera.id) != self._labels:
             self.updateModelSpec()
 
     async def detectClassifications(self, frames: list[VideoFrameData]) -> list[ClassifierResult]:
-        entries = trained_models.attributes()
+        entries = trained_models.attributes(self._camera.id)
         results: list[ClassifierResult] = []
         for frame in frames:
             label = frame.get("label")

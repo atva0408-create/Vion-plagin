@@ -1,9 +1,11 @@
-"""Models trained on ViON Cloud: the detector fine-tuned on the owners' checked frames and the attribute
-classifiers ("person · с пакетом": yes / no).
+"""Models trained on ViON Cloud: the base detector fine-tuned on the owners' checked frames, the detectors of
+object modules ("велосипед") and the classifiers of question modules ("person · с пакетом": yes / no).
 
-The ViON server downloads the published ones into VION_TRAINED_MODELS_DIR and keeps ``manifest.json``
+The ViON server downloads what the cloud gives it into VION_TRAINED_MODELS_DIR and keeps ``manifest.json``
 there (server/src/manager/trainedModels.ts). The plugin reads the manifest while it runs, so a new model
-takes over without a restart and an empty manifest puts the cameras back on the stock models.
+takes over without a restart and an empty manifest puts the cameras back on the stock models. A module
+works only on the cameras its entry names (``cameras``); a classifier of before modules has none and works
+on every camera.
 
 Kept identical in camera-ui-onnx and camera-ui-openvino.
 """
@@ -72,12 +74,29 @@ class TrainedModels:
         entry = self.detector()
         return model_name(entry) if entry else None
 
-    def attributes(self) -> list[dict[str, Any]]:
+    def attributes(self, camera_id: str | None = None) -> list[dict[str, Any]]:
+        """The classifiers to run; for a camera, the ones that work on it."""
         entries = self.manifest().get("attributes") or []
-        return [e for e in entries if _usable(e) and e.get("label") and e.get("attribute")]
+        return [
+            e
+            for e in entries
+            if _usable(e) and e.get("label") and e.get("attribute") and _works_on(e, camera_id)
+        ]
 
-    def trigger_labels(self) -> list[str]:
-        return sorted({e["label"] for e in self.attributes() if e["label"] in TRIGGER_LABELS})
+    def trigger_labels(self, camera_id: str | None = None) -> list[str]:
+        return sorted({e["label"] for e in self.attributes(camera_id) if e["label"] in TRIGGER_LABELS})
+
+    def module_detectors(self, camera_id: str) -> list[dict[str, Any]]:
+        """The detectors of object modules that work on this camera, next to its own detector."""
+        entries = self.manifest().get("modules") or []
+        return [
+            e
+            for e in entries
+            if _usable(e)
+            and e.get("kind") == "object"
+            and e.get("classes")
+            and camera_id in (e.get("cameras") or [])
+        ]
 
     def entry(self, name: str) -> dict[str, Any] | None:
         """The manifest entry of a ``vion-trained-<id>`` model name."""
@@ -85,7 +104,11 @@ class TrainedModels:
             return None
         model_id = name[len(TRAINED_PREFIX) :]
         manifest = self.manifest()
-        for entry in [manifest.get("detector"), *(manifest.get("attributes") or [])]:
+        for entry in [
+            manifest.get("detector"),
+            *(manifest.get("attributes") or []),
+            *(manifest.get("modules") or []),
+        ]:
             if _usable(entry) and entry.get("id") == model_id:
                 found: dict[str, Any] = entry
                 return found
@@ -100,6 +123,12 @@ class TrainedModels:
 
 def _usable(entry: Any) -> bool:
     return isinstance(entry, dict) and bool(entry.get("id")) and os.path.isfile(str(entry.get("path", "")))
+
+
+def _works_on(entry: dict[str, Any], camera_id: str | None) -> bool:
+    """An entry without cameras (of before modules) works on every camera."""
+    cameras = entry.get("cameras")
+    return camera_id is None or not isinstance(cameras, list) or camera_id in cameras
 
 
 trained_models = TrainedModels()
