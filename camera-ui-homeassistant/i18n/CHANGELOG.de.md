@@ -1,3 +1,9 @@
+## [1.1.0]
+
+### Hinzugefügt
+
+- **Der ViON-Assistent** zeigt die Entitäten von Home Assistant mit Bereich und Zustand und startet eine Szene, ein Skript oder eine Automation, schaltet Licht oder Schalter, bewegt Abdeckungen und stellt das Klima ein („schalte die Abendszene ein“). Jeder Aufruf wird im Chat bestätigt und ist nur Administratoren erlaubt. Andere Domänen (Schlösser, Alarmzentrale, Home Assistant selbst) bleiben gesperrt, bis sie in der neuen Einstellung „Domänen für den Assistenten“ ergänzt werden.
+
 ## [1.0.18]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

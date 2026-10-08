@@ -1,7 +1,7 @@
 {
   "displayName": "Home Assistant",
   "name": "@vionvision/camera-ui-homeassistant",
-  "version": "1.0.18",
+  "version": "1.1.0",
   "description": "Импортирует датчики Home Assistant в ViON: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками ViON, которые могут запускать обнаружение на камерах.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -16,6 +16,7 @@
     "prepublishOnly": "node -e \"if(!process.env.SAFE_PUBLISH){console.error('Error: Please use @camera.ui/cli to publish the plugin:\\n  npm run publish:alpha\\n  npm run publish:beta\\n  npm run publish:latest\\n');process.exit(1)}\"",
     "publish:alpha": "npm i --save --force && npm run bundle && cui publish --alpha",
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
+    "test": "npx --yes tsx spec/assistant.spec.ts",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./"
   },

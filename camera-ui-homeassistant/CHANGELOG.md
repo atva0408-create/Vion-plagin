@@ -1,3 +1,9 @@
+## [1.1.0]
+
+### Added
+
+- **The ViON assistant** lists the entities of Home Assistant with their area and state and runs a scene, a script or an automation, switches a light or a switch, moves a cover or sets the climate ("turn on the evening scene"). Each call is confirmed in the chat and is for administrators only. Other domains (locks, the alarm panel, Home Assistant itself) stay closed unless added in the new setting Assistant Domains.
+
 ## [1.0.18]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface

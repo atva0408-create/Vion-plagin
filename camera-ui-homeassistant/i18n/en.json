@@ -7,5 +7,7 @@
   "Access Token": "Access Token",
   "Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as Home Assistant add-on.": "Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as a Home Assistant add-on.",
   "Excluded Entities": "Excluded Entities",
-  "Comma-separated entity ids that should not be offered for adoption.": "Comma-separated entity IDs that should not be offered for adding."
+  "Comma-separated entity ids that should not be offered for adoption.": "Comma-separated entity IDs that should not be offered for adding.",
+  "Assistant Domains": "Assistant Domains",
+  "The ViON assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat.": "The ViON assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat."
 }

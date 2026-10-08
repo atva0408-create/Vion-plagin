@@ -1,5 +1,6 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 
+import { callHaTool, HA_TOOLS } from './assistant.js';
 import { commandToService } from './controls.js';
 import { HaClient, resolveTarget } from './ha.js';
 import { entityDisplayName } from './mapping.js';
@@ -8,6 +9,10 @@ import { applyEntityState, createImportedSensor, entityUnavailable, importableSe
 
 import type {
   AdoptedSensor,
+  AssistantToolContext,
+  AssistantToolProvider,
+  AssistantToolResult,
+  AssistantToolSpec,
   DeviceStorage,
   DiscoveredSensor,
   JsonSchema,
@@ -19,6 +24,7 @@ import type {
   Sensor,
   SensorDiscoveryProvider,
 } from '@camera.ui/sdk';
+import type { HaAssistantHost, HaEntity } from './assistant.js';
 import type { CommandFn, ControlKind } from './controls.js';
 import type { ImportedSensor } from './sensors.js';
 import type { HaDevice, HaRegistryEntry, HaRegistryEvent, HaState, StorageValues } from './types.js';
@@ -46,7 +52,7 @@ interface Registry {
 
 type Resolution = 'connected' | 'unavailable' | 'removed' | 'legacy';
 
-export default class HomeAssistant extends BasePlugin<StorageValues> implements NotifierInterface, SensorDiscoveryProvider {
+export default class HomeAssistant extends BasePlugin<StorageValues> implements NotifierInterface, SensorDiscoveryProvider, AssistantToolProvider {
   private client?: HaClient;
   private bound = new Map<string, BoundSensor>();
   private byEntityId = new Map<string, BoundSensor>();
@@ -103,7 +109,51 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         required: false,
         store: true,
       },
+      {
+        type: 'string',
+        key: 'assistantDomains',
+        title: 'Assistant Domains',
+        description:
+          'The ViON assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. ' +
+          'Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat.',
+        required: false,
+        store: true,
+      },
     ];
+  }
+
+  // ---- assistant: the entities and a service call (src/assistant.ts) ----------------------------------------------
+
+  assistantTools(): AssistantToolSpec[] {
+    return HA_TOOLS;
+  }
+
+  async callAssistantTool(name: string, input: Record<string, unknown>, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+    return callHaTool(this.assistantHost(), name, input, ctx);
+  }
+
+  private assistantHost(): HaAssistantHost {
+    return {
+      connected: () => Boolean(this.client?.connected),
+      entities: async () => {
+        const client = this.client;
+        if (!client) return [];
+        const [states, registry] = await Promise.all([client.fetchStates(), this.loadRegistry(client)]);
+        return states.map((state): HaEntity => {
+          const area = areaName(registry, registry.byEntityId.get(state.entity_id));
+          return { entityId: state.entity_id, name: entityDisplayName(state), state: state.state, ...(area ? { area } : {}) };
+        });
+      },
+      extraDomains: () =>
+        (this.storage.values.assistantDomains ?? '')
+          .split(',')
+          .map((domain) => domain.trim().toLowerCase())
+          .filter(Boolean),
+      callService: async (domain, service, data) => {
+        if (!this.client) throw new Error('Home Assistant is not connected');
+        await this.client.callService(domain, service, data);
+      },
+    };
   }
 
   async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
