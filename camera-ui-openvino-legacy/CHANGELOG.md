@@ -1,3 +1,7 @@
+## [1.2.21]
+
+- Training modules from ViON Cloud: the detector of an object module (for example "bicycle") works next to the camera's own detector on the cameras chosen for it in ViON, and the classifiers of question modules work only on their cameras; a module version given out no more is unloaded
+
 ## [1.2.20]
 
 - Detector modules from the ViON store: a module installed on the Modules tab of the store appears among the object models of this plugin and is used like them; an updated module is loaded again
