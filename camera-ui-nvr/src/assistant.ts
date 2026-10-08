@@ -143,7 +143,8 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     name: 'recording_health',
     description:
       'Whether cameras recorded through a period: per camera the share of the time recorded, every gap longer than 60 s (start, end, length) ' +
-      'with its cause when the recorder logged one (stream lost, recording paused for disk space, plan limit), and the recording mode. ' +
+      'with its cause when the recorder logged one (stream lost, recording paused for disk space, plan limit). Apart from the period, `now` ' +
+      'is the camera state at this moment (recording mode; off, over the plan, paused), not what it was during the period. ' +
       'A camera recording on events has gaps between events by design. Default: all cameras, the last 24 hours.',
     inputSchema: {
       type: 'object',
@@ -499,14 +500,10 @@ async function recordingHealth(host: AssistantHost, input: Input, ctx: Assistant
     });
     rows.push({
       camera: camera.name,
-      mode,
       recordedPercent: Math.round((covered / span) * 1000) / 10,
       gaps: gaps.length,
       ...(gaps.length ? { longestGaps: gaps.sort((a, b) => b.minutes - a.minutes).slice(0, MAX_GAPS) } : {}),
-      ...(mode === 'event' || mode === 'adhoc' ? { note: 'Records on events: time between events is not recorded by design, gaps are expected.' } : {}),
-      ...(mode === 'off' ? { note: 'Recording is off for this camera.' } : {}),
-      ...(mode === 'over_plan' ? { note: 'Not recorded: the plan has no free recording slot for this camera.' } : {}),
-      ...(mode === 'paused' ? { note: 'Recording is paused: not enough free disk space.' } : {}),
+      now: stateNow(mode),
     });
   }
   return {
@@ -518,6 +515,25 @@ async function recordingHealth(host: AssistantHost, input: Input, ctx: Assistant
       causes: 'Causes come from what the recorder logged since it last started; an older gap has no known cause.',
     },
   };
+}
+
+/**
+ * What a camera does at this moment, kept apart from the period asked about: the mode is the camera's now, and a
+ * camera over the plan or paused now may have recorded the whole period. Written as part of the period it read
+ * "recordedPercent: 100" next to "Not recorded: the plan has no free recording slot".
+ */
+function stateNow(mode: string): { mode: string; note?: string } {
+  const what =
+    mode === 'event' || mode === 'adhoc'
+      ? 'records on events: time between events is not recorded by design, gaps are expected'
+      : mode === 'off'
+        ? 'recording is off for this camera'
+        : mode === 'over_plan'
+          ? 'not recorded: the plan has no free recording slot for this camera'
+          : mode === 'paused'
+            ? 'recording is paused: not enough free disk space'
+            : undefined;
+  return { mode, ...(what ? { note: `At this moment, not necessarily over the period: ${what}.` } : {}) };
 }
 
 /** The stretches of [from, to] no segment covers, longer than GAP_MS. */

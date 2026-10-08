@@ -168,21 +168,38 @@ const content = <T>(result: AssistantToolResult) => {
     systemEvents: async () => [lost],
   });
   type Health = {
-    cameras: { camera: string; mode: string; recordedPercent: number; gaps: number; longestGaps?: { start: string; minutes: number; cause?: string }[]; note?: string }[];
+    cameras: {
+      camera: string;
+      recordedPercent: number;
+      gaps: number;
+      longestGaps?: { start: string; minutes: number; cause?: string }[];
+      now: { mode: string; note?: string };
+    }[];
   };
-  const health = content<Health>(
-    await call(host, 'recording_health', { cameras: ['Двор', 'Дверь'], from: new Date(T0).toISOString(), to: new Date(T0 + 24 * H).toISOString() }),
-  );
+  const day = { from: new Date(T0).toISOString(), to: new Date(T0 + 24 * H).toISOString() };
+  const health = content<Health>(await call(host, 'recording_health', { cameras: ['Двор', 'Дверь'], ...day }));
   const yard = health.cameras.find((c) => c.camera === 'Двор')!;
   assert.equal(yard.gaps, 1);
   assert.equal(yard.longestGaps![0].minutes, 180);
   assert.equal(yard.longestGaps![0].start, new Date(T0 + 5 * H).toISOString());
   assert.match(yard.longestGaps![0].cause ?? '', /Поток потерян/, 'the stream lost a minute before the gap is its cause');
   assert.equal(yard.recordedPercent, 87.5);
-  assert.match(yard.note ?? '', /by design/, 'a camera on events: gaps between events are not a failure');
+  assert.equal(yard.now.mode, 'event');
+  assert.match(yard.now.note ?? '', /by design/, 'a camera on events: gaps between events are not a failure');
   const door = health.cameras.find((c) => c.camera === 'Дверь')!;
-  assert.deepEqual([door.recordedPercent, door.gaps, door.note], [100, 0, undefined]);
+  assert.deepEqual([door.recordedPercent, door.gaps, door.now], [100, 0, { mode: 'continuous' }]);
   assert.match((await call(host, 'recording_health', { cameras: ['Сарай'] })).error ?? '', /Unknown camera/);
+
+  // recorded the whole day, over the plan or paused only now: that is the state at this moment, not what the day was
+  for (const [mode, why] of [['over_plan', /no free recording slot/], ['paused', /not enough free disk space/]] as const) {
+    const now = fakeHost({ coverage: async () => [{ startTime: T0, endTime: T0 + 24 * H }], recordingMode: () => mode });
+    const [row] = content<Health>(await call(now.host, 'recording_health', { cameras: ['Дверь'], ...day })).cameras;
+    assert.deepEqual(Object.keys(row), ['camera', 'recordedPercent', 'gaps', 'now'], `${mode}: the period says only what was recorded`);
+    assert.deepEqual([row.recordedPercent, row.gaps], [100, 0], mode);
+    assert.equal(row.now.mode, mode);
+    assert.match(row.now.note ?? '', why, mode);
+    assert.match(row.now.note ?? '', /at this moment/i, `${mode}: the note says it is the state now`);
+  }
 }
 
 // ------------------------------------------------------------------ storage_forecast
