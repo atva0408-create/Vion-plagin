@@ -11,6 +11,10 @@ import type { AssistantHost, UnknownSighting } from '../src/assistant.js';
 import type { FaceProfile } from '../src/faces.js';
 import type { ManualRecording, RecordedEvent, RecordingSegment, StorageStats, SystemEvent } from '../src/types.js';
 
+// The server's clock runs on UTC here, the person lives in Moscow: on a machine whose own zone is Moscow the old
+// reading (by the server's zone) gave the same instants, and these tests could not fail.
+process.env.TZ = 'UTC';
+
 const admin: AssistantToolContext = { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' };
 const user: AssistantToolContext = { ...admin, role: 'user' };
 const H = 3600_000;
