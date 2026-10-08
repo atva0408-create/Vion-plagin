@@ -1,3 +1,7 @@
+## [1.1.1]
+
+- A call through the ViON assistant acts only on the one entity the confirmation names: a call that also named an area, a device, a floor or a label (for example turning off one lamp "in the kitchen") would have acted on all of them, and is now refused
+
 ## [1.1.0]
 
 ### Added

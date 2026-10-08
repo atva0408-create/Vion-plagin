@@ -1,3 +1,7 @@
+## [1.1.1]
+
+- Ein Aufruf über den ViON-Assistenten wirkt nur auf die eine Entität, die die Bestätigung nennt: Ein Aufruf, der zusätzlich einen Bereich, ein Gerät, eine Etage oder ein Label nannte (etwa eine Lampe „in der Küche“ ausschalten), hätte auf alle davon gewirkt und wird jetzt abgelehnt
+
 ## [1.1.0]
 
 ### Hinzugefügt
