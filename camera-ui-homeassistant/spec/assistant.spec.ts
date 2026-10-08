@@ -75,6 +75,29 @@ const content = (r: { content?: unknown }) => r.content as Record<string, any>;
   assert.deepEqual(calls.splice(0), ['light.turn_off {"transition":2,"entity_id":"light.kitchen"}']);
 }
 
+// data that names more to act on (an area, a device, a floor, a label, a target) is refused: the card names one
+// entity, and Home Assistant would act on all of them
+{
+  for (const data of [
+    { area_id: 'kitchen' },
+    { device_id: 'abc123' },
+    { floor_id: 'ground' },
+    { label_id: 'outside' },
+    { target: { area_id: 'kitchen' } },
+    { target: { entity_id: 'lock.front_door' } },
+  ]) {
+    const input = { domain: 'light', service: 'turn_off', entity_id: 'light.kitchen', data };
+    const card = await run('call_service', { ...input, __preview: true });
+    assert.match(card.error ?? '', /one entity/, `the card for ${JSON.stringify(data)}`);
+    const r = await run('call_service', input);
+    assert.match(r.error ?? '', /one entity/, JSON.stringify(data));
+  }
+  assert.deepEqual(calls.splice(0), [], 'nothing called');
+  // the recipients of a notify service are its own field, not a target of Home Assistant
+  await run('call_service', { domain: 'notify', service: 'mobile_app_phone', data: { message: 'Привет', target: ['phone'] } });
+  assert.deepEqual(calls.splice(0), ['notify.mobile_app_phone {"message":"Привет","target":["phone"]}']);
+}
+
 // a domain outside the list is refused; the admin's setting opens it
 {
   const lock = await run('call_service', { domain: 'lock', service: 'unlock', entity_id: 'lock.front_door' });

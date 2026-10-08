@@ -31,6 +31,11 @@ type Lang = 'ru' | 'en' | 'de';
 /** A domain or a service goes into the URL path: lower case words only. */
 const NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_LISTED = 200;
+/**
+ * Fields of a service call that name what it acts on besides entity_id. Home Assistant acts on all of them together:
+ * light.turn_off with data {"area_id": "kitchen"} turns off every light of the kitchen while the card names one lamp.
+ */
+const TARGET_KEYS = ['area_id', 'device_id', 'floor_id', 'label_id'];
 
 export const HA_TOOLS: AssistantToolSpec[] = [
   {
@@ -60,7 +65,13 @@ export const HA_TOOLS: AssistantToolSpec[] = [
         domain: { type: 'string', description: 'e.g. scene, light, cover' },
         service: { type: 'string', description: 'e.g. turn_on, turn_off, toggle, open_cover, set_temperature, trigger' },
         entity_id: { type: 'string', description: 'The entity, from entities; of the same domain. A notify service needs none.' },
-        data: { type: 'object', description: 'Further fields of the service, e.g. {"brightness_pct": 40} or {"message": "..."}', properties: {} },
+        data: {
+          type: 'object',
+          description:
+            'Further fields of the service, e.g. {"brightness_pct": 40} or {"message": "..."}. ' +
+            'Not an area, device, floor, label or target: the call acts on entity_id only.',
+          properties: {},
+        },
       },
       required: ['domain', 'service'],
     },
@@ -156,6 +167,10 @@ async function callService(host: HaAssistantHost, input: Input, preview: boolean
   }
   const data = input.data && typeof input.data === 'object' && !Array.isArray(input.data) ? { ...(input.data as Record<string, unknown>) } : {};
   delete data.entity_id;
+  // refused, not dropped: dropped, the call would run on one entity while the model tells the user the area is done.
+  // A `target` object is the target of an automation; a notify service's own `target` (its recipients) is a list or a text
+  const widening = [...TARGET_KEYS.filter((key) => key in data), ...(data.target && typeof data.target === 'object' && !Array.isArray(data.target) ? ['target'] : [])];
+  if (widening.length) return { error: `data may not name what the call acts on (${widening.join(', ')}): a call acts on one entity, entity_id. Call once per entity.` };
 
   const entityId = typeof input.entity_id === 'string' ? input.entity_id.trim() : '';
   let entity: HaEntity | undefined;
