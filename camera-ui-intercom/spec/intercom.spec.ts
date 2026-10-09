@@ -295,6 +295,14 @@ test('a guest code: opening wants it, it is given once, typed at the panel it op
   assert.equal(await w.intercom.panelInput('cam1', wrong), false);
   assert.equal(await w.intercom.panelInput('cam1', wrong), false);
   assert.ok(w.titles().includes('Калитка: подбирали код'), 'five wrong codes on the panel within ten minutes');
+  // the visit tells the codes in the household's language
+  const details = w.store
+    .queryVisits({})
+    .visits.flatMap((v) => v.actions)
+    .filter((a) => a.kind === 'code')
+    .map((a) => a.detail);
+  assert.ok(details.some((d) => d?.startsWith('код гостя «')));
+  assert.ok(details.includes('неверный код'));
 });
 
 test('"rang and ran" three times: the panel stops calling for ten minutes, with one notice', async () => {

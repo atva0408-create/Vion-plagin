@@ -86,5 +86,10 @@
     "rubetek.relayHttp": "RUBITEK: allow opening the relays over HTTP (Relay) for this login.",
     "rubetek.sipDirect": "RUBITEK: in the SIP settings, turn on direct IP calls without registration and set the call button to sip:vion@<ViON address>:{port}.",
     "sip.localOnly": "SIP works on the home network only: do not forward port {port} to the internet."
+  },
+  "codeAction": {
+    "guest": "guest code \"{label}\"",
+    "pin": "PIN",
+    "wrong": "wrong code"
   }
 }

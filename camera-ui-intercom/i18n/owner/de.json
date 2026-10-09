@@ -86,5 +86,10 @@
     "rubetek.relayHttp": "RUBITEK: das Öffnen der Relais über HTTP (Relais) für diese Anmeldung erlauben.",
     "rubetek.sipDirect": "RUBITEK: in den SIP-Einstellungen direkte IP-Anrufe ohne Registrierung einschalten und der Ruftaste sip:vion@<ViON-Adresse>:{port} zuweisen.",
     "sip.localOnly": "SIP arbeitet nur im Heimnetz: Port {port} nicht ins Internet weiterleiten."
+  },
+  "codeAction": {
+    "guest": "Gästecode „{label}“",
+    "pin": "PIN",
+    "wrong": "falscher Code"
   }
 }

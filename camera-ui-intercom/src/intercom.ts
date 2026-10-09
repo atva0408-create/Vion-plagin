@@ -657,6 +657,12 @@ export class Intercom {
     this.event(live, { type: 'hang_up', ...(live.call.state === 'ringing' ? { outcome: 'missed' as const } : {}) });
   }
 
+  /** How a code typed at the panel shows in the visit's actions, in the household's language. */
+  private codeAction(kind: 'guest' | 'pin' | 'wrong', label?: string): string {
+    const texts = ownerTexts(this.language()).codeAction as Record<string, string>;
+    return texts[kind].replace('{label}', label ?? '');
+  }
+
   private liveCall(callId: string): Live {
     const live = this.byCall.get(callId);
     if (!live || live.call.state === 'ended') throw new IntercomError('not_found', 'the call is over');
@@ -866,7 +872,7 @@ export class Intercom {
     live.visit.actions.push({
       at: now,
       kind: 'code',
-      detail: identification ? (identification.kind === 'code' ? `guest code ${code?.label}` : 'PIN') : 'wrong code',
+      detail: this.codeAction(identification?.kind === 'code' ? 'guest' : identification ? 'pin' : 'wrong', code?.label),
       by: 'visitor',
     });
     if (identification) {
