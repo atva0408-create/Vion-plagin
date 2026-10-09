@@ -20,6 +20,7 @@ import { cameraConfig } from './panels/camera.js';
 import { ProfileCatalog } from './panels/catalog.js';
 import { HttpPanel } from './panels/engine.js';
 import { validHost } from './panels/profile.js';
+import { placeOf } from './place.js';
 import { nativeRequire, pluginVersion, shippedDir } from './runtime.js';
 import { PhraseCache, panelSound, saveOpus } from './sound.js';
 import { Store } from './store.js';
@@ -42,6 +43,7 @@ import type { Language } from '@vionvision/speech';
 import type { Ask } from './agent/dialog.js';
 import type { DoorResult, IntercomHost, NvrPort, PanelPort } from './intercom.js';
 import type { PanelWorld } from './inputs.js';
+import type { FloorPlanView } from './place.js';
 import type { Credentials, PanelEventKind, PanelProfile } from './panels/profile.js';
 import type { VisitQuery } from './store.js';
 import type { Panel, PanelDoor } from './types.js';
@@ -57,6 +59,7 @@ const CONFIRM_MS = 10_000;
 const OFFLINE_REPORT_MS = 5 * 60_000;
 const CATALOG_EVERY_MS = 24 * 60 * 60_000;
 const ACCESS_EVERY_MS = 10 * 60_000;
+const PLAN_EVERY_MS = 10 * 60_000;
 /** The settings page acts as an administrator: only administrators reach it. */
 const SETTINGS_ACTOR = { userId: 'settings', role: 'admin' } as const;
 
@@ -123,6 +126,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
   private allowed: { ok: boolean; at: number; vision: boolean } = { ok: false, at: 0, vision: false };
   private tickTimer: NodeJS.Timeout | undefined;
   private catalogAt = 0;
+  private plan: { view?: FloorPlanView; at: number } = { at: 0 };
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginValues>) {
     super(logger, api, storage);
@@ -156,6 +160,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
       announce: (text, panelCameraIds) => this.announce(text, panelCameraIds),
       ask: () => this.ask(),
       describe: (jpeg, language, timeoutMs) => this.describe(jpeg, language, timeoutMs),
+      place: (panel) => placeOf(panel, this.plan.view),
       saveVoicemail: async (samples, file) => saveOpus(await this.api.coreManager.getFFmpegPath(), samples, file),
       postToThread: (threadId, userId, text, visitId) => this.postToThread(threadId, userId, text, visitId),
       panelsChanged: () => void this.syncPanels(),
@@ -344,6 +349,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     await this.syncPanels();
     this.tickTimer = setInterval(() => void this.tick(), TICK_MS);
     void this.refreshCatalog();
+    void this.refreshPlan();
   }
 
   private async stop(): Promise<void> {
@@ -359,7 +365,16 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     this.intercom.tick();
     if (Date.now() - this.allowed.at > ACCESS_EVERY_MS) void this.refreshAccess();
     if (Date.now() - this.catalogAt > CATALOG_EVERY_MS) void this.refreshCatalog();
+    if (Date.now() - this.plan.at > PLAN_EVERY_MS) void this.refreshPlan();
     this.reportOffline();
+  }
+
+  /** The floor plan, from servers that give it to plugins; an older server leaves the agent without places. */
+  private async refreshPlan(): Promise<void> {
+    this.plan.at = Date.now();
+    const core = this.api.coreManager as unknown as { getFloorPlan?: () => Promise<FloorPlanView> };
+    if (typeof core.getFloorPlan !== 'function') return;
+    this.plan.view = await core.getFloorPlan().catch(() => this.plan.view);
   }
 
   private async refreshCatalog(): Promise<void> {

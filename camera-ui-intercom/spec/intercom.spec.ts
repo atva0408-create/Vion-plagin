@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { FakeClock, flush, runTests, test } from '../../packages/vion-speech/spec/helpers.js';
 import { Intercom } from '../src/intercom.js';
 import { checkProfile } from '../src/panels/profile.js';
+import { placeOf } from '../src/place.js';
 import { Store } from '../src/store.js';
 import { callTool } from '../src/tools.js';
 
@@ -392,6 +393,25 @@ test('settings are checked; old visits go with their files', async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(w.store.queryVisits({}).visits.length, 0);
   assert.ok(!existsSync(join(w.dir, 'visits', visit.id)));
+});
+
+test('where a panel stands, from the floor plan: the rooms on both sides of its passage and the notes', () => {
+  const panel = new World().store.panel('gate')!;
+  const plan = {
+    rooms: {
+      rooms: [
+        { id: 'street', name: 'Улица', outdoor: true },
+        { id: 'yard', name: 'Двор' },
+      ],
+    },
+    plan: {
+      connections: [{ id: 'c1', fromRoomId: 'street', toRoomId: 'yard', note: 'почтовый ящик слева' }],
+      sensors: [{ sensorId: 'bell', roomId: 'street', connectionId: 'c1', note: '' }],
+    },
+  };
+  assert.equal(placeOf(panel, plan), 'between "Улица" (outdoors) and "Двор"; почтовый ящик слева');
+  assert.equal(placeOf(panel, { ...plan, plan: { ...plan.plan, sensors: [] } }), undefined, 'not on the plan');
+  assert.equal(placeOf(panel, undefined), undefined);
 });
 
 void runTests();
