@@ -1,0 +1,69 @@
+{
+  "ringTitle": "Ring: {panel}",
+  "ringBody": "{who}",
+  "ringNobody": "Nobody in view",
+  "ringStranger": "A stranger",
+  "ringLooksLike": "Looks like: {sees}",
+  "answeredBy": "{user} answered",
+  "missedTitle": "Missed ring: {panel}",
+  "agentTitle": "Agent: {panel}",
+  "visitTitle": "{panel}: {title}",
+  "openedTitle": "{panel}: opened — {door}",
+  "openedBody": "{who}, {how}",
+  "leftTitle": "{panel}: {who} left",
+  "askOwnerTitle": "{panel}: your answer is needed",
+  "emergencyTitle": "Urgent: {panel}",
+  "threatTitle": "Threats at {panel}",
+  "blockedTitle": "{panel}: {name}",
+  "probingTitle": "{panel}: someone asked questions",
+  "insistentTitle": "{panel}: someone keeps ringing",
+  "nobodyStreakTitle": "{panel}: ringing and running away",
+  "panelOfflineTitle": "{panel}: the panel is offline",
+  "panelOnlineTitle": "{panel}: the panel is back online",
+  "tamperTitle": "{panel}: the panel was opened",
+  "modeBackTitle": "Intercom: back to \"home\"",
+  "arrivalTitle": "{name} came",
+  "codesLockedTitle": "{panel}: codes were guessed",
+  "agentMuteTitle": "{panel}: the agent could not speak",
+  "categories": {
+    "delivery": "Delivery",
+    "food": "Food and groceries",
+    "taxi": "Taxi",
+    "guest": "Guest",
+    "family": "Family",
+    "service": "Service or repair",
+    "official": "Official visit",
+    "sales": "Sellers and surveys",
+    "emergency": "Urgent",
+    "other": "Visitor"
+  },
+  "titles": {
+    "stranger": "A stranger",
+    "nobody": "A ring with nobody there",
+    "named": "{name}",
+    "company": "{company}"
+  },
+  "how": {
+    "user": "opened by {user}",
+    "rule": "by a rule of the people list",
+    "code": "with a guest code",
+    "instruction": "by an instruction",
+    "confirmed": "the door confirmed",
+    "sent": "the command went, no confirmation",
+    "failed": "it failed"
+  },
+  "summary": {
+    "said": "Said: \"{text}\"",
+    "message": "Pass on: \"{text}\"",
+    "nobody": "A ring, but nobody was in view.",
+    "answered": "{user} answered.",
+    "missed": "Nobody answered.",
+    "voicemail": "Left a voice message."
+  },
+  "quickAnswers": {
+    "open": "Open",
+    "leave_at_door": "Please leave it at the door",
+    "call_me": "Please call me",
+    "refuse": "Thank you, not needed"
+  }
+}

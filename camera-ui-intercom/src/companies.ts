@@ -46,18 +46,33 @@ const normalize = (text: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
-/** The company a phrase names, by the longest form found as whole words. */
+/**
+ * A word as said matches a word of a form in any of its endings: "озона", "почтой", "управляющей компании". Short forms
+ * ("ук", "газ", "wb") match only as they are, or "газета" would be the gas service.
+ */
+function wordMatches(heard: string, form: string): boolean {
+  if (form.length <= 3) return heard === form;
+  const stem = form.length >= 5 ? form.replace(/[аяоеыиуюьй]{1,2}$/u, '') : form;
+  return heard.startsWith(stem) && heard.length - stem.length <= 4;
+}
+
+/** The company a phrase names, by the longest form found as words in a row. */
 export function findCompany(text: string | null | undefined): Company | undefined {
   if (!text) return undefined;
-  const heard = ` ${normalize(text)} `;
+  const heard = normalize(text).split(' ').filter(Boolean);
   let found: Company | undefined;
   let length = 0;
   for (const company of COMPANIES) {
     for (const form of company.forms) {
-      const wanted = normalize(form);
-      if (wanted.length > length && heard.includes(` ${wanted} `)) {
-        found = company;
-        length = wanted.length;
+      const wanted = normalize(form).split(' ');
+      const size = wanted.join(' ').length;
+      if (size <= length) continue;
+      for (let i = 0; i + wanted.length <= heard.length; i++) {
+        if (wanted.every((word, j) => wordMatches(heard[i + j], word))) {
+          found = company;
+          length = size;
+          break;
+        }
       }
     }
   }

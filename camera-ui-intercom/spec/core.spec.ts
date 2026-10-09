@@ -257,6 +257,11 @@ test('companies: forms and mishearings; whole words only', () => {
   assert.equal(findCompany('валдберис доставка')?.name, 'Wildberries');
   assert.equal(findCompany('СДЕК')?.name, 'СДЭК');
   assert.equal(findCompany('газета'), undefined);
+  assert.equal(findCompany('я из Озона')?.name, 'Ozon', 'in any ending');
+  assert.equal(findCompany('с почты России, заказное')?.name, 'Почта России');
+  assert.equal(findCompany('из управляющей компании')?.name, 'Управляющая компания');
+  assert.equal(findCompany('проверка газа')?.name, 'Газовая служба');
+  assert.equal(findCompany('я по объявлению'), undefined);
   assert.equal(sameCompany('Озон', 'ozon'), true);
   assert.equal(sameCompany('Озон', 'Самокат'), false);
 });

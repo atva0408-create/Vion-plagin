@@ -1,0 +1,69 @@
+{
+  "ringTitle": "Es klingelt: {panel}",
+  "ringBody": "{who}",
+  "ringNobody": "Niemand im Bild",
+  "ringStranger": "Unbekannte Person",
+  "ringLooksLike": "Sieht aus wie: {sees}",
+  "answeredBy": "{user} hat abgenommen",
+  "missedTitle": "Verpasstes Klingeln: {panel}",
+  "agentTitle": "Agent: {panel}",
+  "visitTitle": "{panel}: {title}",
+  "openedTitle": "{panel}: geöffnet — {door}",
+  "openedBody": "{who}, {how}",
+  "leftTitle": "{panel}: {who} ist gegangen",
+  "askOwnerTitle": "{panel}: Ihre Antwort wird gebraucht",
+  "emergencyTitle": "Dringend: {panel}",
+  "threatTitle": "Drohungen an {panel}",
+  "blockedTitle": "{panel}: {name}",
+  "probingTitle": "{panel}: es wurde nachgefragt",
+  "insistentTitle": "{panel}: es klingelt wiederholt",
+  "nobodyStreakTitle": "{panel}: Klingelstreiche",
+  "panelOfflineTitle": "{panel}: die Station ist nicht erreichbar",
+  "panelOnlineTitle": "{panel}: die Station ist wieder erreichbar",
+  "tamperTitle": "{panel}: die Station wurde geöffnet",
+  "modeBackTitle": "Gegensprechanlage: wieder „zu Hause“",
+  "arrivalTitle": "{name} ist gekommen",
+  "codesLockedTitle": "{panel}: Codes wurden geraten",
+  "agentMuteTitle": "{panel}: der Agent konnte nicht sprechen",
+  "categories": {
+    "delivery": "Lieferung",
+    "food": "Essen und Lebensmittel",
+    "taxi": "Taxi",
+    "guest": "Gast",
+    "family": "Familie",
+    "service": "Handwerker oder Dienst",
+    "official": "Amtlicher Besuch",
+    "sales": "Verkäufer und Umfragen",
+    "emergency": "Dringend",
+    "other": "Besuch"
+  },
+  "titles": {
+    "stranger": "Unbekannte Person",
+    "nobody": "Klingeln ohne Besuch",
+    "named": "{name}",
+    "company": "{company}"
+  },
+  "how": {
+    "user": "geöffnet von {user}",
+    "rule": "nach einer Regel der Personenliste",
+    "code": "mit einem Gastcode",
+    "instruction": "nach einem Auftrag",
+    "confirmed": "die Tür hat es bestätigt",
+    "sent": "Befehl gesendet, keine Bestätigung",
+    "failed": "fehlgeschlagen"
+  },
+  "summary": {
+    "said": "Gesagt: „{text}“",
+    "message": "Ausrichten: „{text}“",
+    "nobody": "Es klingelte, aber niemand war im Bild.",
+    "answered": "{user} hat abgenommen.",
+    "missed": "Niemand hat abgenommen.",
+    "voicemail": "Hat eine Sprachnachricht hinterlassen."
+  },
+  "quickAnswers": {
+    "open": "Öffnen",
+    "leave_at_door": "Bitte legen Sie es vor die Tür",
+    "call_me": "Bitte rufen Sie mich an",
+    "refuse": "Danke, nicht nötig"
+  }
+}

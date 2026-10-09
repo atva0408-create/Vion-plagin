@@ -1,0 +1,69 @@
+{
+  "ringTitle": "Звонок: {panel}",
+  "ringBody": "{who}",
+  "ringNobody": "В кадре никого",
+  "ringStranger": "Незнакомый посетитель",
+  "ringLooksLike": "Похоже: {sees}",
+  "answeredBy": "Ответил(а) {user}",
+  "missedTitle": "Пропущенный звонок: {panel}",
+  "agentTitle": "Агент: {panel}",
+  "visitTitle": "{panel}: {title}",
+  "openedTitle": "{panel}: открыто — {door}",
+  "openedBody": "{who}, {how}",
+  "leftTitle": "{panel}: {who} ушёл(ушла)",
+  "askOwnerTitle": "{panel}: нужен ваш ответ",
+  "emergencyTitle": "Срочно: {panel}",
+  "threatTitle": "Угрозы у {panel}",
+  "blockedTitle": "{panel}: {name}",
+  "probingTitle": "{panel}: расспрашивали",
+  "insistentTitle": "{panel}: настойчиво звонят",
+  "nobodyStreakTitle": "{panel}: звонят и убегают",
+  "panelOfflineTitle": "{panel}: панель не на связи",
+  "panelOnlineTitle": "{panel}: панель снова на связи",
+  "tamperTitle": "{panel}: вскрытие панели",
+  "modeBackTitle": "Домофон: режим «дома» вернулся",
+  "arrivalTitle": "Пришёл(пришла) {name}",
+  "codesLockedTitle": "{panel}: подбирали код",
+  "agentMuteTitle": "{panel}: агент не смог говорить",
+  "categories": {
+    "delivery": "Доставка",
+    "food": "Еда и продукты",
+    "taxi": "Такси",
+    "guest": "Гость",
+    "family": "Семья",
+    "service": "Мастер или служба",
+    "official": "Официальный визит",
+    "sales": "Продавцы и опросы",
+    "emergency": "Срочное",
+    "other": "Посетитель"
+  },
+  "titles": {
+    "stranger": "Незнакомый посетитель",
+    "nobody": "Звонок без посетителя",
+    "named": "{name}",
+    "company": "{company}"
+  },
+  "how": {
+    "user": "открыл(а) {user}",
+    "rule": "по правилу справочника",
+    "code": "по коду гостя",
+    "instruction": "по поручению",
+    "confirmed": "дверь подтвердила",
+    "sent": "команда отправлена, подтверждения нет",
+    "failed": "не получилось"
+  },
+  "summary": {
+    "said": "Сказал(а): «{text}»",
+    "message": "Передать: «{text}»",
+    "nobody": "Звонок, но в кадре никого не было.",
+    "answered": "Ответил(а) {user}.",
+    "missed": "Никто не ответил.",
+    "voicemail": "Оставил(а) голосовое сообщение."
+  },
+  "quickAnswers": {
+    "open": "Открыть",
+    "leave_at_door": "Оставьте у двери, пожалуйста",
+    "call_me": "Позвоните мне, пожалуйста",
+    "refuse": "Спасибо, не нужно"
+  }
+}
