@@ -1,6 +1,6 @@
 ## [0.4.0]
 
-- Macht das Kind nach drei Erinnerungen weiter, öffnet die Mitteilung an die Eltern ein Ereignis in den Aufnahmen der Kamera (mit den übergangenen Erinnerungen, ab der ersten); ein Clip folgt ein paar Minuten später in derselben Mitteilung, ohne Ton. Braucht ViON NVR 0.14.0; ohne ihn kommt die Mitteilung wie bisher
+- Macht das Kind nach drei Erinnerungen weiter, öffnet die Mitteilung an die Eltern ein Ereignis in den Aufnahmen der Kamera (mit den übergangenen Erinnerungen, ab der ersten) mit seinem Video. Braucht ViON NVR 0.14.0; ohne ihn kommt die Mitteilung wie bisher
 - Die Mitteilung geht sicher, sobald VOICE dem Kind gesagt hat «Ich habe deinen Eltern Bescheid gegeben», auch wenn das Kind gleich danach weggeht; jede Mitteilung steht im Protokoll, gesendet oder nicht und warum
 - Schlafenszeit und Tageslimit fangen ihre Erinnerungen nicht mehr von vorn an, wenn das Kind weniger als 15 Minuten nicht zu sehen ist
 

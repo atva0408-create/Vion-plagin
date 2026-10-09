@@ -113,12 +113,6 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
             const made = (await nvr.addExternalEvent(cameraId, { source: 'voice', ...event })) as { eventId?: unknown; endTime?: unknown } | undefined;
             return typeof made?.eventId === 'string' && typeof made.endTime === 'number' ? { eventId: made.eventId, endTime: made.endTime } : undefined;
           },
-          clip: async (cameraId, startMs, endMs) => {
-            const nvr = await this.nvrPlugin();
-            if (!nvr) return undefined;
-            const clip = (await nvr.nvrExport(cameraId, startMs * 1000, endMs * 1000)) as { url?: unknown } | undefined;
-            return typeof clip?.url === 'string' ? clip.url : undefined;
-          },
         },
       },
       this.loadState(),

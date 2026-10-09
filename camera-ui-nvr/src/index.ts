@@ -783,6 +783,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   public async addExternalEvent(cameraId: string, input: ExternalEventInput): Promise<ExternalEventResult> {
     const checked = checkExternalEvent(cameraId, input);
     await this.ready;
+    // a folder of pictures and a timeline entry for a camera nobody records would be junk
+    if (!this.cameras.has(cameraId)) throw new Error(`cameraId: ${cameraId} is not a camera of this recorder`);
     const now = Date.now();
     const id = `${checked.source}-${randomUUID()}`;
     const event: RecordedEvent = {
@@ -798,6 +800,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     };
     await this.ingestDetectionEvent(cameraId, 'start', event, checked.snapshot ? { scene: checked.snapshot } : undefined);
     const endTime = now + checked.recordSeconds * 1000;
+    // the start keeps a camera that records by events going half a minute; the event asks for all its time
+    this.keepRecording(cameraId, endTime);
     const timer = setTimeout(() => {
       this.externalTimers.delete(timer);
       const closed = Date.now();
@@ -808,6 +812,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     timer.unref?.();
     this.externalTimers.add(timer);
     return { eventId: id, startTime: checked.startTime, endTime };
+  }
+
+  /** A camera that records by events records until then and the post-buffer; «По запросу» only when started by hand. */
+  private keepRecording(cameraId: string, untilMs: number): void {
+    const managed = this.cameras.get(cameraId);
+    if (!managed || managed.device.recordingSettings?.mode === 'adhoc') return;
+    const untilUs = (untilMs + this.setting.postBufferSeconds * 1000) * 1000;
+    for (const rec of managed.recorders.values()) rec.trigger(untilUs);
   }
 
   /** Episodes are a view over the events: a failure there must never lose or delay an event. */
