@@ -1,0 +1,42 @@
+{
+  "id": "dahua-vto",
+  "version": 1,
+  "vendor": "Dahua",
+  "models": ["VTO2202F", "VTO2111D", "VTO3221", "VTO4202F"],
+  "engine": "dahua",
+  "minPluginVersion": "0.1.0",
+  "status": "community",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": {
+    "main": "/cam/realmonitor?channel=1&subtype=0",
+    "sub": "/cam/realmonitor?channel=1&subtype=1",
+    "talk": "/cam/realmonitor?channel=1&subtype=0&unicast=true&proto=Onvif"
+  },
+  "audio": { "fromPanel": true, "toPanel": "rtsp-backchannel" },
+  "auth": "digest",
+  "events": { "via": "stream", "path": "/cgi-bin/eventManager.cgi?action=attach&codes=[All]&heartbeat=5", "format": "dahua" },
+  "rules": [
+    { "event": "ring", "match": { "Code": ["BackKeyLight"], "data.State": ["1", "2"] } },
+    { "event": "ring", "match": { "Code": ["Invite"], "action": ["Start", "Pulse"] } },
+    { "event": "door_open", "match": { "Code": ["DoorStatus"], "data.Status": ["Open"] } },
+    { "event": "door_closed", "match": { "Code": ["DoorStatus"], "data.Status": ["Close"] } },
+    { "event": "call_end", "match": { "Code": ["CallNoAnswered", "HangUp"] } },
+    { "event": "tamper", "match": { "Code": ["ChassisIntruded"], "action": ["Start", "Pulse"] } }
+  ],
+  "doors": [
+    { "key": "1", "name": "Замок 1", "open": { "method": "GET", "path": "/cgi-bin/accessControl.cgi?action=openDoor&channel=1&UserID=101&Type=Remote" } },
+    { "key": "2", "name": "Замок 2", "open": { "method": "GET", "path": "/cgi-bin/accessControl.cgi?action=openDoor&channel=2&UserID=101&Type=Remote" } }
+  ],
+  "probe": {
+    "command": { "method": "GET", "path": "/cgi-bin/magicBox.cgi?action=getSystemInfo" },
+    "model": ["deviceType", "updateSerial"],
+    "firmware": ["version", "softwareVersion"]
+  },
+  "setup": ["setup.dahua.audioG711", "setup.changePassword"],
+  "quirks": [
+    "The ring code differs between firmwares (BackKeyLight with State 1 or 2, Invite); a VTO2000A gives no ring through attach",
+    "Some firmwares answer 404 to openDoor and open through RPC2; a 400 is not retried another way, the door may have opened",
+    "The VTO has one talk channel: the talk stream is opened only during a conversation",
+    "The command that ends the call on the panel when it was answered in ViON is not known yet"
+  ]
+}

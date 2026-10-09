@@ -1,0 +1,20 @@
+{
+  "id": "generic-hook",
+  "version": 1,
+  "vendor": "Другая панель",
+  "models": ["Событие по адресу (Action URL)"],
+  "engine": "hook",
+  "minPluginVersion": "0.1.0",
+  "status": "documented",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": { "main": "" },
+  "audio": { "fromPanel": true, "toPanel": "rtsp-backchannel" },
+  "auth": "none",
+  "events": { "via": "hook" },
+  "rules": [
+    { "event": "ring", "match": { "event": ["ring"] } },
+    { "event": "door_open", "match": { "event": ["door"] } }
+  ],
+  "doors": [],
+  "setup": ["setup.camera.existing", "setup.hook.actionUrl"]
+}

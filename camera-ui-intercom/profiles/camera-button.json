@@ -1,0 +1,17 @@
+{
+  "id": "camera-button",
+  "version": 1,
+  "vendor": "ViON",
+  "models": ["Камера и кнопка", "Звонки Ring, Eufy, Reolink, Home Assistant, Яндекс"],
+  "engine": "generic",
+  "minPluginVersion": "0.1.0",
+  "status": "verified",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": { "main": "" },
+  "audio": { "fromPanel": true, "toPanel": "rtsp-backchannel" },
+  "auth": "none",
+  "events": { "via": "sensors" },
+  "rules": [],
+  "doors": [],
+  "setup": ["setup.camera.existing", "setup.generic.button", "setup.generic.lock"]
+}

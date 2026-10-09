@@ -1,0 +1,31 @@
+{
+  "id": "rubetek-rv-34xx",
+  "version": 1,
+  "vendor": "RUBITEK",
+  "models": ["RV-3434", "RV-3438", "RV-3439"],
+  "engine": "akuvox",
+  "minPluginVersion": "0.1.0",
+  "status": "documented",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": { "main": "" },
+  "audio": { "fromPanel": true, "toPanel": "rtsp-backchannel" },
+  "auth": "query",
+  "events": { "via": "hook" },
+  "rules": [
+    { "event": "ring", "match": { "event": ["ring"] } },
+    { "event": "door_open", "match": { "event": ["door"] } },
+    { "event": "call_end", "match": { "event": ["end"] } }
+  ],
+  "doors": [
+    { "key": "1", "name": "Замок 1", "open": { "method": "GET", "path": "/fcgi/do?action=OpenDoor&UserName={user}&Password={pass}&DoorNum=1" } },
+    { "key": "2", "name": "Замок 2", "open": { "method": "GET", "path": "/fcgi/do?action=OpenDoor&UserName={user}&Password={pass}&DoorNum=2" } }
+  ],
+  "hangUp": { "method": "GET", "path": "/fcgi/do?action=CallEnd&UserName={user}&Password={pass}" },
+  "features": { "keypad": true },
+  "setup": ["setup.camera.onvif", "setup.rubetek.actionUrl", "setup.rubetek.relayHttp", "setup.changePassword"],
+  "quirks": [
+    "The RTSP path and whether the panel takes sound over RTSP are found on the owner's panel (step 0): the panel's camera is chosen from the cameras added through ONVIF",
+    "OpenDoor and CallEnd are the Akuvox HTTP API that the RV-3438 v2 manual shows; checked on a panel before the status becomes verified",
+    "RV-3441 and RV-3430 (Wi-Fi) work only through the Rubetek cloud and are not this profile"
+  ]
+}

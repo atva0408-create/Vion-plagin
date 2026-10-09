@@ -1,0 +1,48 @@
+{
+  "id": "hikvision-door-station",
+  "version": 1,
+  "vendor": "Hikvision",
+  "models": ["DS-KV6113-WPE1", "DS-KD8003-IME1", "DS-KV8113-WME1", "DS-KB8113-IME1"],
+  "engine": "hikvision",
+  "minPluginVersion": "0.1.0",
+  "status": "community",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": { "main": "/Streaming/Channels/101", "sub": "/Streaming/Channels/102" },
+  "talkSource": "isapi://{user}:{pass}@{host}:{httpPort}/",
+  "audio": { "fromPanel": true, "toPanel": "isapi" },
+  "auth": "digest",
+  "events": { "via": "poll", "path": "/ISAPI/VideoIntercom/callStatus?format=json", "everyMs": 1000 },
+  "rules": [
+    { "event": "ring", "match": { "CallStatus.status": ["ring"] } },
+    { "event": "call_end", "match": { "CallStatus.status": ["idle"] } }
+  ],
+  "doors": [
+    {
+      "key": "1",
+      "name": "Замок 1",
+      "open": {
+        "method": "PUT",
+        "path": "/ISAPI/AccessControl/RemoteControl/door/1",
+        "body": "<RemoteControlDoor><cmd>open</cmd></RemoteControlDoor>",
+        "contentType": "application/xml"
+      }
+    }
+  ],
+  "hangUp": {
+    "method": "PUT",
+    "path": "/ISAPI/VideoIntercom/callSignal?format=json",
+    "body": "{\"CallSignal\":{\"cmdType\":\"hangUp\"}}",
+    "contentType": "application/json"
+  },
+  "probe": {
+    "command": { "method": "GET", "path": "/ISAPI/System/deviceInfo" },
+    "model": ["model", "deviceName"],
+    "firmware": ["firmwareVersion"]
+  },
+  "setup": ["setup.hikvision.isapi", "setup.hikvision.sipOrCloud", "setup.changePassword"],
+  "quirks": [
+    "alertStream is missing on many door stations: the call status is read every second",
+    "callSignal can answer \"error 23\" and leave the status busy: the status is read again after a command",
+    "Some models work either over SIP or through Hik-Connect, not both"
+  ]
+}
