@@ -202,7 +202,7 @@ assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam9'], slices, quality: 
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam9'], slices })).totalBytes, 60_000_000, 'default: best');
 
 // ---------------------------------------------------------------- feature flags
-assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true });
+assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true });
 
 console.log('filters.spec: event filters, trace, export quality and features OK');
 process.exit(0);

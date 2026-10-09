@@ -8,6 +8,7 @@ Object, face and license plate detection for older Intel graphics. With the regu
 - Face detection and face recognition
 - Finds license plates and reads their text
 - AI search by description
+- Finds people who look alike across cameras (Person Re-ID, switched on per camera) and outlines people, vehicles and animals (segmentation)
 
 ## What you need
 

@@ -8,6 +8,7 @@ Erkennt Objekte, Gesichter und Kennzeichen im Kamerabild und macht Aufzeichnunge
 - Gesichtserkennung und Gesichtswiedererkennung
 - Findet Kennzeichen und liest ihren Text
 - KI-Suche per Beschreibung; mit dem mehrsprachigen Modell auch auf Russisch und in rund 100 weiteren Sprachen
+- Findet ähnlich aussehende Personen über Kameras hinweg (Personen-Wiedererkennung, pro Kamera eingeschaltet) und umreißt Personen, Fahrzeuge und Tiere (Segmentierung)
 - Nutzt einen Detektor, den ViON Cloud mit den von Ihnen geprüften Bildern nachtrainiert hat, sobald er veröffentlicht ist
 - Beantwortet Ja/Nein-Fragen zu einem erkannten Objekt, auf die es trainiert wurde, zum Beispiel „Person mit Tüte“
 - Lässt Sie in Systemen mit mehreren Grafikkarten das genaue Gerät wählen

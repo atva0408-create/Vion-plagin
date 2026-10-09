@@ -14,7 +14,7 @@ from camera_ui_sdk import (
 
 from defaults import DEFAULT_OBJECT_MODEL, DEFAULT_OPTION, MODULE_BACKENDS, OBJECT_MODELS
 from modules import installed_modules, usable_choice
-from trained import resolve_object_model, trained_models
+from trained import model_name, resolve_object_model, trained_models
 
 if TYPE_CHECKING:
     from camera_ui_sdk import CameraDevice, LoggerService
@@ -113,7 +113,19 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
                 self._logger.log(f"Модель объектов: {previous} → {wanted}")
         if detector is None or not detector.initialized:
             return {"detected": False, "detections": []}
-        return await detect_objects(detector, frame, self._camera_confidences(0.5))
+        confidences = self._camera_confidences(0.5)
+        result = await detect_objects(detector, frame, confidences)
+        # the detectors of the object modules the owner turned on for this camera add their own classes
+        for entry in trained_models.module_detectors(self._camera.id):
+            name = model_name(entry)
+            extra = self._plugin.object_detectors.get(name)
+            if extra is None or not extra.initialized:
+                self._plugin.prepare_object_detector(name)
+                continue
+            found = await detect_objects(extra, frame, confidences)
+            result["detections"].extend(found["detections"])
+        result["detected"] = bool(result["detections"])
+        return result
 
     async def destroy(self) -> None:
         pass

@@ -140,6 +140,36 @@ assert.deepEqual(
 );
 assert.deepEqual(await nvr.searchEventsByText('   '), []);
 
+// the search by description, page by page with the events in the answer (upstream 77a8910a): the page showed the
+// matches among the events it had loaded only, so a match older than the loaded pages was never shown
+{
+  const all = await nvr.searchEventsByTextQuery('white van', { limit: 10 });
+  assert.deepEqual(all.matches.map((m) => m.eventId), ['ev-van', 'ev-person'], 'ranked as searchEventsByText ranks them');
+  assert.deepEqual(all.events.map((e) => e.id), ['ev-van', 'ev-person'], 'the events come along, in the same order');
+  assert.equal(all.hasMore, false);
+  for (const a of all.events.flatMap((e) => e.segments.flatMap((sg) => sg.attributes ?? []))) {
+    assert.equal((a as Record<string, unknown>).clipEmbedding, undefined, 'no vector leaves the recorder');
+    assert.equal((a as Record<string, unknown>).embedding, undefined);
+  }
+  const first = await nvr.searchEventsByTextQuery('white van', { limit: 1 });
+  const second = await nvr.searchEventsByTextQuery('white van', { limit: 1, offset: 1 });
+  assert.deepEqual([first.matches.map((m) => m.eventId), first.hasMore], [['ev-van'], true]);
+  assert.deepEqual([second.matches.map((m) => m.eventId), second.hasMore], [['ev-person'], false], 'the next page goes on, no repeat');
+  // the page's own filters apply before paging: cameras, time (an event overlapping the range is in it, as in the list),
+  // the rest of the event filter
+  assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { cameraIds: ['cam2'] })).matches.map((m) => m.eventId), ['ev-person']);
+  assert.deepEqual(await nvr.searchEventsByTextQuery('white van', { cameraIds: [] }), { matches: [], events: [], hasMore: false }, 'no cameras find nothing');
+  assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { startMs: 6_500 } as never })).matches.map((m) => m.eventId), ['ev-person']);
+  assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { types: ['person'] } as never })).matches.map((m) => m.eventId), ['ev-person']);
+  assert.deepEqual((await nvr.searchEventsByTextQuery('person', { threshold: 0.5 })).matches.map((m) => m.eventId), ['ev-person']);
+  // the events are as the list gives them: a favourite says so, and "favourites only" keeps it alone
+  await nvr.setEventFavorite('ev-van', true);
+  assert.equal((await nvr.searchEventsByTextQuery('white van', { limit: 1 })).events[0]?.favorite, true);
+  assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { favoritesOnly: true } as never })).matches.map((m) => m.eventId), ['ev-van']);
+  await nvr.setEventFavorite('ev-van', false);
+  assert.deepEqual(await nvr.searchEventsByTextQuery('  '), { matches: [], events: [], hasMore: false });
+}
+
 // re-index embeds the stored picture of the event that had no vector
 const done = new Promise<void>((resolve) => void nvr.onClipReindex((s) => !s.running && s.total > 0 && resolve()));
 await nvr.startClipReindex();

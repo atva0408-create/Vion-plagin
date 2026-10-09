@@ -23,6 +23,11 @@
   "Отправлять описание события уведомлением («Курьер оставил посылку»). Чтобы не получать два уведомления, отключите обычные уведомления о детекции у этих камер.": "Die Ereignisbeschreibung als Benachrichtigung senden („Kurier hat ein Paket abgelegt“). Damit Sie nicht zwei Benachrichtigungen erhalten, schalten Sie die normalen Erkennungsbenachrichtigungen dieser Kameras aus.",
   "Описаний в час, не больше": "Beschreibungen pro Stunde, höchstens",
   "Ограничение расхода модели: события сверх лимита остаются без описания. 0 — без ограничения.": "Begrenzt die Nutzung des Modells: Ereignisse über dem Limit bleiben ohne Beschreibung. 0 bedeutet keine Begrenzung.",
+  "Хранить данные поиска людей, дней": "Daten der Personensuche aufbewahren, Tage",
+  "Поиск похожих людей сравнивает одежду и телосложение. Эти данные старше срока удаляются, даже у избранных событий; сами события остаются. 0 — столько же, сколько события. Данные собираются только с камер, которым в настройках назначена «Идентификация людей (Re-ID)».": "Die Suche nach ähnlich aussehenden Personen vergleicht Kleidung und Statur. Diese Daten werden nach Ablauf der Frist gelöscht, auch bei favorisierten Ereignissen; die Ereignisse selbst bleiben. 0 bewahrt sie so lange wie die Ereignisse auf. Die Daten werden nur von Kameras erfasst, denen in ihren Einstellungen „Personen-Wiedererkennung“ zugewiesen ist.",
+  "People": "Personensuche",
+  "Удалить данные поиска людей": "Daten der Personensuche löschen",
+  "Удаляет всё, по чему ищутся похожие люди. События и записи остаются.": "Löscht alles, wonach ähnlich aussehende Personen gesucht werden. Ereignisse und Aufnahmen bleiben.",
   "Модель": "Modell",
   "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "Das Assistenzmodell, das der NVR nutzt. Es wird unter Einstellungen → Assistent gewählt."
 }

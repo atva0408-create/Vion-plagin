@@ -10,6 +10,8 @@ export interface RecordedSegment {
   detections: Record<string, unknown>[];
   attributes: Record<string, unknown>[];
   thumbnailAt?: number;
+  /** How many people of the segment can be searched for (their vectors are in person_vectors, never here). */
+  personVectors?: number;
   [key: string]: unknown;
 }
 
@@ -78,6 +80,56 @@ export interface NvrFeatures {
   exportQuality: boolean;
   /** Recording can be started and stopped by hand (`nvrStartRecording`), for «По запросу» and «По событию» cameras. */
   manualRecording: boolean;
+  /** People who look alike can be searched for (`searchSimilarQuery`). */
+  personSearch: boolean;
+}
+
+/**
+ * The people search: upstream's searchSimilarQuery shape, plus a recorded moment or a picture to start from (the
+ * interface has no vectors of its own).
+ */
+export interface SimilarQuery {
+  label?: string;
+  person?: number[];
+  personModel?: string;
+  /** the people of a recorded moment (their vectors are stored), or one of them */
+  event?: { eventId: string; segment: number; trackId?: number };
+  /** a tight picture of one person, made into a vector by a PersonEmbedding plugin; never stored */
+  image?: Uint8Array;
+}
+
+export interface SimilarOptions {
+  limit?: number;
+  startMs?: number;
+  endMs?: number;
+  cameraIds?: string[];
+  /** the least raw cosine a match needs; never below the bottom of the score band */
+  minScore?: number;
+  filter?: GetEventsOptions;
+}
+
+export interface SimilarMatch {
+  eventId: string;
+  cameraId: string;
+  segment: number;
+  trackId?: number;
+  time: number;
+  score: number;
+  kind?: 'person';
+}
+
+export type SimilarReason = 'no-vectors' | 'no-embedder' | 'no-person' | 'model-mismatch' | 'unsupported';
+
+export interface SimilarResult {
+  mode: 'person' | 'none';
+  label?: string;
+  matches: SimilarMatch[];
+  events: RecordedEvent[];
+  reason?: SimilarReason;
+  /** the oldest moment with a person vector: nothing older can be found */
+  indexedSince?: number;
+  /** raw cosine band: below it nobody alike, above it about sure */
+  scoreBand?: [number, number];
 }
 
 /** A recording started by hand; `untilMs` is when it ends by itself. */

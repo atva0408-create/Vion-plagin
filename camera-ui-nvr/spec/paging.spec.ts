@@ -211,6 +211,10 @@ function event(id: string, cameraId: string, startTime: number, label?: string):
     assert.equal(await episodes([], { favoritesOnly: true }), 0);
     await nvr.setEpisodeFavorite(listed[0].id, true);
     assert.equal(await episodes([], { favoritesOnly: true }), 1);
+    // one episode by its id, as the list has it: a link to an episode older than the newest page opened nothing
+    assert.deepEqual(await nvr.getEpisode(listed[0].id), (await nvr.getEpisodes({ limit: 100 })).episodes.find((e) => e.id === listed[0].id));
+    assert.equal(await nvr.getEpisode('no-such-episode'), undefined);
+    assert.equal(await nvr.getEpisode(42 as never), undefined);
     // the event filters narrow the events, the episodes stay (the page does not offer episodes under such a filter)
     const stats = await nvr.getEventStats([], { types: ['vehicle'] });
     assert.equal(stats.total, 0);

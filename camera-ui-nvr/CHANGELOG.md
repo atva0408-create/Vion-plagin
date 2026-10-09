@@ -1,3 +1,10 @@
+## [0.13.0]
+
+- People who look alike can be searched for, together with ViON's people search and the ML plugins that bring Person Re-ID: the recorder keeps what a person's clothes and build look like for every person a camera with Person Re-ID saw, and finds the moments with people who look the same, starting from a recorded moment or a picture with somebody on it. Re-ID describes clothes and build, not who someone is, so the search keeps to a few days around the moment. Only the server's admins can search
+- The data of the people search is kept 7 days by default (Settings → People search) and can be deleted in one go; it is deleted with its event, favourites included. The person vectors never reach the stored events or the interface
+- The search by description on the recordings page finds older events too, together with ViON's paged search: the page looked for matches only among the events it had loaded, so a match older than the loaded pages was never shown. The recorder now applies the page's filters (cameras, time, score, favourites, the rest of the filter) and sends the matches page by page
+- A link to an older episode opens it: the recorder answers for one episode by its id
+
 ## [0.12.2]
 
 - Naming a face through the assistant counts a person seen twice in one event once: someone the camera lost and found again was offered as "2 faces: unknown, unknown". Faces with the same known name, or in the same group of unknown faces, are one person and all of them get the name; unknown faces nothing tells apart are still offered to choose from, with a word that they may be the same person
