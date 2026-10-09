@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
+import { checkExternalEvent } from './external.js';
 import { Episodes } from './episodes.js';
 import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
@@ -32,6 +33,7 @@ import type {
 import type { AssistantHost } from './assistant.js';
 import type { EventDescription } from './describer.js';
 import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
+import type { ExternalEventInput, ExternalEventResult } from './external.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
@@ -268,6 +270,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly systemEvents: SystemEvent[] = [];
   private readonly manual = new Map<string, { startedAt: number; untilMs: number; timer: NodeJS.Timeout }>();
   private readonly manualListeners = new Set<(s: ManualRecording) => void>();
+  /** External events waiting to close; on a stop they stay open and the next start closes them. */
+  private readonly externalTimers = new Set<NodeJS.Timeout>();
   /** Export folders being filled right now: the cleanup of empty ones leaves them alone. */
   private readonly exporting = new Set<string>();
   /** Time zone names of clients that this server does not know, each reported once. */
@@ -614,6 +618,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.clipAutoTimer = undefined;
     clearTimeout(this.clipAutoSoon);
     for (const m of this.manual.values()) clearTimeout(m.timer);
+    for (const timer of this.externalTimers) clearTimeout(timer);
+    this.externalTimers.clear();
     this.playback?.stopAll();
     await Promise.all([...this.cameras.keys()].map((id) => this.releaseCamera(id)));
     this.store?.close();
@@ -766,6 +772,42 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const cb of this.detectionListeners) this.safeCall(this.detectionListeners, cb, { type, data });
     this.offerToEpisodes(data);
     if (type === 'end') this.describer.offer(withoutVectors(merged));
+  }
+
+  /**
+   * An event another extension reports in its own words: VOICE tells «Сыночка за компьютером во время сна» with the
+   * reminders the child let pass. It is kept and recorded like a detection event (a camera that records by events
+   * records from now for `recordSeconds` and the post-buffer) and closes by itself; its title and description are the
+   * event's description, so the AI describer leaves it alone and the search finds it by its words.
+   */
+  public async addExternalEvent(cameraId: string, input: ExternalEventInput): Promise<ExternalEventResult> {
+    const checked = checkExternalEvent(cameraId, input);
+    await this.ready;
+    const now = Date.now();
+    const id = `${checked.source}-${randomUUID()}`;
+    const event: RecordedEvent = {
+      id,
+      cameraId,
+      state: 'active',
+      startTime: checked.startTime,
+      lastUpdate: now,
+      types: [checked.source],
+      triggers: [],
+      segments: [],
+      ai: { title: checked.title, description: checked.description, tags: checked.tags, model: checked.source, at: now },
+    };
+    await this.ingestDetectionEvent(cameraId, 'start', event, checked.snapshot ? { scene: checked.snapshot } : undefined);
+    const endTime = now + checked.recordSeconds * 1000;
+    const timer = setTimeout(() => {
+      this.externalTimers.delete(timer);
+      const closed = Date.now();
+      this.ingestDetectionEvent(cameraId, 'end', { ...event, state: 'ended', endTime: closed, lastUpdate: closed }).catch((error: Error) =>
+        this.logger.warn(`External event ${id}: ${error.message}`),
+      );
+    }, checked.recordSeconds * 1000);
+    timer.unref?.();
+    this.externalTimers.add(timer);
+    return { eventId: id, startTime: checked.startTime, endTime };
   }
 
   /** Episodes are a view over the events: a failure there must never lose or delay an event. */

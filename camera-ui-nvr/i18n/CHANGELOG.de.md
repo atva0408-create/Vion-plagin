@@ -1,3 +1,7 @@
+## [0.14.0]
+
+- Andere Erweiterungen können ein eigenes Ereignis mit eigenen Worten in die Aufnahmen legen: VOICE legt «Сыночка за компьютером во время сна» mit den übergangenen Erinnerungen an. Das Ereignis wird wie eine Erkennung aufgenommen (eine Kamera, die nach Ereignissen aufnimmt, beginnt die Aufnahme), schließt sich selbst, wird über seine Worte gefunden und von den KI-Beschreibungen nicht angefasst
+
 ## [0.13.1]
 
 - Mit eingeschaltetem „Ton aufzeichnen“ zeichnen Kameras, deren Ton und Video über go2rtc kommen (Xiaomi), wieder auf: ffmpeg kopierte ihr HEVC aus RTSP ohne Zeitstempel und brach sofort ab, sodass der Hauptstream gar nicht aufgezeichnet wurde. Das Video wird jetzt aus dem MPEG-TS von go2rtc kopiert und der Ton daneben hinzugefügt; eine Kamera ohne Ton wird aus dem MPEG-TS aufgezeichnet wie ohne diese Einstellung

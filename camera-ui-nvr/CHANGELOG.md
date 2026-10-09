@@ -1,3 +1,7 @@
+## [0.14.0]
+
+- Other extensions can put an event of their own in the recordings, in their own words: VOICE adds «Сыночка за компьютером во время сна» with the reminders the child let pass. The event is recorded like a detection (a camera that records by events starts recording), closes by itself, is found by its words in the search and is left alone by the AI descriptions
+
 ## [0.13.1]
 
 - With «Record audio» on, cameras whose sound and video come through go2rtc (Xiaomi) record again: ffmpeg copied their HEVC from RTSP without timestamps and stopped at once, so the main stream recorded nothing. The video is now copied from go2rtc's MPEG-TS and the sound added beside it; a camera that sends no sound is recorded from the MPEG-TS as without the setting
