@@ -23,6 +23,11 @@
   "Отправлять описание события уведомлением («Курьер оставил посылку»). Чтобы не получать два уведомления, отключите обычные уведомления о детекции у этих камер.": "Send the event description as a notification (\"Courier left a parcel\"). To avoid getting two notifications, turn off the regular detection notifications of these cameras.",
   "Описаний в час, не больше": "Descriptions per hour, at most",
   "Ограничение расхода модели: события сверх лимита остаются без описания. 0 — без ограничения.": "Limits how much the model is used: events above the limit get no description. 0 means no limit.",
+  "Хранить данные поиска людей, дней": "Keep the people search data, days",
+  "Поиск похожих людей сравнивает одежду и телосложение. Эти данные старше срока удаляются, даже у избранных событий; сами события остаются. 0 — столько же, сколько события. Данные собираются только с камер, которым в настройках назначена «Идентификация людей (Re-ID)».": "The search for people who look alike compares clothes and build. This data older than the limit is deleted, from favourite events too; the events themselves stay. 0 keeps it as long as the events. The data is only collected from cameras that have \"Person Re-ID\" assigned in their settings.",
+  "People": "People search",
+  "Удалить данные поиска людей": "Delete the people search data",
+  "Удаляет всё, по чему ищутся похожие люди. События и записи остаются.": "Deletes everything people who look alike are searched by. Events and recordings stay.",
   "Модель": "Model",
   "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "The assistant model the NVR uses. It is chosen in Settings → Assistant."
 }

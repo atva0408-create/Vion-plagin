@@ -14,6 +14,7 @@ import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
+import { PersonIndex, personEmbeddings } from './people.js';
 import { parseKeyframes, Store } from './store.js';
 
 import type {
@@ -45,9 +46,15 @@ import type {
   NvrPlaybackCallbacks,
   PluginStorageValues,
   RecordedEvent,
+  RecordedSegment,
   RecordingSegment,
   RecordingsDeletedEvent,
   RecordingState,
+  SimilarMatch,
+  SimilarOptions,
+  SimilarQuery,
+  SimilarReason,
+  SimilarResult,
   StorageStats,
   SystemEvent,
   TraceChain,
@@ -160,18 +167,38 @@ function attributeKey(seg: number, index: number, attribute: FaceAttribute | und
   return `${seg}:${attribute?.type ?? 'attr'}:${attribute?.label ?? index}`;
 }
 
-/** Vectors live in their own tables; the stored (and UI-bound) event JSON stays lean. */
+/**
+ * Vectors live in their own tables; the stored (and UI-bound) event JSON stays lean. The people of a segment leave
+ * only their number: the person vectors went to every listener and into the stored event before.
+ */
 function withoutVectors(event: RecordedEvent): RecordedEvent {
   return {
     ...event,
-    segments: (event.segments ?? []).map((segment) => ({
-      ...segment,
-      attributes: (segment.attributes ?? []).map((a) => {
-        const { embedding: _e, clipEmbedding: _c, ...rest } = a as FaceAttribute & Record<string, unknown>;
-        return rest;
-      }),
-    })),
+    segments: (event.segments ?? []).map(({ personEmbeddings: people, ...segment }) => {
+      const count = personEmbeddings({ personEmbeddings: people }).length;
+      return {
+        ...segment,
+        ...(count ? { personVectors: count } : {}),
+        attributes: (segment.attributes ?? []).map((a) => {
+          const { embedding: _e, clipEmbedding: _c, ...rest } = a as FaceAttribute & Record<string, unknown>;
+          return rest;
+        }),
+      };
+    }),
   };
+}
+
+/** The people search: raw cosine band of person re-ID (below it nobody alike), and its default windows. */
+const PERSON_SCORE_BAND: [number, number] = [0.4, 0.65];
+const PERSON_WINDOW_EVENT_MS = 3 * 86_400_000;
+const PERSON_WINDOW_PICTURE_MS = 7 * 86_400_000;
+const PERSON_SEARCH_DAYS = 7;
+/** a picture is embedded by a plugin that may load its model first */
+const PERSON_EMBED_TIMEOUT_MS = 60_000;
+
+/** What the NVR needs from a PersonEmbedding plugin (the SDK's PersonEmbeddingInterface). */
+interface PersonEmbedder {
+  embedPersonImages(images: Uint8Array[], config?: Record<string, unknown>): Promise<({ embedding: number[]; embeddingModel: string } | null | undefined)[]>;
 }
 
 /** How many ranked matches a page of the search by description is taken from: the page's filters thin them. */
@@ -191,6 +218,9 @@ function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
 export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
   private semantic!: SemanticIndex;
+  private people!: PersonIndex;
+  /** one people search at a time: each reads the vectors of its window from the disk */
+  private similarChain: Promise<unknown> = Promise.resolve();
   private faces!: FaceStore;
   private describer!: EventDescriber;
   private episodes!: Episodes;
@@ -379,6 +409,32 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         store: true,
       },
       {
+        type: 'number',
+        key: 'personSearchDays',
+        title: 'Хранить данные поиска людей, дней',
+        description:
+          'Поиск похожих людей сравнивает одежду и телосложение. Эти данные старше срока удаляются, даже у избранных событий; ' +
+          'сами события остаются. 0 — столько же, сколько события. Данные собираются только с камер, которым в настройках ' +
+          'назначена «Идентификация людей (Re-ID)».',
+        group: 'People',
+        defaultValue: PERSON_SEARCH_DAYS,
+        minimum: 0,
+        maximum: 3650,
+        step: 1,
+        store: true,
+      },
+      {
+        type: 'button',
+        key: 'personSearchClear',
+        title: 'Удалить данные поиска людей',
+        description: 'Удаляет всё, по чему ищутся похожие люди. События и записи остаются.',
+        group: 'People',
+        onSet: async () => {
+          await this.ready;
+          this.logger.log(`Данные поиска людей удалены: ${this.people.clear()}`);
+        },
+      },
+      {
         type: 'string',
         key: 'aiStatus',
         title: 'Модель',
@@ -503,6 +559,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
     this.semantic = new SemanticIndex(this.store.sql);
+    this.people = new PersonIndex(this.store.sql);
     this.faces = new FaceStore(this.store.sql, join(this.dataDir, 'faces'));
     this.describer = new EventDescriber(this.store.sql, {
       ask: (request) => this.api.coreManager.assistantAsk(request),
@@ -1520,6 +1577,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         }
       }
 
+      // the people of a moment are kept a shorter time, favourite events too: the event itself stays
+      const personDays = this.personSearchDays();
+      if (personDays > 0) this.people.deleteBefore(Date.now() - personDays * 86_400_000);
+
       // events and their thumbnails follow the same retention (favorites are kept)
       const expired: EventRow[] = this.store.eventsBefore(Date.now() - s.retentionDays * 86_400_000, 1000);
       for (const row of expired) {
@@ -1570,7 +1631,116 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** What this NVR supports beyond the basics; the UI hides the rest. */
   public async getNvrFeatures(): Promise<NvrFeatures> {
-    return { episodes: true, exportQuality: true, manualRecording: true };
+    return { episodes: true, exportQuality: true, manualRecording: true, personSearch: true };
+  }
+
+  // ------------------------------------------------------------ people search
+
+  /**
+   * Moments whose people look like the asked one: a person of a recorded moment, a picture of one, or a vector.
+   * Re-ID tells clothes and build, not who it is: by default the search keeps to three days around the moment
+   * (seven back from now for a picture), and only cameras given «Идентификация людей» have people to find.
+   */
+  public async searchSimilarQuery(query: SimilarQuery, opts: SimilarOptions = {}): Promise<SimilarResult> {
+    await this.ready;
+    const run = this.similarChain.then(() => this.similarNow(query ?? {}, opts ?? {}));
+    this.similarChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async similarNow(query: SimilarQuery, opts: SimilarOptions): Promise<SimilarResult> {
+    const label = typeof query.label === 'string' && query.label ? query.label : 'person';
+    const none = (reason: SimilarReason): SimilarResult => ({
+      mode: 'none',
+      label,
+      matches: [],
+      events: [],
+      reason,
+      indexedSince: this.people.oldest(),
+      scoreBand: PERSON_SCORE_BAND,
+    });
+    if (label !== 'person') return none('unsupported');
+
+    let queries: { model: string; vec: Float32Array }[];
+    let around: number | undefined;
+    let exclude: { eventId: string; seg: number } | undefined;
+    if (query.event && typeof query.event.eventId === 'string') {
+      const seg = Math.trunc(Number(query.event.segment)) || 0;
+      const trackId = query.event.trackId === undefined ? undefined : Math.trunc(Number(query.event.trackId));
+      queries = this.people.vectors(query.event.eventId, seg, trackId);
+      if (!queries.length) return none('no-vectors');
+      const row = this.store.event(query.event.eventId);
+      const event = row ? (JSON.parse(row.data) as RecordedEvent) : undefined;
+      around = event?.segments?.[seg]?.firstSeen ?? row?.start_ms;
+      exclude = { eventId: query.event.eventId, seg };
+    } else if (query.image instanceof Uint8Array && query.image.length) {
+      const embedded = await this.embedPersonImage(query.image);
+      if ('reason' in embedded) return none(embedded.reason);
+      queries = [embedded];
+    } else if (Array.isArray(query.person) && query.person.length && typeof query.personModel === 'string' && query.personModel) {
+      if (!this.people.hasModel(query.personModel)) return none('model-mismatch');
+      queries = [{ model: query.personModel, vec: Float32Array.from(query.person.map(Number)) }];
+    } else {
+      return none('unsupported');
+    }
+
+    const now = Date.now();
+    const fromMs = Number.isFinite(opts.startMs) ? Number(opts.startMs) : around !== undefined ? around - PERSON_WINDOW_EVENT_MS : now - PERSON_WINDOW_PICTURE_MS;
+    const toMs = Number.isFinite(opts.endMs) ? Number(opts.endMs) : around !== undefined ? around + PERSON_WINDOW_EVENT_MS : now;
+    const limit = Math.min(Math.max(Math.trunc(Number(opts.limit) || 100), 1), 500);
+    const minScore = Math.max(PERSON_SCORE_BAND[0], Number.isFinite(opts.minScore) ? Number(opts.minScore) : PERSON_SCORE_BAND[0]);
+    const cameraIds = Array.isArray(opts.cameraIds) ? new Set(opts.cameraIds) : undefined;
+    if (cameraIds?.size === 0) return { mode: 'person', label, matches: [], events: [], indexedSince: this.people.oldest(), scoreBand: PERSON_SCORE_BAND };
+
+    const filter = opts.filter ?? {};
+    const withRecording = filter.withRecordingInfo ?? filter.hasRecording;
+    const matches: SimilarMatch[] = [];
+    const events = new Map<string, RecordedEvent>();
+    // the filter thins the hits after the ranking: twice the limit is asked for, so a full page usually stays full
+    for (const hit of this.people.search(queries, { fromMs, toMs, cameraIds, exclude, minScore, limit: limit * 2 })) {
+      if (matches.length === limit) break;
+      let event = events.get(hit.eventId);
+      if (!event) {
+        const row = this.store.event(hit.eventId);
+        if (!row || !inEventRange(row, filter)) continue;
+        const raw = JSON.parse(row.data) as RecordedEvent;
+        if (!matchesEvent(raw, filter)) continue;
+        event = this.decorate(raw, row.favorite === 1, withRecording);
+        if (filter.hasRecording && !event.hasRecording) continue;
+        events.set(hit.eventId, event);
+      }
+      matches.push({ eventId: hit.eventId, cameraId: hit.cameraId, segment: hit.seg, trackId: hit.trackId, time: hit.ts, score: hit.score, kind: 'person' });
+    }
+    return { mode: 'person', label, matches, events: [...events.values()], indexedSince: this.people.oldest(), scoreBand: PERSON_SCORE_BAND };
+  }
+
+  /** The vector of a picture of one person, by the first PersonEmbedding plugin whose model has stored people. */
+  private async embedPersonImage(image: Uint8Array): Promise<{ model: string; vec: Float32Array } | { reason: SimilarReason }> {
+    const embedders = await this.pluginProxies<PersonEmbedder>('PersonEmbedding');
+    let answered = false;
+    let otherModel = false;
+    for (const embedder of embedders) {
+      try {
+        // the first call may download the model
+        const [result] = await withTimeout(embedder.embedPersonImages([image]), PERSON_EMBED_TIMEOUT_MS);
+        if (!result) continue;
+        answered = true;
+        if (!Array.isArray(result.embedding) || !result.embedding.length || !result.embeddingModel) continue;
+        if (!this.people.hasModel(result.embeddingModel)) {
+          otherModel = true;
+          continue;
+        }
+        return { model: result.embeddingModel, vec: Float32Array.from(result.embedding) };
+      } catch (error) {
+        this.logger.warn(`People search, picture: ${(error as Error).message}`);
+      }
+    }
+    return { reason: otherModel ? 'model-mismatch' : answered ? 'no-person' : 'no-embedder' };
+  }
+
+  private personSearchDays(): number {
+    const days = Number(this.storage.values.personSearchDays ?? PERSON_SEARCH_DAYS);
+    return Number.isFinite(days) && days >= 0 ? Math.trunc(days) : PERSON_SEARCH_DAYS;
   }
 
   // -------------------------------------------------------- manual recording
@@ -1792,6 +1962,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Semantic index: ${(error as Error).message}`);
     }
+    try {
+      this.people.ingest(event);
+    } catch (error) {
+      this.logger.warn(`People index: ${(error as Error).message}`);
+    }
     const current = event.segmentIndex ?? Math.max(0, event.segments.length - 1);
     event.segments.forEach((segment, seg) => {
       (segment.attributes ?? []).forEach((raw, attr) => {
@@ -1838,6 +2013,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!ids.length) return;
     try {
       this.semantic.deleteEvents(ids);
+      this.people.deleteEvents(ids);
       this.faces.deleteForEvents(ids);
       this.describer.deleteEvents(ids);
     } catch (error) {
@@ -2617,11 +2793,25 @@ function safeDecode(key: string): string {
 function mergeEvent(prev: RecordedEvent, next: RecordedEvent): RecordedEvent {
   const segments = [...(prev.segments ?? [])];
   if (next.segmentIndex !== undefined && next.segments?.length === 1) {
-    segments[next.segmentIndex] = next.segments[0]!;
+    segments[next.segmentIndex] = keepPeople(segments[next.segmentIndex], next.segments[0]);
   } else if (next.segments?.length) {
-    return { ...prev, ...next, types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])] };
+    return {
+      ...prev,
+      ...next,
+      segments: next.segments.map((segment, index) => keepPeople(prev.segments?.[index], segment)),
+      types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])],
+    };
   }
   return { ...prev, ...next, segments, types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])] };
+}
+
+/**
+ * The vectors come with the update that ends a segment only: a later update of the same segment (the event's end)
+ * keeps the number of its people, or its card would offer no people search.
+ */
+function keepPeople(prev: RecordedSegment | undefined, next: RecordedSegment): RecordedSegment {
+  if (next.personVectors !== undefined || personEmbeddings(next).length || !prev?.personVectors) return next;
+  return { ...next, personVectors: prev.personVectors };
 }
 
 /** Page size of an event query: the client's `limit`, within 1…500. */

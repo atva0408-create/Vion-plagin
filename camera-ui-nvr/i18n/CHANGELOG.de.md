@@ -1,3 +1,8 @@
+## [0.12.0]
+
+- Ähnlich aussehende Personen lassen sich suchen, zusammen mit der Personensuche von ViON und ML-Plugins mit Personen-Wiedererkennung: Der Rekorder merkt sich, wie Kleidung und Statur jeder Person aussehen, die eine Kamera mit zugewiesener Personen-Wiedererkennung gesehen hat, und findet die Momente mit ähnlich aussehenden Personen, ausgehend von einem aufgezeichneten Moment oder einem Bild einer Person. Re-ID beschreibt Kleidung und Statur, nicht die Identität, daher bleibt die Suche bei wenigen Tagen um den Moment. Suchen können nur die Administratoren des Servers
+- Die Daten der Personensuche werden standardmäßig 7 Tage aufbewahrt (Einstellungen → Personensuche) und lassen sich auf einmal löschen; sie werden mit ihrem Ereignis gelöscht, auch bei Favoriten. Die Personenvektoren gelangen weder in die gespeicherten Ereignisse noch in die Oberfläche
+
 ## [0.11.4]
 
 - Die Suche nach Beschreibung auf der Aufnahmenseite findet auch ältere Ereignisse, zusammen mit der seitenweisen Suche von ViON: Die Seite suchte Treffer nur unter den bereits geladenen Ereignissen, ein Treffer älter als die geladenen Seiten wurde nie gezeigt. Jetzt wendet der Rekorder die Filter der Seite an (Kameras, Zeit, Bewertung, Favoriten und die übrigen Bedingungen) und liefert die Treffer seitenweise
