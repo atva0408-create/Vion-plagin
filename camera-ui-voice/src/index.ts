@@ -56,6 +56,7 @@ interface CameraEntry {
 const DEVICE_PREFIX = 'voice:';
 const MAX_NOTIFICATION_CHARS = 300;
 const INTERCOM_PLUGIN = '@vionvision/camera-ui-intercom';
+const NVR_PLUGIN = '@vionvision/camera-ui-nvr';
 /** How often VOICE asks the intercom which cameras are its panels. */
 const PANELS_EVERY_MS = 60_000;
 
@@ -105,6 +106,20 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         quiet: () => quietHours(this.values().quietFrom, this.values().quietTo),
         saveState: (state) => this.saveState(state),
         log,
+        nvr: {
+          addEvent: async (cameraId, event) => {
+            const nvr = await this.nvrPlugin();
+            if (!nvr) return undefined;
+            const made = (await nvr.addExternalEvent(cameraId, { source: 'voice', ...event })) as { eventId?: unknown; endTime?: unknown } | undefined;
+            return typeof made?.eventId === 'string' && typeof made.endTime === 'number' ? { eventId: made.eventId, endTime: made.endTime } : undefined;
+          },
+          clip: async (cameraId, startMs, endMs) => {
+            const nvr = await this.nvrPlugin();
+            if (!nvr) return undefined;
+            const clip = (await nvr.nvrExport(cameraId, startMs * 1000, endMs * 1000)) as { url?: unknown } | undefined;
+            return typeof clip?.url === 'string' ? clip.url : undefined;
+          },
+        },
       },
       this.loadState(),
     );
@@ -121,6 +136,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     });
     this.api.on(API_EVENT.FINISH_LAUNCHING, () => this.start());
     this.api.on(API_EVENT.SHUTDOWN, () => this.stop());
+  }
+
+  /** The recorder of ViON, when it is installed: the parents' notice of a violation opens its event. */
+  private async nvrPlugin(): Promise<Record<string, (...args: unknown[]) => Promise<unknown>> | undefined> {
+    return (await this.api.coreManager.connectToPlugin(NVR_PLUGIN).catch(() => undefined)) as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined;
   }
 
   /** The speech engine; the specs put a fake one here. */

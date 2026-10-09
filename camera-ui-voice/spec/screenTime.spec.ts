@@ -488,4 +488,39 @@ test('"how long": the word for minutes agrees with the number', () => {
   assert.equal(replyText({ kind: 'play', minutes: 3, until: 'bedtime' }, 'Artem', 'de'), 'Artem, du kannst spielen. Noch 3 Minuten bis zur Schlafenszeit.');
 });
 
+
+const levels = (run: Run) => speaks(run).map((a) => (a.action.type === 'speak' ? a.action.facts.level : 0));
+
+test('bedtime: a child gone a few minutes (or a classifier saying "no") comes back to the same step, and the third tells the parents', () => {
+  const run = start(config(bedtime), msk('2026-10-07T21:25:00'));
+  pass(run, 6 * MINUTE, true);
+  pass(run, 3 * MINUTE, true);
+  assert.deepEqual(levels(run), [1, 2]);
+  const since = run.engine.state.escalation?.since;
+  assert.equal(since, msk('2026-10-07T21:30:00'), 'the first reminder');
+  pass(run, 4 * MINUTE, false);
+  assert.equal(run.engine.state.present, false, 'the session ended');
+  pass(run, MINUTE, true);
+  assert.deepEqual(levels(run), [1, 2, 3]);
+  assert.equal(notifies(run).length, 1, 'the parents are told');
+  assert.equal(run.engine.state.escalation?.since, since, 'the same reminders go on');
+});
+
+test('bedtime: back after a long absence, the reminders start over; a break never carries its step over', () => {
+  const run = start(config(bedtime), msk('2026-10-07T21:25:00'));
+  pass(run, 9 * MINUTE, true);
+  pass(run, 20 * MINUTE, false);
+  pass(run, MINUTE, true);
+  assert.deepEqual(levels(run), [1, 2, 1]);
+  assert.equal(notifies(run).length, 0);
+
+  const pause = start(config(), msk('2026-10-07T15:00:00'));
+  pass(pause, 49 * MINUTE, true);
+  assert.deepEqual(levels(pause), [1, 2]);
+  pass(pause, 4 * MINUTE, false);
+  pass(pause, MINUTE, true);
+  const last = speaks(pause)[speaks(pause).length - 1].action;
+  assert.ok(last.type === 'speak' && last.kind === 'remaining' && last.facts.level === 1, 'back early from a break: the rest of it, as before');
+});
+
 void runTests();

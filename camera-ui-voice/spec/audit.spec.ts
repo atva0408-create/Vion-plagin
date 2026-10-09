@@ -328,8 +328,10 @@ test('malformed persisted state is discarded while valid children keep their cou
     badEscalation: { ...good, escalation: { reason: 'break', level: 0 } },
     badRest: { ...good, restMs: -60_000 },
     rested: { ...good, restMs: 240_000 },
+    badSince: { ...good, escalation: { reason: 'bedtime', level: 1, at: 5, repeats: 0, since: -5 } },
+    since: { ...good, escalation: { reason: 'bedtime', level: 2, at: 5, repeats: 0, since: 3 } },
   };
-  assert.deepEqual(restoreScreenTime({ screenTime }), { good, rested: screenTime.rested });
+  assert.deepEqual(restoreScreenTime({ screenTime }), { good, rested: screenTime.rested, since: screenTime.since });
 });
 
 void runTests();

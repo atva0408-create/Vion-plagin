@@ -38,6 +38,23 @@ export interface CameraPort {
   hear(): Promise<OpenAudio>;
 }
 
+/** An event in the camera's recordings, as the NVR made it. */
+export interface NvrEvent {
+  eventId: string;
+  /** When it closes: its recording is complete a file of the NVR later. */
+  endTime: number;
+}
+
+/** The NVR, for the event of a violation and a clip of it; the specs give a fake. */
+export interface NvrPort {
+  addEvent(
+    cameraId: string,
+    event: { title: string; description: string; tags: string[]; startTime: number; recordSeconds: number; snapshot?: Uint8Array },
+  ): Promise<NvrEvent | undefined>;
+  /** A clip of the recording as a download link of this server; undefined or an error when nothing is recorded. */
+  clip(cameraId: string, startMs: number, endMs: number): Promise<string | undefined>;
+}
+
 export interface VoiceDeps {
   clock: Clock;
   engine: SpeechEngine;
@@ -51,6 +68,8 @@ export interface VoiceDeps {
   quiet: () => WeeklyInterval[];
   saveState: (state: SavedState) => Promise<void>;
   log: (message: string) => void;
+  /** Absent: the parents get the notice without an event in the recordings. */
+  nvr?: NvrPort;
 }
 
 export interface SavedState {
@@ -87,6 +106,18 @@ const MAX_EXCHANGES = 3;
  */
 export const LISTEN_DELAY_MS = 1_500;
 const MAX_INSTRUCTED = 300;
+/** The event of a violation stays open, and a camera that records by events records, this long after the notice. */
+export const VIOLATION_RECORD_SECONDS = 30;
+/** The NVR writes its files a minute long: the clip is there a file after the event closed, and a little more. */
+export const CLIP_AFTER_MS = 90_000;
+/** A second try of the clip, when the first found nothing written yet. */
+export const CLIP_RETRY_MS = 60_000;
+const CLIP_TRIES = 2;
+/** The clip starts this long before the notice. */
+const CLIP_BEFORE_MS = 15_000;
+/** A camera that hangs on a snapshot or an NVR that does not answer must not hold the notice. */
+const SNAPSHOT_WAIT_MS = 8_000;
+const NVR_WAIT_MS = 10_000;
 /** How a call of VOICE is shown to the parents: the name the child said. */
 const CALL_NAME = 'ВиОН';
 /** State fields that change with every look; a change of only these waits for the minute. */
@@ -111,6 +142,8 @@ export class Voice {
   /** Phrases being said per camera: the microphone open for a call hears them, they are not the child. */
   private speakingOn = new Map<string, number>();
   private calls: CallListener;
+  /** Clips of violation events waiting to be written, by the camera they are of. */
+  private clipTimers = new Map<unknown, string>();
   private lastSaved = '';
   private lastSavedAt = 0;
   private saved: SavedState;
@@ -154,6 +187,11 @@ export class Voice {
     this.talking.delete(cameraId);
     this.lastSaid.delete(cameraId);
     this.calls.close(cameraId);
+    for (const [handle, camera] of this.clipTimers)
+      if (camera === cameraId) {
+        this.deps.clock.clearTimeout(handle);
+        this.clipTimers.delete(handle);
+      }
     for (const [key, scenario] of this.scenarios)
       if (scenario.cameraId === cameraId) {
         scenario.controller.abort();
@@ -169,6 +207,8 @@ export class Voice {
     this.queues.clear();
     this.talking.clear();
     this.calls.closeAll();
+    for (const handle of this.clipTimers.keys()) this.deps.clock.clearTimeout(handle);
+    this.clipTimers.clear();
   }
 
   start(): void {
@@ -376,7 +416,14 @@ export class Voice {
       for (const action of actions) {
         const controller = scenario.controller;
         const escalation = scenario.engine.state.escalation;
-        const valid = () =>
+        // once due, the parents are told: VOICE has told the child so, and the child stepping away a moment later or a
+        // classifier saying "no" for a minute does not take it back; a parent who gave time meanwhile does
+        const notice = () =>
+          !this.stopped &&
+          this.scenarios.get(key) === scenario &&
+          scenario.engine.config.enabled &&
+          !(scenario.engine.state.grantUntil !== undefined && this.deps.clock.now() < scenario.engine.state.grantUntil);
+        const phrase = () =>
           !this.stopped &&
           this.scenarios.get(key) === scenario &&
           scenario.controller === controller &&
@@ -387,6 +434,7 @@ export class Voice {
           escalation?.level === action.facts.level &&
           scenario.engine.reason(this.deps.clock.now(), this.deps.timeZone()) === action.facts.reason &&
           (action.facts.reason === 'bedtime' || !activeInterval(this.deps.quiet(), this.deps.clock.now(), this.deps.timeZone()));
+        const valid = action.type === 'notify' ? notice : phrase;
         scenario.acting = scenario.acting
           .then(() => this.act(key, scenario, action, controller.signal, valid))
           .catch((error: Error) => this.deps.log(`${scenario.engine.config.childName}: ${error.message}`));
@@ -518,19 +566,17 @@ export class Voice {
   // ---- inside ----
 
   private async act(key: string, scenario: Scenario, action: ScreenTimeAction, scenarioSignal: AbortSignal, valid: () => boolean): Promise<void> {
-    if (!valid()) return;
     const language = this.deps.language();
     const camera = this.cameras.get(scenario.cameraId);
     if (!camera) return;
-    const cameraSignal = this.controllers.get(camera.id)!.signal;
-    const signal = AbortSignal.any([cameraSignal, scenarioSignal]);
+    // the parents' notice says in the log why it did not go
     if (action.type === 'notify') {
-      const { title, body } = templateNotify(action.facts, language);
-      // a reminder the child never heard is not "the child does not stop": the parents learn why it was not said
-      const unheard = scenario.unspoken ? ` ${fill(texts(language).notify.notSaid, { reason: scenario.unspoken })}` : '';
-      await this.notifyParents(camera, title, body + unheard, `voice:${key}`, valid);
+      await this.tellParents(key, scenario, camera, action.facts, language, valid);
       return;
     }
+    if (!valid()) return;
+    const cameraSignal = this.controllers.get(camera.id)!.signal;
+    const signal = AbortSignal.any([cameraSignal, scenarioSignal]);
     // the microphone hears the camera's own speaker: a phrase now would come back as the child's answer
     while (this.talking.has(camera.id)) await this.waitFor(this.talking.get(camera.id)!, signal);
     if (!valid() || signal.aborted) return;
@@ -602,6 +648,106 @@ export class Voice {
     } catch (error) {
       this.deps.log(`${camera.name}: conversation stopped: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * The parents learn that the child kept on: the notice with the picture, and an event in the camera's recordings
+   * («Сыночка за компьютером во время сна», the reminders let pass) that the notice opens; the clip of it follows, with
+   * no sound, once the NVR has written it. Every notice is in the log, sent or not and why: one VOICE announced to the
+   * child at 22:36 (2026-10-09) left no trace anywhere.
+   */
+  private async tellParents(key: string, scenario: Scenario, camera: CameraPort, facts: Facts, language: Language, valid: () => boolean): Promise<void> {
+    const t = texts(language);
+    const { title, body } = templateNotify(facts, language);
+    const refused = () => this.deps.log(`${camera.name}: the parents were not told «${title}»: VOICE stopped, the scenario changed or time was given`);
+    if (!valid()) {
+      refused();
+      return;
+    }
+    // a reminder the child never heard is not "the child does not stop": the parents learn why it was not said
+    const unheard = scenario.unspoken ? ` ${fill(t.notify.notSaid, { reason: scenario.unspoken })}` : '';
+    const thumbnail = await this.withTimeout(camera.snapshot(), SNAPSHOT_WAIT_MS, 'the snapshot').catch(() => undefined);
+    const now = this.deps.clock.now();
+    const escalation = scenario.engine.state.escalation;
+    const since = Math.min(escalation?.since ?? now, now);
+    let event: NvrEvent | undefined;
+    if (this.deps.nvr) {
+      const values = {
+        name: facts.childName,
+        count: escalation ? escalation.level + escalation.repeats : facts.level,
+        since: formatClock(since, this.deps.timeZone()),
+      };
+      try {
+        event = await this.withTimeout(
+          this.deps.nvr.addEvent(camera.id, {
+            title: fill(t.event[facts.reason], values),
+            description: `${body} ${fill(t.event.reminders, values)}${unheard}`,
+            tags: [t.event.tag],
+            startTime: since,
+            recordSeconds: VIOLATION_RECORD_SECONDS,
+            ...(thumbnail ? { snapshot: thumbnail } : {}),
+          }),
+          NVR_WAIT_MS,
+          'the NVR',
+        );
+      } catch (error) {
+        this.deps.log(`${camera.name}: no event in the recordings: ${(error as Error).message}`);
+      }
+    }
+    if (!valid()) {
+      refused();
+      return;
+    }
+    const notice: Notification = {
+      title,
+      body: body + unheard,
+      severity: Severity.Warn,
+      tag: `voice:${key}`,
+      // for the parents only: the picture of a child's room does not go to every user of the house
+      adminOnly: true,
+      ...(thumbnail ? { thumbnail } : {}),
+      data: { cameraId: camera.id, ...(event ? { eventId: event.eventId } : {}) },
+      // the event when there is one, and the moment the reminders began for an app that does not open events by id
+      deepLink: `/cameras/${encodeURIComponent(camera.name)}?${event ? `eventId=${encodeURIComponent(event.eventId)}&` : ''}startTs=${since}`,
+    };
+    try {
+      await this.deps.publish(notice);
+    } catch (error) {
+      this.deps.log(`${camera.name}: the parents were not told «${title}»: ${(error as Error).message}`);
+      return;
+    }
+    this.deps.log(`${camera.name}: the parents were told «${title}»${event ? `, event ${event.eventId}` : ', without an event in the recordings'}`);
+    if (event) this.followWithClip(camera, notice, event, now - CLIP_BEFORE_MS, 0);
+  }
+
+  /** The clip of the event, as the same notice again: it takes the first one's place in the list, with no sound. */
+  private followWithClip(camera: CameraPort, notice: Notification, event: NvrEvent, startMs: number, attempt: number): void {
+    const nvr = this.deps.nvr;
+    if (!nvr) return;
+    const wait = attempt === 0 ? Math.max(0, event.endTime - this.deps.clock.now()) + CLIP_AFTER_MS : CLIP_RETRY_MS;
+    const handle = this.deps.clock.setTimeout(() => {
+      this.clipTimers.delete(handle);
+      if (this.stopped || !this.cameras.has(camera.id)) return;
+      this.withTimeout(nvr.clip(camera.id, startMs, event.endTime), 2 * 60_000, 'the clip')
+        .then(async (url) => {
+          if (!url) throw new Error('nothing is recorded there');
+          await this.deps.publish({ ...notice, videoUrl: url, silent: true });
+          this.deps.log(`${camera.name}: the clip of event ${event.eventId} went to the parents`);
+        })
+        .catch((error: Error) => {
+          if (attempt + 1 < CLIP_TRIES && !this.stopped && this.cameras.has(camera.id)) this.followWithClip(camera, notice, event, startMs, attempt + 1);
+          else this.deps.log(`${camera.name}: no clip of event ${event.eventId} for the parents: ${error.message}`);
+        });
+    }, wait);
+    this.clipTimers.set(handle, camera.id);
+  }
+
+  /** The work, or an error when it takes longer than `ms`. */
+  private withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timer = this.deps.clock.setTimeout(() => reject(new Error(`${what} did not answer in ${ms / 1000} s`)), ms);
+      work.then(resolve, reject).finally(() => this.deps.clock.clearTimeout(timer));
+    });
   }
 
   private async notifyParents(camera: CameraPort, title: string, body: string, tag: string, valid: () => boolean): Promise<void> {

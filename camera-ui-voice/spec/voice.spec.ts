@@ -4,14 +4,14 @@ import assert from 'node:assert/strict';
 import { QUESTION_WAIT_MS } from '../src/call.js';
 import { checkScreenTime, quietHours } from '../src/settings.js';
 import { answerChild, foreignValue, nudgePhrase } from '../src/speech.js';
-import { LISTEN_DELAY_MS, isEcho } from '../src/voice.js';
+import { CLIP_AFTER_MS, CLIP_RETRY_MS, LISTEN_DELAY_MS, VIOLATION_RECORD_SECONDS, isEcho } from '../src/voice.js';
 import { MINUTE } from '../src/time.js';
 import { AT_DESK, FakeClock, FakeEngine, NOBODY, collector, fakeAsk, fakeCamera, msk, runTests, test, unconfigured } from './helpers.js';
 
 import type { AssistantAskResult } from '@camera.ui/sdk';
 import type { Facts } from '../src/screenTime.js';
 import type { ScreenTimeValues } from '../src/settings.js';
-import type { SavedState } from '../src/voice.js';
+import type { NvrPort, SavedState } from '../src/voice.js';
 import type { AskScript } from './helpers.js';
 
 function setup(script: AskScript = unconfigured, values: ScreenTimeValues = {}, start = msk('2026-10-07T15:00:00'), restored?: SavedState) {
@@ -692,6 +692,136 @@ test('two children at one camera: the one at the computer is answered, both when
   await s.clock.advance(0);
   assert.match(lastSaid(s), /^Артём, можно играть\. До перерыва \d+ минут.* Петя, можно играть\. До перерыва 20 минут\.$/);
   assert.equal(s.voice.recent[s.voice.recent.length - 1].child, 'Артём / Петя');
+});
+
+
+// ---- the parents' notice of a violation ----
+
+const BED = { schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' };
+
+function fakeNvr(clock: FakeClock, clips: (string | undefined | Error)[] = []) {
+  const events: { cameraId: string; event: Parameters<NvrPort['addEvent']>[1]; endTime: number }[] = [];
+  const asked: [string, number, number][] = [];
+  const nvr: NvrPort & { events: typeof events; asked: typeof asked; fail?: Error } = {
+    events,
+    asked,
+    addEvent: async (cameraId, event) => {
+      if (nvr.fail) throw nvr.fail;
+      const endTime = clock.now() + event.recordSeconds * 1000;
+      events.push({ cameraId, event, endTime });
+      return { eventId: `voice-${events.length}`, endTime };
+    },
+    clip: async (cameraId, startMs, endMs) => {
+      asked.push([cameraId, startMs, endMs]);
+      const answer = clips.shift();
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  };
+  return nvr;
+}
+
+test('the notice of a violation opens an event in the recordings; its clip follows quietly in the same place', async () => {
+  const s = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  const nvr = fakeNvr(s.clock, ['/api/download/clip-1']);
+  (s.voice as any).deps.nvr = nvr;
+  await s.look(17 * MINUTE, true);
+  assert.equal(nvr.events.length, 1, s.logs.join(' | '));
+  const { cameraId, event } = nvr.events[0];
+  assert.equal(cameraId, 'kids');
+  assert.equal(event.title, 'Артём за компьютером во время сна');
+  assert.match(event.description, /Артём за компьютером во время сна \(21:36\)\. Напоминаний без ответа: 3, первое в 21:30\./);
+  assert.equal(event.startTime, msk('2026-10-07T21:30:00'), 'from the first reminder');
+  assert.equal(event.recordSeconds, VIOLATION_RECORD_SECONDS);
+  assert.deepEqual(event.tags, ['время за компьютером']);
+  assert.ok(event.snapshot?.length, 'with the picture');
+
+  const notice = s.published.find((n) => n.title === 'Артём за компьютером');
+  assert.ok(notice);
+  assert.deepEqual(notice.data, { cameraId: 'kids', eventId: 'voice-1' });
+  assert.equal(notice.deepLink, `/cameras/${encodeURIComponent('Детская')}?eventId=voice-1&startTs=${msk('2026-10-07T21:30:00')}`);
+  assert.equal(notice.adminOnly, true);
+  assert.ok(s.logs.some((line) => line.includes('the parents were told') && line.includes('voice-1')), s.logs.join(' | '));
+
+  const before = s.published.length;
+  await s.clock.advance(4 * MINUTE);
+  assert.equal(nvr.asked.length, 1, 'the clip is asked for once it is written');
+  const [, startMs, endMs] = nvr.asked[0];
+  assert.ok(endMs - startMs >= VIOLATION_RECORD_SECONDS * 1000, `${(endMs - startMs) / 1000} s`);
+  assert.equal(s.published.length, before + 1);
+  const clip = s.published[s.published.length - 1];
+  assert.equal(clip.videoUrl, '/api/download/clip-1');
+  assert.equal(clip.silent, true, 'no second sound');
+  assert.equal(clip.tag, notice.tag, 'it takes the first one\'s place in the list');
+  assert.equal(clip.deepLink, notice.deepLink);
+});
+
+test('the parents are told even when the child is gone the moment after VOICE said so', async () => {
+  const s = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  await s.look(14 * MINUTE, true);
+  assert.equal(s.engine.said.length, 2);
+  let finish: () => void = () => undefined;
+  s.camera.speaker.speak = () => new Promise((resolve) => (finish = () => resolve({ status: 'spoken' })));
+  await s.look(2 * MINUTE, true);
+  assert.match(s.engine.said[2], /Я сообщил родителям/);
+  await s.look(4 * MINUTE, false);
+  assert.equal(s.voice.scenariosOf(s.camera.id)[0].engine.state.present, false, 'the session ended meanwhile');
+  finish();
+  await s.clock.advance(1_000);
+  assert.equal(s.published.filter((n) => n.title === 'Артём за компьютером').length, 1, s.logs.join(' | '));
+  assert.ok(s.logs.some((line) => line.includes('the parents were told') && line.includes('without an event')), 'no NVR: still told, and said so');
+  assert.equal(s.published[0].deepLink, `/cameras/${encodeURIComponent('Детская')}?startTs=${msk('2026-10-07T21:30:00')}`);
+});
+
+test('a parent who gave time before the notice went keeps it from going; the log says why', async () => {
+  const s = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  const nvr = fakeNvr(s.clock);
+  (s.voice as any).deps.nvr = nvr;
+  await s.look(14 * MINUTE, true);
+  let finish: () => void = () => undefined;
+  s.camera.speaker.speak = () => new Promise((resolve) => (finish = () => resolve({ status: 'spoken' })));
+  await s.look(2 * MINUTE, true);
+  s.voice.extend(s.voice.scenariosOf(s.camera.id)[0].key, 30, false);
+  finish();
+  await s.clock.advance(1_000);
+  assert.equal(s.published.length, 0);
+  assert.equal(nvr.events.length, 0, 'no event in the recordings for a notice that does not go');
+  assert.ok(s.logs.some((line) => line.includes('the parents were not told')), s.logs.join(' | '));
+});
+
+test('an NVR that fails, or a clip not written yet: the notice still goes, the clip is tried again, then given up', async () => {
+  const s = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  const nvr = fakeNvr(s.clock, [undefined, new Error('no recording')]);
+  nvr.fail = new Error('addExternalEvent is not a method');
+  (s.voice as any).deps.nvr = nvr;
+  await s.look(17 * MINUTE, true);
+  assert.equal(s.published.length, 1, `told without the event: ${s.published.map((n) => `${n.title}/${n.body}`).join(' | ')}`);
+  assert.ok(s.logs.some((line) => line.includes('no event in the recordings: addExternalEvent is not a method')));
+
+  const t = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  const later = fakeNvr(t.clock, [undefined, new Error('no recording')]);
+  (t.voice as any).deps.nvr = later;
+  await t.look(17 * MINUTE, true);
+  await t.clock.advance(later.events[0].endTime + CLIP_AFTER_MS + 1_000 - t.clock.now());
+  assert.equal(later.asked.length, 1);
+  await t.clock.advance(CLIP_RETRY_MS);
+  assert.equal(later.asked.length, 2, 'tried again');
+  await t.clock.advance(10 * MINUTE);
+  assert.equal(later.asked.length, 2, 'then given up');
+  assert.equal(t.published.length, 1, 'no second notice without a clip');
+  assert.ok(t.logs.some((line) => line.includes('no clip of event voice-1') && line.includes('no recording')), t.logs.join(' | '));
+});
+
+test('VOICE stopped before the clip was written: nothing is asked of the NVR any more', async () => {
+  const s = await setup(unconfigured, BED, msk('2026-10-07T21:20:00'));
+  const nvr = fakeNvr(s.clock, ['/api/download/clip-1']);
+  (s.voice as any).deps.nvr = nvr;
+  await s.look(17 * MINUTE, true);
+  assert.equal((s.voice as any).clipTimers.size, 1, 'a clip is waited for');
+  s.voice.stop();
+  assert.equal((s.voice as any).clipTimers.size, 0, 'its timer is let go');
+  await s.clock.advance(10 * MINUTE);
+  assert.equal(nvr.asked.length, 0);
 });
 
 void runTests();

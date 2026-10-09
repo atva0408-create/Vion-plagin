@@ -1,7 +1,7 @@
 {
   "displayName": "VOICE",
   "name": "@vionvision/camera-ui-voice",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Голос ViON через динамик камеры: напоминает ребёнку о перерыве и времени сна, отвечает на его вопросы, говорит, кто пришёл, и произносит фразы из чата, автоматизаций и уведомлений. Речь синтезируется и распознаётся на сервере, без облака.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

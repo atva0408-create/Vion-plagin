@@ -26,7 +26,8 @@ export function restoreScreenTime(value: unknown): Record<string, ScreenTimeStat
         escalation.level < 1 ||
         escalation.level > 3 ||
         !counter(escalation.repeats) ||
-        !Number.isInteger(escalation.repeats))
+        !Number.isInteger(escalation.repeats) ||
+        (escalation.since !== undefined && !counter(escalation.since)))
     )
       return false;
     return true;

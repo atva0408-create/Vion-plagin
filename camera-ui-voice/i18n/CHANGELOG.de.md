@@ -1,3 +1,9 @@
+## [0.4.0]
+
+- Macht das Kind nach drei Erinnerungen weiter, öffnet die Mitteilung an die Eltern ein Ereignis in den Aufnahmen der Kamera (mit den übergangenen Erinnerungen, ab der ersten); ein Clip folgt ein paar Minuten später in derselben Mitteilung, ohne Ton. Braucht ViON NVR 0.14.0; ohne ihn kommt die Mitteilung wie bisher
+- Die Mitteilung geht sicher, sobald VOICE dem Kind gesagt hat «Ich habe deinen Eltern Bescheid gegeben», auch wenn das Kind gleich danach weggeht; jede Mitteilung steht im Protokoll, gesendet oder nicht und warum
+- Schlafenszeit und Tageslimit fangen ihre Erinnerungen nicht mehr von vorn an, wenn das Kind weniger als 15 Minuten nicht zu sehen ist
+
 ## [0.3.0]
 
 - VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «ViON» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert, und was das Kind beim Rufen sagt, geht nicht an den Assistenten. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft nur zusammen mit einer Frage nach der Zeit. Mit mehreren Kindern an der Kamera wird jedes am Computer beantwortet. Vorerst nur auf Russisch; standardmäßig aus

@@ -38,6 +38,8 @@ export interface Escalation {
   level: number;
   at: number;
   repeats: number;
+  /** When the first phrase of it came: where the parents' event in the recordings begins. */
+  since?: number;
 }
 
 export interface ScreenTimeState {
@@ -112,6 +114,13 @@ const MAX_STEP_MS = MINUTE;
 /** An absence this short is a look the detector missed, still time at the computer. */
 const FLICKER_MS = 15_000;
 const HISTORY_DAYS = 30;
+/**
+ * Bedtime and the daily limit go on all evening: a child back this soon after the session ended goes on with the
+ * reminders where they were. A classifier that said "no" for two minutes, or a child stepping out and back, started
+ * them over, and the third step that tells the parents never came (2026-10-09: 22:30, 22:33, 22:36, then 22:42 again).
+ */
+export const ESCALATION_MEMORY_MS = 15 * MINUTE;
+const LASTING: ReadonlySet<Reason> = new Set(['bedtime', 'daily_limit']);
 
 export interface TickInput {
   now: number;
@@ -170,13 +179,14 @@ export class ScreenTimeEngine {
         // away longer than the gap: the session is over, the break starts when the child was last seen
         s.present = false;
         s.leftAt = s.lastSeen;
-        s.escalation = undefined;
+        if (!s.escalation || !LASTING.has(s.escalation.reason)) s.escalation = undefined;
         s.name = undefined;
         s.attributeYes = undefined;
       }
     } else if (s.candidateSince !== undefined && now - s.candidateSince >= this.config.minPresenceSeconds * 1000) {
       s.present = true;
       const away = s.leftAt === undefined ? Infinity : s.candidateSince - s.leftAt;
+      if (s.escalation && away > ESCALATION_MEMORY_MS) s.escalation = undefined;
       // a due break is added up over the absences (the parents' choice): back early and away again, the child takes
       // only the rest of it; before it is due, only one absence as long as a break counts as one
       const due = s.workMs >= this.config.sessionMinutes * MINUTE;
@@ -203,7 +213,7 @@ export class ScreenTimeEngine {
     const repeatMs = this.config.repeatMinutes * MINUTE;
     const e = s.escalation;
     if (e?.reason !== reason) {
-      s.escalation = { reason, level: 1, at: now, repeats: 0 };
+      s.escalation = { reason, level: 1, at: now, repeats: 0, since: now };
       const remaining = returnedDuringBreak && reason === 'break' && this.config.breakReminder;
       actions.push({ type: 'speak', kind: remaining ? 'remaining' : 'nudge', facts: this.facts(now, input) });
       return actions;

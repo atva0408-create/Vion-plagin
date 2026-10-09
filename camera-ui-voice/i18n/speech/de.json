@@ -57,6 +57,13 @@
     "moreTime": "{name} bittet um mehr Zeit: „{text}“",
     "notSaid": "(VOICE konnte es dem Kind nicht sagen: {reason}.)"
   },
+  "event": {
+    "break": "{name} hat keine Pause gemacht",
+    "bedtime": "{name} zur Schlafenszeit am Computer",
+    "daily_limit": "{name} über dem Tageslimit am Computer",
+    "reminders": "Erinnerungen ohne Wirkung: {count}, die erste um {since}.",
+    "tag": "Bildschirmzeit"
+  },
   "door": {
     "male": "{name} ist da.",
     "female": "{name} ist da.",

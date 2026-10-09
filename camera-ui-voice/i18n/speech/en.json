@@ -57,6 +57,13 @@
     "moreTime": "{name} asks for more time: \"{text}\"",
     "notSaid": "(VOICE could not say it to the child: {reason}.)"
   },
+  "event": {
+    "break": "{name} took no break",
+    "bedtime": "{name} at the computer at bedtime",
+    "daily_limit": "{name} at the computer past the daily limit",
+    "reminders": "Reminders without effect: {count}, the first at {since}.",
+    "tag": "screen time"
+  },
   "door": {
     "male": "{name} has arrived.",
     "female": "{name} has arrived.",

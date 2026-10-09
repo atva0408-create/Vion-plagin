@@ -38,6 +38,8 @@ export interface SpeechTexts {
   askParents: string;
   moreTimeWords: string[];
   notify: Record<Reason | 'title' | 'moreTimeTitle' | 'moreTime' | 'notSaid', string>;
+  /** The event of a violation in the camera's recordings: its title by reason and the line of the reminders. */
+  event: Record<Reason | 'reminders' | 'tag', string>;
   door: { male: string; female: string; neutral: string; unknown: string; label: string };
   status: Record<'today' | 'free' | 'away' | 'break' | 'bedtime' | 'daily_limit' | 'granted' | 'hours' | 'onlyMinutes' | 'call' | 'callFailed' | 'callLanguage', string>;
   test: string;

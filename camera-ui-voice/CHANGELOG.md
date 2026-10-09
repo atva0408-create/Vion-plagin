@@ -1,3 +1,9 @@
+## [0.4.0]
+
+- When the child keeps on after three reminders, the parents' notice opens an event in the camera's recordings («Сыночка за компьютером во время сна», the reminders let pass, from the first one); a clip of it follows in the same notice a couple of minutes later, with no sound. Needs ViON NVR 0.14.0; without it the notice goes as before
+- The notice goes for sure once VOICE told the child «I told your parents», even if the child steps away a moment later; every notice is in the log, sent or not and why
+- Bedtime and the daily limit no longer start their reminders over when the child is out of sight for less than 15 minutes (a classifier saying "no" for two minutes did that, and the third step that tells the parents never came)
+
 ## [0.3.0]
 
 - Calling VOICE by name: with "Answer when called" on for a child, the child says «ВиОН» and a question («ВиОН, сколько мне ещё отдыхать?») at any time and VOICE answers. The camera's microphone stays open for it; speech is recognized on the server and nothing is kept, and what the child says on a call does not go to the assistant. A word that only sounds like the name ("Leon" in a game) calls only with a question about the time. With several children at the camera, each one at the computer is answered. Russian only for now; off by default
