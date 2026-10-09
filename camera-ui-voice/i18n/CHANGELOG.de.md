@@ -1,3 +1,9 @@
+## [0.2.1]
+
+- Ausstehende Sätze, Erinnerungen und Zuhören werden beim Entfernen einer Kamera, Deaktivieren eines Szenarios, Gewähren zusätzlicher Zeit und Beenden von VOICE abgebrochen. Verspätete Antworten öffnen die Kamera nicht erneut.
+- Gleichmäßiger RTP-Versand nach Timer-Verzögerungen, Schließen fehlerhafter und noch startender Audiokanäle, begrenzte Warteschlange.
+- Fehlerbehandlung für Sprachaktivität und Assistenten, Prüfung von Satzlänge, Zeitverlängerungen und gespeichertem Zustand. Einheitliche Endzeit einer unterbrochenen Pause in Erinnerungen und Antworten.
+
 ## [0.2.0]
 
 - Mit installierter Gegensprechanlage: ein Klingeln an einer Türstation wird auf den Lautsprechern für Benachrichtigungen angesagt („Klingeln: Tor“), über die Warteschlange, die Grenzen und die Ruhezeiten von VOICE

@@ -1,10 +1,13 @@
-// Hearing a conversation: utterances as they end, nothing while the agent speaks. Run: npx tsx spec/listen.spec.ts
+// Listening: one answer in a window (ffmpeg faked), and a conversation heard, utterances as they end, nothing while the
+// agent speaks. Run: npx tsx spec/listen.spec.ts
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
-import { FloatChunks, Hearing } from '../src/listen.js';
-import { FakeClock, runTests, test } from './helpers.js';
+import { FfmpegListener, FloatChunks, Hearing } from '../src/listen.js';
+import { FakeClock, flush, runTests, test } from './helpers.js';
 
-import type { VoiceActivity } from '../src/engine.js';
+import type { SpeechEngine, VoiceActivity } from '../src/engine.js';
 
 /** Voice activity that cuts an utterance at the first sample of value 0 after speech (any other value is speech). */
 class FakeVad implements VoiceActivity {
@@ -78,6 +81,122 @@ test('float chunks: a sample cut between chunks is joined', () => {
   bytes.writeFloatLE(1, 8);
   assert.deepEqual([...chunks.take(bytes.subarray(0, 6))], [0.5]);
   assert.deepEqual([...chunks.take(bytes.subarray(6))], [-0.25, 1]);
+});
+
+/** A listener whose ffmpeg is a fake process: the spec writes its output and closes it. */
+function ffmpegSetup() {
+  const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough; kill: () => boolean };
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  let kills = 0;
+  let spawned = 0;
+  child.kill = () => {
+    kills++;
+    return true;
+  };
+  const vad = { accept: (_samples: Float32Array) => {}, utterance: (): Float32Array | undefined => undefined, speaking: () => false, flush: () => {} };
+  const engine: SpeechEngine = {
+    synthesize: async () => ({ samples: new Float32Array(0), sampleRate: 16_000 }),
+    transcribe: async () => '',
+    voiceActivity: async () => vad,
+  };
+  const logs: string[] = [];
+  const listener = new FfmpegListener(
+    async () => 'ffmpeg',
+    engine,
+    (message) => logs.push(message),
+    (() => {
+      spawned++;
+      return child;
+    }) as never,
+  );
+  const source = { audioCodecs: ['opus'], generateRTSPUrl: () => 'rtsp://127.0.0.1/test' };
+  const camera = { name: 'test', sources: [source], streamSource: source };
+  return { child, vad, engine, listener, camera, logs, kills: () => kills, spawned: () => spawned };
+}
+
+test('cancelling listening closes ffmpeg immediately and ignores late output/close events', async () => {
+  const s = ffmpegSetup();
+  const controller = new AbortController();
+  const result = s.listener.listen(s.camera, 30_000, controller.signal);
+  await flush();
+  controller.abort();
+  // the window would end the listening too, 30 s later: ffmpeg must be gone at the abort itself
+  assert.equal(s.kills(), 1);
+  assert.equal(await result, undefined);
+  s.vad.accept = () => {
+    throw new Error('late accept');
+  };
+  s.vad.flush = () => {
+    throw new Error('late flush');
+  };
+  assert.doesNotThrow(() => s.child.stdout.write(Buffer.alloc(16)));
+  assert.doesNotThrow(() => s.child.emit('close', 1));
+  await flush();
+  assert.equal(s.logs.length, 0);
+});
+
+test('cancelling during model preparation does not open a microphone afterwards', async () => {
+  const s = ffmpegSetup();
+  let ready!: () => void;
+  s.engine.voiceActivity = async () => {
+    await new Promise<void>((resolve) => (ready = resolve));
+    return s.vad;
+  };
+  const controller = new AbortController();
+  const result = s.listener.listen(s.camera, 30_000, controller.signal);
+  await flush();
+  controller.abort();
+  ready();
+  assert.equal(await result, undefined);
+  assert.equal(s.spawned(), 0);
+});
+
+for (const where of ['accept', 'utterance', 'flush'] as const) {
+  test(`a VAD exception in ${where} ends listening without crashing the plugin`, async () => {
+    const s = ffmpegSetup();
+    s.vad[where] = () => {
+      throw new Error('invalid VAD state');
+    };
+    const result = s.listener.listen(s.camera, 30_000);
+    await flush();
+    assert.doesNotThrow(() => (where === 'flush' ? s.child.emit('close', 0) : s.child.stdout.write(Buffer.alloc(16))));
+    assert.equal(await result, undefined);
+    assert.equal(s.kills(), 1);
+    assert.match(s.logs[0], /invalid VAD state/);
+  });
+}
+
+test('partial float32 samples across ffmpeg chunks are assembled correctly', async () => {
+  const s = ffmpegSetup();
+  const accepted: number[] = [];
+  s.vad.accept = (samples) => {
+    accepted.push(...samples);
+  };
+  const result = s.listener.listen(s.camera, 30_000);
+  await flush();
+  const bytes = Buffer.alloc(12);
+  [0.25, -0.5, 1].forEach((v, i) => bytes.writeFloatLE(v, i * 4));
+  s.child.stdout.write(bytes.subarray(0, 3));
+  s.child.stdout.write(bytes.subarray(3, 9));
+  s.child.stdout.write(bytes.subarray(9));
+  await flush();
+  s.child.emit('close', 0);
+  assert.equal(await result, undefined);
+  assert.deepEqual(accepted, [0.25, -0.5, 1]);
+});
+
+test('the first complete utterance stops the stream and is returned for recognition', async () => {
+  const s = ffmpegSetup();
+  const samples = new Float32Array([0.2, 0.4]);
+  s.vad.utterance = () => samples;
+  const result = s.listener.listen(s.camera, 30_000);
+  await flush();
+  s.child.stdout.write(Buffer.alloc(16));
+  await flush();
+  // stopped at the utterance, not by the end of the window (which would return the same samples 30 s later)
+  assert.equal(s.kills(), 1);
+  assert.deepEqual(await result, samples);
 });
 
 void runTests();

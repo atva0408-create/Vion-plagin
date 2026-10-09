@@ -223,7 +223,9 @@ export class ScreenTimeEngine {
     const reason = this.reason(now, timeZone) ?? s.escalation?.reason ?? 'break';
     const bed = activeInterval(c.bedtime, now, timeZone);
     const nextBed = bed ? undefined : nextIntervalStart(c.bedtime, now, timeZone);
-    const breakFrom = s.present || s.leftAt === undefined ? now : s.leftAt;
+    // On an early return, the remaining-break reminder and the answer must name the same end time.
+    const partialBreak = s.leftAt !== undefined && now < s.leftAt + c.breakMinutes * MINUTE;
+    const breakFrom = s.leftAt !== undefined && (!s.present || partialBreak) ? s.leftAt : now;
     const breakEnds = breakFrom + c.breakMinutes * MINUTE;
 
     let nextAllowed: number;

@@ -8,6 +8,7 @@ import { PhraseQueue, isEcho } from '@vionvision/speech';
 
 import { PresenceTracker } from './presence.js';
 import { ScreenTimeEngine, freshState } from './screenTime.js';
+import { restoreScreenTime } from './state.js';
 import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, saidText, templateNotify, texts } from './speech.js';
 import { MINUTE, activeInterval, formatClock, localTime } from './time.js';
 
@@ -21,7 +22,7 @@ import type { Clock, WeeklyInterval } from './time.js';
 export interface SpeakerPort {
   /** Why the camera cannot speak, or undefined. */
   problem(): string | undefined;
-  speak(samples: Float32Array, sampleRate: number): Promise<SpeakResult>;
+  speak(samples: Float32Array, sampleRate: number, signal?: AbortSignal): Promise<SpeakResult>;
 }
 
 export interface CameraPort {
@@ -31,7 +32,7 @@ export interface CameraPort {
   zone(name: string): Point[] | undefined;
   snapshot(): Promise<Uint8Array | undefined>;
   /** The first utterance heard within the window. */
-  listen(windowMs: number): Promise<Float32Array | undefined>;
+  listen(windowMs: number, signal?: AbortSignal): Promise<Float32Array | undefined>;
 }
 
 export interface VoiceDeps {
@@ -71,6 +72,7 @@ interface Scenario {
   acting: Promise<void>;
   /** Why the last reminder was not heard: the parents are told so with their notification. */
   unspoken?: string;
+  controller: AbortController;
 }
 
 /** Recent phrases and answers kept for the parents' status; never the sound. */
@@ -90,6 +92,8 @@ export { isEcho };
 
 export class Voice {
   private cameras = new Map<string, CameraPort>();
+  private controllers = new Map<string, AbortController>();
+  private stopped = false;
   private queues = new Map<string, PhraseQueue>();
   private scenarios = new Map<string, Scenario>();
   /** Conversations running per camera: nothing else is said while VOICE listens for an answer. */
@@ -101,23 +105,54 @@ export class Voice {
   private looking = new Set<string>();
   private lastSaved = '';
   private lastSavedAt = 0;
+  private saved: SavedState;
   readonly recent: Exchange[] = [];
 
   constructor(
     private deps: VoiceDeps,
-    private saved: SavedState = { screenTime: {} },
-  ) {}
+    saved: unknown = { screenTime: {} },
+  ) {
+    this.saved = { screenTime: restoreScreenTime(saved) };
+    if (JSON.stringify(this.saved) !== JSON.stringify(saved)) this.deps.log('invalid VOICE state entries were discarded');
+  }
 
   // ---- cameras ----
 
   addCamera(camera: CameraPort): void {
+    if (this.cameras.has(camera.id)) this.removeCamera(camera.id);
     this.cameras.set(camera.id, camera);
+    this.controllers.set(camera.id, new AbortController());
   }
 
   removeCamera(cameraId: string): void {
+    this.controllers.get(cameraId)?.abort();
+    this.controllers.delete(cameraId);
     this.cameras.delete(cameraId);
+    this.queues.get(cameraId)?.stop();
     this.queues.delete(cameraId);
-    for (const [key, scenario] of this.scenarios) if (scenario.cameraId === cameraId) this.scenarios.delete(key);
+    this.talking.delete(cameraId);
+    this.lastSaid.delete(cameraId);
+    for (const [key, scenario] of this.scenarios)
+      if (scenario.cameraId === cameraId) {
+        scenario.controller.abort();
+        this.scenarios.delete(key);
+      }
+  }
+
+  stop(): void {
+    this.stopped = true;
+    for (const controller of this.controllers.values()) controller.abort();
+    for (const scenario of this.scenarios.values()) scenario.controller.abort();
+    for (const queue of this.queues.values()) queue.stop();
+    this.queues.clear();
+    this.talking.clear();
+  }
+
+  start(): void {
+    if (!this.stopped) return;
+    this.stopped = false;
+    for (const id of this.cameras.keys()) this.controllers.set(id, new AbortController());
+    for (const scenario of this.scenarios.values()) scenario.controller = new AbortController();
   }
 
   camera(cameraId: string): CameraPort | undefined {
@@ -135,21 +170,29 @@ export class Voice {
    * child goes first: a door phrase said into its listening window would be heard as the child's answer.
    */
   async say(cameraId: string, text: string, source: Exchange['source'] = 'owner'): Promise<SpeakResult> {
+    const controller = this.controllers.get(cameraId);
+    const valid = () => !this.stopped && controller !== undefined && this.controllers.get(cameraId) === controller && !controller.signal.aborted;
+    if (!valid()) return { status: 'failed', reason: 'the camera was released or VOICE was stopped' };
     if (this.talking.has(cameraId)) {
       // the conversation ends at its next exchange: three answers held "Пришёл папа" for a minute
       this.waiting.set(cameraId, (this.waiting.get(cameraId) ?? 0) + 1);
       try {
-        while (this.talking.has(cameraId)) await this.talking.get(cameraId);
+        while (this.talking.has(cameraId)) await this.waitFor(this.talking.get(cameraId)!, controller!.signal);
+      } catch {
+        return { status: 'failed', reason: 'the phrase was cancelled' };
       } finally {
         const left = (this.waiting.get(cameraId) ?? 1) - 1;
         if (left > 0) this.waiting.set(cameraId, left);
         else this.waiting.delete(cameraId);
       }
     }
-    return this.speak(cameraId, text, source);
+    return this.speak(cameraId, text, source, valid, controller!.signal);
   }
 
-  private async speak(cameraId: string, text: string, source: Exchange['source']): Promise<SpeakResult> {
+  private async speak(cameraId: string, text: string, source: Exchange['source'], valid: () => boolean, signal: AbortSignal): Promise<SpeakResult> {
+    text = text.trim();
+    if (!text || text.length > MAX_INSTRUCTED) return { status: 'failed', reason: `a phrase must contain 1-${MAX_INSTRUCTED} characters` };
+    if (!valid() || signal.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
     const camera = this.cameras.get(cameraId);
     if (!camera) return { status: 'failed', reason: `unknown camera ${cameraId}` };
     const problem = camera.speaker.problem();
@@ -165,8 +208,10 @@ export class Voice {
     const result = await queue.add({
       text,
       run: async () => {
-        const audio = await this.deps.engine.synthesize(text, this.deps.language(), this.deps.speed());
-        return camera.speaker.speak(audio.samples, audio.sampleRate);
+        if (!valid() || signal.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
+        const audio = await this.waitFor(this.deps.engine.synthesize(text, this.deps.language(), this.deps.speed()), signal);
+        if (!valid() || signal.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
+        return camera.speaker.speak(audio.samples, audio.sampleRate, signal);
       },
     });
     this.remember({ at: this.deps.clock.now(), cameraId, said: text, source, result: result.status + (result.reason ? `: ${result.reason}` : '') });
@@ -178,15 +223,28 @@ export class Voice {
 
   /** The LLM writes what to say from an instruction of the owner ("tell Artem dinner is ready"), then it is said. */
   async sayInstructed(cameraId: string, instruction: string): Promise<SpeakResult & { text?: string }> {
+    const controller = this.controllers.get(cameraId);
+    if (this.stopped || !controller || controller.signal.aborted) return { status: 'failed', reason: 'the camera was released or VOICE was stopped' };
+    const problem = this.cameras.get(cameraId)?.speaker.problem();
+    if (problem) return { status: 'no_backchannel', reason: problem };
     const language = this.deps.language();
-    const result = await this.deps.ask({
-      system:
-        `You are VOICE, the voice of a home camera. Turn the owner's request into one short phrase to say aloud in ${LANGUAGE_NAMES[language]}, ` +
-        'at most 30 words, friendly and natural. Say only what the request asks, add nothing. Answer as JSON {"say": "..."}.',
-      prompt: `Request: ${JSON.stringify(instruction)}`,
-      outputSchema: { type: 'object', properties: { say: { type: 'string', maxLength: 300 } }, required: ['say'] },
-      timeoutMs: 20_000,
-    });
+    let result;
+    try {
+      result = await this.waitFor(
+        this.deps.ask({
+          system:
+            `You are VOICE, the voice of a home camera. Turn the owner's request into one short phrase to say aloud in ${LANGUAGE_NAMES[language]}, ` +
+            'at most 30 words, friendly and natural. Say only what the request asks, add nothing. Answer as JSON {"say": "..."}.',
+          prompt: `Request: ${JSON.stringify(instruction)}`,
+          outputSchema: { type: 'object', properties: { say: { type: 'string', maxLength: 300 } }, required: ['say'] },
+          timeoutMs: 20_000,
+        }),
+        controller.signal,
+      );
+    } catch (error) {
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+    }
+    if (this.controllers.get(cameraId) !== controller) return { status: 'failed', reason: 'the phrase was cancelled' };
     if (!result.ok) return { status: 'failed', reason: `the assistant did not answer (${result.reason})` };
     const text = saidText(result);
     if (!text) return { status: 'failed', reason: 'the assistant wrote nothing' };
@@ -200,11 +258,19 @@ export class Voice {
   /** Puts the scenarios of a camera in place; the state of a child who stays is kept. */
   setScreenTime(cameraId: string, configs: ScreenTimeConfig[]): void {
     const wanted = new Set(configs.map((c) => `${cameraId}/${c.id}`));
-    for (const [key, scenario] of this.scenarios) if (scenario.cameraId === cameraId && !wanted.has(key)) this.scenarios.delete(key);
+    for (const [key, scenario] of this.scenarios)
+      if (scenario.cameraId === cameraId && !wanted.has(key)) {
+        scenario.controller.abort();
+        this.scenarios.delete(key);
+      }
     for (const config of configs) {
       const key = `${cameraId}/${config.id}`;
       const existing = this.scenarios.get(key);
       if (existing) {
+        if (JSON.stringify(existing.engine.config) !== JSON.stringify(config)) {
+          existing.controller.abort();
+          existing.controller = new AbortController();
+        }
         existing.engine.config = config;
         existing.tracker.setSource(config.source);
         continue;
@@ -219,6 +285,7 @@ export class Voice {
         cameraId,
         engine: new ScreenTimeEngine(config, state),
         acting: Promise.resolve(),
+        controller: new AbortController(),
         tracker,
       });
     }
@@ -237,6 +304,7 @@ export class Voice {
 
   /** One look at a camera: presence of each child, and whatever the scenarios decide. No sighting: the camera is blind. */
   async look(cameraId: string, sighting: Sighting | undefined): Promise<void> {
+    if (this.stopped || !this.cameras.has(cameraId)) return;
     // a look still running (a slow save) is not overtaken by the next one: two ticks of one moment would count twice
     if (this.looking.has(cameraId)) return;
     this.looking.add(cameraId);
@@ -264,11 +332,28 @@ export class Voice {
         timeZone,
         language: this.deps.language(),
       });
-      if (wasPresent && !scenario.engine.state.present) scenario.tracker.sessionEnded();
+      if (wasPresent && !scenario.engine.state.present) {
+        scenario.tracker.sessionEnded();
+        scenario.controller.abort();
+        scenario.controller = new AbortController();
+      }
       // said beside the looks: a phrase takes seconds, the camera keeps being watched meanwhile
       for (const action of actions) {
+        const controller = scenario.controller;
+        const escalation = scenario.engine.state.escalation;
+        const valid = () =>
+          !this.stopped &&
+          this.scenarios.get(key) === scenario &&
+          scenario.controller === controller &&
+          scenario.engine.config.enabled &&
+          scenario.engine.state.present &&
+          scenario.engine.state.blindSince === undefined &&
+          scenario.engine.state.escalation === escalation &&
+          escalation?.level === action.facts.level &&
+          scenario.engine.reason(this.deps.clock.now(), this.deps.timeZone()) === action.facts.reason &&
+          (action.facts.reason === 'bedtime' || !activeInterval(this.deps.quiet(), this.deps.clock.now(), this.deps.timeZone()));
         scenario.acting = scenario.acting
-          .then(() => this.act(key, scenario, action))
+          .then(() => this.act(key, scenario, action, controller.signal, valid))
           .catch((error: Error) => this.deps.log(`${scenario.engine.config.childName}: ${error.message}`));
       }
     }
@@ -277,8 +362,11 @@ export class Voice {
 
   /** A parent gives more time, or lets the next break go. */
   extend(key: string, minutes: number | undefined, skipBreak: boolean): void {
+    if (minutes !== undefined && (!Number.isFinite(minutes) || minutes < 1 || minutes > 240)) throw new Error('minutes: from 1 to 240');
     const scenario = this.scenarios.get(key);
     if (!scenario) throw new Error(`unknown scenario ${key}`);
+    scenario.controller.abort();
+    scenario.controller = new AbortController();
     if (minutes) scenario.engine.extend(minutes, this.deps.clock.now());
     if (skipBreak) scenario.engine.skipBreak();
     void this.persist(this.deps.clock.now(), true);
@@ -309,54 +397,65 @@ export class Voice {
 
   // ---- inside ----
 
-  private async act(key: string, scenario: Scenario, action: ScreenTimeAction): Promise<void> {
+  private async act(key: string, scenario: Scenario, action: ScreenTimeAction, scenarioSignal: AbortSignal, valid: () => boolean): Promise<void> {
+    if (!valid()) return;
     const language = this.deps.language();
     const camera = this.cameras.get(scenario.cameraId);
     if (!camera) return;
+    const cameraSignal = this.controllers.get(camera.id)!.signal;
+    const signal = AbortSignal.any([cameraSignal, scenarioSignal]);
     if (action.type === 'notify') {
       const { title, body } = templateNotify(action.facts, language);
       // a reminder the child never heard is not "the child does not stop": the parents learn why it was not said
       const unheard = scenario.unspoken ? ` ${fill(texts(language).notify.notSaid, { reason: scenario.unspoken })}` : '';
-      await this.notifyParents(camera, title, body + unheard, `voice:${key}`);
+      await this.notifyParents(camera, title, body + unheard, `voice:${key}`, valid);
       return;
     }
     // the microphone hears the camera's own speaker: a phrase now would come back as the child's answer
-    while (this.talking.has(camera.id)) await this.talking.get(camera.id);
+    while (this.talking.has(camera.id)) await this.waitFor(this.talking.get(camera.id)!, signal);
+    if (!valid() || signal.aborted) return;
     // a phrase that opens a conversation takes the camera before it is said: a door phrase that came while the reminder
     // was synthesized or said queued right behind it and played into the listening window
     let endTurn = () => {};
     const converses = scenario.engine.config.answerQuestions;
-    if (converses) this.talking.set(camera.id, new Promise<void>((resolve) => (endTurn = resolve)));
+    const turn = new Promise<void>((resolve) => (endTurn = resolve));
+    if (converses) this.talking.set(camera.id, turn);
     let talk: Promise<void> | undefined;
     try {
-      const phrase = await nudgePhrase(this.deps.ask, action.facts, language, action.kind);
+      const phrase = await this.waitFor(nudgePhrase(this.deps.ask, action.facts, language, action.kind), signal);
+      if (!valid() || signal.aborted) return;
       if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
-      const result = await this.speak(camera.id, phrase.text, phrase.source);
+      const result = await this.speak(camera.id, phrase.text, phrase.source, valid, signal);
       scenario.unspoken = result.status === 'spoken' ? undefined : (result.reason ?? result.status);
       // the conversation runs beside the looks: the camera keeps being watched while the child answers
-      if (result.status === 'spoken' && converses) talk = this.converse(key, scenario, camera);
+      if (result.status === 'spoken' && converses && valid()) talk = this.converse(key, scenario, camera, signal);
     } finally {
       if (converses) {
         void (talk ?? Promise.resolve()).finally(() => {
-          this.talking.delete(camera.id);
+          if (this.talking.get(camera.id) === turn) this.talking.delete(camera.id);
           endTurn();
         });
       }
     }
   }
 
-  private async converse(key: string, scenario: Scenario, camera: CameraPort): Promise<void> {
+  private async converse(key: string, scenario: Scenario, camera: CameraPort, signal: AbortSignal): Promise<void> {
+    const valid = () => !signal.aborted && this.scenarios.get(key) === scenario && this.cameras.get(camera.id) === camera && scenario.engine.config.enabled;
     try {
       const language = this.deps.language();
       for (let exchange = 0; exchange < MAX_EXCHANGES; exchange++) {
+        if (!valid()) return;
         if (this.waiting.get(camera.id)) {
           this.deps.log(`${camera.name}: conversation ended for a phrase from outside`);
           return;
         }
-        await new Promise((resolve) => this.deps.clock.setTimeout(() => resolve(undefined), LISTEN_DELAY_MS));
-        const audio = await camera.listen(this.deps.listenSeconds() * 1000);
+        await this.delay(LISTEN_DELAY_MS, signal);
+        if (!valid()) return;
+        const audio = await this.waitFor(camera.listen(this.deps.listenSeconds() * 1000, signal), signal);
+        if (!valid()) return;
         if (!audio?.length) return;
-        const heard = (await this.deps.engine.transcribe(audio, language)).trim();
+        const heard = (await this.waitFor(this.deps.engine.transcribe(audio, language), signal)).trim();
+        if (!valid()) return;
         if (!heard) return;
         // VOICE's own phrase coming back through the microphone: its words ("only the parents give more time") would
         // read as the child asking, notify the parents and be answered again
@@ -365,13 +464,14 @@ export class Voice {
           return;
         }
         const facts: Facts = scenario.engine.facts(this.deps.clock.now(), { timeZone: this.deps.timeZone(), language });
-        const answer = await answerChild(this.deps.ask, facts, heard, language);
+        const answer = await this.waitFor(answerChild(this.deps.ask, facts, heard, language), signal);
+        if (!valid()) return;
         if (answer.intent === 'asks_more_time') {
           const t = texts(language).notify;
           const values = { name: facts.childName, text: heard };
-          await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${key}:more`);
+          await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${key}:more`, valid);
         }
-        const result = await this.speak(camera.id, answer.text, answer.source);
+        const result = await this.speak(camera.id, answer.text, answer.source, valid, signal);
         const last = this.recent[this.recent.length - 1];
         if (last) last.heard = heard;
         if (last) last.child = facts.childName;
@@ -382,8 +482,9 @@ export class Voice {
     }
   }
 
-  private async notifyParents(camera: CameraPort, title: string, body: string, tag: string): Promise<void> {
+  private async notifyParents(camera: CameraPort, title: string, body: string, tag: string, valid: () => boolean): Promise<void> {
     const thumbnail = await camera.snapshot().catch(() => undefined);
+    if (!valid()) return;
     // for the parents only: the picture of a child's room and the child's words do not go to every user of the house
     await this.deps
       .publish({ title, body, severity: Severity.Warn, tag, adminOnly: true, ...(thumbnail ? { thumbnail } : {}) })
@@ -393,6 +494,32 @@ export class Voice {
   private remember(exchange: Exchange): void {
     this.recent.push(exchange);
     if (this.recent.length > RECENT) this.recent.splice(0, this.recent.length - RECENT);
+  }
+
+  /** Abort pending RPC/model work without leaving a conversation or its following phrases blocked. */
+  private waitFor<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(new Error('the operation was cancelled'));
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+      work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    });
+  }
+
+  private delay(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      const done = () => {
+        this.deps.clock.clearTimeout(timer);
+        signal.removeEventListener('abort', done);
+        resolve();
+      };
+      const timer = this.deps.clock.setTimeout(done, ms);
+      signal.addEventListener('abort', done, { once: true });
+    });
   }
 
   /**

@@ -382,13 +382,13 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     const port: CameraPort = {
       id: device.id,
       name: device.name,
-      speaker: { problem: () => speakerProblem(device), speak: (samples, rate) => speaker.speak(samples, rate) },
+      speaker: { problem: () => speakerProblem(device), speak: (samples, rate, signal) => speaker.speak(samples, rate, signal) },
       zone: (name) => device.zones?.object?.find((z) => z.name === name)?.points,
       snapshot: async () => {
         const data = await (device.snapshotSource ?? device.streamSource).snapshot();
         return data ? new Uint8Array(data) : undefined;
       },
-      listen: (windowMs) => this.listener.listen(device, windowMs),
+      listen: (windowMs, signal) => this.listener.listen(device, windowMs, signal),
     };
     this.voice.addCamera(port);
     entry.disposers.push(device.onDetectionEvent.subscribe(({ type, event }) => this.onDetection(entry, type, event)));
@@ -405,10 +405,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   async onCameraReleased(cameraId: string): Promise<void> {
     const entry = this.cameras.get(cameraId);
     if (!entry) return;
-    for (const disposer of entry.disposers) disposer.unsubscribe();
-    await entry.speaker.close();
+    // Remove it before awaiting network cleanup: no new work may capture the released camera.
     this.cameras.delete(cameraId);
     this.voice.removeCamera(cameraId);
+    for (const disposer of entry.disposers) disposer.unsubscribe();
+    await entry.speaker.dispose();
     await this.refreshSchemas();
   }
 
@@ -626,7 +627,9 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   // ---- lifecycle ----
 
   private start(): void {
+    if (this.started) return;
     this.started = true;
+    this.voice.start();
     this.lookTimer = setInterval(() => void this.lookAll(), LOOK_EVERY_MS);
     this.panelsTimer = setInterval(() => void this.refreshPanels(), PANELS_EVERY_MS);
     void this.refreshPanels();
@@ -635,8 +638,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private stop(): void {
     this.started = false;
     clearInterval(this.lookTimer);
+    this.lookTimer = undefined;
     clearInterval(this.panelsTimer);
+    this.panelsTimer = undefined;
     this.door.stop();
+    this.voice.stop();
     for (const entry of this.cameras.values()) void entry.speaker.close();
   }
 
@@ -713,6 +719,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private async lookAll(): Promise<void> {
     if (!this.started) return;
     for (const entry of this.cameras.values()) {
+      if (!this.started) break;
       if (!this.voice.scenariosOf(entry.device.id).length) continue;
       try {
         await this.voice.look(entry.device.id, this.sighting(entry));
@@ -803,6 +810,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
       };
     }
     const key = typeof values.child === 'string' ? values.child : scenarios[0].key;
+    if (!scenarios.some((scenario) => scenario.key === key)) return { toast: { type: 'error', message: 'Choose a child on this camera' } };
     const minutes = Number(values.minutes) || 0;
     if (!minutes && values.skipBreak !== true) return { toast: { type: 'error', message: 'Give minutes or skip the break' } };
     try {

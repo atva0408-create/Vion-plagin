@@ -232,4 +232,61 @@ test('a talk channel the server ends during a phrase: the phrase failed, and the
   assert.equal(opened, 2);
 });
 
+/** A talk channel that counts what it opened, sent and stopped. */
+function countingSource() {
+  const counts = { opened: 0, packets: 0, stops: 0 };
+  const source = {
+    backchannelAudioCodec: 'opus',
+    createRtpSession: () => {
+      counts.opened++;
+      return {
+        hasBackchannel: true,
+        onError: { subscribe: () => ({ unsubscribe() {} }) },
+        onEnded: { subscribe: () => ({ unsubscribe() {} }) },
+        startStream: async () => undefined,
+        startBackchannel: async () => undefined,
+        sendAudioPacket: async () => void counts.packets++,
+        stop: async () => void counts.stops++,
+      };
+    },
+  };
+  return { counts, camera: { name: 'Калитка', connected: true, sources: [source] } as never };
+}
+
+test('a phrase given while another is said is busy and sends nothing; the camera speaks again after it', async () => {
+  const { CameraSpeaker } = await import('../src/speaker.js');
+  const { counts, camera } = countingSource();
+  const clock = new FakeClock(0);
+  const speaker = new CameraSpeaker(camera, clock, () => undefined);
+  const first = speaker.speak(new Float32Array(1600), 16_000);
+  await clock.advance(100);
+  assert.deepEqual(await speaker.speak(new Float32Array(1600), 16_000), { status: 'busy', reason: 'the camera is already speaking' });
+  await clock.advance(1_000);
+  assert.equal((await first).status, 'spoken');
+  assert.equal(counts.packets, 15, 'the first phrase alone went out: 0.1 s and 0.2 s of lead');
+  assert.equal(counts.opened, 1);
+  const next = speaker.speak(new Float32Array(1600), 16_000);
+  await clock.advance(1_000);
+  assert.equal((await next).status, 'spoken');
+});
+
+test('a signal stops the phrase between packets; a disposed speaker opens nothing more', async () => {
+  const { CameraSpeaker } = await import('../src/speaker.js');
+  const { counts, camera } = countingSource();
+  const clock = new FakeClock(0);
+  const speaker = new CameraSpeaker(camera, clock, () => undefined);
+  const controller = new AbortController();
+  const phrase = speaker.speak(new Float32Array(16_000), 16_000, controller.signal);
+  await clock.advance(200);
+  const sent = counts.packets;
+  controller.abort(new Error('the camera was released'));
+  await clock.advance(2_000);
+  assert.deepEqual(await phrase, { status: 'failed', reason: 'the camera was released' });
+  assert.equal(counts.packets, sent, 'nothing sent after the abort');
+  assert.equal(counts.stops, 1, 'its stream is stopped');
+  await speaker.dispose();
+  assert.equal((await speaker.speak(new Float32Array(160), 8000)).status, 'failed');
+  assert.equal(counts.opened, 1, 'no stream for a phrase that came after the camera was released');
+});
+
 void runTests();

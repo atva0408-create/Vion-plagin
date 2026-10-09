@@ -33,15 +33,15 @@ export interface ListenCamera {
 }
 
 export interface Listener {
-  /** The first utterance heard within the window, or undefined when nobody spoke. */
-  listen(camera: ListenCamera, windowMs: number): Promise<Float32Array | undefined>;
+  /** The first utterance heard within the window, or undefined when nobody spoke or the signal aborted. */
+  listen(camera: ListenCamera, windowMs: number, signal?: AbortSignal): Promise<Float32Array | undefined>;
 }
 
 /** Spawns ffmpeg reading the camera's sound as 16 kHz mono float samples on stdout. */
-export function cameraAudio(ffmpeg: string, camera: ListenCamera): ChildProcessByStdio<null, Readable, Readable> {
+export function cameraAudio(ffmpeg: string, camera: ListenCamera, spawnProcess: typeof spawn = spawn): ChildProcessByStdio<null, Readable, Readable> {
   const source = camera.sources.find((s) => s.audioCodecs?.length) ?? camera.streamSource;
   const url = source.generateRTSPUrl({ video: false, audio: true });
-  return spawn(
+  return spawnProcess(
     ffmpeg,
     ['-hide_banner', '-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', url, '-vn', '-ac', '1', '-ar', String(LISTEN_RATE), '-f', 'f32le', 'pipe:1'],
     { stdio: ['ignore', 'pipe', 'pipe'] },
@@ -70,11 +70,16 @@ export class FfmpegListener implements Listener {
     private ffmpegPath: () => Promise<string>,
     private engine: SpeechEngine,
     private log: (message: string) => void,
+    /** Starts ffmpeg; the specs give a fake process. */
+    private spawnProcess: typeof spawn = spawn,
   ) {}
 
-  async listen(camera: ListenCamera, windowMs: number): Promise<Float32Array | undefined> {
+  async listen(camera: ListenCamera, windowMs: number, signal?: AbortSignal): Promise<Float32Array | undefined> {
+    if (signal?.aborted) return undefined;
     const [ffmpeg, vad] = await Promise.all([this.ffmpegPath(), this.engine.voiceActivity()]);
-    const child = cameraAudio(ffmpeg, camera);
+    // the models may take seconds to load: a camera released meanwhile must not get its microphone opened after all
+    if (signal?.aborted) return undefined;
+    const child = cameraAudio(ffmpeg, camera, this.spawnProcess);
     let errors = '';
     child.stderr.on('data', (chunk: Buffer) => {
       errors = (errors + chunk.toString()).slice(-500);
@@ -89,36 +94,60 @@ export class FfmpegListener implements Listener {
         done = true;
         clearTimeout(windowTimer);
         clearTimeout(hardStop);
+        signal?.removeEventListener('abort', abort);
         child.kill('SIGKILL');
         resolve(utterance);
       };
-      const windowTimer = setTimeout(() => {
-        windowOver = true;
-        if (!vad.speaking()) {
+      const abort = () => finish(undefined);
+      // the native voice activity throws on a state it does not expect; thrown in a stream or timer callback, that
+      // would take the whole plugin down, so it ends this listening instead
+      const fail = (error: unknown) => {
+        this.log(`listening on ${camera.name} failed: ${error instanceof Error ? error.message : String(error)}`);
+        finish(undefined);
+      };
+      const flush = () => {
+        if (done) return;
+        try {
           vad.flush();
           finish(vad.utterance());
+        } catch (error) {
+          fail(error);
+        }
+      };
+      const windowTimer = setTimeout(() => {
+        if (done) return;
+        windowOver = true;
+        try {
+          if (!vad.speaking()) flush();
+        } catch (error) {
+          fail(error);
         }
       }, windowMs);
-      const hardStop = setTimeout(() => {
-        vad.flush();
-        finish(vad.utterance());
-      }, windowMs + MAX_UTTERANCE_MS);
+      const hardStop = setTimeout(flush, windowMs + MAX_UTTERANCE_MS);
 
+      // after the end, ffmpeg's last output and its close still come: they must not touch the voice activity again
       child.stdout.on('data', (chunk: Buffer) => {
-        vad.accept(chunks.take(chunk));
-        const utterance = vad.utterance();
-        if (utterance) finish(utterance);
-        else if (windowOver && !vad.speaking()) finish(undefined);
+        if (done) return;
+        try {
+          vad.accept(chunks.take(chunk));
+          const utterance = vad.utterance();
+          if (utterance) finish(utterance);
+          else if (windowOver && !vad.speaking()) finish(undefined);
+        } catch (error) {
+          fail(error);
+        }
       });
       child.on('close', (code) => {
-        if (!done && code !== 0 && code !== null) this.log(`listening on ${camera.name} stopped: ${errors.trim() || `ffmpeg exit ${code}`}`);
-        vad.flush();
-        finish(vad.utterance());
+        if (done) return;
+        if (code !== 0 && code !== null) this.log(`listening on ${camera.name} stopped: ${errors.trim() || `ffmpeg exit ${code}`}`);
+        flush();
       });
       child.on('error', (error) => {
-        this.log(`listening on ${camera.name} failed: ${error.message}`);
-        finish(undefined);
+        if (!done) fail(error);
       });
+      signal?.addEventListener('abort', abort, { once: true });
+      // aborted while the process was being set up: no listener saw it
+      if (signal?.aborted) abort();
     });
   }
 }

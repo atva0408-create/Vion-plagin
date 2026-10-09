@@ -1,3 +1,9 @@
+## [0.2.1]
+
+- Cancel pending phrases, reminders and listening when a camera is released, a scenario is disabled, a parent grants time or VOICE shuts down. Late assistant/model responses cannot reopen the camera.
+- Pace RTP after long timer stalls; stop failed or half-open talk channels and bound the pending phrase queue.
+- Catch speech activity and assistant errors; validate literal phrases, time grants and saved state. Keep the end time of a partial break consistent across reminders and answers.
+
 ## [0.2.0]
 
 - With the intercom installed: a ring at a panel is announced on the speakers for notifications ("Ring: Gate"), through the queue, the limits and the quiet hours of VOICE

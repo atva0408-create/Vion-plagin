@@ -1,7 +1,7 @@
 {
   "displayName": "VOICE",
   "name": "@vionvision/camera-ui-voice",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Голос ViON через динамик камеры: напоминает ребёнку о перерыве и времени сна, отвечает на его вопросы, говорит, кто пришёл, и произносит фразы из чата, автоматизаций и уведомлений. Речь синтезируется и распознаётся на сервере, без облака.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -18,7 +18,7 @@
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
-    "test": "tsx spec/time.spec.ts && tsx spec/screenTime.spec.ts && tsx spec/voice.spec.ts && tsx spec/door.spec.ts && tsx spec/plugin.spec.ts"
+    "test": "tsx spec/time.spec.ts && tsx spec/screenTime.spec.ts && tsx spec/voice.spec.ts && tsx spec/door.spec.ts && tsx spec/plugin.spec.ts && tsx spec/audit.spec.ts"
   },
   "dependencies": {
     "sherpa-onnx-node": "1.13.8"

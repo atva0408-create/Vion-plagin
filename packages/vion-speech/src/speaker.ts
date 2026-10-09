@@ -132,39 +132,54 @@ export function packetize(alaw: Uint8Array, state: RtpStreamState): Buffer[] {
 
 /**
  * Sends the packets at their time: packet i leaves at start + i·20 ms, measured from the start, so a late timer
- * does not add up to drift.
+ * does not add up to drift. One packet per timer: after a stall of the event loop the schedule moves on from the late
+ * packet instead of catching up. The signal stops the phrase between packets.
  */
-export function sendPaced(packets: Buffer[], send: (packet: Buffer) => Promise<void> | void, clock: Clock): Promise<void> {
+export function sendPaced(packets: Buffer[], send: (packet: Buffer) => Promise<void> | void, clock: Clock, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const start = clock.now();
+    let start = clock.now();
     let index = 0;
-    // a packet the server refused ends the phrase: it was reported "said" though nothing reached the camera
-    let failure: unknown;
+    let done = false;
+    let timer: unknown;
     const sent: Promise<void>[] = [];
+    const finish = (error?: unknown) => {
+      if (done) return;
+      done = true;
+      clock.clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (error !== undefined) reject(error);
+      else resolve();
+    };
+    const abort = () => finish(signal?.reason ?? new Error('the phrase was cancelled'));
     const next = () => {
-      if (failure !== undefined) {
-        reject(failure);
-        return;
-      }
+      if (done) return;
       try {
-        while (index < packets.length && clock.now() >= start + index * PACKET_MS) {
+        if (index < packets.length) {
+          // a second of a stalled loop sent at once overflows the camera's buffer and comes out cut
+          if (clock.now() - (start + index * PACKET_MS) >= PACKET_MS) start = clock.now() - index * PACKET_MS;
           sent.push(
+            // a packet the server refused ends the phrase: it was reported "said" though nothing reached the camera
             Promise.resolve(send(packets[index])).catch((error: unknown) => {
-              failure ??= error;
+              finish(error ?? new Error('the server refused an audio packet'));
             }),
           );
           index++;
         }
       } catch (error) {
-        reject(error);
+        finish(error ?? new Error('the server refused an audio packet'));
         return;
       }
       if (index >= packets.length) {
-        void Promise.all(sent).then(() => (failure === undefined ? resolve() : reject(failure)));
+        void Promise.all(sent).then(() => finish());
         return;
       }
-      clock.setTimeout(next, Math.max(0, start + index * PACKET_MS - clock.now()));
+      timer = clock.setTimeout(next, Math.max(0, start + index * PACKET_MS - clock.now()));
     };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener('abort', abort, { once: true });
     next();
   });
 }
@@ -204,15 +219,18 @@ const LEAD_MS = 200;
 const DRAIN_MS = 1_000;
 
 /**
- * One RTP session into the camera, opened for a phrase and kept for a while. Phrases are given to it one at a time by
- * the queue.
+ * One RTP session into the camera, opened for a phrase and kept for a while. Phrases are given to it one at a time (by
+ * VOICE's queue, by the intercom's conversation); one given while another is said gets `busy`.
  */
 export class CameraSpeaker {
   private session: TalkSession | undefined;
   private closeTimer: unknown;
   private rtp = newRtpState();
-  /** Why the open session broke (the server ended or failed its talk channel), noticed while a phrase was sent. */
+  /** Why the open session broke (the server ended or failed its talk channel), during a phrase or between two. */
   private broken: string | undefined;
+  /** The phrase being said: closing the speaker or a broken channel stops it. */
+  private active: AbortController | undefined;
+  private disposed = false;
 
   constructor(
     private camera: SpeakerCamera,
@@ -222,13 +240,23 @@ export class CameraSpeaker {
     private source: (camera: Pick<SpeakerCamera, 'sources'>) => TalkSource | undefined = talkSource,
   ) {}
 
-  async speak(samples: Float32Array, sampleRate: number): Promise<SpeakResult> {
+  /**
+   * Says the samples. Two phrases at once would mix their packets in one RTP stream (or open a second stream and leave
+   * the first one running), so the second is refused as `busy`. The signal stops the phrase.
+   */
+  async speak(samples: Float32Array, sampleRate: number, signal?: AbortSignal): Promise<SpeakResult> {
+    if (this.disposed || signal?.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
+    if (this.active) return { status: 'busy', reason: 'the camera is already speaking' };
     const started = this.clock.now();
     const problem = speakerProblem(this.camera, this.source);
     if (problem) return { status: 'no_backchannel', reason: problem };
     this.clock.clearTimeout(this.closeTimer);
+    const active = new AbortController();
+    this.active = active;
+    const cancelled = signal ? AbortSignal.any([signal, active.signal]) : active.signal;
     try {
-      const session = await this.open();
+      const session = await this.open(cancelled);
+      cancelled.throwIfAborted();
       if (!session.hasBackchannel) {
         await this.close();
         return { status: 'no_backchannel', reason: 'the camera stream has no talk channel' };
@@ -239,8 +267,7 @@ export class CameraSpeaker {
       audio.set(pcm, lead.length);
       const packets = packetize(alawEncode(audio), this.rtp);
       const latencyMs = this.clock.now() - started;
-      this.broken = undefined;
-      await sendPaced(packets, (packet) => session.sendAudioPacket(packet), this.clock);
+      await sendPaced(packets, (packet) => session.sendAudioPacket(packet), this.clock, cancelled);
       // the server drops packets of an ended channel without an error: its end or failure is the only sign
       if (this.broken) {
         const reason = this.broken;
@@ -251,42 +278,66 @@ export class CameraSpeaker {
       return { status: 'spoken', latencyMs, durationMs: packets.length * PACKET_MS };
     } catch (error) {
       await this.close();
-      return { status: 'failed', reason: (error as Error).message };
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (this.active === active) this.active = undefined;
     }
   }
 
+  /** Stops the phrase being said and the stream; the next phrase opens a new one. */
   async close(): Promise<void> {
     this.clock.clearTimeout(this.closeTimer);
+    this.active?.abort(new Error('the speaker was closed'));
     const session = this.session;
     this.session = undefined;
     if (session) await session.stop().catch((error: Error) => this.log(`speaker of ${this.camera.name}: ${error.message}`));
   }
 
-  private async open(): Promise<TalkSession> {
-    if (this.session) return this.session;
+  /** The camera is released: closed for good, a phrase that comes late is not said. */
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    await this.close();
+  }
+
+  private async open(signal: AbortSignal): Promise<TalkSession> {
+    if (this.session) {
+      // failed while idle, between phrases: sent into it, the phrase would be lost without an error
+      if (this.broken) throw new Error(this.broken);
+      return this.session;
+    }
     const source = this.source(this.camera);
     if (!source) throw new Error('no source with a talk channel');
     // the talk channel rides on an open stream: audio only, nothing of it is read
     const session = source.createRtpSession({ video: false, audio: true, backchannel: true });
+    // kept before it starts: closing the speaker meanwhile (the camera released, the plugin stopped) stops this stream
+    // too, instead of leaving it half open
+    this.session = session;
+    this.broken = undefined;
     session.onError.subscribe((error) => {
       this.log(`speaker of ${this.camera.name}: ${error.message}`);
-      if (this.session === session) this.broken = error.message;
+      if (this.session === session) {
+        this.broken = error.message;
+        this.active?.abort(error);
+      }
     });
     session.onEnded.subscribe(() => {
       if (this.session !== session) return;
       this.session = undefined;
       this.broken ??= 'the talk channel of the camera ended';
+      this.active?.abort(new Error(this.broken));
     });
     try {
       // no codec asked for the incoming audio: it is not read, and asking would make the server transcode it
       await session.startStream();
+      signal.throwIfAborted();
       await session.startBackchannel({ decoderCodec: 'pcm_alaw', payloadType: PAYLOAD_TYPE_PCMA, clockRate: RTP_CLOCK, channels: 1 });
+      signal.throwIfAborted();
     } catch (error) {
       // the stream is open by now and would keep pulling the camera until it drops it
       await session.stop().catch(() => undefined);
+      if (this.session === session) this.session = undefined;
       throw error;
     }
-    this.session = session;
     this.rtp = newRtpState();
     return session;
   }

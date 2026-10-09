@@ -61,6 +61,7 @@ const FORGET_MS = 10 * 60_000;
 export class DoorWatcher {
   private events = new Map<string, Seen>();
   private lastSaid = new Map<string, number>();
+  private epoch = 0;
 
   constructor(private deps: DoorDeps) {}
 
@@ -80,7 +81,9 @@ export class DoorWatcher {
     for (const label of labelsOf(event)) seen.labels.add(label);
     for (const face of facesOf(event)) seen.faces.add(face);
     if (!seen.done && seen.timer === undefined && this.wanted(seen)) {
-      seen.timer = this.deps.clock.setTimeout(() => void this.decide(event.id), FACE_WAIT_MS);
+      seen.timer = this.deps.clock.setTimeout(() => {
+        void this.decide(event.id).catch((error: Error) => this.deps.log(`door: announcement failed: ${error.message}`));
+      }, FACE_WAIT_MS);
     }
     // an event that ended is forgotten, unless its decision is under way: that finishes first
     if (type === 'end' && (seen.done || seen.timer === undefined)) {
@@ -91,6 +94,7 @@ export class DoorWatcher {
 
   /** Waiting decisions are dropped: the plugin stops. */
   stop(): void {
+    this.epoch++;
     for (const { timer, forget } of this.events.values()) {
       if (timer !== undefined) this.deps.clock.clearTimeout(timer);
       if (forget !== undefined) this.deps.clock.clearTimeout(forget);
@@ -112,6 +116,7 @@ export class DoorWatcher {
   }
 
   private async decide(eventId: string): Promise<void> {
+    const epoch = this.epoch;
     const seen = this.events.get(eventId);
     if (!seen || seen.done) return;
     seen.done = true;
@@ -137,12 +142,12 @@ export class DoorWatcher {
       const last = this.lastSaid.get(key);
       if (last !== undefined && now - last < rule.cooldownSeconds * 1000) continue;
       this.lastSaid.set(key, now);
-      work.push(this.announce(rule, event.cameraId, known, faces.includes('unknown'), language));
+      work.push(this.announce(rule, event.cameraId, known, faces.includes('unknown'), language, epoch));
     }
     await Promise.all(work);
   }
 
-  private async announce(rule: DoorRule, cameraId: string, known: string | undefined, stranger: boolean, language: Language): Promise<void> {
+  private async announce(rule: DoorRule, cameraId: string, known: string | undefined, stranger: boolean, language: Language, epoch: number): Promise<void> {
     let text = this.phrase(known, stranger, language);
     if (!known && rule.describe) {
       const description = await this.deps.describe(cameraId, language, DESCRIBE_TIMEOUT_MS).catch((error: Error) => {
@@ -151,6 +156,9 @@ export class DoorWatcher {
       });
       if (description) text = description;
     }
+    if (epoch !== this.epoch || activeInterval([...rule.quiet, ...this.deps.quiet()], this.deps.clock.now(), this.deps.timeZone())) return;
+    // The owner may disable or replace the rule while the assistant describes the snapshot.
+    if (!this.deps.rules().some((current) => JSON.stringify(current) === JSON.stringify(rule))) return;
     // every room at once: one after the other, the last room heard it seconds late
     await Promise.all(
       rule.speakers.map(async (speaker) => {
