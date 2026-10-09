@@ -1,3 +1,7 @@
+## [1.4.6]
+
+- Eine nicht mehr ausgelieferte Modulversion wird entladen, und ein aktualisiertes Modul aus dem Store wird neu geladen: beides brach seit 1.4.4 mit einem Fehler ab
+
 ## [1.4.5]
 
 - Trainingsmodule aus der ViON Cloud: Der Detektor eines Objektmoduls (zum Beispiel „Fahrrad“) läuft neben dem Detektor der Kamera auf den Kameras, für die das Modul in ViON eingeschaltet ist, und die Klassifikatoren der Fragemodule laufen nur auf ihren Kameras; eine nicht mehr ausgelieferte Modulversion wird entladen

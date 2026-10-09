@@ -1,3 +1,7 @@
+## [1.4.6]
+
+- A module version given out no more is unloaded, and an updated module of the store is loaded again: both stopped with an error since 1.4.4
+
 ## [1.4.5]
 
 - Training modules from ViON Cloud: the detector of an object module (for example "bicycle") works next to the camera's own detector on the cameras chosen for it in ViON, and the classifiers of question modules work only on their cameras; a module version given out no more is unloaded

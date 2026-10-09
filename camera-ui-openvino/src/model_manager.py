@@ -34,6 +34,13 @@ class OpenVinoModelManager(BaseModelManager):
         except Exception as error:
             logger.log(f"Кэш компиляции моделей недоступен ({error})")
 
+    def forget(self, model_name: str) -> None:
+        """The files of the model changed under the same name, or it is given out no more: the next
+        ensure_backend loads it again. Here and not only in the local packages/camera_ui_ml: the bundle installs
+        camera-ui-ml from PyPI, which has no forget, and dropping a module's old version or reloading an updated
+        store module stopped there with an AttributeError."""
+        self._load_tasks.pop(model_name, None)
+
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         if is_trained(model_name):
             # an ONNX file downloaded by the ViON server: OpenVINO reads it directly (the "bin" key
