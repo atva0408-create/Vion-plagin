@@ -14,15 +14,17 @@ import { API_EVENT, BasePlugin, DoorbellTrigger, LockControl, LockState, SensorT
 import { CameraSpeaker, LANGUAGE_NAMES, ModelStore, SherpaEngine, serverTimeZone, speakerProblem, systemClock } from '@vionvision/speech';
 
 import { IntercomError, asActor, needAdmin } from './access.js';
-import { ownerText } from './agent/summary.js';
+import { ownerText, ownerTexts } from './agent/summary.js';
 import { Intercom } from './intercom.js';
 import { cameraConfig } from './panels/camera.js';
 import { ProfileCatalog } from './panels/catalog.js';
 import { HttpPanel } from './panels/engine.js';
 import { validHost } from './panels/profile.js';
+import { SipPanel } from './panels/sip.js';
 import { placeOf } from './place.js';
 import { nativeRequire, pluginVersion, shippedDir } from './runtime.js';
-import { PhraseCache, panelSound, saveOpus } from './sound.js';
+import { SipServer } from './sip/server.js';
+import { PhraseCache, panelSound, saveOpus, sipSound } from './sound.js';
 import { Store } from './store.js';
 import { TOOLS, callTool } from './tools.js';
 
@@ -44,6 +46,7 @@ import type { Ask } from './agent/dialog.js';
 import type { DoorResult, IntercomHost, NvrPort, PanelPort } from './intercom.js';
 import type { PanelWorld } from './inputs.js';
 import type { FloorPlanView } from './place.js';
+import type { PanelEngine, PanelListener } from './panels/engine.js';
 import type { Credentials, PanelEventKind, PanelProfile } from './panels/profile.js';
 import type { VisitQuery } from './store.js';
 import type { Panel, PanelDoor } from './types.js';
@@ -106,7 +109,7 @@ interface OwnSensors {
 }
 
 interface EngineEntry {
-  engine: HttpPanel;
+  engine: PanelEngine;
   key: string;
   doorOpenAt?: number;
   offlineSince?: number;
@@ -123,6 +126,10 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
   private sensors = new Map<string, { sensor: SensorLike; disposers: { unsubscribe(): void }[]; offlineSince?: number; reported?: boolean }>();
   private own = new Map<string, OwnSensors>();
   private engines = new Map<string, EngineEntry>();
+  /** calls of the panels that call over SIP (RUBITEK's path B); open while such a panel is set up */
+  private sip: SipServer | undefined;
+  private sipGeneration = 0;
+  private sipProblem: string | undefined;
   private allowed: { ok: boolean; at: number; vision: boolean } = { ok: false, at: 0, vision: false };
   private tickTimer: NodeJS.Timeout | undefined;
   private catalogAt = 0;
@@ -264,23 +271,34 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     if (!entry) return undefined;
     const device = entry.device;
     const engine = this.engines.get(panel.id);
+    const sipPanel = engine?.engine instanceof SipPanel ? engine.engine : undefined;
     return {
       snapshot: async () => {
         const data = await (device.snapshotSource ?? device.streamSource).snapshot().catch(() => undefined);
         return data ? new Uint8Array(data) : undefined;
       },
-      speakProblem: () => speakerProblem(device),
+      // a panel that calls over SIP: the agent speaks and listens in its call
+      speakProblem: () => (sipPanel ? (this.sip?.running ? undefined : (this.sipProblem ?? 'the SIP port is not open')) : speakerProblem(device)),
       sound: () =>
-        panelSound({
-          camera: device,
-          speaker: entry.speaker,
-          engine: this.engine,
-          cache: this.phrases,
-          clock: systemClock,
-          ffmpegPath: () => this.api.coreManager.getFFmpegPath(),
-          language: () => this.language(),
-          speed: () => this.intercom.settings().agent.speed,
-        }),
+        sipPanel
+          ? sipSound({
+              call: () => sipPanel.call,
+              engine: this.engine,
+              cache: this.phrases,
+              clock: systemClock,
+              language: () => this.language(),
+              speed: () => this.intercom.settings().agent.speed,
+            })
+          : panelSound({
+              camera: device,
+              speaker: entry.speaker,
+              engine: this.engine,
+              cache: this.phrases,
+              clock: systemClock,
+              ffmpegPath: () => this.api.coreManager.getFFmpegPath(),
+              language: () => this.language(),
+              speed: () => this.intercom.settings().agent.speed,
+            }),
       open: (door) => this.openVia(panel, door),
       answered: engine ? async () => void (await engine.engine.answered()) : undefined,
       hangUp: engine ? async () => void (await engine.engine.hangUp()) : undefined,
@@ -356,6 +374,8 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     clearInterval(this.tickTimer);
     for (const entry of this.engines.values()) entry.engine.stop();
     this.engines.clear();
+    await this.sip?.stop().catch(() => undefined);
+    this.sip = undefined;
     await this.intercom.stop().catch(() => undefined);
     for (const entry of this.cameras.values()) await entry.speaker.close();
     this.store.close();
@@ -527,32 +547,33 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
 
   /** Engines and own sensors follow the stored panels: started, restarted when their address changed, stopped. */
   private async syncPanels(): Promise<void> {
+    const sipWanted = this.store.panels().some((panel) => panel.enabled && panel.driver && this.catalog.get(panel.driver.profileId)?.engine === 'sip');
+    await this.syncSip(sipWanted);
     const wanted = new Set<string>();
     for (const panel of this.store.panels()) {
       const profile = panel.driver ? this.catalog.get(panel.driver.profileId) : undefined;
       const credentials = this.credentials(panel);
-      if (!panel.enabled || !profile || !credentials || ['generic', 'sip'].includes(profile.engine) || profile.events.via === 'sensors') continue;
-      const key = JSON.stringify([profile.id, profile.version, credentials]);
+      if (!panel.enabled || !profile || !credentials || profile.engine === 'generic' || profile.events.via === 'sensors') continue;
+      const sip = profile.engine === 'sip';
+      // a SIP panel follows the SIP server too: a new port is a new server
+      const key = JSON.stringify([profile.id, profile.version, credentials, sip ? this.sipGeneration : 0]);
       wanted.add(panel.id);
       const running = this.engines.get(panel.id);
       if (running?.key === key) continue;
       running?.engine.stop();
-      const entry: EngineEntry = { key, engine: undefined as unknown as HttpPanel };
-      entry.engine = new HttpPanel(
-        profile,
-        credentials,
-        {
-          event: (kind, fields) => this.onPanelEvent(panel.id, kind, fields, entry),
-          online: (ok, reason) => {
-            if (ok) this.backOnline(entry, this.store.panel(panel.id));
-            else {
-              entry.offlineSince ??= Date.now();
-              this.logger.debug(`${panel.name}: not answering${reason ? `: ${reason}` : ''}`);
-            }
-          },
+      const entry = { key } as EngineEntry;
+      const listener: PanelListener = {
+        event: (kind, fields) => this.onPanelEvent(panel.id, kind, fields, entry),
+        online: (ok, reason) => {
+          if (ok) this.backOnline(entry, this.store.panel(panel.id));
+          else {
+            entry.offlineSince ??= Date.now();
+            this.logger.debug(`${panel.name}: not answering${reason ? `: ${reason}` : ''}`);
+          }
         },
-        { log: (message) => this.logger.debug(`${panel.name}: ${message}`) },
-      );
+      };
+      const options = { log: (message: string) => this.logger.debug(`${panel.name}: ${message}`) };
+      entry.engine = sip ? new SipPanel(profile, credentials, listener, () => this.sip, options) : new HttpPanel(profile, credentials, listener, options);
       this.engines.set(panel.id, entry);
       entry.engine.start();
     }
@@ -564,7 +585,32 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     await this.syncOwnSensors();
   }
 
-  private onPanelEvent(panelId: string, kind: PanelEventKind, _fields: Record<string, string>, entry: EngineEntry): void {
+  /** The SIP server is open while a panel calls over SIP, on the port of the settings. */
+  private async syncSip(wanted: boolean): Promise<void> {
+    const port = this.intercom.settings().sipPort;
+    if (this.sip && (!wanted || this.sip.port !== port)) {
+      await this.sip.stop().catch(() => undefined);
+      this.sip = undefined;
+    }
+    if (!wanted) {
+      this.sipProblem = undefined;
+      return;
+    }
+    if (this.sip) return;
+    const server = new SipServer({ port, log: (message) => this.logger.debug(message) });
+    try {
+      await server.start();
+      this.sip = server;
+      this.sipGeneration++;
+      this.sipProblem = undefined;
+      this.logger.log(`SIP: the panels call in on UDP ${port} (the home network only)`);
+    } catch (error) {
+      this.sipProblem = `the SIP port ${port} could not be opened: ${(error as Error).message}`;
+      this.logger.warn(this.sipProblem);
+    }
+  }
+
+  private onPanelEvent(panelId: string, kind: PanelEventKind, fields: Record<string, string>, entry: EngineEntry): void {
     const panel = this.store.panel(panelId);
     if (!panel) return;
     switch (kind) {
@@ -574,6 +620,13 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
         return;
       case 'door_open':
         entry.doorOpenAt = Date.now();
+        return;
+      case 'call_end':
+        this.intercom.panelHungUp(panelId, entry.engine instanceof SipPanel);
+        return;
+      case 'code':
+        // a code typed at the panel during its SIP call: checked like one typed anywhere
+        if (fields.digits) void this.intercom.panelInput(panel.cameraId, fields.digits).catch(() => undefined);
         return;
       case 'tamper':
         void this.api.notificationManager.publish({
@@ -731,6 +784,19 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
         ),
       },
       {
+        type: 'number',
+        title: 'SIP port',
+        description: 'Panels that call over SIP (RUBITEK path B) call this UDP port directly. Only the panels added here are answered; never forward it to the internet.',
+        minimum: 1024,
+        maximum: 65535,
+        group: 'Panels',
+        ...bridge(
+          'sipPort',
+          () => s().sipPort,
+          (value) => ({ sipPort: Number(value) }),
+        ),
+      },
+      {
         type: 'string',
         title: 'Assistant',
         description: 'The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.',
@@ -749,7 +815,10 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
       (p) => `${p.name}${p.speakProblem ? ` (the agent cannot speak: ${p.speakProblem})` : ''}`,
     );
     const mode = state.mode as { mode: string; until?: number };
-    return [`Panels: ${panels.join(', ') || 'none yet'}`, `Mode: ${mode.mode}${mode.until ? ` until ${new Date(mode.until).toLocaleString()}` : ''}`].join('\n');
+    const sip = this.sip ? `SIP: the panels call in on UDP ${this.sip.port}` : this.sipProblem ? `SIP: ${this.sipProblem}` : undefined;
+    return [`Panels: ${panels.join(', ') || 'none yet'}`, `Mode: ${mode.mode}${mode.until ? ` until ${new Date(mode.until).toLocaleString()}` : ''}`, sip]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // ---- assistant tools ----
@@ -935,10 +1004,17 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
       doors: choice.profile.doors.map((d) => ({ key: d.key, name: d.name })),
       events: choice.profile.events.via,
       features: choice.profile.features,
-      setup: choice.profile.setup,
+      setup: choice.profile.setup.map((key) => this.setupText(key)),
       quirks: choice.profile.quirks,
       ownVideoAddress: !choice.profile.video.main,
     }));
+  }
+
+  /** A step of a profile's setup ("setup.rubetek.sipDirect") in the household's language; the key when it has no text. */
+  private setupText(key: string): string {
+    const texts = ownerTexts(this.language()).setup as Record<string, string> | undefined;
+    const text = texts?.[key.replace(/^setup\./, '')];
+    return text ? text.replaceAll('{port}', String(this.intercom.settings().sipPort)) : key;
   }
 
   async refreshProfiles(actor: unknown) {
@@ -972,7 +1048,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     if (probe.model && !profile.models.some((m) => probe.model!.toUpperCase().includes(m.toUpperCase()))) {
       warnings.push(`the panel says it is "${probe.model}", the chosen model is ${profile.models.join(', ')}`);
     }
-    return { ...probe, warnings, setup: profile.setup, quirks: profile.quirks ?? [] };
+    return { ...probe, warnings, setup: profile.setup.map((key) => this.setupText(key)), quirks: profile.quirks ?? [] };
   }
 
   /** The camera of a new driver panel, for the server to create (ТЗ 14.3, 14.4). */

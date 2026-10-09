@@ -25,7 +25,8 @@ export interface DtmfCommand {
 
 export type PanelCommand = HttpCommand | DtmfCommand;
 
-export type PanelEventKind = 'ring' | 'door_open' | 'door_closed' | 'tamper' | 'call_end';
+/** `code`: digits typed at the panel during its call (a SIP call's keys), in the field `digits` */
+export type PanelEventKind = 'ring' | 'door_open' | 'door_closed' | 'tamper' | 'call_end' | 'code';
 
 /** An event of the panel, as flat fields ("Code", "data.State", "CallStatus.status") each equal to one of the values. */
 export interface EventRule {

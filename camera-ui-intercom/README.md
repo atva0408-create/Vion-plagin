@@ -25,6 +25,7 @@ The video intercom of ViON. A press of the door panel rings in the web interface
 | Panel | How it rings | Opening | Status |
 |---|---|---|---|
 | RUBITEK RV-3434, RV-3438, RV-3439 | the panel calls the address of ViON (Action URL) | HTTP command of the panel | by the documentation, to be checked on the panel |
+| RUBITEK RV-3434, RV-3438, RV-3439, over SIP (path B) | the panel calls ViON over SIP directly by IP; the agent speaks in that call | HTTP command of the panel | by the documentation, to be checked on the panel |
 | Dahua VTO | event stream of the panel | HTTP command of the panel | by the community |
 | Hikvision door stations | status read every half second | ISAPI command | by the community |
 | Any panel that calls an address | the address of ViON | a lock or relay of another extension | by the documentation |
@@ -54,3 +55,4 @@ A driver panel gets its own doorbell and a lock per door on its camera: automati
 - "Rang and ran": three rings with nobody in the picture within ten minutes silence the panel for the next ten minutes, with one notice.
 - The rights of the intercom are its own until ViON has rights per camera: every user may answer and read the archive; opening needs an administrator or a user the panel lists; the mode can be changed by administrators and the users the settings list.
 - On a Dahua VTO the talk channel is opened only for a conversation: kept open it silences the call button and takes the conversation from the vendor's app.
+- **SIP stays on the home network.** Panels over SIP call UDP port 5060 of the ViON server (the port is in the extension's settings); only the panels added to the intercom are answered, anything else gets no answer at all. Do not forward this port to the internet. A person's voice does not go over SIP yet: they see and hear the panel by RTSP and answer in text through the agent, or by the camera's talk channel where the panel has one.

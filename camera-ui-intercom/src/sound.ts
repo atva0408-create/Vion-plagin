@@ -8,10 +8,11 @@
  */
 import { spawn } from 'node:child_process';
 
-import { LISTEN_RATE, listenToCamera } from '@vionvision/speech';
+import { Hearing, LISTEN_RATE, listenToCamera } from '@vionvision/speech';
 
 import type { Audio, CameraSpeaker, Clock, Language, ListenCamera, SpeechEngine } from '@vionvision/speech';
 import type { ConversationIO } from './agent/conversation.js';
+import type { SipCall } from './sip/server.js';
 
 const CACHED_PHRASES = 24;
 
@@ -59,6 +60,69 @@ export function panelSound(s: PanelSound): ConversationIO {
       };
     },
     listen: () => listenToCamera(s.ffmpegPath, s.engine, s.camera, s.clock),
+    transcribe: (samples) => s.engine.transcribe(samples, s.language()),
+  };
+}
+
+export interface SipSound {
+  /** the panel's call in progress */
+  call: () => SipCall | undefined;
+  engine: SpeechEngine;
+  cache: PhraseCache;
+  clock: Clock;
+  language: () => Language;
+  speed: () => number;
+}
+
+/**
+ * The agent's sound in a panel's SIP call: its phrases as RTP into the call, the visitor heard from the call's RTP.
+ * The call is answered when the agent first speaks or listens; the sound ends with the call.
+ */
+export function sipSound(s: SipSound): ConversationIO {
+  const upCall = async (): Promise<SipCall> => {
+    const call = s.call();
+    if (!call) throw new Error('the panel is not calling');
+    await call.accept();
+    if (!call.rtp) throw new Error('the call has no sound');
+    return call;
+  };
+  return {
+    prepare: async (text) => {
+      const audio = await s.cache.get(text, s.language(), s.speed());
+      return {
+        durationMs: Math.round((audio.samples.length / audio.sampleRate) * 1000),
+        play: async () => {
+          try {
+            return await (await upCall()).rtp!.speak(audio.samples, audio.sampleRate);
+          } catch (error) {
+            return { status: 'failed', reason: (error as Error).message };
+          }
+        },
+      };
+    },
+    listen: async () => {
+      const call = await upCall();
+      const hearing = new Hearing(await s.engine.voiceActivity(), s.clock);
+      const off = call.rtp!.onAudio((samples) => hearing.feed(samples));
+      let stopped: (why: undefined) => void = () => undefined;
+      const stop = new Promise<undefined>((resolve) => (stopped = resolve));
+      const ended = Promise.race([
+        stop,
+        call.over.then((why) => {
+          off();
+          hearing.end();
+          return why === 'local' ? undefined : `the panel ended the call (${why})`;
+        }),
+      ]);
+      return {
+        hearing,
+        ended,
+        stop: () => {
+          off();
+          stopped(undefined);
+        },
+      };
+    },
     transcribe: (samples) => s.engine.transcribe(samples, s.language()),
   };
 }

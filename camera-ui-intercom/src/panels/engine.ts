@@ -41,13 +41,26 @@ export interface ProbeResult {
 export const RECONNECT_MS = [1_000, 2_000, 5_000, 10_000];
 const COMMAND_TIMEOUT_MS = 8_000;
 
+/** What the plugin asks of a panel's engine, whatever it speaks (HTTP here, SIP in sip.ts). */
+export interface PanelEngine {
+  readonly profile: PanelProfile;
+  start(): void;
+  stop(): void;
+  /** an event the panel sent to the intercom's address */
+  hook(request: { query: Record<string, string>; body?: string; contentType?: string }): PanelEventKind[];
+  open(doorKey: string): Promise<CommandResult>;
+  answered(): Promise<CommandResult | undefined>;
+  hangUp(): Promise<CommandResult | undefined>;
+  probe(): Promise<ProbeResult>;
+}
+
 export interface EngineOptions {
   fetcher?: Fetcher;
   clock?: Clock;
   log?: (message: string) => void;
 }
 
-export class HttpPanel {
+export class HttpPanel implements PanelEngine {
   private readonly address: PanelAddress;
   private readonly fetcher: Fetcher;
   private readonly clock: Clock;

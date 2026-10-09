@@ -72,5 +72,19 @@
     "leave_at_door": "Bitte legen Sie es vor die Tür",
     "call_me": "Bitte rufen Sie mich an",
     "refuse": "Danke, nicht nötig"
+  },
+  "setup": {
+    "camera.existing": "Die Kamera der Station ist schon in ViON: wählen Sie sie in der Kameraliste.",
+    "camera.onvif": "Schalten Sie in der Weboberfläche der Station ONVIF und RTSP ein; eine Kamera, die noch nicht in ViON ist, bekommt im nächsten Schritt ihre RTSP-Adresse.",
+    "changePassword": "Ändern Sie das Standard-Administratorpasswort der Station.",
+    "generic.button": "Binden Sie die Ruftaste in ViON als Klingelsensor der Kamera der Station ein.",
+    "generic.lock": "Das Schloss oder Relais: ein Schloss- oder Schaltersensor in ViON.",
+    "hikvision.isapi": "Schalten Sie ISAPI ein (Konfiguration → Netzwerk → Erweitert → Integrationsprotokoll) und eine Digest-Anmeldung.",
+    "hikvision.sipOrCloud": "Manche Modelle arbeiten entweder über SIP oder über Hik-Connect: mit eingeschalteter Cloud kommt der Ruf eventuell nicht über ISAPI.",
+    "hook.actionUrl": "Tragen Sie in der Weboberfläche der Station die Adresse für Ereignisse ein (Action URL, HTTP-Benachrichtigung): ViON zeigt sie nach dem Speichern.",
+    "rubetek.actionUrl": "RUBITEK: unter Action URL (oder Aktion → HTTP) für das Ereignis „Ruf“ die Adresse eintragen, die ViON nach dem Speichern zeigt.",
+    "rubetek.relayHttp": "RUBITEK: das Öffnen der Relais über HTTP (Relais) für diese Anmeldung erlauben.",
+    "rubetek.sipDirect": "RUBITEK: in den SIP-Einstellungen direkte IP-Anrufe ohne Registrierung einschalten und der Ruftaste sip:vion@<ViON-Adresse>:{port} zuweisen.",
+    "sip.localOnly": "SIP arbeitet nur im Heimnetz: Port {port} nicht ins Internet weiterleiten."
   }
 }

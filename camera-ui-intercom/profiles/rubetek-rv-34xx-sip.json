@@ -1,0 +1,27 @@
+{
+  "id": "rubetek-rv-34xx-sip",
+  "version": 1,
+  "vendor": "RUBITEK",
+  "models": ["RV-3434", "RV-3438", "RV-3439"],
+  "engine": "sip",
+  "minPluginVersion": "0.1.0",
+  "status": "documented",
+  "ports": { "http": 80, "rtsp": 554 },
+  "video": { "main": "" },
+  "audio": { "fromPanel": true, "toPanel": "sip" },
+  "auth": "query",
+  "events": { "via": "sip" },
+  "rules": [],
+  "doors": [
+    { "key": "1", "name": "Замок 1", "open": { "method": "GET", "path": "/fcgi/do?action=OpenDoor&UserName={user}&Password={pass}&DoorNum=1" } },
+    { "key": "2", "name": "Замок 2", "open": { "method": "GET", "path": "/fcgi/do?action=OpenDoor&UserName={user}&Password={pass}&DoorNum=2" } }
+  ],
+  "features": { "keypad": true },
+  "setup": ["setup.camera.onvif", "setup.rubetek.sipDirect", "setup.sip.localOnly", "setup.rubetek.relayHttp", "setup.changePassword"],
+  "quirks": [
+    "Path B: the panel calls ViON over SIP directly by IP; the agent speaks and listens in that call (G.711). Use it when the panel tells of a ring only over SIP, or takes no sound over RTSP",
+    "A person answering in ViON sees and hears the panel by its RTSP; their own voice reaches the panel only where its camera has a talk channel, else they answer in text or hand the call to the agent",
+    "The relays open by the HTTP command; opening by a DTMF code in the call works too, but the code is set in the panel and checked on a panel first",
+    "The menu names differ between firmware versions (Account, Phone, Intercom): the step-0 table of the report says what was found on the owner's panel"
+  ]
+}

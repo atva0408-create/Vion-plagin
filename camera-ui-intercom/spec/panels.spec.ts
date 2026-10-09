@@ -70,7 +70,7 @@ function collector(): PanelListener & { events: PanelEventKind[]; online: (ok: b
 
 test('shipped profiles pass the check; a path that names another host, a user or a scheme is refused', () => {
   const ids = readdirSync(PROFILES).map((f) => f.replace(/\.json$/, ''));
-  assert.deepEqual(ids.sort(), ['camera-button', 'dahua-vto', 'generic-hook', 'hikvision-door-station', 'rubetek-rv-34xx']);
+  assert.deepEqual(ids.sort(), ['camera-button', 'dahua-vto', 'generic-hook', 'hikvision-door-station', 'rubetek-rv-34xx', 'rubetek-rv-34xx-sip']);
   for (const id of ids) shipped(id);
   const dahua = JSON.parse(readFileSync(join(PROFILES, 'dahua-vto.json'), 'utf8'));
   const broken = (change: (p: any) => void) => {
@@ -316,7 +316,7 @@ test('catalog: shipped models usable; from the mirror a newer profile is taken, 
   const store = mkdtempSync(join(tmpdir(), 'intercom-profiles-'));
   const profiles = new ProfileCatalog(PROFILES, store, '0.1.0');
   profiles.load();
-  assert.equal(profiles.list().length, 5);
+  assert.equal(profiles.list().length, 6);
   assert.ok(profiles.list().every((choice) => choice.usable));
   const result = await profiles.refresh();
   mirror.server.close();

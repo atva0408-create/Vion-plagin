@@ -233,7 +233,10 @@ export class Intercom {
     needAdmin(actor);
     const checked = checkSettings(this.settings(), patch ?? {});
     if (checked.errors) throw new IntercomError('invalid', checked.errors.join('; '));
+    const portChanged = checked.value.sipPort !== this.settings().sipPort;
     this.store.setMeta('settings', checked.value);
+    // the panels that call over SIP move to the new port
+    if (portChanged) this.host.panelsChanged();
     return checked.value;
   }
 
@@ -640,6 +643,18 @@ export class Intercom {
 
   private userName(userId: string | undefined): string | undefined {
     return userId ? this.store.getMeta<string>(`userName:${userId}`) : undefined;
+  }
+
+  /**
+   * The panel ended its call: a SIP CANCEL or BYE (`final`), or a hook's "call ended". The visitor's side is gone, so
+   * ringing stops and the agent stops; a call a person answered in ViON goes on after a hook's "ended" (the panel's
+   * own call with its monitors ended, not ViON's).
+   */
+  panelHungUp(panelId: string, final: boolean): void {
+    const live = this.live.get(panelId);
+    if (!live || live.call.state === 'ended') return;
+    if (live.call.state === 'answered' && !final) return;
+    this.event(live, { type: 'hang_up', ...(live.call.state === 'ringing' ? { outcome: 'missed' as const } : {}) });
   }
 
   private liveCall(callId: string): Live {

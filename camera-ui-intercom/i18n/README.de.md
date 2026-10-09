@@ -25,6 +25,7 @@ Die Videogegensprechanlage von ViON. Ein Druck auf die Türstation klingelt in d
 | Türstation | Wie sie klingelt | Öffnen | Stand |
 |---|---|---|---|
 | RUBITEK RV-3434, RV-3438, RV-3439 | die Station ruft die Adresse von ViON auf (Action URL) | HTTP-Befehl der Station | nach Dokumentation, an der Station zu prüfen |
+| RUBITEK RV-3434, RV-3438, RV-3439, über SIP (Weg B) | die Station ruft ViON per SIP direkt über IP an; der Agent spricht in diesem Anruf | HTTP-Befehl der Station | nach Dokumentation, an der Station zu prüfen |
 | Dahua VTO | Ereignisstrom der Station | HTTP-Befehl der Station | nach der Community |
 | Hikvision-Türstationen | Status alle halbe Sekunde gelesen | ISAPI-Befehl | nach der Community |
 | Jede Station, die eine Adresse aufruft | die Adresse von ViON | ein Schloss oder Relais einer anderen Erweiterung | nach Dokumentation |
@@ -54,3 +55,4 @@ Eine Treiber-Station bekommt auf ihrer Kamera eine eigene Klingel und ein Schlos
 - „Klingeln und weglaufen“: drei Klingeln ohne Person im Bild in zehn Minuten schalten die Anrufe der Station für die nächsten zehn Minuten stumm, mit einer Benachrichtigung.
 - Die Rechte der Gegensprechanlage sind ihre eigenen, bis ViON Rechte pro Kamera hat: jeder Benutzer darf antworten und das Archiv lesen; öffnen dürfen Administratoren und die Benutzer, die die Station listet; den Modus ändern Administratoren und die Benutzer, die die Einstellungen listen.
 - An einer Dahua VTO wird der Sprechkanal nur für ein Gespräch geöffnet: dauerhaft offen, legt er den Klingeltaster still und nimmt der App des Herstellers das Gespräch.
+- **SIP bleibt im Heimnetz.** Stationen über SIP rufen UDP-Port 5060 des ViON-Servers an (der Port steht in den Einstellungen der Erweiterung); nur die Stationen der Gegensprechanlage bekommen eine Antwort, alles andere gar keine. Leiten Sie diesen Port nicht ins Internet weiter. Die Stimme einer Person geht noch nicht über SIP: sie sieht und hört die Station über RTSP und antwortet per Text über den Agenten oder über den Sprechkanal der Kamera, wo die Station einen hat.

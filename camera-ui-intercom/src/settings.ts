@@ -49,6 +49,8 @@ export interface IntercomSettings {
   notifyMinor: boolean;
   /** seconds a person stands in a panel's zone without ringing before it is a visit */
   presenceSeconds: number;
+  /** the UDP port where panels that call over SIP reach ViON (only from the home network) */
+  sipPort: number;
 }
 
 export const DEFAULT_AGENT: AgentSettings = {
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: IntercomSettings = {
   retentionDays: 90,
   notifyMinor: false,
   presenceSeconds: 60,
+  sipPort: 5060,
 };
 
 /** The stored settings over the defaults (a newer plugin may add keys the stored ones lack). */
@@ -192,6 +195,10 @@ export function checkSettings(current: IntercomSettings, patch: Record<string, u
   if ('presenceSeconds' in patch) {
     if (Number.isInteger(patch.presenceSeconds) && between(patch.presenceSeconds, 10, 600)) next.presenceSeconds = patch.presenceSeconds as number;
     else errors.push('presenceSeconds: 10 to 600');
+  }
+  if ('sipPort' in patch) {
+    if (Number.isInteger(patch.sipPort) && between(patch.sipPort, 1024, 65535)) next.sipPort = patch.sipPort as number;
+    else errors.push('sipPort: 1024 to 65535');
   }
   return errors.length ? { errors } : { value: next };
 }

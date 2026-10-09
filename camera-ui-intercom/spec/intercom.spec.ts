@@ -205,6 +205,25 @@ test('the first who answers gets the call, the next is told who did; the agent d
   assert.throws(() => w.intercom.answerCall(u2, callId), /not_found/);
 });
 
+test("the panel ends its call: ringing stops as missed; a hook's end leaves a call a person answered, a SIP end does not", async () => {
+  const w = new World();
+  w.intercom.press('gate');
+  await w.pass(100);
+  w.intercom.panelHungUp('gate', false);
+  await w.pass(100);
+  assert.equal(w.store.queryVisits({}).visits[0].outcome, 'missed');
+  w.intercom.press('gate');
+  await w.pass(100);
+  const callId = w.calls().at(-1)?.data?.callId ?? '';
+  w.intercom.answerCall(u1, callId);
+  w.intercom.panelHungUp('gate', false);
+  assert.equal(w.intercom.callState(u1, callId).state, 'answered', "the panel's own call with its monitors ended, not ViON's");
+  w.intercom.panelHungUp('gate', true);
+  await w.pass(100);
+  assert.equal(w.intercom.callState(u1, callId).state, 'ended');
+  assert.equal(w.store.queryVisits({}).visits[0].outcome, 'answered');
+});
+
 test('every user declined: the agent takes the call at once', async () => {
   const w = new World();
   w.intercom.press('gate');

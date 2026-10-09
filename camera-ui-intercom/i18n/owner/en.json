@@ -72,5 +72,19 @@
     "leave_at_door": "Please leave it at the door",
     "call_me": "Please call me",
     "refuse": "Thank you, not needed"
+  },
+  "setup": {
+    "camera.existing": "The panel's camera is in ViON already: choose it in the list of cameras.",
+    "camera.onvif": "Turn on ONVIF and RTSP in the panel's web page; a camera not in ViON yet gets its RTSP address in the next step.",
+    "changePassword": "Change the panel's default administrator password.",
+    "generic.button": "Add the call button to ViON as a doorbell sensor of the panel's camera.",
+    "generic.lock": "The lock or relay: a lock or switch sensor in ViON.",
+    "hikvision.isapi": "Turn on ISAPI (Configuration → Network → Advanced → Integration Protocol) and a digest login.",
+    "hikvision.sipOrCloud": "Some models work either over SIP or through Hik-Connect: with the cloud on, the ring may not come over ISAPI.",
+    "hook.actionUrl": "In the panel's web page, set the address for events (Action URL, HTTP notification): ViON shows it once the panel is saved.",
+    "rubetek.actionUrl": "RUBITEK: under Action URL (or Action → HTTP), set the address ViON shows after saving for the \"call\" event.",
+    "rubetek.relayHttp": "RUBITEK: allow opening the relays over HTTP (Relay) for this login.",
+    "rubetek.sipDirect": "RUBITEK: in the SIP settings, turn on direct IP calls without registration and set the call button to sip:vion@<ViON address>:{port}.",
+    "sip.localOnly": "SIP works on the home network only: do not forward port {port} to the internet."
   }
 }
