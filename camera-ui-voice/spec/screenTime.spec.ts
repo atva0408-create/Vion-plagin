@@ -387,7 +387,62 @@ test('"how long": back during the break, the answer names the minutes the remind
   assert.ok(reminder && reminder.action.type === 'speak', 'the reminder of the rest of the break');
   const left = reminder.action.facts.breakMinutesLeft;
   assert.ok(left !== undefined && left > 0);
-  assert.equal(answer(run), `Артём, до конца перерыва ${left} минут${left === 1 ? 'а' : left < 5 ? 'ы' : ''}.`);
+  assert.equal(left, 5, '10 minutes of break, 5 of them (and the seconds before a look) taken before coming back');
+  assert.equal(answer(run), 'Артём, сейчас перерыв: 5 минут без компьютера, потом можно играть.');
+});
+
+test('a break is added up over the absences: back early and away again, the child takes only the rest of it', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 4 * MINUTE, false);
+  pass(run, MINUTE, true);
+  assert.equal(speaks(run).filter((a) => a.action.type === 'speak' && a.action.kind === 'remaining').length, 1);
+  assert.equal(run.engine.state.workMs >= 45 * MINUTE, true, 'back early: the break is still due');
+  const said = speaks(run).length;
+  // away again a little longer than what was left: the break is taken, the session starts over
+  pass(run, 6 * MINUTE + 5_000, false);
+  assert.equal(answer(run), 'Артём, можно играть. До перерыва 45 минут.', 'the rest taken while away');
+  pass(run, MINUTE, true);
+  assert.equal(speaks(run).length, said, 'no reminder: the break was taken in two parts');
+  assert.ok(run.engine.state.workMs < 2 * MINUTE, `${run.engine.state.workMs / 1000} s since the break`);
+  assert.equal(run.engine.state.restMs, undefined);
+});
+
+test('the next break after a whole one: its first reminder names no "left", nothing of it is taken yet', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 11 * MINUTE, false);
+  pass(run, 46 * MINUTE, true);
+  const nudge = speaks(run)[speaks(run).length - 1].action;
+  assert.ok(nudge.type === 'speak' && nudge.kind === 'nudge' && nudge.facts.reason === 'break');
+  assert.equal(nudge.facts.breakMinutesLeft, undefined);
+});
+
+test('a break a parent let go takes its taken part with it: the next break is a whole one', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 4 * MINUTE, false);
+  pass(run, MINUTE, true);
+  run.engine.skipBreak();
+  pass(run, 46 * MINUTE, true);
+  const said = speaks(run).length;
+  pass(run, 7 * MINUTE, false);
+  pass(run, MINUTE, true);
+  assert.equal(speaks(run).length, said + 1, '7 minutes away are not the 4 of the let-go break plus 7');
+});
+
+test('a break added up: away again too short, the reminder names what is still left', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 4 * MINUTE, false);
+  pass(run, MINUTE, true);
+  pass(run, 3 * MINUTE, false);
+  pass(run, MINUTE, true);
+  const reminders = speaks(run).filter((a) => a.action.type === 'speak' && a.action.kind === 'remaining');
+  assert.equal(reminders.length, 2);
+  const last = reminders[1].action;
+  assert.ok(last.type === 'speak');
+  assert.equal(last.facts.breakMinutesLeft, 3, '10 minutes less 4 and 3 away (and the seconds before a look)');
 });
 
 test('"how long": less than a minute is said so, never "1 minute"; time from a parent is rounded down', () => {

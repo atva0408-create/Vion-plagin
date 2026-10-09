@@ -72,7 +72,7 @@
   "Break every, minutes": "Break every, minutes",
   "Time at the computer before a break.": "Time at the computer before a break.",
   "Break length, minutes": "Break length, minutes",
-  "A break counts only if the child is away all this time.": "A break counts only if the child is away all this time.",
+  "Time away from the computer adds up until the whole break is taken.": "Time away from the computer adds up until the whole break is taken.",
   "Daily limit, minutes": "Daily limit, minutes",
   "0 for no daily limit.": "0 for no daily limit.",
   "Bedtime on school nights": "Bedtime on school nights",

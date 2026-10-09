@@ -10,7 +10,7 @@ export function restoreScreenTime(value: unknown): Record<string, ScreenTimeStat
     if (!object(state) || typeof state.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.date)) return false;
     if (!counter(state.todayMs) || !counter(state.workMs) || typeof state.present !== 'boolean') return false;
     if (!object(state.history) || Object.values(state.history).some((minutes) => !counter(minutes))) return false;
-    for (const key of ['candidateSince', 'lastSeen', 'leftAt', 'lastTick', 'grantUntil', 'blindSince']) {
+    for (const key of ['candidateSince', 'lastSeen', 'leftAt', 'restMs', 'lastTick', 'grantUntil', 'blindSince']) {
       if (state[key] !== undefined && !counter(state[key])) return false;
     }
     if (state.name !== undefined && typeof state.name !== 'string') return false;

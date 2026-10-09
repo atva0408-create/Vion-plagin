@@ -72,7 +72,7 @@
   "Break every, minutes": "Перерыв каждые, минут",
   "Time at the computer before a break.": "Время за компьютером до перерыва.",
   "Break length, minutes": "Длина перерыва, минут",
-  "A break counts only if the child is away all this time.": "Перерыв засчитывается, только если ребёнок отсутствовал всё это время.",
+  "Time away from the computer adds up until the whole break is taken.": "Время вдали от компьютера складывается, пока не наберётся весь перерыв.",
   "Daily limit, minutes": "Лимит в день, минут",
   "0 for no daily limit.": "0 — без дневного лимита.",
   "Bedtime on school nights": "Сон в учебные вечера",

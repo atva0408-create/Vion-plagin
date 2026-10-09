@@ -72,7 +72,7 @@
   "Break every, minutes": "Pause alle, Minuten",
   "Time at the computer before a break.": "Zeit am Computer vor einer Pause.",
   "Break length, minutes": "Pausenlänge, Minuten",
-  "A break counts only if the child is away all this time.": "Eine Pause zählt nur, wenn das Kind die ganze Zeit weg ist.",
+  "Time away from the computer adds up until the whole break is taken.": "Die Zeit weg vom Computer wird zusammengezählt, bis die ganze Pause genommen ist.",
   "Daily limit, minutes": "Tageslimit, Minuten",
   "0 for no daily limit.": "0: kein Tageslimit.",
   "Bedtime on school nights": "Schlafenszeit an Schulabenden",

@@ -53,6 +53,8 @@ export interface ScreenTimeState {
   leftAt?: number;
   /** Time at the computer since the last full break. */
   workMs: number;
+  /** Rest already taken toward the due break: the absences since it fell due, added up until the whole break. */
+  restMs?: number;
   lastTick?: number;
   escalation?: Escalation;
   /** Limits are lifted until then: a parent gave more time. */
@@ -175,8 +177,17 @@ export class ScreenTimeEngine {
     } else if (s.candidateSince !== undefined && now - s.candidateSince >= this.config.minPresenceSeconds * 1000) {
       s.present = true;
       const away = s.leftAt === undefined ? Infinity : s.candidateSince - s.leftAt;
-      if (away >= this.config.breakMinutes * MINUTE) s.workMs = 0;
-      else returnedDuringBreak = s.workMs >= this.config.sessionMinutes * MINUTE;
+      // a due break is added up over the absences (the parents' choice): back early and away again, the child takes
+      // only the rest of it; before it is due, only one absence as long as a break counts as one
+      const due = s.workMs >= this.config.sessionMinutes * MINUTE;
+      const rest = due ? (s.restMs ?? 0) + away : away;
+      if (rest >= this.config.breakMinutes * MINUTE) {
+        s.workMs = 0;
+        s.restMs = undefined;
+      } else if (due) {
+        s.restMs = rest;
+        returnedDuringBreak = true;
+      }
       // the first seconds of the session were already at the computer
       this.count(now - s.candidateSince, now, timeZone);
     }
@@ -228,7 +239,15 @@ export class ScreenTimeEngine {
   /** A parent lets the child skip the next break: the time since the last break starts over. */
   skipBreak(): void {
     this.state.workMs = 0;
+    this.state.restMs = undefined;
     this.state.escalation = undefined;
+  }
+
+  /** What is left of the due break: the rest taken before and the absence running now are off it. */
+  private breakLeft(now: number): number {
+    const s = this.state;
+    const away = !s.present && s.leftAt !== undefined ? Math.max(0, now - s.leftAt) : 0;
+    return this.config.breakMinutes * MINUTE - (s.restMs ?? 0) - away;
   }
 
   facts(now: number, input: { timeZone: string; language: string }): Facts {
@@ -238,10 +257,10 @@ export class ScreenTimeEngine {
     const reason = this.reason(now, timeZone) ?? s.escalation?.reason ?? 'break';
     const bed = activeInterval(c.bedtime, now, timeZone);
     const nextBed = bed ? undefined : nextIntervalStart(c.bedtime, now, timeZone);
-    // On an early return, the remaining-break reminder and the answer must name the same end time.
-    const partialBreak = s.leftAt !== undefined && now < s.leftAt + c.breakMinutes * MINUTE;
-    const breakFrom = s.leftAt !== undefined && (!s.present || partialBreak) ? s.leftAt : now;
-    const breakEnds = breakFrom + c.breakMinutes * MINUTE;
+    // the reminder of the rest of the break, the status and the answer name the same end: when the child is away, or
+    // if the child leaves now
+    const left = Math.max(0, this.breakLeft(now));
+    const breakEnds = now + left;
 
     let nextAllowed: number;
     if (reason === 'bedtime' && bed) nextAllowed = bed.to;
@@ -253,8 +272,9 @@ export class ScreenTimeEngine {
     } else nextAllowed = breakEnds;
 
     const today = localTime(now, timeZone).date;
-    // back before the break was over: what is left of it, counted from the moment the child left
-    const remaining = reason === 'break' && s.leftAt !== undefined ? s.leftAt + c.breakMinutes * MINUTE - now : undefined;
+    // part of the break taken (away now, or back early): what is left of it
+    const taken = s.present ? (s.restMs ?? 0) > 0 : s.leftAt !== undefined;
+    const remaining = reason === 'break' && taken ? left : undefined;
     return {
       now: formatClock(now, timeZone),
       childName: s.name && !c.childName ? s.name : c.childName,
@@ -276,10 +296,9 @@ export class ScreenTimeEngine {
   }
 
   /**
-   * The answer to "how long": minutes of the break left, or minutes of play before the next limit. Back before the
-   * break was over, it is what the reminder and the status name: the rest of the break counted from leaving. Minutes
-   * of play are rounded down (0: less than a minute) and of a break up: the answer never promises more play than there
-   * is.
+   * The answer to "how long": minutes of the break left, or minutes of play before the next limit. At the computer when
+   * the break is due, what of it is left to take away from it, the minutes the reminder names. Minutes of play are
+   * rounded down (0: less than a minute) and of a break up: the answer never promises more play than there is.
    */
   standing(now: number, timeZone: string): Standing {
     const s = this.state;
@@ -291,13 +310,12 @@ export class ScreenTimeEngine {
       return { kind: reason, next: facts.nextAllowedAt, day: facts.nextAllowedDay };
     }
     const breakMs = c.breakMinutes * MINUTE;
-    const left = s.leftAt !== undefined ? s.leftAt + breakMs - now : 0;
     if (reason === 'break') {
-      if (left > 0) return { kind: 'break', minutes: Math.ceil(left / MINUTE) };
-      if (s.present) return { kind: 'break_due', minutes: c.breakMinutes };
+      const left = this.breakLeft(now);
+      if (left > 0) return { kind: s.present ? 'break_due' : 'break', minutes: Math.ceil(left / MINUTE) };
     }
-    // away for a whole break: the next session starts from nothing
-    const workMs = (!s.present && s.leftAt !== undefined && left <= 0) || reason === 'break' ? 0 : s.workMs;
+    // the break is taken, or away for a whole break: the next session starts from nothing
+    const workMs = reason === 'break' || (!s.present && s.leftAt !== undefined && now - s.leftAt >= breakMs) ? 0 : s.workMs;
     const limits: [number, Reason][] = [[c.sessionMinutes * MINUTE - workMs, 'break']];
     if (c.dailyMinutes) limits.push([c.dailyMinutes * MINUTE - s.todayMs, 'daily_limit']);
     const bed = nextIntervalStart(c.bedtime, now, timeZone);

@@ -481,7 +481,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
             item('breakMinutes', {
               type: 'number',
               title: 'Break length, minutes',
-              description: 'A break counts only if the child is away all this time.',
+              description: 'Time away from the computer adds up until the whole break is taken.',
               defaultValue: d.breakMinutes,
               minimum: 3,
               maximum: 120,

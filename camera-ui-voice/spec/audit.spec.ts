@@ -212,14 +212,15 @@ test('stopping the door watcher during a description suppresses the late announc
 test('a partial break has one consistent end time in reminders, status and answers', () => {
   const at = msk('2026-10-08T15:00:00');
   const s = setup();
-  const state = { ...freshState('2026-10-08'), workMs: 46 * MINUTE, present: true, leftAt: at };
+  // left at 15:00 with the break due, back at 15:04: 4 minutes of it taken
+  const state = { ...freshState('2026-10-08'), workMs: 46 * MINUTE, present: true, leftAt: at, restMs: 4 * MINUTE };
   const engine = new ScreenTimeEngine(s.config, state);
   const facts = engine.facts(at + 4 * MINUTE, { timeZone: 'Europe/Moscow', language: 'ru' });
   assert.equal(facts.breakMinutesLeft, 6);
   assert.equal(facts.breakEndsAt, '15:10');
   assert.equal(facts.nextAllowedAt, '15:10');
   // asked "how long" right after the reminder, the child hears the same minutes
-  assert.equal(replyText(engine.standing(at + 4 * MINUTE, 'Europe/Moscow'), 'Артём', 'ru'), 'Артём, до конца перерыва 6 минут.');
+  assert.equal(replyText(engine.standing(at + 4 * MINUTE, 'Europe/Moscow'), 'Артём', 'ru'), 'Артём, сейчас перерыв: 6 минут без компьютера, потом можно играть.');
 });
 
 test('shutdown aborts pending synthesis, queued phrases and future speaking', async () => {
@@ -325,8 +326,10 @@ test('malformed persisted state is discarded while valid children keep their cou
     infinite: { ...good, workMs: Infinity },
     badHistory: { ...good, history: null },
     badEscalation: { ...good, escalation: { reason: 'break', level: 0 } },
+    badRest: { ...good, restMs: -60_000 },
+    rested: { ...good, restMs: 240_000 },
   };
-  assert.deepEqual(restoreScreenTime({ screenTime }), { good });
+  assert.deepEqual(restoreScreenTime({ screenTime }), { good, rested: screenTime.rested });
 });
 
 void runTests();
