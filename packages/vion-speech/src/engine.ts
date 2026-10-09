@@ -6,10 +6,9 @@
 import { join } from 'node:path';
 
 import { PACKS, VOICES } from './models.js';
-import { nativeRequire } from './runtime.js';
 
+import type { Language } from './language.js';
 import type { ModelStore } from './models.js';
-import type { Language } from './speech.js';
 
 export interface Audio {
   samples: Float32Array;
@@ -38,9 +37,15 @@ const THREADS = 2;
 
 type Sherpa = any;
 
-function loadSherpa(): Sherpa {
+/**
+ * Loads the native module `sherpa-onnx-node`. Given by the plugin: the module is installed with the plugin, and only
+ * the plugin's own `require` finds it (this package is bundled into the plugin, its sources live elsewhere).
+ */
+export type SherpaLoader = () => unknown;
+
+function loadSherpa(load: SherpaLoader): Sherpa {
   try {
-    return nativeRequire('sherpa-onnx-node');
+    return load();
   } catch (error) {
     throw new Error(`the speech engine (sherpa-onnx-node) is not installed for this system: ${(error as Error).message}`);
   }
@@ -59,6 +64,7 @@ export class SherpaEngine implements SpeechEngine {
   constructor(
     private store: ModelStore,
     private log: (message: string) => void,
+    private load: SherpaLoader,
   ) {}
 
   async synthesize(text: string, language: Language, speed: number): Promise<Audio> {
@@ -146,7 +152,7 @@ export class SherpaEngine implements SpeechEngine {
   }
 
   private lib(): Sherpa {
-    this.sherpa ??= loadSherpa();
+    this.sherpa ??= loadSherpa(this.load);
     return this.sherpa;
   }
 

@@ -11,18 +11,9 @@ export type Day = (typeof DAYS)[number];
 
 export const MINUTE = 60_000;
 
-/** A timer the plugin waits with; tests replace it with a clock they move by hand. */
-export interface Clock {
-  now(): number;
-  setTimeout(callback: () => void, ms: number): unknown;
-  clearTimeout(handle: unknown): void;
-}
-
-export const systemClock: Clock = {
-  now: () => Date.now(),
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
-};
+// the clock is the speech package's: its speaker and queue wait with the same one
+export { systemClock } from '@vionvision/speech';
+export type { Clock } from '@vionvision/speech';
 
 export function serverTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

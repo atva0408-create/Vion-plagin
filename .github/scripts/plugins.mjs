@@ -13,6 +13,9 @@ export const NODE = {
   'camera-ui-wasm-motion': '',
   'camera-ui-yandex': '',
   'camera-ui-voice': '',
+  'camera-ui-intercom': '',
+  // the speech of VOICE and the intercom: not a plugin, built, linted and tested the same way
+  'packages/vion-speech': '',
 };
 
 export const GO = {

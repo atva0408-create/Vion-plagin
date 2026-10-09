@@ -1,6 +1,6 @@
 /**
- * Speech models of VOICE: archives on the ViON models mirror, fetched on first use, checked by size and sha256 and
- * unpacked into the plugin's storage. Nothing is fetched until a camera is to speak or listen.
+ * Speech models: archives on the ViON models mirror, fetched on first use, checked by size and sha256 and unpacked
+ * into the storage of the plugin that speaks. Nothing is fetched until a camera is to speak or listen.
  *
  * Where each file comes from and under which license: docs/VOICE_IMPLEMENTATION.md in the ViON repository.
  */
@@ -12,7 +12,7 @@ import { Readable, Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 
-import type { Language } from './speech.js';
+import type { Language } from './language.js';
 
 export interface ModelPack {
   id: string;
@@ -140,7 +140,7 @@ export class TarExtractor extends Writable {
 
 export type Fetcher = (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
 
-/** Downloads and unpacks the packs into <storage>/voice-models/<pack id>; a pack that is there is not fetched again. */
+/** Downloads and unpacks the packs into <root>/<pack id> (a plugin gives <storage>/voice-models); a pack that is there is not fetched again. */
 export class ModelStore {
   private pending = new Map<string, Promise<string>>();
 

@@ -7,8 +7,35 @@
  */
 import { randomInt } from 'node:crypto';
 
-import type { CameraDevice, CameraDeviceSource, RtpSession } from '@camera.ui/sdk';
-import type { Clock } from './time.js';
+import type { Clock } from './clock.js';
+
+/**
+ * What the speaker needs of a camera source, its talk channel. The SDK's `CameraDeviceSource` has it; this package
+ * names only what it uses, so it builds without the SDK.
+ */
+export interface TalkSource {
+  backchannelAudioCodec?: unknown;
+  backchannelDisabled?: boolean;
+  createRtpSession(options: { video?: boolean; audio?: boolean; backchannel?: boolean }): TalkSession;
+}
+
+/** The part of the SDK's `RtpSession` the speaker uses. */
+export interface TalkSession {
+  readonly hasBackchannel: boolean;
+  readonly onError: { subscribe(listener: (error: Error) => void): unknown };
+  readonly onEnded: { subscribe(listener: () => void): unknown };
+  startStream(): Promise<void>;
+  startBackchannel(config: { decoderCodec: 'pcm_alaw' | 'pcm_mulaw'; payloadType: number; clockRate: number; channels?: number }): Promise<void>;
+  sendAudioPacket(packet: Buffer): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/** The part of the SDK's `CameraDevice` the speaker uses. */
+export interface SpeakerCamera {
+  readonly name: string;
+  readonly connected: boolean;
+  readonly sources: readonly TalkSource[];
+}
 
 export const RTP_CLOCK = 8000;
 export const PACKET_MS = 20;
@@ -152,18 +179,18 @@ export const PROBLEM_TEXT: Record<SpeakerProblem, string> = {
 };
 
 /** Why this camera cannot speak, or undefined when it can. */
-export function speakerProblemCode(camera: Pick<CameraDevice, 'sources' | 'connected'>): SpeakerProblem | undefined {
-  if (!talkSource(camera)) return camera.sources.some((s) => s.backchannelAudioCodec && s.backchannelDisabled) ? 'channel_off' : 'no_channel';
+export function speakerProblemCode(camera: Pick<SpeakerCamera, 'sources' | 'connected'>, pick = talkSource): SpeakerProblem | undefined {
+  if (!pick(camera)) return camera.sources.some((s) => s.backchannelAudioCodec && s.backchannelDisabled) ? 'channel_off' : 'no_channel';
   if (!camera.connected) return 'offline';
   return undefined;
 }
 
-export function speakerProblem(camera: Pick<CameraDevice, 'sources' | 'connected'>): string | undefined {
-  const code = speakerProblemCode(camera);
+export function speakerProblem(camera: Pick<SpeakerCamera, 'sources' | 'connected'>, pick = talkSource): string | undefined {
+  const code = speakerProblemCode(camera, pick);
   return code && PROBLEM_TEXT[code];
 }
 
-export function talkSource(camera: Pick<CameraDevice, 'sources'>): CameraDeviceSource | undefined {
+export function talkSource(camera: Pick<SpeakerCamera, 'sources'>): TalkSource | undefined {
   return camera.sources.find((s) => s.backchannelAudioCodec && !s.backchannelDisabled);
 }
 
@@ -181,21 +208,23 @@ const DRAIN_MS = 1_000;
  * the queue.
  */
 export class CameraSpeaker {
-  private session: RtpSession | undefined;
+  private session: TalkSession | undefined;
   private closeTimer: unknown;
   private rtp = newRtpState();
   /** Why the open session broke (the server ended or failed its talk channel), noticed while a phrase was sent. */
   private broken: string | undefined;
 
   constructor(
-    private camera: CameraDevice,
+    private camera: SpeakerCamera,
     private clock: Clock,
     private log: (message: string) => void,
+    /** The source whose talk channel to use; by default the first that has one. */
+    private source: (camera: Pick<SpeakerCamera, 'sources'>) => TalkSource | undefined = talkSource,
   ) {}
 
   async speak(samples: Float32Array, sampleRate: number): Promise<SpeakResult> {
     const started = this.clock.now();
-    const problem = speakerProblem(this.camera);
+    const problem = speakerProblem(this.camera, this.source);
     if (problem) return { status: 'no_backchannel', reason: problem };
     this.clock.clearTimeout(this.closeTimer);
     try {
@@ -233,9 +262,9 @@ export class CameraSpeaker {
     if (session) await session.stop().catch((error: Error) => this.log(`speaker of ${this.camera.name}: ${error.message}`));
   }
 
-  private async open(): Promise<RtpSession> {
+  private async open(): Promise<TalkSession> {
     if (this.session) return this.session;
-    const source = talkSource(this.camera);
+    const source = this.source(this.camera);
     if (!source) throw new Error('no source with a talk channel');
     // the talk channel rides on an open stream: audio only, nothing of it is read
     const session = source.createRtpSession({ video: false, audio: true, backchannel: true });

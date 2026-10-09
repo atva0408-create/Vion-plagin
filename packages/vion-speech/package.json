@@ -1,0 +1,40 @@
+{
+  "name": "@vionvision/speech",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Speech of ViON plugins on the server: synthesis, recognition and voice activity (sherpa-onnx), the camera's speaker as G.711 RTP, listening through ffmpeg, the speech models from the ViON mirror. Shared by VOICE and the intercom; bundled into each of them, never published.",
+  "author": "ViON (https://vionvision.tech)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "format": "prettier --write \"src/\" --ignore-unknown --no-error-on-unmatched-pattern",
+    "lint": "eslint --fix .",
+    "test": "tsx spec/speaker.spec.ts && tsx spec/models.spec.ts && tsx spec/text.spec.ts && tsx spec/listen.spec.ts"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "26.6.2",
+    "@typescript-eslint/parser": "^8.70.1",
+    "eslint": "9.39.2",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.70.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
+    "directory": "packages/vion-speech"
+  }
+}

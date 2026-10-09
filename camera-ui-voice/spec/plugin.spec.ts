@@ -10,7 +10,7 @@ import { TOOLS } from '../src/tools.js';
 import { FakeEngine, flush, runTests, test } from './helpers.js';
 
 import type { JsonSchema, Notification } from '@camera.ui/sdk';
-import type { SpeechEngine } from '../src/engine.js';
+import type { SpeechEngine } from '@vionvision/speech';
 
 class TestPlugin extends VoicePlugin {
   static engine = new FakeEngine();

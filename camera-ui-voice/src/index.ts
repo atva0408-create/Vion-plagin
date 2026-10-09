@@ -3,12 +3,10 @@ import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { API_EVENT, BasePlugin, SensorType, Severity } from '@camera.ui/sdk';
+import { CameraSpeaker, FfmpegListener, ModelStore, PROBLEM_TEXT, SherpaEngine, speakerProblem, speakerProblemCode } from '@vionvision/speech';
 
 import { DoorWatcher } from './door.js';
-import { SherpaEngine } from './engine.js';
-import { FfmpegListener } from './listen.js';
-import { ModelStore } from './models.js';
-import { CameraSpeaker, PROBLEM_TEXT, speakerProblem, speakerProblemCode } from './speaker.js';
+import { nativeRequire } from './runtime.js';
 import { LANGUAGES, LANGUAGE_NAMES, asLanguage, fill, saidText, texts } from './speech.js';
 import { DAY_LABELS, PLUGIN_DEFAULTS, SCREEN_TIME_DEFAULTS, checkDoorRule, checkScreenTime, quietHours } from './settings.js';
 import { TOOLS, callTool } from './tools.js';
@@ -34,9 +32,9 @@ import type {
   PluginAPI,
   SensorLike,
 } from '@camera.ui/sdk';
+import type { SpeechEngine } from '@vionvision/speech';
 import type { SeenDetection, Sighting } from './presence.js';
 import type { DoorRule, PluginValues, ScreenTimeValues } from './settings.js';
-import type { SpeechEngine } from './engine.js';
 import type { Language } from './speech.js';
 import type { ToolCamera, ToolHost } from './tools.js';
 import type { CameraPort, SavedState } from './voice.js';
@@ -121,7 +119,11 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   /** The speech engine; the specs put a fake one here. */
   protected createEngine(store: ModelStore): SpeechEngine {
-    return new SherpaEngine(store, (message) => this.logger.debug(message));
+    return new SherpaEngine(
+      store,
+      (message) => this.logger.debug(message),
+      () => nativeRequire('sherpa-onnx-node'),
+    );
   }
 
   // ---- plugin settings ----

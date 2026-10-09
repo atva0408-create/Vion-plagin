@@ -4,18 +4,17 @@
  * sensors, the clock and the outside world; tests give it fakes of the same.
  */
 import { Severity } from '@camera.ui/sdk';
+import { PhraseQueue, isEcho } from '@vionvision/speech';
 
 import { PresenceTracker } from './presence.js';
-import { PhraseQueue } from './queue.js';
 import { ScreenTimeEngine, freshState } from './screenTime.js';
 import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, saidText, templateNotify, texts } from './speech.js';
 import { MINUTE, activeInterval, formatClock, localTime } from './time.js';
 
 import type { Notification } from '@camera.ui/sdk';
-import type { SpeechEngine } from './engine.js';
+import type { SpeakResult, SpeechEngine } from '@vionvision/speech';
 import type { Point, Sighting } from './presence.js';
 import type { Facts, ScreenTimeAction, ScreenTimeConfig, ScreenTimeState } from './screenTime.js';
-import type { SpeakResult } from './speaker.js';
 import type { Ask, Language } from './speech.js';
 import type { Clock, WeeklyInterval } from './time.js';
 
@@ -86,32 +85,8 @@ const MAX_INSTRUCTED = 300;
 /** State fields that change with every look; a change of only these waits for the minute. */
 const COUNTERS = new Set(['lastTick', 'lastSeen', 'todayMs', 'workMs', 'history', 'candidateSince']);
 
-const words = (text: string) =>
-  text
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-
-/**
- * What the microphone heard is the camera's own phrase coming back, not the child: a run of three or more of the
- * phrase's words, in its order, makes most of what was heard. Shared words are not enough: "когда можно играть" after
- * "…играть можно будет завтра" is the child's question, and taken for an echo it went unanswered; nor two words in a
- * row: "ещё десять минут" after "…перерыв на десять минут" is the child asking for more time.
- */
-export function isEcho(heard: string, said: string | undefined): boolean {
-  if (!said) return false;
-  const phrase = words(said);
-  const got = words(heard);
-  let longest = 0;
-  for (let i = 0; i < got.length; i++) {
-    for (let j = 0; j < phrase.length; j++) {
-      let run = 0;
-      while (i + run < got.length && j + run < phrase.length && got[i + run] === phrase[j + run]) run++;
-      longest = Math.max(longest, run);
-    }
-  }
-  return longest >= 3 && longest / got.length >= 0.6;
-}
+// the camera's own phrase coming back through its microphone: the speech package decides, the specs check it here
+export { isEcho };
 
 export class Voice {
   private cameras = new Map<string, CameraPort>();

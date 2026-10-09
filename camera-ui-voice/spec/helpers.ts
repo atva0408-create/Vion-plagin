@@ -1,8 +1,7 @@
 // Fakes for the specs: a clock moved by hand, a speech engine, cameras, the LLM. Run a spec with: npx tsx spec/<name>.spec.ts
 import type { AssistantAskRequest, AssistantAskResult, Notification } from '@camera.ui/sdk';
-import type { Audio, SpeechEngine, VoiceActivity } from '../src/engine.js';
+import type { Audio, SpeakResult, SpeechEngine, VoiceActivity } from '@vionvision/speech';
 import type { Sighting } from '../src/presence.js';
-import type { SpeakResult } from '../src/speaker.js';
 import type { Clock } from '../src/time.js';
 import type { CameraPort } from '../src/voice.js';
 

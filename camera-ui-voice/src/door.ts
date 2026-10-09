@@ -7,7 +7,7 @@ import { fill, texts } from './speech.js';
 
 import type { DetectionEvent, DetectionEventType } from '@camera.ui/sdk';
 import type { DoorRule, PersonValues } from './settings.js';
-import type { SpeakResult } from './speaker.js';
+import type { SpeakResult } from '@vionvision/speech';
 import type { Language } from './speech.js';
 import type { Clock, WeeklyInterval } from './time.js';
 

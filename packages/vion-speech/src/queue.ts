@@ -3,7 +3,7 @@
  * so a storm of events cannot make the camera talk without a pause.
  */
 import type { SpeakResult } from './speaker.js';
-import type { Clock } from './time.js';
+import type { Clock } from './clock.js';
 
 export interface QueueItem {
   text: string;

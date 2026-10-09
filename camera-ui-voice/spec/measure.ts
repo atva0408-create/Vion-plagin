@@ -2,11 +2,11 @@
 // mirror (v1/voice/*.tar.gz), lets ModelStore fetch and check the packs, and times SherpaEngine.
 //   npx tsx spec/measure.ts <mirror folder> <work folder>
 import { createReadStream, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 
-import { SherpaEngine } from '../src/engine.js';
-import { ModelStore } from '../src/models.js';
+import { ModelStore, SherpaEngine } from '@vionvision/speech';
 
 import type { AddressInfo } from 'node:net';
 import type { Language } from '../src/speech.js';
@@ -26,7 +26,9 @@ process.env.VION_MODELS_HOST = `http://127.0.0.1:${(server.address() as AddressI
 
 const mb = () => Math.round(process.memoryUsage().rss / 1024 / 1024);
 const ms = (start: bigint) => Number((process.hrtime.bigint() - start) / 1_000_000n);
-const engine = new SherpaEngine(new ModelStore(join(work, 'voice-models'), undefined, (m) => console.log(`  ${m}`)), (m) => console.log(`  ${m}`));
+const engine = new SherpaEngine(new ModelStore(join(work, 'voice-models'), undefined, (m) => console.log(`  ${m}`)), (m) => console.log(`  ${m}`), () =>
+  createRequire(import.meta.url)('sherpa-onnx-node'),
+);
 const PHRASES: Record<Language, string> = {
   ru: 'Артём, пора оставить компьютер и отдохнуть десять минут, глаза устают, а потом можно снова играть.',
   en: 'Artem, it is time to leave the computer and rest for ten minutes, your eyes are getting tired now.',

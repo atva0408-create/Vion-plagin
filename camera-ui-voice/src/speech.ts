@@ -8,13 +8,16 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { LANGUAGE_NAMES, NUMBER_WORDS, foreignNumber } from '@vionvision/speech';
+
 import { codeDir } from './runtime.js';
 
 import type { AssistantAskRequest, AssistantAskResult } from '@camera.ui/sdk';
+import type { Language } from '@vionvision/speech';
 import type { Facts, Reason } from './screenTime.js';
 
-export const LANGUAGES = ['ru', 'en', 'de'] as const;
-export type Language = (typeof LANGUAGES)[number];
+export { LANGUAGES, LANGUAGE_NAMES, asLanguage } from '@vionvision/speech';
+export type { Language } from '@vionvision/speech';
 
 export interface SpeechTexts {
   minutes: Partial<Record<Intl.LDMLPluralRule, string>>;
@@ -57,11 +60,6 @@ export function texts(language: Language): SpeechTexts {
     cache.set(language, found);
   }
   return found;
-}
-
-export function asLanguage(value: unknown, fallback: Language = 'ru'): Language {
-  const short = typeof value === 'string' ? value.slice(0, 2).toLowerCase() : '';
-  return (LANGUAGES as readonly string[]).includes(short) ? (short as Language) : fallback;
 }
 
 export function minutesWord(language: Language, count: number): string {
@@ -110,88 +108,6 @@ export function templateNotify(facts: Facts, language: Language): { title: strin
 }
 
 // ---- checking what the LLM wrote ----
-
-const NUMBER_WORDS: Record<Language, Record<string, number>> = {
-  ru: {
-    один: 1,
-    одна: 1,
-    одну: 1,
-    два: 2,
-    две: 2,
-    три: 3,
-    четыре: 4,
-    пять: 5,
-    шесть: 6,
-    семь: 7,
-    восемь: 8,
-    девять: 9,
-    десять: 10,
-    одиннадцать: 11,
-    двенадцать: 12,
-    пятнадцать: 15,
-    двадцать: 20,
-    тридцать: 30,
-    сорок: 40,
-    пятьдесят: 50,
-    шестьдесят: 60,
-    полчаса: 30,
-    полчасика: 30,
-    полчасок: 30,
-    час: 60,
-    часа: 60,
-    часик: 60,
-    часок: 60,
-    часика: 60,
-    часочек: 60,
-    полтора: 90,
-  },
-  en: {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
-    eleven: 11,
-    twelve: 12,
-    fifteen: 15,
-    twenty: 20,
-    thirty: 30,
-    forty: 40,
-    fifty: 50,
-    sixty: 60,
-    hour: 60,
-    half: 30,
-  },
-  de: {
-    eins: 1,
-    eine: 1,
-    einen: 1,
-    zwei: 2,
-    drei: 3,
-    vier: 4,
-    fünf: 5,
-    sechs: 6,
-    sieben: 7,
-    acht: 8,
-    neun: 9,
-    zehn: 10,
-    elf: 11,
-    zwölf: 12,
-    fünfzehn: 15,
-    zwanzig: 20,
-    dreißig: 30,
-    vierzig: 40,
-    fünfzig: 50,
-    sechzig: 60,
-    stunde: 60,
-    halbe: 30,
-  },
-};
 
 /** The facts a phrase about each reason may name: a break phrase saying the bedtime, or the minutes of today, was a door to "play 10 more minutes". */
 const FACTS_OF: Record<Reason, (keyof Facts)[]> = {
@@ -244,18 +160,7 @@ export function foreignValue(say: string, facts: Facts, language: Language): str
     const before = split(lower.slice(0, more.index ?? 0)).slice(-1);
     if ([...after, ...before].some((word) => amount(word, language))) return more[0];
   }
-  let rest = say;
-  for (const match of say.matchAll(/\b(\d{1,2})[:.](\d{2})\b/g)) {
-    const time = `${match[1].padStart(2, '0')}:${match[2]}`;
-    if (!times.has(time)) return match[0];
-    rest = rest.replace(match[0], ' ');
-  }
-  for (const match of rest.matchAll(/\d+/g)) if (!numbers.has(Number(match[0]))) return match[0];
-  const words = NUMBER_WORDS[language];
-  for (const word of rest.toLowerCase().split(/[^\p{L}]+/u)) {
-    if (word in words && !numbers.has(words[word])) return word;
-  }
-  return undefined;
+  return foreignNumber(say, { times, numbers }, language);
 }
 
 const MAX_SAY = 200;
@@ -279,8 +184,6 @@ export function saidText(result: { json?: unknown; text: string }): string {
 }
 
 export type Ask = (request: AssistantAskRequest) => Promise<AssistantAskResult>;
-
-export const LANGUAGE_NAMES: Record<Language, string> = { ru: 'Russian', en: 'English', de: 'German' };
 
 const RULES =
   'Use ONLY the facts below. Every time and every number you say must be one of the facts, written with digits as in the facts. ' +
