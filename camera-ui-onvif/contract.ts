@@ -7,7 +7,7 @@ export const contract: PluginContract = {
   role: PluginRole.CameraAndSensorProvider,
   provides: [SensorType.PTZ, SensorType.Motion, SensorType.Object, SensorType.Audio, SensorType.Face],
   consumes: [],
-  interfaces: [PluginInterface.DiscoveryProvider],
+  interfaces: [PluginInterface.DiscoveryProvider, PluginInterface.AssistantTools],
 };
 
 export default contract;

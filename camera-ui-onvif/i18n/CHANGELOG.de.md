@@ -1,3 +1,15 @@
+## [1.3.2]
+
+- Eine Korrektur der Hinweise zu 1.3.0, nach denen der Assistent eine ONVIF-Kamera neu startet, die nicht mehr antwortet: Er startet eine Kamera neu, die noch über ONVIF antwortet, etwa wenn ihr Video hängt. Eine Kamera, die nicht über ONVIF antwortet, kann nicht zum Neustart aufgefordert werden; der Assistent sagt das und bittet, Stromversorgung und Netzwerk zu prüfen
+
+## [1.3.1]
+
+- Das Speichern und Löschen eines Presets über den Assistenten funktioniert bei einer Kamera, deren Presets mit Ziffern benannt sind („1“, „2“): Der Name wurde als Zahl gelesen, und jedes Speichern und Löschen bei dieser Kamera schlug fehl
+
+## [1.3.0]
+
+- Der ViON-Assistent liest die Presets einer PTZ-Kamera, speichert die aktuelle Position als Preset oder löscht eines und startet eine ONVIF-Kamera neu, die nicht mehr antwortet; jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt
+
 ## [1.2.8]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

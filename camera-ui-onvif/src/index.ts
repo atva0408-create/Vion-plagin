@@ -1,9 +1,14 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { Discovery } from '@seydx/onvif';
 
+import { callOnvifTool, ONVIF_TOOLS } from './assistant.js';
 import { OnvifCamera } from './camera.js';
 
 import type {
+  AssistantToolContext,
+  AssistantToolProvider,
+  AssistantToolResult,
+  AssistantToolSpec,
   CameraConfig,
   CameraDevice,
   DeviceStorage,
@@ -25,7 +30,7 @@ interface OnvifDiscoveredDevice {
   password?: string;
 }
 
-export default class OnvifPlugin extends BasePlugin implements DiscoveryProvider {
+export default class OnvifPlugin extends BasePlugin implements DiscoveryProvider, AssistantToolProvider {
   private cameras = new Map<string, OnvifCamera>();
 
   private existingCameras = new Map<string, CameraDevice>();
@@ -36,6 +41,16 @@ export default class OnvifPlugin extends BasePlugin implements DiscoveryProvider
     super(logger, api, storage);
 
     this.api.on(API_EVENT.SHUTDOWN, this.stop.bind(this));
+  }
+
+  // ---- assistant: presets and the reboot of the camera (src/assistant.ts) ----------------------------------------
+
+  public assistantTools(): AssistantToolSpec[] {
+    return ONVIF_TOOLS;
+  }
+
+  public async callAssistantTool(name: string, input: Record<string, unknown>, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+    return callOnvifTool({ cameras: () => [...this.cameras.values()].map((camera) => camera.assistantCamera) }, name, input, ctx);
   }
 
   public async configureCameras(cameras: CameraDevice[]): Promise<void> {

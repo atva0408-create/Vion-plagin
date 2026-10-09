@@ -2,6 +2,7 @@ import { API_EVENT, BasePlugin, SensorType } from '@camera.ui/sdk';
 
 import { SensorClient, SensorRequestError } from './device.js';
 import { SensorFinder } from './discovery.js';
+import { callSensorTool, SENSOR_TOOLS } from './assistant.js';
 import { DEVICE_ID, ESPECTRE_PORT, EspectreClient, EspectreRequestError, EspectreStream } from './espectre.js';
 import { EspectreMotionSensor } from './espectre-sensor.js';
 import { DEFAULT_MANIFEST_URL, newer, readManifest } from './firmware.js';
@@ -9,6 +10,10 @@ import { VionMotionSensor, VionPresenceSensor } from './sensor.js';
 
 import type {
   AdoptedSensor,
+  AssistantToolContext,
+  AssistantToolProvider,
+  AssistantToolResult,
+  AssistantToolSpec,
   CameraConfig,
   CameraDevice,
   DeviceStorage,
@@ -25,6 +30,7 @@ import type {
   SnapshotInterface,
   StreamingInterface,
 } from '@camera.ui/sdk';
+import type { AssistantBoard } from './assistant.js';
 import type { RadarTarget, SensorConfigPatch, SensorInfo, SensorState } from './device.js';
 import type { FoundSensor } from './discovery.js';
 import type { EspectreDevice, EspectreMotion, EspectreOta, EspectreSensing, EspectreSensingPatch, EspectreWifi, FoundEspectre } from './espectre.js';
@@ -173,7 +179,7 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> implements SensorDiscoveryProvider, DiscoveryProvider {
+export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> implements SensorDiscoveryProvider, DiscoveryProvider, AssistantToolProvider {
   private finder = new SensorFinder(
     (found) => this.onFound(found),
     (message) => this.logger.warn(message),
@@ -469,18 +475,11 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     const bound: Bound = { id, sensorId: record.id, client, failures: 0, motion: false } as Bound;
     bound.sensor = new VionMotionSensor(record.name, record.nativeId, {
       configure: (patch) => this.configure(bound, patch),
-      recalibrate: async () => {
-        await bound.client.recalibrate();
-        this.logger.log(`${record.name}: calibrating for 30 s, keep the room empty`);
-      },
+      recalibrate: () => this.recalibrate(bound),
       update: () => this.updateFirmware(bound),
       reset: () => this.reset(bound),
       motionSource: () => this.motionSource(id),
-      setMotionSource: async (source) => {
-        await this.storage.setInternalValue('motionSources', { ...(this.storage.values.motionSources ?? {}), [id]: source });
-        this.logger.log(`${record.name}: motion now from ${MOTION_SOURCE_NAMES[source]}`);
-        if (bound.state) this.applyMotion(bound, bound.state);
-      },
+      setMotionSource: (source) => this.setMotionSource(bound, source),
     });
     if (address) bound.sensor.setAddress(address.split(':')[0]);
     this.bound.set(id, bound);
@@ -611,6 +610,27 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     if (sensor.detected !== presence.present) sensor.setDetected(presence.present);
   }
 
+  private async recalibrate(bound: Bound): Promise<void> {
+    await bound.client.recalibrate();
+    this.logger.log(`${bound.sensor.name}: calibrating for 30 s, keep the room empty`);
+  }
+
+  private async setMotionSource(bound: Bound, source: MotionSource): Promise<void> {
+    await this.storage.setInternalValue('motionSources', { ...(this.storage.values.motionSources ?? {}), [bound.id]: source });
+    this.logger.log(`${bound.sensor.name}: motion now from ${MOTION_SOURCE_NAMES[source]}`);
+    if (bound.state) this.applyMotion(bound, bound.state);
+  }
+
+  private async calibrateEspectre(bound: EspectreBound): Promise<void> {
+    await this.espectreAction(bound, () => bound.client.calibrate(), 'Calibration is already running');
+    this.logger.log(`${bound.sensor.name}: calibrating, keep the room empty`);
+  }
+
+  private async setEspectreHold(bound: EspectreBound, seconds: number): Promise<void> {
+    await this.storage.setInternalValue('espectreHold', { ...(this.storage.values.espectreHold ?? {}), [bound.id]: seconds });
+    this.applyEspectre(bound);
+  }
+
   private async configure(bound: Bound, patch: SensorConfigPatch): Promise<void> {
     try {
       const info = await bound.client.configure(patch);
@@ -669,10 +689,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     } as EspectreBound;
     bound.sensor = new EspectreMotionSensor(record.name, record.nativeId, {
       configure: (patch) => this.configureEspectre(bound, patch),
-      calibrate: async () => {
-        await this.espectreAction(bound, () => bound.client.calibrate(), 'Calibration is already running');
-        this.logger.log(`${record.name}: calibrating, keep the room empty`);
-      },
+      calibrate: () => this.calibrateEspectre(bound),
       checkUpdate: async () => {
         await this.espectreAction(bound, () => bound.client.checkUpdate(), 'The firmware is already being checked or installed');
       },
@@ -681,10 +698,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         this.logger.log(`${record.name}: installing ESPectre ${bound.ota?.target_version ?? ''}, the board restarts after it`);
       },
       holdS: () => this.espectreHold(id),
-      setHoldS: async (seconds) => {
-        await this.storage.setInternalValue('espectreHold', { ...(this.storage.values.espectreHold ?? {}), [id]: seconds });
-        this.applyEspectre(bound);
-      },
+      setHoldS: (seconds) => this.setEspectreHold(bound, seconds),
     });
     bound.stream = new EspectreStream(client, {
       open: () => void this.onEspectreOpen(bound),
@@ -968,6 +982,52 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     }
     await bound.client.update(release.url, release.sha256);
     this.logger.log(`${bound.sensor.name}: installing firmware ${release.version}`);
+  }
+
+  // ---- assistant: what a board feels, calibration, threshold and hold time (src/assistant.ts) --------------------------
+
+  public assistantTools(): AssistantToolSpec[] {
+    return SENSOR_TOOLS;
+  }
+
+  public async callAssistantTool(name: string, input: Record<string, unknown>, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+    const live = new Map((await this.vionSensorLive()).map((entry) => [entry.sensorId, entry]));
+    return callSensorTool({ boards: () => this.assistantBoards(live) }, name, input, ctx);
+  }
+
+  private assistantBoards(live: Map<string, VionSensorLive>): AssistantBoard[] {
+    const vion = [...this.bound.values()].map((bound): AssistantBoard => ({
+      name: bound.sensor.name,
+      kind: 'vion',
+      live: live.get(bound.sensorId)!,
+      firmware: bound.info?.firmware,
+      newerFirmware: this.release && bound.info && newer(this.release.version, bound.info.firmware) ? this.release.version : undefined,
+      threshold: bound.info?.config.threshold,
+      holdS: bound.info?.config.hold_s ?? 8,
+      motionSource: this.motionSource(bound.id),
+      hasPresence: bound.info ? hasPresence(bound.info) : false,
+      calibrationS: 30,
+      calibrate: () => this.recalibrate(bound),
+      configure: async ({ threshold, holdS, motionSource }) => {
+        if (threshold !== undefined || holdS !== undefined) {
+          await this.configure(bound, { ...(threshold !== undefined ? { threshold } : {}), ...(holdS !== undefined ? { hold_s: holdS } : {}) });
+        }
+        if (motionSource !== undefined) await this.setMotionSource(bound, motionSource);
+      },
+    }));
+    const espectre = [...this.espectre.values()].map((bound): AssistantBoard => ({
+      name: bound.sensor.name,
+      kind: 'espectre',
+      live: live.get(bound.sensorId)!,
+      firmware: bound.device?.firmware,
+      holdS: this.espectreHold(bound.id),
+      hasPresence: false,
+      calibrate: () => this.calibrateEspectre(bound),
+      configure: async ({ holdS }) => {
+        if (holdS !== undefined) await this.setEspectreHold(bound, holdS);
+      },
+    }));
+    return [...vion, ...espectre].filter((board) => board.live);
   }
 
   // ---- cameras of the boards ------------------------------------------------------------------------------------------

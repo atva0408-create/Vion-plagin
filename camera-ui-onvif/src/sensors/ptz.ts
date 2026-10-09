@@ -368,6 +368,11 @@ export class OnvifPTZSensor extends PTZControl {
     return labels.length;
   }
 
+  /** Reads the presets of the camera again now: after the assistant saved or deleted one. */
+  public async reloadPresets(): Promise<void> {
+    await this.refreshPresets();
+  }
+
   private async refreshPresets(): Promise<void> {
     let count: number;
     try {

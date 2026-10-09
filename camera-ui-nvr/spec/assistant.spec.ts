@@ -103,8 +103,25 @@ for (const t of nvr.assistantTools()) {
   assert.match(t.name, /^[a-z][a-z0-9_]{1,63}$/, 'the host drops names outside this pattern');
   assert.equal(t.inputSchema.type, 'object');
   assert.ok(t.description.trim().length > 20);
-  assert.ok(!t.approval, 'these tools only read');
+  // a tool that changes something asks in the chat and is an admin's; the rest only read and run unasked, and only
+  // list_faces is an admin's read: the faces of every camera, as on the Faces page
+  if (t.approval) assert.ok(t.adminOnly, `${t.name}: a change is an admin's`);
+  else assert.equal(!!t.adminOnly, t.name === 'list_faces', `${t.name}: adminOnly`);
 }
+const reading = nvr
+  .assistantTools()
+  .filter((t) => !t.approval)
+  .map((t) => t.name);
+assert.deepEqual(reading.sort(), [
+  'get_event_image',
+  'list_faces',
+  'list_plates',
+  'query_events',
+  'recording_health',
+  'search_events_by_text',
+  'storage_forecast',
+  'summarize_day',
+]);
 
 // ------------------------------------------------------------------ query_events
 const day29 = { from: new Date(at('2026-09-29T00:00:00')).toISOString(), to: new Date(at('2026-09-29T23:59:59')).toISOString() };
@@ -212,6 +229,21 @@ assert.match((await call('get_event_image', { eventId: 'nope' })).error ?? '', /
 const search = content<{ count: number; hint?: string }>(await call('search_events_by_text', { text: 'курьер с коробкой' }));
 assert.equal(typeof search.count, 'number');
 assert.match((await call('search_events_by_text', {})).error ?? '', /text/);
+
+// ------------------------------------------------------------------ the acting tools through the real recorder
+// an unknown face of e-29-unknown, as the recorder keeps it after detection
+const faceStore = (nvr as unknown as { faces: { addUnknown(face: Record<string, unknown>): boolean } }).faces;
+faceStore.addUnknown({ cameraId: 'cam-hall', eventId: 'e-29-unknown', seg: 0, attr: 0, ts: at('2026-09-29T09:00:00'), model: 'test', embedding: [1, 0, 0] });
+const groups = content<{ unknownAlone?: { latest: { eventId: string }[] } }>(await call('list_faces', {}));
+assert.equal(groups.unknownAlone?.latest[0]?.eventId, 'e-29-unknown', 'list_faces names the event of an unknown face');
+assert.equal(content<{ done: boolean }>(await call('name_face', { eventId: 'e-29-unknown', name: 'Маша' })).done, true);
+assert.deepEqual(ids(content<{ events: Brief[] }>(await call('query_events', { ...day29, face: 'маша' })).events), ['e-29-unknown'], 'the event now names Маша');
+assert.equal(content<{ unknownAlone?: unknown }>(await call('list_faces', {})).unknownAlone, undefined, 'and the face is no longer unknown');
+const nothingRecorded = content<{ preview: { segments: number } }>(
+  await call('delete_recordings', { camera: 'Въезд', from: day29.from, to: new Date(at('2026-09-29T12:00:00')).toISOString(), __preview: true }),
+);
+assert.equal(nothingRecorded.preview.segments, 0, 'nothing recorded, nothing to delete');
+assert.match((await call('manual_recording', { camera: 'Въезд', action: 'start' })).error ?? '', /Въезд: Recording is off/, 'the recorder says why');
 
 // ------------------------------------------------------------------ helpers
 assert.equal(startOfDay('2026-09-29', MSK), Date.parse('2026-09-28T21:00:00Z'));

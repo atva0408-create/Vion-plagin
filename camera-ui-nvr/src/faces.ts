@@ -377,6 +377,22 @@ export class FaceStore {
     }));
   }
 
+  /** The unknown faces with the event they were seen in, newest first: the assistant names and ignores them by event. */
+  public unknownSightings(limit = 500): { id: string; eventId: string; seg: number; attr: number; cameraId: string; timestamp: number; clusterId?: string }[] {
+    const rows = this.db
+      .prepare('SELECT id, event_id, seg, attr, camera_id, ts, cluster_id FROM unknown_faces WHERE ignored = 0 ORDER BY ts DESC LIMIT ?')
+      .all(limit) as unknown as Pick<UnknownRow, 'id' | 'event_id' | 'seg' | 'attr' | 'camera_id' | 'ts' | 'cluster_id'>[];
+    return rows.map((r) => ({
+      id: r.id,
+      eventId: r.event_id,
+      seg: r.seg,
+      attr: r.attr,
+      cameraId: r.camera_id,
+      timestamp: r.ts,
+      ...(r.cluster_id ? { clusterId: r.cluster_id } : {}),
+    }));
+  }
+
   public listIgnored(withPictures = true): IgnoredFace[] {
     const rows = this.db.prepare('SELECT * FROM unknown_faces WHERE ignored = 1 ORDER BY ts DESC').all() as unknown as UnknownRow[];
     return rows.map((r) => ({

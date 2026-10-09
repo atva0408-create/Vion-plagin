@@ -312,6 +312,14 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
   // ---- assistant
   const tools = plugin.assistantTools().map((t: any) => t.name);
   assert.deepEqual(tools, ['yandex_say', 'yandex_command', 'yandex_run_scenario', 'yandex_devices']);
+  // Everything that acts asks in the chat and is an admin's: the server leaves such tools out of a user's chat and
+  // out of schedules and Alice. Only the list of devices reads.
+  const specs = Object.fromEntries(plugin.assistantTools().map((t: any) => [t.name, t]));
+  for (const name of ['yandex_say', 'yandex_command', 'yandex_run_scenario']) {
+    assert.equal(specs[name].approval, true, `${name} asks for approval`);
+    assert.equal(specs[name].adminOnly, true, `${name} is an admin's`);
+  }
+  assert.ok(!specs.yandex_devices.approval && !specs.yandex_devices.adminOnly, 'yandex_devices only reads');
   assert.match((await plugin.callAssistantTool('yandex_say', { text: 'Ужин готов', station: 'кухня' }, {})).content, /done \(cloud\)/);
   assert.match((await plugin.callAssistantTool('yandex_say', { text: 'x', station: 'Ванная' }, {})).error, /No station "Ванная"/);
   assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'ушёл' }, {})).content, /Я ушёл/);

@@ -11,6 +11,7 @@ export interface StorageValues {
   host?: string;
   token?: string;
   excludeEntities?: string;
+  assistantDomains?: string;
 }
 
 export interface HaStateAttributes {

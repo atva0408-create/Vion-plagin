@@ -32,7 +32,7 @@ export const contract: PluginContract = {
     SensorType.Siren,
   ],
   consumes: [],
-  interfaces: [PluginInterface.Notifier, PluginInterface.SensorDiscovery],
+  interfaces: [PluginInterface.Notifier, PluginInterface.SensorDiscovery, PluginInterface.AssistantTools],
 };
 
 export default contract;

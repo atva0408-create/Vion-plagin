@@ -1,3 +1,7 @@
+## [0.2.1]
+
+- Der Assistent: Ein Satz auf einer Station, ein Befehl an Alice und ein Szenario des Smart Home sind Sache des Admins und brauchen eine Bestätigung im Chat, sodass weder ein Benutzer noch ein Zeitplan noch Alice eine Station etwas sagen lassen kann
+
 ## [0.2.0]
 
 - Klimaanlagen, Fernseher und IR-Fernbedienungen: Modus, Temperatur und Lüfter einer Klimaanlage, Lautstärke, Kanal, Eingang und Stummschaltung eines Fernsehers und die angelernten Tasten einer IR-Fernbedienung stehen in den Einstellungen ihres Schalters in ViON. Eine Fernbedienung nur aus Tasten wird ein eigener Schalter, der sie enthält

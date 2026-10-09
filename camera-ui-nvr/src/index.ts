@@ -1022,23 +1022,26 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   public async nvrDeleteRange(cameraId: string, startUs: number, endUs: number): Promise<RecordingsDeletedEvent> {
     await this.ready;
-    const limit = Date.now() * 1000 - PROTECTED_TAIL_US;
     let minUs = Infinity;
     let maxUs = -Infinity;
-    for (const role of ['high', 'mid', 'low']) {
-      for (const seg of this.store.segments(cameraId, role, startUs, Math.min(endUs, limit))) {
-        if (seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit) {
-          // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-          await rm(this.store.file(seg), { force: true });
-          this.store.deleteSegment(seg.id);
-          minUs = Math.min(minUs, seg.start_us);
-          maxUs = Math.max(maxUs, seg.end_us);
-        }
-      }
+    for (const seg of this.deletableSegments(cameraId, startUs, endUs)) {
+      // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
+      await rm(this.store.file(seg), { force: true });
+      this.store.deleteSegment(seg.id);
+      minUs = Math.min(minUs, seg.start_us);
+      maxUs = Math.max(maxUs, seg.end_us);
     }
     const result = Number.isFinite(minUs) ? { cameraId, startMs: Math.round(minUs / 1000), endMs: Math.round(maxUs / 1000) } : { cameraId, startMs: 0, endMs: 0 };
     if (result.endMs) for (const cb of this.recordingsDeletedListeners) this.safeCall(this.recordingsDeletedListeners, cb, result);
     return result;
+  }
+
+  /** The segments a delete of the range removes: wholly inside it, every stream, never the last minutes being written. */
+  private deletableSegments(cameraId: string, startUs: number, endUs: number): SegmentRow[] {
+    const limit = Date.now() * 1000 - PROTECTED_TAIL_US;
+    return ['high', 'mid', 'low'].flatMap((role) =>
+      this.store.segments(cameraId, role, startUs, Math.min(endUs, limit)).filter((seg) => seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit),
+    );
   }
 
   public async getSystemEvents(
@@ -1908,6 +1911,43 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       cameras: () => [...this.cameras.values()].map((c) => ({ id: c.device.id, name: c.device.name })),
       search: (text, limit) => this.searchEventsByText(text, limit),
       picture: async (event) => (await this.getEventThumbnails(event.cameraId, event.startTime, event.id)).event,
+      coverage: async (cameraId, startMs, endMs) => (await this.getRecordingCoverage(cameraId, startMs, endMs)).union,
+      systemEvents: async (cameraIds, startMs, endMs) => (await this.getSystemEvents(cameraIds, { startMs, endMs, limit: 500 })).events,
+      storage: (timezone) => this.getStorageStats(timezone),
+      minFreePercent: () => this.setting.minFreePercent,
+      knownFaces: () => this.listKnownFaces(),
+      unknownFaces: () => this.faces.unknownSightings(),
+      faceCrop: (eventId, seg, attr) => {
+        const row = this.store.event(eventId);
+        return row ? this.readAttributeCrop(row.camera_id, eventId, `${seg}:face.${attr}`) : undefined;
+      },
+      nameFace: async (eventId, seg, attr, oldName, newName) => {
+        // an unknown face is enrolled the way the Faces page does it: its vector and picture become the person's
+        const unknown = oldName === 'unknown' ? this.faces.unknownSightings().find((f) => f.eventId === eventId && f.seg === seg && f.attr === attr) : undefined;
+        if (!unknown) return this.reassignEventFace(eventId, seg, oldName, newName, { attrIndex: attr });
+        await this.enrollFromEvent(newName, unknown.id);
+        return 1;
+      },
+      ignoreFaces: (sighting) => (sighting.clusterId ? this.ignoreUnknownFacesByCluster(sighting.clusterId) : this.ignoreUnknownFaces([sighting.id])),
+      forgetFace: (name) => this.deleteFace(name),
+      manual: (cameraId) => this.getManualRecording(cameraId),
+      startManual: (cameraId, minutes) => this.nvrStartRecording(cameraId, minutes),
+      stopManual: (cameraId) => this.nvrStopRecording(cameraId),
+      // what the camera does now, not only what it is set to: over the plan or paused it writes nothing, and the
+      // assistant answered "records all the time" to a manual recording of such a camera
+      recordingMode: (cameraId) => {
+        const managed = this.cameras.get(cameraId);
+        const device = managed?.device;
+        if (!device || !isRecordingWanted(device)) return 'off';
+        if (managed.overLimit) return 'over_plan';
+        if (this.paused) return 'paused';
+        return effectiveMode(device.recordingSettings?.mode) ?? device.recordingSettings.mode;
+      },
+      deletable: (cameraId, startMs, endMs) => {
+        const segments = this.deletableSegments(cameraId, startMs * 1000, endMs * 1000);
+        return { segments: segments.length, bytes: segments.reduce((sum, seg) => sum + seg.bytes, 0) };
+      },
+      deleteRange: (cameraId, startMs, endMs) => this.nvrDeleteRange(cameraId, startMs * 1000, endMs * 1000),
     };
   }
 

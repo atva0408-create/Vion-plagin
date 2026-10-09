@@ -1,3 +1,21 @@
+## [0.12.2]
+
+- Naming a face through the assistant counts a person seen twice in one event once: someone the camera lost and found again was offered as "2 faces: unknown, unknown". Faces with the same known name, or in the same group of unknown faces, are one person and all of them get the name; unknown faces nothing tells apart are still offered to choose from, with a word that they may be the same person
+- The recording check of the assistant tells what a camera does now apart from the period asked about: a camera that recorded the whole day and is over the plan or paused only now was reported as recorded 100% and "not recorded" at once
+
+## [0.12.1]
+
+- A time without an offset the assistant names ("delete the recordings from 2 to 3") is the time of the person who asked, not of the server: on a server in UTC it deleted 5 to 6 in Moscow
+- The disk forecast of the assistant counts the cameras that record on events, by what they wrote a day: it left them out and promised more days than the disk holds
+- A manual recording asked through the assistant of a camera set to record all the time but over the plan or paused says so, instead of "it records all the time anyway"
+- The list of faces through the assistant is an administrator's, as the Faces page is
+
+## [0.12.0]
+
+- The assistant answers about the recording itself, together with ViON's assistant update: whether cameras recorded through a period (the share recorded, the gaps longer than a minute and their cause when the recorder logged one) and how many days the disk holds at the current rate, or that the retention ends the archive first
+- The assistant lists the known and unknown faces and, after a confirmation in the chat by an administrator, names a face of an event («this is Masha»), corrects a wrong name, ignores a group of unknown faces or forgets a person. The confirmation card shows the face
+- The assistant starts and stops a manual recording and deletes the recordings of one camera in a range of up to 24 hours, both for administrators and after a confirmation. A range with favorite events is refused unless the user said favorites go too; the card says how much goes and that it cannot be undone
+
 ## [0.11.3]
 
 - The hover preview of an event finds the event where it is recorded: an event recorded only from its middle, or from a camera that sends a keyframe rarely, showed "no preview"; the excerpt now starts where the recording of the event begins, at the next keyframe when the one before is further back than the excerpt is long

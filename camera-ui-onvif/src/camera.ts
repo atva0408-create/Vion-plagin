@@ -8,9 +8,11 @@ import {
   parseDetectionEvent,
   parseMotionEvent,
 } from '@seydx/onvif';
+import { presetsOf } from './assistant.js';
 import { OnvifAudioSensor, OnvifFaceSensor, OnvifMotionSensor, OnvifObjectSensor, OnvifPTZSensor } from './sensors/index.js';
 
 import type { CameraDevice, DeviceStorage, LoggerService } from '@camera.ui/sdk';
+import type { OnvifAssistantCamera } from './assistant.js';
 import type { EventCategory, EventProperties, NotificationMessage } from '@seydx/onvif';
 
 export interface OnvifStorageValues {
@@ -154,6 +156,35 @@ export class OnvifCamera {
     if (this.ptzSensor.isAssigned) {
       await this.ptzSensor.initialize();
     }
+  }
+
+  /** The camera as the assistant sees it (src/assistant.ts). */
+  public get assistantCamera(): OnvifAssistantCamera {
+    const device = () => {
+      if (!this.device) throw new Error(`"${this.camera.name}" does not answer over ONVIF right now`);
+      return this.device;
+    };
+    return {
+      id: this.camera.id,
+      name: this.camera.name,
+      connected: this.device !== undefined,
+      hasPTZ: this.capabilities?.hasPTZ === true,
+      presets: async () => presetsOf(await device().ptz.getPresets()),
+      savePreset: async (name, token) => {
+        const saved = await device().ptz.setPreset({ presetName: name, ...(token ? { presetToken: token } : {}) });
+        await this.ptzSensor?.reloadPresets();
+        return String(saved.presetToken);
+      },
+      removePreset: async (token) => {
+        await device().ptz.removePreset({ presetToken: token });
+        await this.ptzSensor?.reloadPresets();
+      },
+      reboot: async () => {
+        const message = await device().device.systemReboot();
+        this.camera.logger.log(`Reboot asked through the assistant${message ? `: ${message}` : ''}`);
+        return message;
+      },
+    };
   }
 
   async reconnect(): Promise<void> {

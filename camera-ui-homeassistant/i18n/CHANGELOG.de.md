@@ -1,3 +1,13 @@
+## [1.1.1]
+
+- Ein Aufruf über den ViON-Assistenten wirkt nur auf die eine Entität, die die Bestätigung nennt: Ein Aufruf, der zusätzlich einen Bereich, ein Gerät, eine Etage oder ein Label nannte (etwa eine Lampe „in der Küche“ ausschalten), hätte auf alle davon gewirkt und wird jetzt abgelehnt
+
+## [1.1.0]
+
+### Hinzugefügt
+
+- **Der ViON-Assistent** zeigt die Entitäten von Home Assistant mit Bereich und Zustand und startet eine Szene, ein Skript oder eine Automation, schaltet Licht oder Schalter, bewegt Abdeckungen und stellt das Klima ein („schalte die Abendszene ein“). Jeder Aufruf wird im Chat bestätigt und ist nur Administratoren erlaubt. Andere Domänen (Schlösser, Alarmzentrale, Home Assistant selbst) bleiben gesperrt, bis sie in der neuen Einstellung „Domänen für den Assistenten“ ergänzt werden.
+
 ## [1.0.18]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche
