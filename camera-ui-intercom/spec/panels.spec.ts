@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { FakeClock, flush, runTests, test } from '../../packages/vion-speech/spec/helpers.js';
 import { ProfileCatalog } from '../src/panels/catalog.js';
-import { HttpPanel } from '../src/panels/engine.js';
+import { HttpPanel, streamIdleMs } from '../src/panels/engine.js';
 import { digestHeader, parseChallenge } from '../src/panels/http.js';
 import { checkProfile, eventsOf, fieldsOf, rtspUrl, safePath, validHost } from '../src/panels/profile.js';
 import { MultipartSplitter, dahuaFields } from '../src/panels/stream.js';
@@ -174,6 +174,38 @@ test('Dahua: a stream that ends is opened again after a pause; offline only afte
   engine.stop();
   device.server.close();
   assert.deepEqual(listener.states, [true], 'a dropped stream that comes back is not "offline"');
+});
+
+test('Dahua: a stream that goes silent (a link dropped without telling) is opened again; the heartbeat sets how soon', async () => {
+  assert.equal(streamIdleMs('/cgi-bin/eventManager.cgi?action=attach&codes=[All]&heartbeat=5'), 15_000);
+  assert.equal(streamIdleMs('/cgi-bin/eventManager.cgi?heartbeat=20'), 60_000);
+  assert.equal(streamIdleMs('/ISAPI/Event/notification/alertStream'), 120_000);
+  let opened = 0;
+  const device = await panel((_req, res) => {
+    opened++;
+    // the headers and one heartbeat, then nothing: the connection stays open
+    res.writeHead(200, { 'content-type': 'multipart/x-mixed-replace; boundary=myboundary' });
+    res.write('--myboundary\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nHeartbeat\r\n\r\n');
+  });
+  const clock = new FakeClock(0);
+  const engine = new HttpPanel({ ...shipped('dahua-vto'), auth: 'none' }, { host: '127.0.0.1', httpPort: device.port, username: 'a', password: 'b' }, collector(), {
+    clock,
+    streamIdleMs: 15_000,
+  });
+  engine.start();
+  for (let i = 0; i < 100 && opened < 1; i++) await new Promise((r) => setTimeout(r, 5));
+  await new Promise((r) => setTimeout(r, 30));
+  await clock.advance(14_000);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(opened, 1, 'not before the silence is long enough');
+  await clock.advance(2_000);
+  await new Promise((r) => setTimeout(r, 30));
+  await clock.advance(1_000);
+  for (let i = 0; i < 100 && opened < 2; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(opened, 2, 'opened again after the silence and the pause');
+  engine.stop();
+  device.server.closeAllConnections?.();
+  device.server.close();
 });
 
 test('Dahua: openDoor once with digest; an error is reported and not tried another way', async () => {

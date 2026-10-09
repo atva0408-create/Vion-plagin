@@ -225,6 +225,20 @@ test("the panel ends its call: ringing stops as missed; a hook's end leaves a ca
   assert.equal(w.store.queryVisits({}).visits[0].outcome, 'answered');
 });
 
+test('an answered call is recorded as long as it lasts, not only the first minutes', async () => {
+  const w = new World();
+  w.intercom.press('gate');
+  await w.pass(100);
+  w.intercom.answerCall(u1, w.callId());
+  await w.pass(9 * 60_000);
+  assert.ok(w.recorded.length >= 3, `the recorder was asked ${w.recorded.length} times in nine minutes`);
+  w.intercom.hangUpCall(u1, w.callId());
+  await w.pass(100);
+  const asked = w.recorded.length;
+  await w.pass(10 * 60_000);
+  assert.equal(w.recorded.length, asked, 'not after the end');
+});
+
 test('every user declined: the agent takes the call at once', async () => {
   const w = new World();
   w.intercom.press('gate');

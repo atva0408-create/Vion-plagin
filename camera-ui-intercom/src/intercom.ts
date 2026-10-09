@@ -154,6 +154,8 @@ interface Live {
   finishing?: Promise<void>;
   /** a code typed with no call: a visit of its own that rings nobody and is not a call for the household */
   quiet?: boolean;
+  /** the recorder is asked again every few minutes while the visit lasts; not a timer of the ringing */
+  recordTimer?: unknown;
 }
 
 interface Simulation {
@@ -178,6 +180,8 @@ export interface CallView {
   transcript: Visit['transcript'];
   question?: { text: string; options: { id: string; label: string }[] };
   flags: string[];
+  /** the call rings without sound (do not disturb): a page that opens during it rings silently too */
+  silent: boolean;
 }
 
 const NOTIFY_SEVERITY: Record<Instruction['notify'], Severity | undefined> = { none: undefined, quiet: Severity.Info, normal: Severity.Info, urgent: Severity.Warn };
@@ -300,6 +304,7 @@ export class Intercom {
       presses: visit.presses,
       transcript: visit.transcript,
       flags: visit.flags,
+      silent: true,
     };
   }
 
@@ -323,6 +328,7 @@ export class Intercom {
         ? { question: { text: live.question.text, options: live.question.options.map((id) => ({ id, label: texts[id as keyof typeof texts] ?? id })) } }
         : {}),
       flags: [...new Set([...live.visit.flags, ...(live.agent?.flags ?? [])])],
+      silent: live.route.silent,
     };
   }
 
@@ -1098,6 +1104,7 @@ export class Intercom {
   private async finish(live: Live): Promise<void> {
     const { panel, call, visit } = live;
     this.clearTimers(live);
+    this.host.clock.clearTimeout(live.recordTimer);
     live.conversation?.stop(call.outcome ?? 'agent');
     this.live.delete(panel.id);
     this.mergeAgent(live);
@@ -1216,7 +1223,8 @@ export class Intercom {
           live.visit.actions.push({ at: this.now(), kind: 'record', detail: error.message, by: 'intercom' });
         }
       });
-      if (!ended()) this.timer(live, RECORD_EVERY_MS, () => void ask());
+      // its own timer: the end of ringing clears the ringing's timers, the recording goes on for the whole visit
+      if (!ended()) live.recordTimer = this.host.clock.setTimeout(() => void ask(), RECORD_EVERY_MS);
     };
     void ask();
   }

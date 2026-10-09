@@ -58,6 +58,17 @@ export interface EngineOptions {
   fetcher?: Fetcher;
   clock?: Clock;
   log?: (message: string) => void;
+  /** how long an event stream may say nothing before it is opened again; by default from its heartbeat */
+  streamIdleMs?: number;
+}
+
+/**
+ * A stream that says nothing for this long, heartbeats included, is a link that dropped without telling (a panel that
+ * rebooted, a cable): three heartbeats when the path asks for them (Dahua's `heartbeat=5`), else two minutes.
+ */
+export function streamIdleMs(path: string): number {
+  const heartbeat = Number(/[?&]heartbeat=(\d+)/i.exec(path)?.[1]);
+  return Number.isFinite(heartbeat) && heartbeat > 0 ? Math.max(15_000, heartbeat * 3_000) : 120_000;
 }
 
 export class HttpPanel implements PanelEngine {
@@ -65,6 +76,7 @@ export class HttpPanel implements PanelEngine {
   private readonly fetcher: Fetcher;
   private readonly clock: Clock;
   private readonly log: (message: string) => void;
+  private readonly idleMs: number | undefined;
   private abort: AbortController | undefined;
   private timer: unknown;
   private stopped = true;
@@ -89,6 +101,7 @@ export class HttpPanel implements PanelEngine {
     this.fetcher = options.fetcher ?? ((url, init) => fetch(url, init));
     this.clock = options.clock ?? systemClock;
     this.log = options.log ?? (() => undefined);
+    this.idleMs = options.streamIdleMs;
   }
 
   start(): void {
@@ -201,11 +214,23 @@ export class HttpPanel implements PanelEngine {
 
   private async stream(path: string, format: 'dahua' | 'hikvision'): Promise<void> {
     if (this.stopped) return;
-    this.abort = new AbortController();
+    const abort = new AbortController();
+    this.abort = abort;
     const parse = format === 'dahua' ? dahuaFields : hikvisionFields;
     let reason = 'the event stream ended';
+    let silent = false;
+    let idle: unknown;
+    const idleMs = this.idleMs ?? streamIdleMs(path);
+    const watch = () => {
+      this.clock.clearTimeout(idle);
+      idle = this.clock.setTimeout(() => {
+        silent = true;
+        abort.abort();
+      }, idleMs);
+    };
+    watch();
     try {
-      const response = await this.request({ method: 'GET', path }, undefined, this.abort.signal);
+      const response = await this.request({ method: 'GET', path }, undefined, abort.signal);
       if (!response.ok || !response.body) throw new Error(response.status === 401 ? 'the login or password is wrong' : `HTTP ${response.status}`);
       const boundary = boundaryOf(response.headers.get('content-type'));
       if (!boundary) throw new Error('the panel did not answer with an event stream');
@@ -216,14 +241,17 @@ export class HttpPanel implements PanelEngine {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        watch();
         for (const body of splitter.push(value)) {
           for (const fields of parse(body)) for (const kind of eventsOf(fields, this.profile.rules)) this.listener.event(kind, fields);
         }
       }
     } catch (error) {
       if (this.stopped) return;
-      reason = (error as Error).message;
+      reason = silent ? `the event stream said nothing for ${Math.round(idleMs / 1000)} s` : (error as Error).message;
       this.log(`${this.profile.id} at ${this.credentials.host}: ${reason}`);
+    } finally {
+      this.clock.clearTimeout(idle);
     }
     this.retry(() => void this.stream(path, format), reason);
   }
