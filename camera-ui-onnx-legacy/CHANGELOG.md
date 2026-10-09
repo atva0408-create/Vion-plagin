@@ -1,6 +1,7 @@
 ## [1.3.0]
 
 - People who look alike can be found across cameras, together with ViON NVR 0.12.0: choose this plugin for a camera in its settings → Plugins → Sensor Types → Person Re-ID. It keeps what a person's clothes and build look like, not who they are. Its model loads with the first person such a camera sees, never at start
+- A search by picture finds the biggest person in the picture and cuts them out first, the way the server cuts the people out of the frames
 - Segmentation: the plugin outlines people, vehicles and animals, on its page and for the server; this model too loads only when it is first needed
 - Needs ViON 2.3.14 or newer: adding the plugin to a camera leaves Person Re-ID off there
 

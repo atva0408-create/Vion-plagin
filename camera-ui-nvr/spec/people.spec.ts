@@ -28,6 +28,7 @@ const BLUE = look(2, 3, 1); // 0
 let pictureAnswer: () => Promise<unknown> = async () => [{ embedding: RED, embeddingModel: 'reid-test' }];
 let embedders = 1;
 const pictures: number[] = [];
+const pictureConfigs: unknown[] = [];
 const dir = mkdtempSync(join(tmpdir(), 'nvr-people-'));
 const noop = () => undefined;
 const warned: string[] = [];
@@ -44,8 +45,9 @@ const api = {
   },
   proxy: {
     createProxy: () => ({
-      embedPersonImages: async (images: Uint8Array[]) => {
+      embedPersonImages: async (images: Uint8Array[], config?: unknown) => {
         pictures.push(images[0]!.length);
+        pictureConfigs.push(config);
         return pictureAnswer();
       },
     }),
@@ -147,6 +149,7 @@ assert.equal((await nvr.searchSimilarQuery({ person: RED, personModel: 'reid-unk
 const picture = new Uint8Array([0xff, 0xd8, 1, 2, 3]);
 const byPicture = await nvr.searchSimilarQuery({ image: picture });
 assert.ok(byPicture.matches[0]?.eventId === 'ev-door' && pictures.length === 1, 'a picture is made a vector by the plugin');
+assert.deepEqual(pictureConfigs[0], { find: 'person' }, 'which cuts the biggest person out of it first');
 pictureAnswer = async () => [{ embedding: RED, embeddingModel: 'reid-unknown' }];
 assert.equal((await nvr.searchSimilarQuery({ image: picture })).reason, 'model-mismatch', 'a model with no stored people');
 pictureAnswer = async () => [{ embedding: [], embeddingModel: 'reid-test' }];

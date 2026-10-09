@@ -9,7 +9,7 @@ only what 1.2.15 has.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from camera_ui_ml.backend import InputSpec, NDArray, Outputs
@@ -195,6 +195,47 @@ async def embed_person_images(
         except Exception:
             # an empty vector says "nobody to embed" in this picture; the others still are
             crop = np.zeros((0, 0, 3), dtype=np.uint8)
+        results.append({"embedding": await embedder.embed(crop), "embeddingModel": space})
+    return results
+
+
+def largest_person(
+    detections: list[tuple[int, float, BoundingBox]], labels: dict[int, str]
+) -> BoundingBox | None:
+    """The biggest person of a picture's detections (boxes 0..1): the one a picture of somebody is about."""
+    people = [
+        box
+        for cid, _, box in detections
+        if labels.get(cid) == "person" and box["width"] > 0 and box["height"] > 0
+    ]
+    return max(people, key=lambda box: box["width"] * box["height"], default=None)
+
+
+def crop_box(rgb: NDArray, box: BoundingBox) -> NDArray:
+    """The tight box of a person, no margin: the server cuts the people of the frames the same way."""
+    height, width = rgb.shape[:2]
+    x1 = min(max(math.floor(box["x"] * width), 0), width)
+    y1 = min(max(math.floor(box["y"] * height), 0), height)
+    x2 = min(max(math.ceil((box["x"] + box["width"]) * width), 0), width)
+    y2 = min(max(math.ceil((box["y"] + box["height"]) * height), 0), height)
+    return np.ascontiguousarray(rgb[y1:y2, x1:x2])
+
+
+async def embed_people_in_pictures(
+    embedder: PersonEmbedder, detector: Any, images: list[bytes], space: str
+) -> list[PersonEmbeddingResult]:
+    """A picture of a scene (a search by picture): the biggest person in it, cut tight, made a vector; nobody found
+    is an empty vector."""
+    results: list[PersonEmbeddingResult] = []
+    for data in images:
+        try:
+            rgb = decode_image(data)
+        except Exception:
+            results.append({"embedding": [], "embeddingModel": space})
+            continue
+        found = await detector.detect_single(data, {"width": rgb.shape[1], "height": rgb.shape[0]})
+        box = largest_person(found, detector.labels)
+        crop = crop_box(rgb, box) if box is not None else np.zeros((0, 0, 3), dtype=np.uint8)
         results.append({"embedding": await embedder.embed(crop), "embeddingModel": space})
     return results
 

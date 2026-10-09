@@ -92,7 +92,7 @@ from defaults import (
 )
 from model_manager import OnnxModelManager, ProviderList
 from modules import installed_modules, is_module, usable_choice
-from reid import PersonEmbedder, Segmenter, embed_person_images, segment_images
+from reid import PersonEmbedder, Segmenter, embed_people_in_pictures, embed_person_images, segment_images
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import ONNXClipSensor
 from sensors.face_embedder_sensor import ONNXFaceEmbedderSensor
@@ -824,6 +824,15 @@ class ONNXPlugin(
             return [None for _ in images]
 
         # an empty vector says the picture holds nobody the model can use, None is a plugin that could not run
+        if (config or {}).get("find") == "person":
+            # a picture of a scene (the NVR's search by picture): the biggest person in it, cut tight
+            detector = await self.get_object_detector(
+                resolve_object_model(DEFAULT_OPTION, DEFAULT_OBJECT_MODEL, DEFAULT_OPTION)
+            )
+            if not detector.initialized:
+                return [None for _ in images]
+            found = await embed_people_in_pictures(embedder, detector, images, PERSON_EMBEDDER_MODEL)
+            return [result for result in found]
         results = await embed_person_images(embedder, images, PERSON_EMBEDDER_MODEL)
         return [result for result in results]
 

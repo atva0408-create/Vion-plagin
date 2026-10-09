@@ -1721,8 +1721,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     let otherModel = false;
     for (const embedder of embedders) {
       try {
-        // the first call may download the model
-        const [result] = await withTimeout(embedder.embedPersonImages([image]), PERSON_EMBED_TIMEOUT_MS);
+        // the first call may download the model; a picture of a scene is cut to its biggest person by the plugin
+        const [result] = await withTimeout(embedder.embedPersonImages([image], { find: 'person' }), PERSON_EMBED_TIMEOUT_MS);
         if (!result) continue;
         answered = true;
         if (!Array.isArray(result.embedding) || !result.embedding.length || !result.embeddingModel) continue;

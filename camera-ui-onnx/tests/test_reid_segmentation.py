@@ -291,3 +291,66 @@ def test_a_persons_request_waits_for_the_first_load() -> None:
     asking = Asking()
     answer = asyncio.run(ONNXPlugin.embedPersonImages(asking, [jpeg(40, 100)]))  # type: ignore[arg-type]
     assert asking.loaded == 1 and answer[0] is not None and answer[0]["embedding"] == pytest.approx([0.0, 1.0])
+
+
+# ------------------------------------------------------------------ a search by picture
+
+
+class Detector:
+    """Answers fixed detections (class id, score, box 0..1) and remembers what it was given."""
+
+    labels = {0: "person", 2: "vehicle"}
+
+    def __init__(self, found: list[tuple[int, float, dict[str, float]]]) -> None:
+        self.found = found
+        self.initialized = True
+        self.calls = 0
+
+    async def detect_single(self, data: bytes, metadata: Any) -> list[tuple[int, float, dict[str, float]]]:
+        self.calls += 1
+        return self.found
+
+
+SMALL_PERSON = (0, 0.9, {"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.2})
+BIG_PERSON = (0, 0.6, {"x": 0.5, "y": 0.25, "width": 0.25, "height": 0.5})
+BIG_CAR = (2, 0.99, {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0})
+
+
+def test_the_biggest_person_of_a_picture_is_cut_tight() -> None:
+    assert reid.largest_person([SMALL_PERSON, BIG_CAR, BIG_PERSON], Detector.labels) == BIG_PERSON[2], "not the car, not the surer"
+    assert reid.largest_person([BIG_CAR], Detector.labels) is None
+    assert reid.largest_person([(0, 0.9, {"x": 0.1, "y": 0.1, "width": 0.0, "height": 0.5})], Detector.labels) is None
+    rgb = np.zeros((100, 200, 3), dtype=np.uint8)
+    assert reid.crop_box(rgb, BIG_PERSON[2]).shape == (50, 50, 3), "x 100..150, y 25..75 of 200x100"
+    assert reid.crop_box(rgb, {"x": 0.9, "y": -0.2, "width": 0.5, "height": 0.5}).shape == (30, 20, 3), "clamped to the picture"
+
+
+def test_a_picture_is_embedded_by_its_person_or_says_nobody() -> None:
+    backend = Backend([np.array([[1.0, 0.0]])])
+    embedder = ready(reid.PersonEmbedder(None, Logger()), backend)  # type: ignore[arg-type]
+    detector = Detector([BIG_CAR, BIG_PERSON])
+    found = asyncio.run(reid.embed_people_in_pictures(embedder, detector, [jpeg(200, 100)], "reid-test"))
+    assert found[0]["embedding"] == pytest.approx([1.0, 0.0]) and backend.calls[0][0] == (256, 128, 3)
+    nobody = asyncio.run(reid.embed_people_in_pictures(embedder, Detector([BIG_CAR]), [jpeg(200, 100)], "reid-test"))
+    assert nobody == [{"embedding": [], "embeddingModel": "reid-test"}] and len(backend.calls) == 1, "no person, no vector"
+    junk = asyncio.run(reid.embed_people_in_pictures(embedder, detector, [b"junk"], "reid-test"))
+    assert junk == [{"embedding": [], "embeddingModel": "reid-test"}] and detector.calls == 1, "unreadable: not even detected"
+
+
+def test_the_nvrs_picture_goes_through_the_detector_a_crop_does_not() -> None:
+    class Asking:
+        def __init__(self) -> None:
+            self.detector = Detector([BIG_PERSON])
+            self.backend = Backend([np.array([[0.0, 1.0]])])
+
+        async def get_person_embedder(self) -> Any:
+            return ready(reid.PersonEmbedder(None, Logger()), self.backend)  # type: ignore[arg-type]
+
+        async def get_object_detector(self, model_name: str) -> Any:
+            return self.detector
+
+    asking = Asking()
+    asyncio.run(ONNXPlugin.embedPersonImages(asking, [jpeg(200, 100)], {"find": "person"}))  # type: ignore[arg-type]
+    assert asking.detector.calls == 1 and asking.backend.calls[0][0] == (256, 128, 3)
+    asyncio.run(ONNXPlugin.embedPersonImages(asking, [jpeg(40, 100)]))  # type: ignore[arg-type]
+    assert asking.detector.calls == 1, "a picture of one person (the plugin page) is embedded whole"
