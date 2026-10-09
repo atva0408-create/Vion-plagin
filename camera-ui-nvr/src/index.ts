@@ -174,6 +174,20 @@ function withoutVectors(event: RecordedEvent): RecordedEvent {
   };
 }
 
+/** How many ranked matches a page of the search by description is taken from: the page's filters thin them. */
+const TEXT_SEARCH_POOL = 2000;
+
+/** The time, favourite and state conditions of an event query, as the store applies them (store.ts eventPage). */
+function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
+  if (opts.startMs !== undefined && (row.end_ms ?? row.start_ms) < opts.startMs) return false;
+  if (opts.endMs !== undefined && row.start_ms > opts.endMs) return false;
+  if (opts.startedSinceMs !== undefined && row.start_ms < opts.startedSinceMs) return false;
+  if (opts.before !== undefined && row.start_ms >= opts.before) return false;
+  if (opts.favoritesOnly && row.favorite !== 1) return false;
+  if (opts.state && row.state !== opts.state) return false;
+  return true;
+}
+
 export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
   private semantic!: SemanticIndex;
@@ -1923,10 +1937,53 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     await this.ready;
     const query = text?.trim();
     if (!query) return [];
-    // hybrid: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions
+    return (await this.rankByText(query, limit * 2, threshold)).slice(0, limit);
+  }
+
+  /**
+   * A page of the search by description with its events (upstream 77a8910a). The page showed the matches among the
+   * events it had loaded only: a match older than the loaded pages was never shown. The page's filters (cameras,
+   * time, favourites, the rest of the event filter) thin the ranking before it is paged, so a page is full and the
+   * next one goes on where it ended. No `cameraIds` is every camera; an empty list is none, as in getCameraEvents
+   * (a room without cameras).
+   */
+  public async searchEventsByTextQuery(
+    text: string,
+    opts: { limit?: number; offset?: number; threshold?: number; cameraIds?: string[]; filter?: GetEventsOptions } = {},
+  ): Promise<{ matches: ClipSearchResult[]; events: RecordedEvent[]; hasMore: boolean }> {
+    await this.ready;
+    const query = typeof text === 'string' ? text.trim() : '';
+    if (!query) return { matches: [], events: [], hasMore: false };
+    const limit = Math.min(Math.max(Math.trunc(Number(opts.limit) || 40), 1), 200);
+    const offset = Math.max(Math.trunc(Number(opts.offset) || 0), 0);
+    const filter = opts.filter ?? {};
+    const cameras = Array.isArray(opts.cameraIds) ? new Set(opts.cameraIds) : undefined;
+    if (cameras?.size === 0) return { matches: [], events: [], hasMore: false };
+    const withRecording = filter.withRecordingInfo ?? filter.hasRecording;
+    const matches: ClipSearchResult[] = [];
+    const events: RecordedEvent[] = [];
+    let passed = 0;
+    for (const match of await this.rankByText(query, TEXT_SEARCH_POOL, opts.threshold ?? 0)) {
+      if (cameras && !cameras.has(match.cameraId)) continue;
+      const row = this.store.event(match.eventId);
+      if (!row || !inEventRange(row, filter)) continue;
+      const raw = JSON.parse(row.data) as RecordedEvent;
+      if (!matchesEvent(raw, filter)) continue;
+      const ev = this.decorate(raw, row.favorite === 1, withRecording);
+      if (filter.hasRecording && !ev.hasRecording) continue;
+      if (passed++ < offset) continue;
+      if (matches.length === limit) return { matches, events, hasMore: true };
+      matches.push(match);
+      events.push(ev);
+    }
+    return { matches, events, hasMore: false };
+  }
+
+  /** Hybrid ranking: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions, best first. */
+  private async rankByText(query: string, pool: number, threshold: number): Promise<ClipSearchResult[]> {
     const queries = await this.textEmbeddings(query);
-    const visual = queries.length ? this.semantic.search(queries, limit * 2, threshold) : [];
-    const textual = this.describer.search(query, limit * 2);
+    const visual = queries.length ? this.semantic.search(queries, pool, threshold) : [];
+    const textual = this.describer.search(query, pool);
     const merged = new Map<string, ClipSearchResult>(visual.map((r) => [r.eventId, r]));
     for (const t of textual) {
       const v = merged.get(t.eventId);
@@ -1940,7 +1997,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           label: this.primaryLabel(t.eventId),
         });
     }
-    return [...merged.values()].sort((a, b) => b.score - a.score || b.timestamp - a.timestamp).slice(0, limit);
+    return [...merged.values()].sort((a, b) => b.score - a.score || b.timestamp - a.timestamp);
   }
 
   private primaryLabel(eventId: string): string {
