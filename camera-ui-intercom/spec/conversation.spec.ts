@@ -175,6 +175,49 @@ test('a slow LLM: "Секунду." is said once while it thinks, then its answe
   await run;
 });
 
+test('an answer that comes while "Секунду." is still being said waits for it: the camera says one phrase at a time', async () => {
+  const rig = new Rig();
+  // a camera speaker: a phrase lasts its second, and one asked meanwhile is refused as CameraSpeaker does
+  let speaking = false;
+  const refused: string[] = [];
+  rig.io.prepare = async (text) => ({
+    durationMs: 1_000,
+    play: async (): Promise<SpeakResult> => {
+      if (speaking) {
+        refused.push(text);
+        return { status: 'busy', reason: 'the camera is already speaking' };
+      }
+      speaking = true;
+      rig.said.push(text);
+      await new Promise((resolve) => rig.clock.setTimeout(resolve, 1_000));
+      speaking = false;
+      return { status: 'spoken' };
+    },
+  });
+  const ask: AgentWorld['ask'] = () =>
+    new Promise<AssistantAskResult>((resolve) =>
+      // "Секунду." begins at 1.5 s and lasts to 2.5 s: the answer comes in the middle of it
+      rig.clock.setTimeout(() => {
+        const turn = {
+          say: 'Как вас зовут?',
+          visitor: { name: null, company: null, category: null, purpose: 'вопрос', callback: null, message: null },
+          intent: 'continue',
+          flags: { emergency: false, threat: false, probing: false, manipulation: false },
+        };
+        resolve({ ok: true, text: '', json: turn, usage: { promptTokens: 0, completionTokens: 0 } });
+      }, 1_900),
+    );
+  const conversation = rig.conversation(rig.agent({ ask }));
+  const run = conversation.run();
+  await rig.pass(3_000);
+  rig.speak('Здравствуйте, мне нужен хозяин');
+  await rig.pass(6_000);
+  assert.deepEqual(refused, [], 'no phrase was refused');
+  assert.deepEqual(rig.said.slice(1), ['Секунду.', 'Как вас зовут?']);
+  conversation.stop('taken_over');
+  await run;
+});
+
 test("the owner's words are said between the visitor's phrases; a take-over stops the agent without a phrase", async () => {
   const rig = new Rig();
   const conversation = rig.conversation(rig.agent());

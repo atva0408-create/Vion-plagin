@@ -203,22 +203,21 @@ export class Conversation {
   /** The agent's answer; "one moment" said first when it takes long (the LLM thinking). */
   private async withFiller(answer: Promise<AgentReply>, hearing: Hearing): Promise<AgentReply> {
     let done = false;
-    const filler = new Promise<void>((resolve) => {
-      const timer = this.clock.setTimeout(() => {
-        if (done || this.stopped) return resolve();
-        void this.say({ say: this.filler, actions: [], listen: true }, hearing).finally(resolve);
-      }, this.timing.fillerAfterMs);
-      this.timers.push(timer);
-      void answer.finally(() => {
-        if (!done) this.clock.clearTimeout(timer);
-        done = true;
-        resolve();
-      });
-    });
-    const reply = await answer;
-    done = true;
-    await filler;
-    return reply;
+    let filler: Promise<void> | undefined;
+    const timer = this.clock.setTimeout(() => {
+      if (done || this.stopped) return;
+      filler = this.say({ say: this.filler, actions: [], listen: true }, hearing);
+    }, this.timing.fillerAfterMs);
+    this.timers.push(timer);
+    try {
+      return await answer;
+    } finally {
+      done = true;
+      this.clock.clearTimeout(timer);
+      // "one moment" once begun is said to its end before the answer: the camera says one phrase at a time
+      // (CameraSpeaker refuses a second one as busy), and an answer that came in its middle was lost
+      await filler?.catch(() => undefined);
+    }
   }
 
   private async recordVoicemail(hearing: Hearing): Promise<Float32Array> {
