@@ -1,7 +1,7 @@
 ## [0.3.0]
 
-- VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «ViON» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert. Vorerst nur auf Russisch; standardmäßig aus
-- Antworten in Minuten: „noch 5 Minuten Pause“, „du kannst spielen, noch 20 Minuten bis zur Pause“; ist die Pause am Computer fällig, die ganze Pause. Der nächste Morgen bleibt eine Uhrzeit („morgen um 07:30“)
+- VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «ViON» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert, und was das Kind beim Rufen sagt, geht nicht an den Assistenten. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft nur zusammen mit einer Frage nach der Zeit. Mit mehreren Kindern an der Kamera wird jedes am Computer beantwortet. Vorerst nur auf Russisch; standardmäßig aus
+- Antworten in Minuten: „noch 5 Minuten Pause“, „du kannst spielen, noch 20 Minuten bis zur Pause“, „weniger als eine Minute“; zu früh zurück, dieselben Minuten wie in der Erinnerung; ist die Pause am Computer fällig, die ganze Pause. Der nächste Morgen bleibt eine Uhrzeit („morgen um 07:30“)
 - Behoben: nach dem Tageslimit sagte VOICE in Moskau „morgen um 03:00“ (Mitternacht UTC) statt 00:00
 
 ## [0.2.1]

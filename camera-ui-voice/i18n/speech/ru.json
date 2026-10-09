@@ -29,15 +29,16 @@
   "remaining": "{name}, перерыв ещё не закончился, осталось {left} {leftWord}.",
   "answer": {
     "play": {
-      "break": "{name}, можно играть. До перерыва {minutes} {minutesWord}.",
-      "daily_limit": "{name}, можно играть. До конца времени на сегодня {minutes} {minutesWord}.",
-      "bedtime": "{name}, можно играть. До времени сна {minutes} {minutesWord}."
+      "break": "{name}, можно играть. До перерыва {amount}.",
+      "daily_limit": "{name}, можно играть. До конца времени на сегодня {amount}.",
+      "bedtime": "{name}, можно играть. До времени сна {amount}."
     },
-    "granted": "{name}, можно играть, родители дали время. До его конца {minutes} {minutesWord}.",
-    "break": "{name}, до конца перерыва {minutes} {minutesWord}.",
-    "break_due": "{name}, сейчас перерыв: {minutes} {minutesWord} без компьютера, потом можно играть.",
+    "granted": "{name}, можно играть, родители дали время. До его конца {amount}.",
+    "break": "{name}, до конца перерыва {amount}.",
+    "break_due": "{name}, сейчас перерыв: {amount} без компьютера, потом можно играть.",
     "bedtime": "{name}, играть можно будет {day} в {next}.",
-    "daily_limit": "{name}, играть можно будет {day} в {next}."
+    "daily_limit": "{name}, играть можно будет {day} в {next}.",
+    "lessThanMinute": "меньше минуты"
   },
   "askParents": "Больше времени могут дать только родители. Я передал им твою просьбу.",
   "moreTimeWords": [

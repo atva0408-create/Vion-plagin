@@ -609,4 +609,89 @@ test('the answer after a reminder is in minutes too: at the computer when the br
   assert.equal(s.camera.sounds.length, 0, 'answering after a reminder does not keep the microphone open');
 });
 
+
+test('a call never goes to the assistant: a request for more time is found by its words', async () => {
+  const s = await setup(() => ({ ok: true, text: '', json: { intent: 'asks_more_time' }, usage: { promptTokens: 1, completionTokens: 1 } }), { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  const asked = s.requests.length;
+  s.engine.heard.push('вион сколько мне ещё отдыхать');
+  s.camera.utter(3);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Артём, можно играть. До перерыва 25 минут.');
+  assert.equal(s.requests.length, asked, 'nothing was asked');
+  assert.equal(s.published.length, 0, 'a model that sees "more time" everywhere tells the parents nothing');
+});
+
+test('right after VOICE spoke, its own phrase in the microphone is not taken for a call', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  assert.equal((await s.voice.say(s.camera.id, 'Пришёл папа.')).status, 'spoken');
+  s.engine.heard.push('вион сколько');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(s.engine.heard.length, 1, 'not even recognized');
+  await s.clock.advance(LISTEN_DELAY_MS + 100);
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Артём, можно играть. До перерыва 25 минут.');
+});
+
+test('while VOICE says a phrase from outside (the door), the microphone hears VOICE: nothing is recognized', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  let finish: () => void = () => undefined;
+  s.camera.speaker.speak = () => new Promise((resolve) => (finish = () => resolve({ status: 'spoken' })));
+  const door = s.voice.say(s.camera.id, 'Вион, пришёл папа, сколько можно ждать.');
+  await s.clock.advance(0);
+  s.engine.heard.push('вион пришел папа сколько можно ждать');
+  s.camera.utter(3);
+  await s.clock.advance(0);
+  assert.equal(s.engine.heard.length, 1, 'not recognized while VOICE speaks');
+  finish();
+  await door;
+});
+
+test('a second call while the first is answered is not answered twice', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  let release: () => void = () => undefined;
+  s.camera.snapshot = () => new Promise((resolve) => (release = () => resolve(new Uint8Array([0xff]))));
+  const before = s.engine.said.length;
+  s.engine.heard.push('вион дай ещё поиграть', 'вион сколько мне ещё');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  release();
+  await s.clock.advance(QUESTION_WAIT_MS * 2);
+  assert.equal(s.engine.said.length, before + 1, s.engine.said.slice(before).join(' | '));
+  assert.match(lastSaid(s), /Больше времени могут дать только родители/);
+});
+
+test('two children at one camera: the one at the computer is answered, both when both are there', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  const petya = checkScreenTime({ childName: 'Петя', area: '60, 0, 40, 100', answerOnCall: true, schoolFrom: '', schoolTo: '', freeFrom: '', freeTo: '' }, ['desk']);
+  assert.ok(petya.value, petya.errors.join('; '));
+  s.voice.setScreenTime(s.camera.id, [s.config, petya.value]);
+  const RIGHT = { label: 'person', box: { x: 0.7, y: 0.2, width: 0.2, height: 0.5 } };
+  for (let i = 0; i < 12 * 20; i++) {
+    await s.clock.advance(5_000);
+    await s.voice.look(s.camera.id, { detections: [RIGHT], faces: [], attributes: {} });
+  }
+  s.engine.heard.push('вион сколько мне ещё');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Петя, можно играть. До перерыва 25 минут.', 'Артём, first in the settings, is not at the computer');
+
+  for (let i = 0; i < 12 * 5; i++) {
+    await s.clock.advance(5_000);
+    await s.voice.look(s.camera.id, { detections: [RIGHT, ...AT_DESK.detections], faces: [], attributes: {} });
+  }
+  s.engine.heard.push('вион сколько мне ещё');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.match(lastSaid(s), /^Артём, можно играть\. До перерыва \d+ минут.* Петя, можно играть\. До перерыва 20 минут\.$/);
+  assert.equal(s.voice.recent[s.voice.recent.length - 1].child, 'Артём / Петя');
+});
+
 void runTests();

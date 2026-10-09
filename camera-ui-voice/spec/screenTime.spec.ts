@@ -378,12 +378,25 @@ test('"how long": minutes of play before the break, of the break once away, the 
   assert.equal(answer(run), 'Артём, можно играть. До перерыва 45 минут.', 'the break is over: a whole session ahead');
 });
 
-test('"how long": back during the break, the break is due again in whole, as the engine counts it', () => {
+test('"how long": back during the break, the answer names the minutes the reminder named', () => {
   const run = start(config(), msk('2026-10-07T15:00:00'));
   pass(run, 46 * MINUTE, true);
   pass(run, 5 * MINUTE, false);
   pass(run, 30_000, true);
-  assert.equal(answer(run), 'Артём, сейчас перерыв: 10 минут без компьютера, потом можно играть.');
+  const reminder = speaks(run).find((a) => a.action.type === 'speak' && a.action.kind === 'remaining');
+  assert.ok(reminder && reminder.action.type === 'speak', 'the reminder of the rest of the break');
+  const left = reminder.action.facts.breakMinutesLeft;
+  assert.ok(left !== undefined && left > 0);
+  assert.equal(answer(run), `Артём, до конца перерыва ${left} минут${left === 1 ? 'а' : left < 5 ? 'ы' : ''}.`);
+});
+
+test('"how long": less than a minute is said so, never "1 minute"; time from a parent is rounded down', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 44 * MINUTE + 30_000, true);
+  assert.equal(answer(run), 'Артём, можно играть. До перерыва меньше минуты.');
+  run.engine.extend(10, run.t - 50_000);
+  assert.equal(answer(run), 'Артём, можно играть, родители дали время. До его конца 9 минут.', '9 minutes 10 s left');
+  assert.equal(replyText({ kind: 'play', minutes: 0, until: 'bedtime' }, 'Artem', 'en'), 'Artem, you can play: less than a minute until bedtime.');
 });
 
 test('"how long": the limit that comes first is named; play is rounded down, never promising more', () => {

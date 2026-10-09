@@ -276,33 +276,34 @@ export class ScreenTimeEngine {
   }
 
   /**
-   * The answer to "how long": minutes of the break left, or minutes of play before the next limit. A break is waited
-   * for whole once the child leaves (a return during it starts it over), so at the computer it is the whole break.
-   * Minutes of play are rounded down and of a break up: the answer never promises more play than there is.
+   * The answer to "how long": minutes of the break left, or minutes of play before the next limit. Back before the
+   * break was over, it is what the reminder and the status name: the rest of the break counted from leaving. Minutes
+   * of play are rounded down (0: less than a minute) and of a break up: the answer never promises more play than there
+   * is.
    */
   standing(now: number, timeZone: string): Standing {
     const s = this.state;
     const c = this.config;
-    if (s.grantUntil !== undefined && now < s.grantUntil) return { kind: 'granted', minutes: Math.ceil((s.grantUntil - now) / MINUTE) };
+    if (s.grantUntil !== undefined && now < s.grantUntil) return { kind: 'granted', minutes: Math.floor((s.grantUntil - now) / MINUTE) };
     const reason = this.reason(now, timeZone);
     if (reason === 'bedtime' || reason === 'daily_limit') {
       const facts = this.facts(now, { timeZone, language: '' });
       return { kind: reason, next: facts.nextAllowedAt, day: facts.nextAllowedDay };
     }
     const breakMs = c.breakMinutes * MINUTE;
-    const away = !s.present && s.leftAt !== undefined ? now - s.leftAt : 0;
+    const left = s.leftAt !== undefined ? s.leftAt + breakMs - now : 0;
     if (reason === 'break') {
+      if (left > 0) return { kind: 'break', minutes: Math.ceil(left / MINUTE) };
       if (s.present) return { kind: 'break_due', minutes: c.breakMinutes };
-      if (s.leftAt !== undefined && away < breakMs) return { kind: 'break', minutes: Math.ceil((breakMs - away) / MINUTE) };
     }
     // away for a whole break: the next session starts from nothing
-    const workMs = away >= breakMs || reason === 'break' ? 0 : s.workMs;
+    const workMs = (!s.present && s.leftAt !== undefined && left <= 0) || reason === 'break' ? 0 : s.workMs;
     const limits: [number, Reason][] = [[c.sessionMinutes * MINUTE - workMs, 'break']];
     if (c.dailyMinutes) limits.push([c.dailyMinutes * MINUTE - s.todayMs, 'daily_limit']);
     const bed = nextIntervalStart(c.bedtime, now, timeZone);
     if (bed !== undefined) limits.push([bed - now, 'bedtime']);
     const [ms, until] = limits.reduce((first, limit) => (limit[0] < first[0] ? limit : first));
-    return { kind: 'play', minutes: Math.max(1, Math.floor(ms / MINUTE)), until };
+    return { kind: 'play', minutes: Math.max(0, Math.floor(ms / MINUTE)), until };
   }
 
   /**

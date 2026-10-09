@@ -5,6 +5,7 @@ import { CameraSpeaker, PACKET_MS, PhraseQueue, sendPaced } from '@vionvision/sp
 import { DoorWatcher, FACE_WAIT_MS } from '../src/door.js';
 import { ScreenTimeEngine, freshState } from '../src/screenTime.js';
 import { checkScreenTime } from '../src/settings.js';
+import { replyText } from '../src/speech.js';
 import { restoreScreenTime } from '../src/state.js';
 import { MINUTE } from '../src/time.js';
 import { Voice } from '../src/voice.js';
@@ -217,6 +218,8 @@ test('a partial break has one consistent end time in reminders, status and answe
   assert.equal(facts.breakMinutesLeft, 6);
   assert.equal(facts.breakEndsAt, '15:10');
   assert.equal(facts.nextAllowedAt, '15:10');
+  // asked "how long" right after the reminder, the child hears the same minutes
+  assert.equal(replyText(engine.standing(at + 4 * MINUTE, 'Europe/Moscow'), 'Артём', 'ru'), 'Артём, до конца перерыва 6 минут.');
 });
 
 test('shutdown aborts pending synthesis, queued phrases and future speaking', async () => {

@@ -18,30 +18,55 @@ import type { Clock } from './time.js';
 export const CALL_LANGUAGES: readonly Language[] = ['ru'];
 
 /**
- * How the Russian recognizer writes «ВиОН», measured with VOICE's own voice at three speeds: вион, леон, лион, реон,
- * рион, прион, верон, рейон, виен. A word of that shape, and not "вон", "лен", "вин", "блин", "вино", "район" or
- * "Лена", which the recognizer also wrote for the name or which start ordinary phrases.
+ * How the Russian recognizer writes «ВиОН», measured with VOICE's own voice at three speeds and through the live chain
+ * on the bench: вион, леон, лион, реон, рион, прион, верон, рейон, виен, виллан. A word of that shape, and not "вон",
+ * "лен", "вин", "блин", "вино", "район", "Лена" or "Ливан", which the recognizer also wrote for the name or which start
+ * ordinary phrases.
  */
-const NAME_RU = /^(?:в|л|р|пр|б)[ие]й?[рл]?и?[ое]н$/u;
-/** Words a call may start with before the name: «эй, ВиОН». */
-const LEADS_RU = new Set(['эй', 'ну', 'а', 'слушай', 'привет', 'скажи']);
+const NAME_RU = /^(?:в|л|р|пр|б)[ие]й?[рл]{0,2}и?[оеа]н$/u;
+const EXACT_RU = 'вион';
+/** Words a call may start with before the name: «эй, ВиОН»; the recognizer wrote "эй" as "и". */
+const LEADS_RU = new Set(['эй', 'и', 'ну', 'а', 'слушай', 'привет', 'скажи']);
+/** «ви он» in two words; not "ли он", which starts an ordinary question. */
+const SPLIT_RU = new Set(['ви', 'ве']);
+/**
+ * Stems of a question about the time at the computer. A word that only sounds like the name ("Леон!" shouted in a
+ * game, "Верон, иди ужинать") calls VOICE only with one of them; "вион" itself calls alone.
+ */
+const TOPIC_RU = ['сколько', 'когда', 'можно', 'врем', 'игра', 'поигра', 'отдых', 'перерыв', 'еще', 'остал', 'минут', 'дай', 'разреш', 'спать', 'компьют', 'долго'];
 
-/** The words after the name, '' for the name alone, undefined when the phrase does not call VOICE. */
-export function calledWith(text: string, language: Language): string | undefined {
-  if (!CALL_LANGUAGES.includes(language)) return undefined;
-  const words = text
+const wordsOf = (text: string) =>
+  text
     .toLowerCase()
     .replace(/ё/g, 'е')
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
+
+export interface Called {
+  /** The words after the name; '' for the name alone. */
+  question: string;
+  /** The name as the recognizer writes it when it hears it well, not a word that only sounds like it. */
+  exact: boolean;
+}
+
+/** The name at the start of the phrase, undefined when the phrase does not start with it. */
+export function calledWith(text: string, language: Language): Called | undefined {
+  if (!CALL_LANGUAGES.includes(language)) return undefined;
+  const words = wordsOf(text);
   const at = LEADS_RU.has(words[0] ?? '') ? 1 : 0;
   const first = words[at];
   if (first === undefined) return undefined;
-  if (NAME_RU.test(first)) return words.slice(at + 1).join(' ');
-  // «ви он» in two words
+  if (NAME_RU.test(first)) return { question: words.slice(at + 1).join(' '), exact: first === EXACT_RU };
   const second = words[at + 1];
-  if (first.length <= 2 && second !== undefined && NAME_RU.test(first + second)) return words.slice(at + 2).join(' ');
+  if (SPLIT_RU.has(first) && second !== undefined && NAME_RU.test(first + second)) {
+    return { question: words.slice(at + 2).join(' '), exact: first + second === EXACT_RU };
+  }
   return undefined;
+}
+
+/** Whether the words ask about the time at the computer. */
+export function onTopic(text: string): boolean {
+  return wordsOf(text).some((word) => TOPIC_RU.some((stem) => word.startsWith(stem)));
 }
 
 export interface CallDeps {
@@ -82,6 +107,8 @@ interface Ear {
   queued: number;
   /** The name was called alone then: the next phrase is the question. */
   calledAt?: number;
+  /** That name was "вион" itself: answered even when no question follows. */
+  calledExact?: boolean;
   questionTimer?: unknown;
 }
 
@@ -122,9 +149,14 @@ export class CallListener {
   /** VOICE has just spoken there: its phrase, half heard by the microphone, is thrown away with what follows for a while. */
   deafen(cameraId: string, ms: number): void {
     const ear = this.ears.get(cameraId);
-    ear?.audio?.hearing.deafUntil(this.deps.clock.now() + ms);
-    if (ear?.questionTimer !== undefined) this.deps.clock.clearTimeout(ear.questionTimer);
-    if (ear) ear.calledAt = undefined;
+    if (!ear) return;
+    this.stopWaiting(ear);
+    try {
+      ear.audio?.hearing.deafUntil(this.deps.clock.now() + ms);
+    } catch (error) {
+      // the native voice activity throws on a state it does not expect: the phrase VOICE said was still said
+      this.deps.log(`${this.deps.name(cameraId)}: listening for a call could not pause: ${(error as Error).message}`);
+    }
   }
 
   stateOf(cameraId: string): CallState {
@@ -194,22 +226,29 @@ export class CallListener {
     const language = this.deps.language();
     const text = (await this.deps.engine.transcribe(samples, language)).trim();
     if (this.ears.get(cameraId) !== ear || this.deps.busy(cameraId) || !text) return;
-    const rest = calledWith(text, language);
+    const called = calledWith(text, language);
     if (ear.calledAt !== undefined) {
       // the question after the name alone; a child who calls again with the question is asking it too
-      this.answer(cameraId, ear, rest ?? text, text);
+      const exact = ear.calledExact === true || called?.exact === true;
+      const question = called ? called.question : text;
+      this.stopWaiting(ear);
+      if (exact || onTopic(question)) this.deps.onCall(cameraId, question, text);
       return;
     }
-    if (rest === undefined) return;
-    if (rest) {
-      this.answer(cameraId, ear, rest, text);
+    if (!called) return;
+    if (called.question) {
+      if (called.exact || onTopic(called.question)) this.deps.onCall(cameraId, called.question, text);
       return;
     }
     ear.calledAt = this.deps.clock.now();
+    ear.calledExact = called.exact;
     ear.questionTimer = this.deps.clock.setTimeout(() => this.questionDue(cameraId, ear, text), QUESTION_WAIT_MS);
   }
 
-  /** No question came after the name: the child still gets where they stand, unless the question is being said. */
+  /**
+   * No question came after the name: "вион" alone still gets where the child stands, unless the question is being
+   * said; a word that only sounds like the name, alone ("Леон!"), is let go.
+   */
   private questionDue(cameraId: string, ear: Ear, heard: string): void {
     ear.questionTimer = undefined;
     if (ear.calledAt === undefined || this.ears.get(cameraId) !== ear) return;
@@ -218,13 +257,15 @@ export class CallListener {
       ear.questionTimer = this.deps.clock.setTimeout(() => this.questionDue(cameraId, ear, heard), 500);
       return;
     }
-    this.answer(cameraId, ear, '', heard);
+    const exact = ear.calledExact;
+    this.stopWaiting(ear);
+    if (exact) this.deps.onCall(cameraId, '', heard);
   }
 
-  private answer(cameraId: string, ear: Ear, question: string, heard: string): void {
+  private stopWaiting(ear: Ear): void {
     ear.calledAt = undefined;
+    ear.calledExact = undefined;
     if (ear.questionTimer !== undefined) this.deps.clock.clearTimeout(ear.questionTimer);
     ear.questionTimer = undefined;
-    this.deps.onCall(cameraId, question, heard);
   }
 }

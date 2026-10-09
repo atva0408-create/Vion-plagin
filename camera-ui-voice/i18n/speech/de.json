@@ -27,15 +27,16 @@
   "remaining": "{name}, die Pause ist noch nicht vorbei, noch {left} {leftWord}.",
   "answer": {
     "play": {
-      "break": "{name}, du kannst spielen. Noch {minutes} {minutesWord} bis zur Pause.",
-      "daily_limit": "{name}, du kannst spielen. Noch {minutes} {minutesWord} für heute.",
-      "bedtime": "{name}, du kannst spielen. Noch {minutes} {minutesWord} bis zur Schlafenszeit."
+      "break": "{name}, du kannst spielen. Noch {amount} bis zur Pause.",
+      "daily_limit": "{name}, du kannst spielen. Noch {amount} für heute.",
+      "bedtime": "{name}, du kannst spielen. Noch {amount} bis zur Schlafenszeit."
     },
-    "granted": "{name}, du kannst spielen, deine Eltern haben dir Zeit gegeben. Noch {minutes} {minutesWord}.",
-    "break": "{name}, die Pause dauert noch {minutes} {minutesWord}.",
-    "break_due": "{name}, jetzt ist Pause: {minutes} {minutesWord} ohne Computer, dann kannst du spielen.",
+    "granted": "{name}, du kannst spielen, deine Eltern haben dir Zeit gegeben. Noch {amount}.",
+    "break": "{name}, die Pause dauert noch {amount}.",
+    "break_due": "{name}, jetzt ist Pause: {amount} ohne Computer, dann kannst du spielen.",
     "bedtime": "{name}, du kannst {day} um {next} spielen.",
-    "daily_limit": "{name}, du kannst {day} um {next} spielen."
+    "daily_limit": "{name}, du kannst {day} um {next} spielen.",
+    "lessThanMinute": "weniger als eine Minute"
   },
   "askParents": "Mehr Zeit können nur deine Eltern geben. Ich habe ihnen deine Bitte weitergegeben.",
   "moreTimeWords": [

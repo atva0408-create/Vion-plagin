@@ -27,15 +27,16 @@
   "remaining": "{name}, the break is not over yet, {left} {leftWord} to go.",
   "answer": {
     "play": {
-      "break": "{name}, you can play. {minutes} {minutesWord} until the break.",
-      "daily_limit": "{name}, you can play. {minutes} {minutesWord} left for today.",
-      "bedtime": "{name}, you can play. {minutes} {minutesWord} until bedtime."
+      "break": "{name}, you can play: {amount} until the break.",
+      "daily_limit": "{name}, you can play: {amount} left for today.",
+      "bedtime": "{name}, you can play: {amount} until bedtime."
     },
-    "granted": "{name}, you can play, your parents gave you time. {minutes} {minutesWord} of it left.",
-    "break": "{name}, {minutes} {minutesWord} of the break left.",
-    "break_due": "{name}, it is break time: {minutes} {minutesWord} away from the computer, then you can play.",
+    "granted": "{name}, you can play, your parents gave you time: {amount} of it left.",
+    "break": "{name}, {amount} of the break left.",
+    "break_due": "{name}, it is break time: {amount} away from the computer, then you can play.",
     "bedtime": "{name}, you can play {day} at {next}.",
-    "daily_limit": "{name}, you can play {day} at {next}."
+    "daily_limit": "{name}, you can play {day} at {next}.",
+    "lessThanMinute": "less than a minute"
   },
   "askParents": "Only your parents can give you more time. I have passed your request on to them.",
   "moreTimeWords": [

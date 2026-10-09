@@ -1,7 +1,7 @@
 // VOICE called by name: what counts as «ВиОН» and the microphone kept open for it. Run: npx tsx spec/call.spec.ts
 import assert from 'node:assert/strict';
 
-import { CallListener, MAX_CALL_MS, QUESTION_WAIT_MS, calledWith } from '../src/call.js';
+import { CallListener, MAX_CALL_MS, QUESTION_WAIT_MS, calledWith, onTopic } from '../src/call.js';
 import { FakeClock, FakeEngine, fakeCamera, runTests, test } from './helpers.js';
 
 import type { CallDeps } from '../src/call.js';
@@ -20,8 +20,23 @@ test('the name as the Russian recognizer wrote it for «ВиОН» (bench, VOICE
     ['ви он сколько времени осталось', 'сколько времени осталось'],
     ['эй вион сколько мне ещё', 'сколько мне еще'],
     ['Вион, сколько мне ещё отдыхать?', 'сколько мне еще отдыхать'],
+    // the live chain on the bench (Silero cuts, zipformer writes): «ВиОН» as "виллан", «Эй, ВиОН» as "и вион"
+    ['виллан сколько мне ещё отдыхать', 'сколько мне еще отдыхать'],
+    ['и вион сколько времени осталось', 'сколько времени осталось'],
   ];
-  for (const [text, question] of heard) assert.equal(calledWith(text, 'ru'), question, text);
+  for (const [text, question] of heard) assert.equal(calledWith(text, 'ru')?.question, question, text);
+  assert.equal(calledWith('вион', 'ru')?.exact, true);
+  assert.equal(calledWith('ви он сколько', 'ru')?.exact, true);
+  assert.equal(calledWith('леон сколько', 'ru')?.exact, false, 'only sounds like the name');
+});
+
+test('a word that only sounds like the name calls VOICE only with a question about the time', () => {
+  for (const question of ['сколько мне еще отдыхать', 'когда можно играть', 'дай еще поиграть', 'сколько времени осталось', 'можно еще']) {
+    assert.equal(onTopic(question), true, question);
+  }
+  // a game shouting "Леон", a sister called Вероника, a question about someone
+  for (const question of ['иди сюда', 'иди ужинать', 'беги', 'ты где', '']) assert.equal(onTopic(question), false, question);
+  assert.equal(calledWith('ли он придёт', 'ru'), undefined, '"ли он" is not «ви он»');
 });
 
 test('ordinary phrases of a room do not call VOICE, nor what the recognizer also wrote for the name', () => {
@@ -43,7 +58,14 @@ test('ordinary phrases of a room do not call VOICE, nor what the recognizer also
     'а он',
     'и он',
     'леонид пришёл',
+    'иван пришёл',
+    'диван купили',
+    'ливан это страна',
+    'и он сказал',
+    'берлин далеко',
+    'ленин',
     'галеты иди сюда',
+    'ли он придёт',
     '',
   ];
   for (const text of phrases) assert.equal(calledWith(text, 'ru'), undefined, text);
@@ -126,12 +148,12 @@ test('the name alone: the next phrase is the question; with none, the child is a
   await s.clock.advance(QUESTION_WAIT_MS * 2);
   assert.equal(s.calls.length, 1, 'answered once');
 
-  s.engine.heard.push('леон');
+  s.engine.heard.push('вион');
   s.camera.utter(1);
   await s.clock.advance(QUESTION_WAIT_MS - 100);
   assert.equal(s.calls.length, 1);
   await s.clock.advance(200);
-  assert.deepEqual(s.calls[1], ['', 'леон']);
+  assert.deepEqual(s.calls[1], ['', 'вион']);
 });
 
 test('the name alone and the child still talking: the answer waits for the question', async () => {
@@ -207,6 +229,76 @@ test('closed: the sound stops and is not opened again; closed while it opened, i
   await s.clock.advance(0);
   assert.equal(s.deps.opened, 2);
   assert.equal(s.camera.sounds[1].stopped, true, 'the microphone does not stay open after all');
+});
+
+
+test('a sound-alike of the name without a question is let go: "Леон, иди сюда", "Леон!" alone, "Леон!" then a line', async () => {
+  const s = setup();
+  s.listener.want('kids', true);
+  await s.clock.advance(0);
+  s.engine.heard.push('леон иди сюда', 'леон', 'верон', 'иди ужинать');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  s.camera.utter(1);
+  await s.clock.advance(QUESTION_WAIT_MS * 2);
+  s.camera.utter(1);
+  await s.clock.advance(1_000);
+  s.camera.utter(2);
+  await s.clock.advance(QUESTION_WAIT_MS * 2);
+  assert.deepEqual(s.calls, []);
+  assert.equal(s.transcribed(), 4);
+  // with a question it is a call
+  s.engine.heard.push('реон', 'сколько мне ещё отдыхать');
+  s.camera.utter(1);
+  await s.clock.advance(1_000);
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.deepEqual(s.calls, [['сколько мне ещё отдыхать', 'сколько мне ещё отдыхать']]);
+});
+
+test('phrases pile up while one is recognized: one more waits, the rest are dropped', async () => {
+  const s = setup();
+  s.listener.want('kids', true);
+  await s.clock.advance(0);
+  let release: () => void = () => undefined;
+  let calls = 0;
+  s.engine.transcribe = () => {
+    calls++;
+    return new Promise((resolve) => (release = () => resolve('мама я поел')));
+  };
+  for (let i = 0; i < 4; i++) s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(calls, 1);
+  release();
+  await s.clock.advance(0);
+  release();
+  await s.clock.advance(0);
+  assert.equal(calls, 2, 'a room full of talk is not recognized phrase after phrase');
+});
+
+test('the name alone and a child who never stops talking: answered when the wait is over, not never', async () => {
+  const s = setup();
+  s.listener.want('kids', true);
+  await s.clock.advance(0);
+  s.engine.heard.push('вион');
+  s.camera.utter(1);
+  await s.clock.advance(0);
+  s.camera.sounds[0].vad.saying = true;
+  await s.clock.advance(QUESTION_WAIT_MS + MAX_CALL_MS - 1_000);
+  assert.deepEqual(s.calls, []);
+  await s.clock.advance(2_000);
+  assert.deepEqual(s.calls, [['', 'вион']]);
+});
+
+test('voice activity that throws when VOICE pauses listening: logged, VOICE goes on', async () => {
+  const s = setup();
+  s.listener.want('kids', true);
+  await s.clock.advance(0);
+  s.camera.sounds[0].vad.flush = () => {
+    throw new Error('vad state');
+  };
+  assert.doesNotThrow(() => s.listener.deafen('kids', 1_500));
+  assert.match(s.logs.join(' | '), /could not pause: vad state/);
 });
 
 void runTests();

@@ -441,7 +441,11 @@ export class Voice {
     return state.state === 'listening' ? t.call : '';
   }
 
-  /** The child called VOICE by name: where they stand, in minutes; a request for more time goes to the parents. */
+  /**
+   * The child called VOICE by name: where they stand, in minutes; a request for more time goes to the parents. The
+   * words do not go to the assistant: the microphone is open all the time, and a game shouting "Леон" would send its
+   * lines out. VOICE cannot tell which child called: every child at the computer is answered, else the one seen last.
+   */
   async answerCall(cameraId: string, question: string, heard: string): Promise<void> {
     const camera = this.cameras.get(cameraId);
     const controller = this.controllers.get(cameraId);
@@ -450,18 +454,21 @@ export class Voice {
     if (isEcho(heard, this.lastSaid.get(cameraId))) return;
     const candidates = [...this.scenarios.entries()].filter(([, s]) => s.cameraId === cameraId && s.engine.config.enabled && s.engine.config.answerOnCall);
     if (!candidates.length) return;
-    // the child at the computer, else the one seen last: two children of one room each ask about themselves
-    candidates.sort(([, a], [, b]) => Number(b.engine.state.present) - Number(a.engine.state.present) || (b.engine.state.lastSeen ?? 0) - (a.engine.state.lastSeen ?? 0));
-    const [key, scenario] = candidates[0];
+    const present = candidates.filter(([, s]) => s.engine.state.present);
+    const seenLast = candidates.reduce((last, c) => ((c[1].engine.state.lastSeen ?? 0) > (last[1].engine.state.lastSeen ?? 0) ? c : last));
     const now = this.deps.clock.now();
     const timeZone = this.deps.timeZone();
-    const standing = scenario.engine.standing(now, timeZone);
-    if (activeInterval(this.deps.quiet(), now, timeZone) && standing.kind !== 'bedtime') {
+    const quiet = Boolean(activeInterval(this.deps.quiet(), now, timeZone));
+    const answered = (present.length ? present : [seenLast])
+      .map(([key, scenario]) => ({ key, scenario, standing: scenario.engine.standing(now, timeZone) }))
+      .filter(({ standing }) => !quiet || standing.kind === 'bedtime');
+    if (!answered.length) {
       this.deps.log(`${camera.name}: called in the quiet hours, not answered`);
       return;
     }
     const language = this.deps.language();
-    const name = scenario.engine.config.childName;
+    const names = answered.map(({ scenario }) => scenario.engine.config.childName).join(' / ');
+    const reply = answered.map(({ scenario, standing }) => replyText(standing, scenario.engine.config.childName, language)).join(' ');
     // the answer takes the camera like a conversation: a reminder said now would be talked over
     let endTurn = () => {};
     const turn = new Promise<void>((resolve) => (endTurn = resolve));
@@ -470,22 +477,21 @@ export class Voice {
       !this.stopped &&
       this.controllers.get(cameraId) === controller &&
       !controller.signal.aborted &&
-      this.scenarios.get(key) === scenario &&
-      scenario.engine.config.enabled;
+      answered.every(({ key, scenario }) => this.scenarios.get(key) === scenario && scenario.engine.config.enabled);
     try {
-      const answer = await this.waitFor(answerChild(this.deps.ask, replyText(standing, name, language), question, language, 'call'), controller.signal);
-      if (!valid()) return;
+      const answer = await answerChild(undefined, reply, question, language);
       const said = question ? `${CALL_NAME}, ${question}` : CALL_NAME;
       if (answer.intent === 'asks_more_time') {
         const t = texts(language).notify;
-        const values = { name, text: said };
-        await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${key}:more`, valid);
+        const values = { name: names, text: said };
+        await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${answered[0].key}:more`, valid);
       }
+      if (!valid()) return;
       await this.speak(cameraId, answer.text, answer.source, valid, controller.signal);
       const last = this.recent[this.recent.length - 1];
       if (last?.cameraId === cameraId && last.said === answer.text) {
         last.heard = said;
-        last.child = name;
+        last.child = names;
       }
     } catch (error) {
       this.deps.log(`${camera.name}: the call was not answered: ${(error as Error).message}`);
