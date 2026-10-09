@@ -30,5 +30,8 @@
   "Номерные знаки": "Kennzeichen",
   "Модель CCT для распознавания текста номеров": "CCT-Modell zum Lesen von Kennzeichentext",
   "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO-Modell für die Objekterkennung. „Standard“ ist das von ViON mit Ihren Bildern trainierte Modell, sofern eines veröffentlicht wurde, sonst das Standardmodell.",
-  "Обнаружение объектов": "Objekterkennung"
+  "Обнаружение объектов": "Objekterkennung",
+  "Модель, обводящая людей, транспорт и животных": "Das Modell, das Personen, Fahrzeuge und Tiere umreißt",
+  "Сегментация": "Segmentierung",
+  "Модель сегментации для проверки": "Segmentierungsmodell zum Ausprobieren"
 }

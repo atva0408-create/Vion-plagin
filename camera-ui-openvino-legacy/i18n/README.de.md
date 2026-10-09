@@ -8,6 +8,7 @@ Objekt-, Gesichts- und Kennzeichenerkennung für ältere Intel-Grafik. Mit dem r
 - Gesichtserkennung und Gesichtswiedererkennung
 - Findet Kennzeichen und liest ihren Text
 - KI-Suche per Beschreibung
+- Findet ähnlich aussehende Personen über Kameras hinweg (Personen-Wiedererkennung, pro Kamera eingeschaltet) und umreißt Personen, Fahrzeuge und Tiere (Segmentierung)
 
 ## Voraussetzungen
 

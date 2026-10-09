@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import openvino as ov
@@ -41,8 +42,13 @@ from camera_ui_sdk import (
     LoggerService,
     ObjectDetectionInterface,
     ObjectDetectionPluginResponse,
+    PersonEmbeddingInterface,
+    PersonEmbeddingPluginResponse,
     PluginAPI,
     Point,
+    SegmentationImage,
+    SegmentationInterface,
+    SegmentationPluginResponse,
     VideoFrameData,
 )
 
@@ -57,6 +63,7 @@ from defaults import (
     DEFAULT_OCR,
     DEFAULT_OPENVINO_DEVICE,
     DEFAULT_OPTION,
+    DEFAULT_SEGMENTATION_MODEL,
     FACE_DETECTOR_MODELS,
     FACE_EMBEDDER_MODELS,
     FACE_EMBEDDERS,
@@ -73,6 +80,10 @@ from defaults import (
     OCR_MODELS,
     OCR_PAD_CHAR,
     OPENVINO_DEVICES,
+    PERSON_EMBEDDER_HEIGHT,
+    PERSON_EMBEDDER_MODEL,
+    PERSON_EMBEDDER_WIDTH,
+    SEGMENTATION_MODELS,
     clip_family,
     clip_score_band,
     clip_text_for,
@@ -80,12 +91,15 @@ from defaults import (
 )
 from model_manager import OpenVinoModelManager
 from modules import installed_modules, is_module, usable_choice
+from reid import PersonEmbedder, Segmenter, embed_person_images, segment_images
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import OpenVinoClipSensor
 from sensors.face_embedder_sensor import OpenVinoFaceEmbedderSensor
 from sensors.face_sensor import OpenVinoFaceSensor
 from sensors.lpd_sensor import OpenVinoLPDSensor
 from sensors.object_sensor import OpenVinoObjectSensor
+from sensors.person_embedder_sensor import OpenVinoPersonEmbedderSensor
+from sensors.segmenter_sensor import OpenVinoSegmenterSensor
 from siglip import SiglipEncoder, is_siglip
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
@@ -98,6 +112,8 @@ class OpenVinoPlugin(
     FaceEmbeddingInterface,
     LicensePlateDetectionInterface,
     ClipDetectionInterface,
+    PersonEmbeddingInterface,
+    SegmentationInterface,
 ):
     def __init__(self, logger: LoggerService, api: PluginAPI, storage: DeviceStorage[Any]) -> None:
         super().__init__(logger, api, storage)
@@ -119,6 +135,10 @@ class OpenVinoPlugin(
         self.plate_detectors: dict[str, BoxDetector] = {}
         self.ocr_models: dict[str, PlateOcr] = {}
         self.clip_encoders: dict[str, ClipEncoder] = {}
+        # loaded when first needed (prepare_person_embedder, prepare_segmenter), never at start: every camera of every
+        # ML plugin process gets these sensors, and a model each in every process once hung the 8 GB bench
+        self.person_embedders: dict[str, PersonEmbedder] = {}
+        self.segmenters: dict[str, Segmenter] = {}
         self.attribute_backends: dict[str, Any] = {}
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
@@ -291,6 +311,41 @@ class OpenVinoPlugin(
         else:
             await landmarker.initialize(FACE_LANDMARK_MODEL)
         return landmarker
+
+    async def get_person_embedder(self) -> PersonEmbedder:
+        embedder = self.person_embedders.get(PERSON_EMBEDDER_MODEL)
+        if not embedder:
+            embedder = PersonEmbedder(
+                self.model_manager,
+                self.logger,
+                width=PERSON_EMBEDDER_WIDTH,
+                height=PERSON_EMBEDDER_HEIGHT,
+            )
+            self.person_embedders[PERSON_EMBEDDER_MODEL] = embedder
+            try:
+                await embedder.initialize(PERSON_EMBEDDER_MODEL)
+            except Exception:
+                self.person_embedders.pop(PERSON_EMBEDDER_MODEL, None)
+                raise
+        else:
+            await embedder.initialize(PERSON_EMBEDDER_MODEL)
+        return embedder
+
+    async def get_segmenter(self, model_name: str) -> Segmenter:
+        segmenter = self.segmenters.get(model_name)
+        if not segmenter:
+            segmenter = Segmenter(
+                self.model_manager, self.logger, size=(SEGMENTATION_MODELS.get(model_name, 320),) * 2
+            )
+            self.segmenters[model_name] = segmenter
+            try:
+                await segmenter.initialize(model_name)
+            except Exception:
+                self.segmenters.pop(model_name, None)
+                raise
+        else:
+            await segmenter.initialize(model_name)
+        return segmenter
 
     async def get_plate_detector(self, model_name: str) -> BoxDetector:
         detector = self.plate_detectors.get(model_name)
@@ -758,6 +813,44 @@ class OpenVinoPlugin(
         results = await embed_face_images(landmarker, embedder, images, space, landmarks)
         return [result for result in results]
 
+    async def embedPersonImages(
+        self, images: list[bytes], config: dict[str, Any] | None = None
+    ) -> list[PersonEmbeddingPluginResponse | None]:
+        # asked by a person (search by picture, the plugin page): it waits for the first load
+        embedder = await self.get_person_embedder()
+        if not embedder.initialized:
+            return [None for _ in images]
+
+        # an empty vector says the picture holds nobody the model can use, None is a plugin that could not run
+        results = await embed_person_images(embedder, images, PERSON_EMBEDDER_MODEL)
+        return [result for result in results]
+
+    async def segmentationSettings(self) -> list[JsonSchema] | None:
+        return [
+            {
+                "type": "string",
+                "key": "model",
+                "title": "Модель",
+                "description": "Модель сегментации для проверки",
+                "required": True,
+                "defaultValue": DEFAULT_OPTION,
+                "enum": [DEFAULT_OPTION, *SEGMENTATION_MODELS],
+                "enumLabels": {DEFAULT_OPTION: "По умолчанию"},
+                "store": False,
+            },
+        ]
+
+    async def segmentImages(
+        self, images: list[SegmentationImage], config: dict[str, Any] | None = None
+    ) -> list[SegmentationPluginResponse | None]:
+        model_name = resolve_model((config or {}).get("model"), DEFAULT_SEGMENTATION_MODEL)
+        segmenter = await self.get_segmenter(model_name)
+        if not segmenter.initialized:
+            return [None for _ in images]
+
+        results = await segment_images(segmenter, images)
+        return [result for result in results]
+
     def clip_model(self) -> str:
         return resolve_model(self.storage.values.get("clip_vision_model"), DEFAULT_CLIP_VISION)
 
@@ -790,6 +883,14 @@ class OpenVinoPlugin(
         await camera.addSensor(embedder)
         sensors["faceEmbedder"] = embedder
 
+        person = OpenVinoPersonEmbedderSensor(self, self.logger)
+        await camera.addSensor(person)
+        sensors["personEmbedder"] = person
+
+        segmenter = OpenVinoSegmenterSensor(self, self.logger)
+        await camera.addSensor(segmenter)
+        sensors["segmenter"] = segmenter
+
         clip = OpenVinoClipSensor(self, self.logger)
         await camera.addSensor(clip)
         sensors["clip"] = clip
@@ -821,6 +922,8 @@ class OpenVinoPlugin(
                 *self.face_embedders.values(),
                 *self.face_landmarkers.values(),
                 *self.ocr_models.values(),
+                *self.person_embedders.values(),
+                *self.segmenters.values(),
             )
             if detector.backend is not None
         ]
@@ -878,6 +981,8 @@ class OpenVinoPlugin(
         pdet = list(self.plate_detectors)
         ocr = list(self.ocr_models)
         clip = list(self.clip_encoders)
+        person = list(self.person_embedders)
+        seg = list(self.segmenters)
 
         await self._close_all()
         self.model_manager.reset()
@@ -889,6 +994,8 @@ class OpenVinoPlugin(
             *(self.get_plate_detector(n) for n in pdet),
             *(self.get_ocr(n) for n in ocr),
             *(self.get_clip_encoder(n) for n in clip),
+            *(self.get_person_embedder() for _ in person),
+            *(self.get_segmenter(n) for n in seg),
             return_exceptions=True,
         )
 
@@ -926,6 +1033,37 @@ class OpenVinoPlugin(
                 self._preparing.discard(model_name)
 
         asyncio.create_task(load())
+
+    def prepare_person_embedder(self) -> None:
+        """Loads the re-ID model in the background, on the first person a camera with Person Re-ID sees."""
+        self._prepare_in_background(PERSON_EMBEDDER_MODEL, self.get_person_embedder, "personEmbedder")
+
+    def prepare_segmenter(self, model_name: str) -> None:
+        self._prepare_in_background(model_name, lambda: self.get_segmenter(model_name), "segmenter")
+
+    def _prepare_in_background(
+        self, model_name: str, load: Callable[[], Awaitable[object]], sensor_key: str
+    ) -> None:
+        """One load at a time per model; a failed one is tried again after a while, not on every frame."""
+        if model_name in self._preparing or time.monotonic() < self._failed_models.get(model_name, 0):
+            return
+        self._preparing.add(model_name)
+
+        async def run() -> None:
+            try:
+                await load()
+                self.logger.success(f"Загружена модель {model_name}")
+                # the metrics of the server show the model once it runs
+                for sensors in self._sensors.values():
+                    if (sensor := sensors.get(sensor_key)) is not None:
+                        sensor.updateModelSpec()
+            except Exception as error:
+                self._failed_models[model_name] = time.monotonic() + 600
+                self.logger.error(f"Модель {model_name} не загрузилась: {error}")
+            finally:
+                self._preparing.discard(model_name)
+
+        asyncio.create_task(run())
 
     def check_trained_models(self) -> None:
         """Cheap per-frame check: when the manifest changed, the classifier sensors learn the new labels."""
@@ -1016,6 +1154,8 @@ class OpenVinoPlugin(
             *(e.close() for e in self.face_embedders.values()),
             *(e.close() for e in self.clip_encoders.values()),
             *(o.close() for o in self.ocr_models.values()),
+            *(e.close() for e in self.person_embedders.values()),
+            *(s.close() for s in self.segmenters.values()),
         )
         for backend in self.attribute_backends.values():
             backend.close()
@@ -1026,6 +1166,8 @@ class OpenVinoPlugin(
         self.plate_detectors.clear()
         self.ocr_models.clear()
         self.clip_encoders.clear()
+        self.person_embedders.clear()
+        self.segmenters.clear()
 
     async def _on_start(self) -> None:
         asyncio.create_task(self._preload_clip())

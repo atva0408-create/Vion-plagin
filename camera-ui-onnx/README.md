@@ -8,6 +8,7 @@ Detects objects, faces and license plates in the camera image and makes recordin
 - Face detection and face recognition
 - Finds license plates and reads their text
 - AI search by description; with the multilingual model also in Russian and about 100 other languages
+- Finds people who look alike across cameras (Person Re-ID, switched on per camera) and outlines people, vehicles and animals (segmentation)
 - Uses a detector that ViON Cloud trained on the footage you reviewed, once it is published
 - Answers yes/no questions it was trained for about a detected object, for example "person with a bag"
 - Can use several NVIDIA graphics cards at once
