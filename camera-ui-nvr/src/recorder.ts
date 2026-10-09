@@ -21,10 +21,15 @@ export interface RecorderOptions {
   /** Fallback: RTSP restream copied to MPEG-TS by ffmpeg. */
   rtspUrl: string;
   /**
-   * Record sound. go2rtc's own MPEG-TS carries only AAC, and cameras mostly send G.711, so with sound
-   * on the stream always goes through ffmpeg, which turns any audio into AAC.
+   * Record sound. go2rtc's own MPEG-TS carries only AAC, and cameras mostly send G.711 or Opus, so the sound goes
+   * through ffmpeg, which turns it into AAC (see `audioUrl`).
    */
   audio?: boolean;
+  /**
+   * The camera's sound alone over RTSP. With `tsUrl` and sound on, ffmpeg copies the video from go2rtc's MPEG-TS and
+   * adds this sound beside it; a camera that sends no sound is recorded from the MPEG-TS alone.
+   */
+  audioUrl?: string;
   ffmpegPath: string;
   dir: string;
   store: Store;
@@ -155,6 +160,7 @@ export class Recorder {
     const restart =
       (opts.rtspUrl !== undefined && opts.rtspUrl !== this.opts.rtspUrl) ||
       (opts.tsUrl !== undefined && opts.tsUrl !== this.opts.tsUrl) ||
+      opts.audioUrl !== this.opts.audioUrl ||
       (opts.audio !== undefined && opts.audio !== this.opts.audio);
     this.opts = { ...this.opts, ...opts };
     if (restart) {
@@ -193,32 +199,29 @@ export class Recorder {
       this.fetchTs(this.opts.tsUrl);
       return;
     }
-    const args = [
-      '-fflags',
-      '+genpts',
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-rtsp_transport',
-      'tcp',
-      '-timeout',
-      '15000000',
-      '-i',
-      this.opts.rtspUrl,
-      '-map',
-      '0:v:0',
-      ...(this.opts.audio
-        ? // `?`: a camera without a microphone still records its video
-          ['-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '64k']
-        : ['-c', 'copy', '-an']),
-      '-f',
-      'mpegts',
-      '-mpegts_flags',
-      '+resend_headers',
-      '-muxdelay',
-      '0',
-      'pipe:1',
-    ];
+    if (this.opts.tsUrl && this.opts.audioUrl) {
+      void this.startWithAudio(this.opts.tsUrl);
+      return;
+    }
+    this.runFfmpeg(ffmpegArgs(this.opts, false));
+  }
+
+  /**
+   * Sound on: ffmpeg copies the video of go2rtc's MPEG-TS and adds the camera's sound as AAC. Copied from RTSP instead,
+   * the HEVC of a Xiaomi camera came without timestamps and ffmpeg stopped at once ("first pts and dts value must be
+   * set"): with sound on, those cameras recorded nothing. A camera that sends no sound, or a go2rtc that does not
+   * say, keeps the MPEG-TS alone, the way without sound.
+   */
+  private async startWithAudio(tsUrl: string): Promise<void> {
+    const probe = probeUrlOf(tsUrl);
+    const audio = probe ? sendsAudio(await getJson(probe).catch(() => undefined)) : false;
+    // stopped meanwhile, or the options changed and a new start is on its way
+    if (this.stopped || this.proc || this.httpAbort || this.opts.tsUrl !== tsUrl) return;
+    if (audio && this.opts.audioUrl) this.runFfmpeg(ffmpegArgs(this.opts, true));
+    else this.fetchTs(tsUrl);
+  }
+
+  private runFfmpeg(args: string[]): void {
     const proc = spawn(this.opts.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc = proc;
     const startedAt = Date.now();
@@ -637,4 +640,118 @@ function payloadOf(pkt: Buffer): Buffer | undefined {
 
 function readPts(b: Buffer, i: number): number {
   return (b[i] & 0x0e) * 536870912 + (b[i + 1] << 22) + ((b[i + 2] & 0xfe) << 14) + (b[i + 3] << 7) + ((b[i + 4] & 0xfe) >> 1);
+}
+
+/**
+ * The ffmpeg arguments of a recording. One input: the RTSP restream copied (no go2rtc MPEG-TS at hand). Two: the
+ * video of go2rtc's MPEG-TS copied and the camera's sound alone from RTSP turned into AAC (`separateAudio`).
+ */
+export function ffmpegArgs(opts: Pick<RecorderOptions, 'rtspUrl' | 'tsUrl' | 'audioUrl' | 'audio'>, separateAudio: boolean): string[] {
+  const output = ['-f', 'mpegts', '-mpegts_flags', '+resend_headers', '-muxdelay', '0', 'pipe:1'];
+  if (separateAudio && opts.tsUrl && opts.audioUrl) {
+    return [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      opts.tsUrl,
+      '-rtsp_transport',
+      'tcp',
+      '-timeout',
+      '15000000',
+      '-i',
+      opts.audioUrl,
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0?',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '64k',
+      ...output,
+    ];
+  }
+  return [
+    '-fflags',
+    '+genpts',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-rtsp_transport',
+    'tcp',
+    '-timeout',
+    '15000000',
+    '-i',
+    opts.rtspUrl,
+    '-map',
+    '0:v:0',
+    ...(opts.audio
+      ? // `?`: a camera without a microphone still records its video
+        ['-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '64k']
+      : ['-c', 'copy', '-an']),
+    ...output,
+  ];
+}
+
+/** go2rtc's probe of the stream behind its MPEG-TS address: what the stream's sources send. */
+export function probeUrlOf(tsUrl: string): string | undefined {
+  try {
+    const url = new URL(tsUrl);
+    const src = url.searchParams.get('src');
+    if (!src || !url.pathname.endsWith('/stream.ts')) return undefined;
+    url.pathname = url.pathname.replace(/stream\.ts$/, 'streams');
+    url.search = '';
+    url.searchParams.set('src', src);
+    url.searchParams.set('video', 'all');
+    url.searchParams.set('audio', 'all');
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether go2rtc's probe names a sound a source sends ("audio, recvonly, …"); a talk channel ("sendonly") is not one. */
+export function sendsAudio(probe: unknown): boolean {
+  const producers = (probe as { producers?: unknown } | undefined)?.producers;
+  if (!Array.isArray(producers)) return false;
+  return producers.some((producer) => {
+    const medias = (producer as { medias?: unknown } | undefined)?.medias;
+    return Array.isArray(medias) && medias.some((media) => typeof media === 'string' && /^audio,\s*recvonly\b/.test(media));
+  });
+}
+
+/** A small JSON answer over HTTP(S) (go2rtc's local self-signed certificate), at most 1 MB and 15 s. */
+function getJson(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const request = u.protocol === 'https:' ? httpsRequest : httpRequest;
+    const req = request(u, { method: 'GET', rejectUnauthorized: false, timeout: 15_000 }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > 1_000_000) req.destroy(new Error('too big'));
+        else chunks.push(chunk);
+      });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        } catch (error) {
+          reject(error);
+        }
+      });
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('no answer for 15s')));
+    req.on('error', reject);
+    req.end();
+  });
 }

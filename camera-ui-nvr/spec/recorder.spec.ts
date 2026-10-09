@@ -7,12 +7,13 @@
 // Run: npx tsx spec/recorder.spec.ts
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { nalType, nalUnits } from '../src/media/ts-demux.js';
 import { readKeyframe } from '../src/reader.js';
-import { Recorder } from '../src/recorder.js';
+import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
 
 import type { VideoCodec } from '../src/media/ts-demux.js';
@@ -495,7 +496,104 @@ const seconds = (count: number, from = 0) => Array.from({ length: count }, (_, n
 }
 
 Date.now = realNow;
+
+// ------------------------------------------- 9. sound on: where the stream comes from
+
+{
+  const ts = 'https://127.0.0.1:2000/api/stream.ts?src=cam+a&video=all';
+  const probe = new URL(probeUrlOf(ts)!);
+  assert.equal(probe.pathname, '/api/streams');
+  assert.equal(probe.searchParams.get('src'), 'cam a');
+  assert.equal(probe.searchParams.get('audio'), 'all');
+  assert.equal(probeUrlOf('rtsp://127.0.0.1:2001/cam'), undefined, 'not go2rtc MPEG-TS: nothing to ask');
+
+  // what go2rtc answered for the bench's cameras: a Xiaomi sends Opus and has a talk channel, a Dahua sends no sound
+  assert.equal(sendsAudio({ producers: [{ medias: ['video, recvonly, H265', 'audio, recvonly, OPUS/48000/2', 'audio, sendonly, OPUS/48000/2'] }] }), true);
+  assert.equal(sendsAudio({ producers: [{ medias: ['video, recvonly, H264'] }, {}] }), false);
+  assert.equal(sendsAudio({ producers: [{ medias: ['video, recvonly, H264', 'audio, sendonly, PCMA/8000'] }] }), false, 'a talk channel is no sound of the camera');
+  for (const nothing of [undefined, null, 'x', { producers: 'x' }]) assert.equal(sendsAudio(nothing), false);
+
+  const both = ffmpegArgs({ rtspUrl: 'rtsp://r', tsUrl: ts, audioUrl: 'rtsp://a?audio', audio: true }, true);
+  assert.deepEqual(both.filter((_, i) => both[i - 1] === '-i'), [ts, 'rtsp://a?audio'], 'the video of the MPEG-TS, the sound of RTSP');
+  assert.ok(both.join(' ').includes('-map 0:v:0 -map 1:a:0? -c:v copy -c:a aac'), both.join(' '));
+  const plain = ffmpegArgs({ rtspUrl: 'rtsp://r', audio: false }, false);
+  assert.ok(plain.join(' ').includes('-i rtsp://r -map 0:v:0 -c copy -an'), plain.join(' '));
+}
+{
+  // a go2rtc of three cameras: one with sound, one without, one whose probe fails
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    const url = new URL(req.url!, 'http://x');
+    const src = url.searchParams.get('src') ?? '';
+    seen.push(`${url.pathname} ${src}`);
+    if (url.pathname === '/api/streams') {
+      if (src === 'broken') {
+        res.writeHead(500).end();
+        return;
+      }
+      const medias = src === 'xiaomi' ? ['video, recvonly, H265', 'audio, recvonly, OPUS/48000/2'] : ['video, recvonly, H264'];
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ producers: [{ medias }] }));
+      return;
+    }
+    // the MPEG-TS stays open, as go2rtc's does
+    res.writeHead(200, { 'content-type': 'video/mp2t' });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const waitFor = async (what: () => boolean) => {
+    for (let i = 0; i < 60 && !what(); i++) await new Promise((r) => setTimeout(r, 50));
+    return what();
+  };
+  const start = (name: string, audio: boolean) => {
+    const logs: Logged[] = [];
+    const rec = new Recorder({
+      cameraId: name,
+      role: 'high',
+      rtspUrl: `rtsp://127.0.0.1:1/${name}`,
+      tsUrl: `http://127.0.0.1:${port}/api/stream.ts?src=${name}&video=all`,
+      audioUrl: audio ? `rtsp://127.0.0.1:1/${name}?audio` : undefined,
+      audio,
+      // no ffmpeg here: starting it is seen as its failure to start
+      ffmpegPath: join(dir, 'no-ffmpeg'),
+      dir: join(dir, `sound-${name}`),
+      store: new Store(join(dir, `sound-${name}.db`)),
+      mode: 'continuous',
+      preBufferSec: 0,
+      postBufferSec: 0,
+      segmentSec: 60,
+      log: (level, message) => logs.push({ level, message }),
+      onStateChange: noop,
+      onSegment: noop,
+    });
+    rec.start();
+    return { rec, logs, ffmpeg: () => logs.some((l) => l.message.includes('ffmpeg')) };
+  };
+
+  // without sound in the stream the MPEG-TS is read as without the setting: no ffmpeg (a Dahua with sound on recorded
+  // nothing through ffmpeg's copy before)
+  const dahua = start('dahua', true);
+  assert.ok(await waitFor(() => seen.includes('/api/stream.ts dahua')), seen.join(', '));
+  assert.ok(seen.includes('/api/streams dahua'), 'go2rtc was asked first');
+  assert.equal(dahua.ffmpeg(), false);
+  // with sound ffmpeg takes the MPEG-TS and the sound; the recorder itself does not read the MPEG-TS
+  const xiaomi = start('xiaomi', true);
+  assert.ok(await waitFor(xiaomi.ffmpeg), JSON.stringify(xiaomi.logs));
+  assert.ok(!seen.includes('/api/stream.ts xiaomi'), seen.join(', '));
+  // go2rtc does not say: the video is recorded, without sound
+  const broken = start('broken', true);
+  assert.ok(await waitFor(() => seen.includes('/api/stream.ts broken')), seen.join(', '));
+  assert.equal(broken.ffmpeg(), false);
+  // sound off: no question at all
+  const quiet = start('quiet', false);
+  assert.ok(await waitFor(() => seen.includes('/api/stream.ts quiet')));
+  assert.ok(!seen.includes('/api/streams quiet'));
+
+  await Promise.all([dahua, xiaomi, broken, quiet].map((r) => r.rec.stop()));
+  server.closeAllConnections();
+  server.close();
+}
+
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift) — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound — ok',
 );
 process.exit(0);

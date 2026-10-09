@@ -1,3 +1,7 @@
+## [0.13.1]
+
+- With «Record audio» on, cameras whose sound and video come through go2rtc (Xiaomi) record again: ffmpeg copied their HEVC from RTSP without timestamps and stopped at once, so the main stream recorded nothing. The video is now copied from go2rtc's MPEG-TS and the sound added beside it; a camera that sends no sound is recorded from the MPEG-TS as without the setting
+
 ## [0.13.0]
 
 - People who look alike can be searched for, together with ViON's people search and the ML plugins that bring Person Re-ID: the recorder keeps what a person's clothes and build look like for every person a camera with Person Re-ID saw, and finds the moments with people who look the same, starting from a recorded moment or a picture with somebody on it. Re-ID describes clothes and build, not who someone is, so the search keeps to a few days around the moment. Only the server's admins can search

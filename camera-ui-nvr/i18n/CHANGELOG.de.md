@@ -1,3 +1,7 @@
+## [0.13.1]
+
+- Mit eingeschaltetem „Ton aufzeichnen“ zeichnen Kameras, deren Ton und Video über go2rtc kommen (Xiaomi), wieder auf: ffmpeg kopierte ihr HEVC aus RTSP ohne Zeitstempel und brach sofort ab, sodass der Hauptstream gar nicht aufgezeichnet wurde. Das Video wird jetzt aus dem MPEG-TS von go2rtc kopiert und der Ton daneben hinzugefügt; eine Kamera ohne Ton wird aus dem MPEG-TS aufgezeichnet wie ohne diese Einstellung
+
 ## [0.13.0]
 
 - Ähnlich aussehende Personen lassen sich suchen, zusammen mit der Personensuche von ViON und ML-Plugins mit Personen-Wiedererkennung: Der Rekorder merkt sich, wie Kleidung und Statur jeder Person aussehen, die eine Kamera mit zugewiesener Personen-Wiedererkennung gesehen hat, und findet die Momente mit ähnlich aussehenden Personen, ausgehend von einem aufgezeichneten Moment oder einem Bild, auf dem eine Person zu sehen ist. Re-ID beschreibt Kleidung und Statur, nicht die Identität, daher bleibt die Suche bei wenigen Tagen um den Moment. Suchen können nur die Administratoren des Servers

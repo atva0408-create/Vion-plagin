@@ -650,7 +650,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const { device } = managed;
     const rs = device.recordingSettings;
     const disabled = (device as unknown as { disabled?: boolean }).disabled === true;
-    const wanted = new Map<Role, { rtspUrl: string; tsUrl?: string }>();
+    const wanted = new Map<Role, { rtspUrl: string; tsUrl?: string; audioUrl?: string }>();
     const licensed = !isRecordingWanted(device) || this.licensedCameraIds().has(device.id);
     if (!licensed && !managed.overLimit) {
       this.pushSystemEvent({
@@ -670,6 +670,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           wanted.set(role, {
             rtspUrl: source.generateRTSPUrl({ video: true, audio: this.storage.values.recordAudio === true, timeout: 15 }),
             tsUrl: go2rtcTsUrl(source.urls?.snapshot?.jpeg),
+            audioUrl: this.storage.values.recordAudio === true ? source.generateRTSPUrl({ video: false, audio: true, timeout: 15 }) : undefined,
           });
       }
     }
@@ -681,7 +682,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       }
     }
     const s = this.setting;
-    for (const [role, { rtspUrl, tsUrl }] of wanted) {
+    for (const [role, { rtspUrl, tsUrl, audioUrl }] of wanted) {
       const common = {
         mode: mode!,
         preBufferSec: Math.min(60, Math.max(0, Number(rs.preBuffer) || 0)),
@@ -691,7 +692,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       };
       const existing = managed.recorders.get(role);
       if (existing) {
-        existing.update({ rtspUrl, tsUrl, ...common });
+        existing.update({ rtspUrl, tsUrl, audioUrl, ...common });
         continue;
       }
       const rec = new Recorder({
@@ -699,6 +700,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         role,
         rtspUrl,
         tsUrl,
+        audioUrl,
         ffmpegPath: this.ffmpegPath,
         dir: join(this.recordingsDir, device.id),
         store: this.store,
