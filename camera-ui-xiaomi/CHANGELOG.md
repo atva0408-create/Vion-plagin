@@ -1,3 +1,16 @@
+## [0.4.1]
+
+- Releasing an arrow, changing direction or removing PTZ cancels motor commands still waiting for P2P authentication. Queued commands cannot move a disposed control; movement state starts when the command is sent.
+- UDP command writes are serialized and acknowledgements match the command's channel and sequence. Unbuffered out-of-order packets are not acknowledged, allowing retransmission. Closing a session releases pending acknowledgements immediately; command buffers are bounded.
+- Damaged encrypted replies close only the motor session instead of crashing the plugin. Invalid relay frames are filtered before go2rtc, and remote disconnects notify the PTZ client. Failed motor bridges are released without stopping video.
+- Sign-out and camera removal cancel pending LAN as well as remote connections. A PTZ sensor registered during camera removal is cleaned up.
+- SDK reconnection restores PTZ without replaying commands from the previous connection. Disabling a held zoom still sends the lens stop command.
+
+## [0.4.0]
+
+- CS2 cameras in another network connect through Xiaomi P2P relays. Per-camera connection settings offer Auto, Local network and Remote P2P; Auto prefers a verified local connection. Existing go2rtc video/audio playback is retained through a loopback-only transport bridge.
+- Remote sessions use fresh cloud credentials, bounded retries and cancellation on sign-out, camera removal or shutdown. Idle sessions are released. Verified remotely with `xiaomi.camera.c01a01`, HEVC 2304×1296 at Maximum quality.
+
 ## [0.3.0]
 
 - Cameras with a zoom lens zoom from ViON: the zoom of the player and **Home** (all the way out), with **Pan, tilt and zoom (PTZ)** switched on. Their focus is set next to the switch: **Focus nearer**, **Focus farther** and the autofocus of the camera. The plugin finds the zoom and the focus in the MIoT description Xiaomi publishes for the model; cameras with a fixed lens (Mi 360°, C200, C300) have neither and turn as before

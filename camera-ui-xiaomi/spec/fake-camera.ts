@@ -21,6 +21,8 @@ export interface FakeCameraOptions {
   ret?: number;
   /** motor answers per step: the C300 sends several as the motor turns */
   answersPerStep?: number;
+  /** Damaged encrypted payload, for receive-loop failure tests. */
+  malformedAnswer?: Buffer;
 }
 
 export interface FakeCamera {
@@ -131,7 +133,7 @@ export async function fakeCamera(options: FakeCameraOptions = {}): Promise<FakeC
         const answer = Buffer.alloc(4);
         answer.writeUInt32BE(0x113, 0);
         const text = `{"ret":${options.ret ?? 0}, "angle":${40 + state.operations.length},"elevation":10}\0`;
-        reply(0x1001, encode(Buffer.concat([answer, Buffer.from(text)]), key));
+        reply(0x1001, options.malformedAnswer ?? encode(Buffer.concat([answer, Buffer.from(text)]), key));
       }
     };
     return (message: Buffer) => {

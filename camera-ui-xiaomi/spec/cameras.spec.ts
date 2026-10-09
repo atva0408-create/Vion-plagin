@@ -236,6 +236,78 @@ test('a camera without a local address is explained, not dialled', async () => {
   assert.equal(asked.length, 0);
 });
 
+test('remote CS2 uses fresh relay credentials without a LAN address and keeps them out of the stream URL', async () => {
+  const { cloud } = stubCloud(() => ({
+    vendor: { vendor: 4, vendor_params: { p2p_id: 'ABCDEF-123456-GHIJK', init_string: 'remote-init' } },
+    public_key: 'dd',
+    sign: 'sig',
+  }));
+  let opened = 0;
+  const url = new URL(
+    await cameraStreamUrl(cloud, camera({ ip: '', online: true }), 'max', undefined, undefined, {
+      mode: 'remote',
+      localReachable: async () => {
+        throw new Error('Remote mode must not probe a LAN address');
+      },
+      openRelay: async (credentials) => {
+        assert.deepEqual(credentials, { uid: 'ABCDEF-123456-GHIJK', init: 'remote-init' });
+        opened++;
+        return '127.0.0.1:45000';
+      },
+    }),
+  );
+  assert.equal(opened, 1);
+  assert.equal(url.host, '127.0.0.1:45000');
+  assert.equal(url.searchParams.get('subtype'), '3');
+  assert.equal(url.searchParams.has('relay_uid'), false);
+  assert.equal(url.searchParams.has('relay_init'), false);
+  assert.equal(url.searchParams.has('uid'), false);
+});
+
+test('auto prefers the verified local camera, falls back to P2P, and explicit LAN never opens a relay', async () => {
+  const { cloud } = stubCloud(() => ({ vendor: { vendor: 4, vendor_params: { p2p_id: 'uid', init_string: 'init' } }, public_key: 'dd', sign: 's' }));
+  let opened = 0,
+    probes = 0;
+  const options = {
+    mode: 'auto' as const,
+    localReachable: async () => {
+      probes++;
+      return true;
+    },
+    openRelay: async () => {
+      opened++;
+      return '127.0.0.1:45000';
+    },
+  };
+  assert.equal(new URL(await cameraStreamUrl(cloud, camera(), 'default', undefined, undefined, options)).host, camera().ip);
+  assert.equal(opened, 0);
+  assert.equal(probes, 1);
+  assert.equal(
+    new URL(await cameraStreamUrl(cloud, camera(), 'default', undefined, undefined, { ...options, localReachable: async () => false })).host,
+    '127.0.0.1:45000',
+  );
+  assert.equal(opened, 1);
+  assert.equal(new URL(await cameraStreamUrl(cloud, camera(), 'default', undefined, undefined, { ...options, mode: 'lan' })).host, camera().ip);
+  assert.equal(opened, 1);
+  assert.equal(probes, 1);
+});
+
+test('offline cameras, missing relay credentials and unsupported remote vendors give actionable errors', async () => {
+  const vendor = (id: number, params = {}) => stubCloud(() => ({ vendor: { vendor: id, vendor_params: params }, public_key: 'dd', sign: 's' })).cloud;
+  const options = {
+    mode: 'remote' as const,
+    openRelay: async () => {
+      throw new Error('must not dial');
+    },
+  };
+  await assert.rejects(
+    cameraStreamUrl(vendor(4, { p2p_id: 'uid', init_string: 'init' }), camera({ online: false }), 'default', undefined, undefined, options),
+    /offline in Mi Home/,
+  );
+  await assert.rejects(cameraStreamUrl(vendor(4), camera(), 'default', undefined, undefined, options), /did not provide remote P2P/);
+  await assert.rejects(cameraStreamUrl(vendor(1), camera(), 'default', undefined, undefined, options), /CS2 cameras only/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

@@ -97,7 +97,10 @@ test('several answers to one step are all read, none is taken for the next step'
 
 test('a session the camera refuses is an error with its answer, and nothing is sent after it', async () => {
   await withCamera({}, async (camera) => {
-    await assert.rejects(MissSession.open('127.0.0.1', keysFor(camera, 'wrong-sign'), () => {}), /refused the session: .*"result":"fail"/);
+    await assert.rejects(
+      MissSession.open('127.0.0.1', keysFor(camera, 'wrong-sign'), () => {}),
+      /refused the session: .*"result":"fail"/,
+    );
     assert.equal(camera.sessions, 0);
     assert.deepEqual(camera.operations, []);
   });
@@ -105,11 +108,21 @@ test('a session the camera refuses is an error with its answer, and nothing is s
 
 test('a camera that does not answer the search is an error that says to check it is on and in the network', async () => {
   // 127.0.0.2: nobody answers there
-  await assert.rejects(MissSession.open('127.0.0.2', { client_public: '11'.repeat(32), client_private: '22'.repeat(32), device_public: '33'.repeat(32), sign: SIGN }, () => {}), /no answer from the camera at 127\.0\.0\.2 .*same network/);
+  await assert.rejects(
+    MissSession.open('127.0.0.2', { client_public: '11'.repeat(32), client_private: '22'.repeat(32), device_public: '33'.repeat(32), sign: SIGN }, () => {}),
+    /no answer from the camera at 127\.0\.0\.2 .*same network/,
+  );
 });
 
 test('a camera of another P2P vendor is refused before anything is sent to it', async () => {
-  await assert.rejects(MissSession.open('127.0.0.1', { client_public: '11'.repeat(32), client_private: '22'.repeat(32), device_public: '33'.repeat(32), sign: SIGN, vendor: 'tutk' }, () => {}), /over tutk: the plugin turns cameras over CS2 only/);
+  await assert.rejects(
+    MissSession.open(
+      '127.0.0.1',
+      { client_public: '11'.repeat(32), client_private: '22'.repeat(32), device_public: '33'.repeat(32), sign: SIGN, vendor: 'tutk' },
+      () => {},
+    ),
+    /over tutk: the plugin turns cameras over CS2 only/,
+  );
 });
 
 test('the session is kept alive with a ping every second while no step is sent', async () => {
@@ -134,7 +147,7 @@ test('a session the camera ended is seen as closed, and a step on it fails inste
   });
 });
 
-test('the camera\'s answer ends with a NUL; one that is no JSON counts as a refusal and keeps its text', () => {
+test("the camera's answer ends with a NUL; one that is no JSON counts as a refusal and keeps its text", () => {
   assert.deepEqual(parseAnswer('{"ret":0, "angle":36,"elevation":10}\0'), { ret: 0, angle: 36, elevation: 10 });
   assert.deepEqual(parseAnswer('busy\0'), { ret: -1, raw: 'busy' });
 });
@@ -308,6 +321,178 @@ test('a step the camera refuses (the end of its travel) is said once, until a st
       ptz.dispose();
     }
   });
+});
+
+test('releasing an arrow while P2P authentication is pending cancels the delayed motor step', async () => {
+  let finish!: (session: MissSession) => void;
+  let opened = 0;
+  const moves: number[] = [];
+  const pending = new Promise<MissSession>((resolve) => {
+    finish = resolve;
+  });
+  const { logger } = recorder();
+  const ptz = new XiaomiPtz(
+    async () => {
+      opened++;
+      return pending;
+    },
+    logger as never,
+    { stepMs: 10, holdMs: 1000 },
+  );
+  const press = ptz.setVelocity({ panSpeed: 1, tiltSpeed: 0, zoomSpeed: 0 });
+  try {
+    await until(() => opened === 1);
+    await ptz.setVelocity({ panSpeed: 0, tiltSpeed: 0, zoomSpeed: 0 });
+    finish({
+      closed: false,
+      move: async (step: number) => {
+        moves.push(step);
+      },
+      close() {},
+    } as unknown as MissSession);
+    await press;
+    assert.deepEqual(moves, [], 'a cancelled arrow moved the camera after authentication');
+    assert.deepEqual(ptz.velocity, { panSpeed: 0, tiltSpeed: 0, zoomSpeed: 0 }, 'the delayed press overwrote the stop state');
+  } finally {
+    ptz.dispose();
+  }
+});
+
+test('disposing PTZ while authentication is pending discards queued and future commands', async () => {
+  let finish!: (session: MissSession) => void;
+  let opened = 0;
+  const moves: number[] = [];
+  const pending = new Promise<MissSession>((resolve) => {
+    finish = resolve;
+  });
+  const { logger } = recorder();
+  const ptz = new XiaomiPtz(async () => {
+    opened++;
+    return pending;
+  }, logger as never);
+  const commands = [ptz.setRelativeMove({ panDelta: 1, tiltDelta: 0 }), ptz.setRelativeMove({ panDelta: -1, tiltDelta: 0 })];
+  await until(() => opened === 1);
+  ptz.dispose();
+  finish({
+    closed: false,
+    move: async (step: number) => {
+      moves.push(step);
+    },
+    close() {},
+  } as unknown as MissSession);
+  await Promise.all(commands);
+  await ptz.setRelativeMove({ panDelta: 1, tiltDelta: 0 });
+  assert.deepEqual(moves, []);
+  assert.equal(opened, 1);
+  ptz.dispose();
+});
+
+test('PTZ resumes after the SDK deactivates and reactivates the same control', async () => {
+  const moves: number[] = [];
+  let opened = 0;
+  const { logger } = recorder();
+  const ptz = new XiaomiPtz(async () => {
+    opened++;
+    return {
+      closed: false,
+      move: async (step: number) => {
+        moves.push(step);
+      },
+      close() {},
+    } as unknown as MissSession;
+  }, logger as never);
+  const lifecycle = ptz as unknown as { _setActive: (active: boolean) => void };
+  try {
+    lifecycle._setActive(true);
+    await ptz.setRelativeMove({ panDelta: 1, tiltDelta: 0 });
+    lifecycle._setActive(false);
+    lifecycle._setActive(true);
+    await ptz.setRelativeMove({ panDelta: -1, tiltDelta: 0 });
+    assert.deepEqual(moves, [MotorStep.Right, MotorStep.Left]);
+    assert.equal(opened, 2);
+  } finally {
+    ptz.dispose();
+  }
+});
+
+test('a pending motor step from before SDK reconnect is discarded, but the next gesture works', async () => {
+  let finish!: (session: MissSession) => void;
+  let opened = 0;
+  const moves: number[] = [];
+  const old = new Promise<MissSession>((resolve) => {
+    finish = resolve;
+  });
+  const { logger } = recorder();
+  const make = () =>
+    ({
+      closed: false,
+      move: async (step: number) => {
+        moves.push(step);
+      },
+      close() {},
+    }) as unknown as MissSession;
+  const ptz = new XiaomiPtz(async () => (++opened === 1 ? old : make()), logger as never);
+  const lifecycle = ptz as unknown as { _setActive: (active: boolean) => void };
+  lifecycle._setActive(true);
+  const before = ptz.setRelativeMove({ panDelta: 1, tiltDelta: 0 });
+  await until(() => opened === 1);
+  lifecycle._setActive(false);
+  lifecycle._setActive(true);
+  finish(make());
+  await before;
+  try {
+    await ptz.setRelativeMove({ panDelta: -1, tiltDelta: 0 });
+    assert.deepEqual(moves, [MotorStep.Left]);
+  } finally {
+    ptz.dispose();
+  }
+});
+
+test('disposing a held zoom still sends the lens stop command', async () => {
+  const { logger } = recorder();
+  let stopped = 0;
+  const ptz = new XiaomiPtz(
+    async () => {
+      throw new Error('zoom must not open the motor');
+    },
+    logger as never,
+    {},
+    {
+      step: async () => {},
+      stop: async () => {
+        stopped++;
+      },
+    },
+  );
+  await ptz.setVelocity({ panSpeed: 0, tiltSpeed: 0, zoomSpeed: 1 });
+  ptz.dispose();
+  await until(() => stopped === 1);
+  assert.equal(ptz.moving, false);
+});
+
+test('a malformed encrypted motor response closes the session without an unhandled rejection', async () => {
+  const unhandled: unknown[] = [];
+  const record = (error: unknown) => unhandled.push(error);
+  process.on('unhandledRejection', record);
+  try {
+    await withCamera({ malformedAnswer: Buffer.from([1, 2, 3]) }, async (camera) => {
+      const session = await MissSession.open('127.0.0.1', keysFor(camera), () => {});
+      try {
+        await session.move(MotorStep.Right);
+        await until(() => session.closed || unhandled.length > 0);
+        assert.equal(session.closed, true);
+        assert.deepEqual(unhandled, []);
+      } finally {
+        session.close();
+      }
+    });
+  } finally {
+    process.off('unhandledRejection', record);
+  }
+});
+
+test('null and scalar motor responses are reported as malformed JSON objects', () => {
+  for (const text of ['null', '42', '"success"', '[]']) assert.equal(parseAnswer(text).ret, -1);
 });
 
 // a step that hangs (a session never closed keeps the process alive) ends the run red, instead of leaving a

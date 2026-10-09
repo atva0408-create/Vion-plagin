@@ -1,3 +1,16 @@
+## [0.4.1]
+
+- Loslassen, Richtungswechsel und Entfernen von PTZ verwerfen Motorbefehle, die noch auf die P2P-Anmeldung warten. Entfernte Steuerungen führen keine Befehle aus.
+- UDP-Bestätigungen prüfen Kanal und Sequenz; parallele Befehle werden nacheinander gesendet. Nicht gepufferte Pakete können erneut übertragen werden. Sitzungen und Befehlspuffer werden zuverlässig begrenzt und beendet.
+- Beschädigte Antworten beenden die Motorsitzung statt das Plugin. Ungültige Relay-Pakete erreichen go2rtc nicht; Verbindungsabbrüche werden an PTZ gemeldet. Ein Motorfehler stoppt das Video nicht.
+- Abmelden und Entfernen der Kamera brechen auch lokale Verbindungsversuche ab. Eine gleichzeitig registrierte PTZ-Steuerung wird wieder entfernt.
+- Nach einer SDK-Neuverbindung funktioniert PTZ wieder, ohne alte Befehle auszuführen. Beim Abschalten eines gehaltenen Zooms wird der Stoppbefehl gesendet.
+
+## [0.4.0]
+
+- CS2-Kameras in anderen Netzwerken verbinden sich über Xiaomi-P2P-Relays. Pro Kamera stehen Automatisch, Lokales Netzwerk und P2P-Fernzugriff zur Auswahl. Automatisch bevorzugt eine erreichbare lokale Kamera; der bestehende go2rtc-Player bleibt erhalten.
+- Frische Schlüssel pro Verbindung, begrenzte Wiederholungen und Abbruch beim Abmelden, Entfernen einer Kamera oder Beenden des Plugins. Unbenutzte Sitzungen werden geschlossen. Fernzugriff mit `xiaomi.camera.c01a01` und HEVC 2304×1296 bei maximaler Qualität geprüft.
+
 ## [0.3.0]
 
 - Kameras mit Zoomobjektiv zoomen aus ViON: der Zoom im Player und **Home** (ganz heraus), wenn **Schwenken, Neigen und Zoomen (PTZ)** eingeschaltet ist. Ihr Fokus wird neben dem Schalter eingestellt: **Fokus näher**, **Fokus weiter** und der Autofokus der Kamera. Das Plugin findet Zoom und Fokus in der MIoT-Beschreibung, die Xiaomi für das Modell veröffentlicht; Kameras mit festem Objektiv (Mi 360°, C200, C300) haben beides nicht und drehen sich wie bisher

@@ -7,7 +7,7 @@ import { nonEmpty } from './text.js';
  * The Mi Home cloud, as far as the cameras need it: signing in to a Mi account (with the captcha and the code sent to
  * the phone or the mailbox when Xiaomi asks for them), signing in again later with the token that sign-in gave, and
  * the encrypted requests of the Mi Home app. The cloud hands out the keys of a camera; the video itself goes from the
- * camera to the server over the local network.
+ * camera to the server over the local network or a CS2 P2P relay.
  */
 
 const ACCOUNT_URL = 'https://account.xiaomi.com';

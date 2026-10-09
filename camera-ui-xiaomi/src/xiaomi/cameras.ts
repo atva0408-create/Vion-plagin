@@ -1,9 +1,12 @@
 import { REGIONS } from './cloud.js';
 import { generateKeyPair } from './keys.js';
+import { reachableLocally } from './p2p.js';
 import { nonEmpty } from './text.js';
 
 import type { Region, XiaomiCloud } from './cloud.js';
 import type { SessionKeys } from './miss.js';
+import type { ConnectionMode } from './p2p.js';
+import type { RelayCredentials } from './relay.js';
 
 /** A camera of the account, as the Mi Home device list gives it. */
 export interface XiaomiCamera {
@@ -107,7 +110,7 @@ async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Rec
   const { publicKey, privateKey } = generateKeyPair();
   const params = JSON.stringify({ app_pubkey: publicKey, did: camera.did, support_vendors: 'TUTK_CS2_MTP' });
   const result = (await cloud.request(camera.region, '/v2/device/miss_get_vendor', params)) as {
-    vendor?: { vendor?: number; vendor_params?: { p2p_id?: string } };
+    vendor?: { vendor?: number; vendor_params?: { p2p_id?: string; init_string?: string } };
     public_key?: string;
     sign?: string;
   };
@@ -123,6 +126,11 @@ async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Rec
     vendor: vendorName(vendorId),
   };
   if (vendorId === 1 && result.vendor?.vendor_params?.p2p_id) query.uid = result.vendor.vendor_params.p2p_id;
+  if (vendorId === 4) {
+    const relay = result.vendor?.vendor_params;
+    if (relay?.p2p_id) query.relay_uid = relay.p2p_id;
+    if (relay?.init_string) query.relay_init = relay.init_string;
+  }
   return query;
 }
 
@@ -198,8 +206,10 @@ export async function cameraStreamUrl(
   quality: Quality = 'default',
   channel?: number,
   onWakeUpError?: (error: Error) => void,
+  connection: ConnectionOptions = {},
 ): Promise<string> {
-  if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
+  if (!camera.ip && (connection.mode ?? 'lan') === 'lan')
+    throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
 
   if (camera.model.includes('.cateye.')) await wakeUp(cloud, camera).catch((error: Error) => onWakeUpError?.(error));
 
@@ -216,23 +226,56 @@ export async function cameraStreamUrl(
     }
   }
 
-  const query = new URLSearchParams({ did: camera.did, model: camera.model, ...params });
+  const host = await connectionHost(camera, params, connection);
+  // Rendezvous credentials are used by the bridge, never placed in a logged or persisted stream URL.
+  const { relay_uid: _uid, relay_init: _init, ...streamParams } = params;
+  const query = new URLSearchParams({ did: camera.did, model: camera.model, ...streamParams });
   if (quality === 'sd' || quality === 'hd') query.set('subtype', quality);
   if (quality === 'max') query.set('subtype', '3');
   if (channel && channel > 1) query.set('channel', String(channel));
-  return `xiaomi://${camera.ip}?${query.toString()}`;
+  return `xiaomi://${host}?${query.toString()}`;
+}
+
+export interface ConnectionOptions {
+  mode?: ConnectionMode;
+  openRelay?: (credentials: RelayCredentials) => Promise<string>;
+  /** Replace the LAN probe in cloud contract tests. */
+  localReachable?: (host: string) => Promise<boolean>;
+}
+
+export async function connectionHost(camera: XiaomiCamera, params: Record<string, string>, options: ConnectionOptions): Promise<string> {
+  const mode = options.mode ?? 'lan';
+  const credentials = params.relay_uid && params.relay_init ? { uid: params.relay_uid, init: params.relay_init } : undefined;
+  if (mode === 'lan' || (mode === 'auto' && (!credentials || params.vendor !== 'cs2'))) {
+    if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}`);
+    return camera.ip;
+  }
+  if (mode === 'auto' && camera.ip && (await (options.localReachable ?? reachableLocally)(camera.ip))) return camera.ip;
+  if (params.vendor !== 'cs2') throw new Error(`${camera.name}: remote P2P is supported for CS2 cameras only`);
+  if (camera.online === false) throw new Error(`${camera.name} is offline in Mi Home; remote P2P is unavailable`);
+  if (!credentials) throw new Error(`${camera.name}: Xiaomi did not provide remote P2P credentials`);
+  if (!options.openRelay) throw new Error('The Xiaomi P2P bridge is not available');
+  return options.openRelay(credentials);
 }
 
 /**
  * Keys for a session of the plugin's own with the camera, to turn it: asked like those of a stream connection, a new
  * pair each time. Only cameras of the newer protocol over CS2 are turned.
  */
-export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<SessionKeys> {
-  if (!camera.ip) throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
+export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera, mode: ConnectionMode = 'lan'): Promise<SessionKeys> {
+  if (!camera.ip && mode === 'lan') throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
   if (LEGACY_MODELS.has(camera.model)) throw new Error(`${camera.name} (${camera.model}) uses the older protocol, which the plugin cannot turn`);
   const params = await missParams(cloud, camera);
   if (params.vendor !== 'cs2') {
     throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
   }
-  return { client_public: params.client_public, client_private: params.client_private, device_public: params.device_public, sign: params.sign, vendor: params.vendor };
+  return {
+    client_public: params.client_public,
+    client_private: params.client_private,
+    device_public: params.device_public,
+    sign: params.sign,
+    vendor: params.vendor,
+    relay_uid: params.relay_uid,
+    relay_init: params.relay_init,
+  };
 }

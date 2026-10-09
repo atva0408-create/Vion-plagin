@@ -1,6 +1,6 @@
 # Xiaomi
 
-Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the plugin finds the cameras of the account and you add the ones you want. The video goes from the camera to the ViON server over your local network; the Mi Home cloud only hands out the keys for each connection.
+Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the plugin finds the cameras of the account and you add the ones you want. Cameras connect over your local network or, for CS2 models, remotely through Xiaomi's P2P relays. The cloud provides fresh authentication keys for each connection.
 
 ## What it does
 
@@ -12,7 +12,7 @@ Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the p
 
 ## What you need
 
-- Cameras in the same local network as the ViON server
+- Cameras in the same local network as the ViON server, or online CS2 cameras in another network
 - An internet connection: each connection to a camera asks the Mi Home cloud for its keys
 - The account and password of the Mi Home app the cameras are in
 - Cameras on the common Xiaomi camera protocol. Most models since 2020 use it; some older models are not supported. Cameras that Xiaomi connects over MTP or Agora cannot be played yet: they are not offered for adding, and the window of the sign-in lists them
@@ -31,6 +31,18 @@ Connects Xiaomi Mi Home cameras to ViON. You sign in with your Mi account, the p
 2. If Xiaomi asks for the characters of a picture or for a code, enter them in the window that opens. A mistyped code can be typed again in the same window; a window left waiting for 10 minutes is cancelled
 3. The window then lists the cameras found
 4. Open **Cameras** in ViON: the cameras are under **Discovered**. Click a camera, check its name and confirm
+
+## Connection mode
+
+The camera's plugin settings include **Connection**:
+
+- **Auto** (default): checks the camera's local CS2 discovery port, then uses remote P2P if that camera is unreachable locally and Xiaomi provides relay credentials.
+- **Local network**: retains the direct connection; no relay is opened.
+- **Remote P2P**: uses Xiaomi's relay even when the camera has a local address. Choose this for a camera at another location. The camera must be online in Mi Home; port forwarding and a VPN are not required.
+
+The setting applies to the next video or PTZ connection. Remote P2P currently supports CS2 cameras; TUTK and legacy cameras retain LAN playback. The encrypted MISS channel passes through a loopback-only UDP bridge to the existing go2rtc producer, preserving video, sound and the normal player. Pending connections are cancelled on sign-out, camera removal and shutdown; unused sessions expire. Relay availability and bandwidth depend on Xiaomi and the camera's uplink.
+
+Verified remotely with `xiaomi.camera.c01a01`: HEVC 2304×1296 at **Maximum** quality. Other models may require another quality setting. Protocol references: [CS2/PPPP](https://github.com/magicus/pppp-dissector/blob/main/PPPP.md), [Xiaomi relay exchange](https://github.com/eugeneRover/micam#how-it-works).
 
 ## Pan, tilt and zoom
 

@@ -790,13 +790,13 @@ test('a camera with a zoom lens zooms and focuses through the Mi Home cloud once
   await h.plugin.configureCameras([hall.camera]);
   await h.launch();
   const keys = () => hall.fields().map((field) => field.key);
-  assert.deepEqual(keys(), ['ptz']);
+  assert.deepEqual(keys(), ['connectionMode', 'ptz']);
 
   await hall.set('ptz', true);
   const ptz = hall.sensors[0]!;
   assert.ok(ptz.capabilities.includes(PTZCapability.Zoom));
   assert.deepEqual(lines.log, ['The camera has a lens ViON can drive: zoom and focus']);
-  assert.deepEqual(keys(), ['ptz', 'focusNear', 'focusFar', 'focusAuto']);
+  assert.deepEqual(keys(), ['connectionMode', 'ptz', 'focusNear', 'focusFar', 'focusAuto']);
 
   await ptz.setRelativeMove({ panDelta: 0, tiltDelta: 0, zoomDelta: 0.5 });
   const set = fake.calls.find((call) => call.path === '/miotspec/prop/set');
@@ -809,7 +809,7 @@ test('a camera with a zoom lens zooms and focuses through the Mi Home cloud once
   assert.deepEqual(fake.calls.find((call) => call.path === '/miotspec/action')?.params, { params: { did: '1001', siid: 9, aiid: 2, in: [] } });
 
   await hall.set('ptz', false);
-  assert.deepEqual(keys(), ['ptz']);
+  assert.deepEqual(keys(), ['connectionMode', 'ptz']);
   await h.shutdown();
 });
 
@@ -824,7 +824,7 @@ test('a camera with a fixed lens turns without zoom; a description that cannot b
   assert.equal(hall.sensors[0]!.capabilities.includes(PTZCapability.Zoom), false);
   assert.deepEqual(
     hall.fields().map((field) => field.key),
-    ['ptz'],
+    ['connectionMode', 'ptz'],
   );
   await h.shutdown();
 
@@ -849,6 +849,70 @@ setTimeout(() => {
   console.log('not ok - the run did not end within 150 s');
   process.exit(1);
 }, 150_000).unref();
+
+test('signing out while LAN stream keys are being requested cancels that connection', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001');
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  globalThis.fetch = slow(fake.fetch, 100);
+  const pending = hall.stream();
+  await sleep(20);
+  await h.logout();
+  try {
+    await assert.rejects(pending, /cancelled|Not signed in/);
+  } finally {
+    await h.shutdown();
+  }
+});
+
+test('a released camera rejects a pending stream URL and cannot request a new one', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001');
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  globalThis.fetch = slow(fake.fetch, 100);
+  const pending = hall.stream();
+  await sleep(20);
+  await h.plugin.onCameraReleased(hall.camera.id);
+  try {
+    await assert.rejects(pending, /cancelled|released/);
+    await assert.rejects(hall.stream(), /released/);
+  } finally {
+    await h.shutdown();
+  }
+});
+
+test('removing a camera while its PTZ sensor is being registered leaves no stale controls', async () => {
+  globalThis.fetch = fakeXiaomi(scenario()).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  const hall = device('1001');
+  await h.plugin.configureCameras([hall.camera]);
+  await h.launch();
+  const runtime = hall.camera as unknown as { addSensor: (sensor: PTZControl) => Promise<void> };
+  const add = runtime.addSensor.bind(runtime);
+  let finish!: () => void;
+  let adding = false;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  runtime.addSensor = async (sensor) => {
+    adding = true;
+    await pending;
+    await add(sensor);
+  };
+  const change = hall.set('ptz', true);
+  await until(() => adding);
+  await h.plugin.onCameraReleased(hall.camera.id);
+  finish();
+  await change;
+  assert.equal(hall.sensors.length, 0);
+  await h.shutdown();
+});
 
 let failed = 0;
 for (const [name, fn] of tests) {

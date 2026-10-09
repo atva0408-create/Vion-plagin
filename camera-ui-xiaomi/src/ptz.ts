@@ -43,7 +43,7 @@ export function stepOf(pan: number, tilt: number): MotorStep | undefined {
 /** What a held control does: a step of the motor or of the zoom, repeated while held. */
 interface Move {
   key: string;
-  run: () => Promise<void>;
+  run: (current?: () => boolean) => Promise<void>;
   /** ends a move the camera keeps doing by itself */
   end?: () => Promise<void>;
 }
@@ -59,6 +59,10 @@ function zoomWins(pan: number, tilt: number, zoom: number): boolean {
  * with a zoom lens zooms through the Mi Home cloud, as the app does.
  */
 export class XiaomiPtz extends PTZControl {
+  private disposed = false;
+  private stopped = false;
+  private epoch = 0;
+  private velocityRevision = 0;
   private session?: Promise<MissSession>;
   private queue: Promise<void> = Promise.resolve();
   private hold?: { key: string; until: number; timer: NodeJS.Timeout; busy: boolean; end?: () => Promise<void> };
@@ -92,7 +96,8 @@ export class XiaomiPtz extends PTZControl {
    * again while it is held: that only keeps the hold going, it does not step faster.
    */
   public override async setVelocity(value: PTZDirection | undefined): Promise<void> {
-    if (!value) return;
+    if (!value || !this.canControl()) return;
+    const revision = ++this.velocityRevision;
     const move = this.moveOf(value.panSpeed, value.tiltSpeed, value.zoomSpeed ?? 0);
     if (move && this.hold?.key === move.key) {
       this.hold.until = Date.now() + this.timing.holdMs;
@@ -112,54 +117,83 @@ export class XiaomiPtz extends PTZControl {
         await this.run(move);
       }
     }
-    await super.setVelocity(value);
+    if (this.canControl() && revision === this.velocityRevision) await super.setVelocity(value);
   }
 
   /** One step in the direction of the move: the camera has no finer or measured moves. */
   public override async setRelativeMove(value: PTZRelativeMove): Promise<void> {
+    if (!this.canControl()) return;
+    const epoch = this.epoch;
     const move = this.moveOf(value.panDelta, value.tiltDelta, value.zoomDelta ?? 0);
     if (move) {
       if (move.key.startsWith('zoom:')) this.zoom?.reset?.();
-      await move.run();
+      await move.run(() => this.isCurrent(epoch));
       await move.end?.();
     }
-    await super.setRelativeMove(value);
+    if (this.isCurrent(epoch)) await super.setRelativeMove(value);
   }
 
   /** Only the zoom has a position: the motor of a Xiaomi camera does not say where it points. Home zooms out. */
   public override async setPosition(value: PTZPosition): Promise<void> {
+    if (!this.canControl()) return;
+    const epoch = this.epoch;
     const set = this.zoom?.set;
     if (!set || typeof value?.zoom !== 'number' || !Number.isFinite(value.zoom)) return;
     const zoom = Math.min(1, Math.max(0, value.zoom));
     // the position is the zoom the camera took, not one it refused
-    if (await this.lens(() => set(zoom), 'set the zoom')) await super.setPosition({ ...this.position, zoom });
+    if ((await this.lens(() => set(zoom), 'set the zoom')) && this.isCurrent(epoch)) await super.setPosition({ ...this.position, zoom });
   }
 
   /** Ends what is running: the held direction and the session. */
   public dispose(): void {
+    this.disposed = true;
+    this.stopControl();
+  }
+
+  private stopControl(): void {
+    this.stopped = true;
+    this.epoch++;
+    this.velocityRevision++;
     this.endHold();
     clearTimeout(this.idleTimer);
     clearTimeout(this.movingTimer);
     this.closeSession();
+    this.setMoving(false);
   }
 
   protected override onStop(): void {
-    this.dispose();
+    this.stopControl();
+  }
+
+  protected override onStart(): void {
+    if (!this.disposed) {
+      this.stopped = false;
+      this.epoch++;
+    }
+  }
+
+  private canControl(): boolean {
+    return !this.disposed && !this.stopped;
+  }
+
+  private isCurrent(epoch: number): boolean {
+    return this.canControl() && epoch === this.epoch;
   }
 
   private moveOf(pan: number, tilt: number, zoom: number): Move | undefined {
+    if (![pan, tilt, zoom].every(Number.isFinite)) return;
     const lens = this.zoom;
     if (lens && zoomWins(pan, tilt, zoom)) {
       const direction: Direction = zoom > 0 ? 1 : -1;
       const stop = lens.stop;
       return {
         key: `zoom:${direction}`,
-        run: async () => void (await this.lens(() => lens.step(direction), direction > 0 ? 'zoom in' : 'zoom out', `zoom:${direction}`)),
-        ...(stop ? { end: async () => void (await this.lens(stop, 'stop the zoom')) } : {}),
+        run: async (current) => void (await this.lens(() => lens.step(direction), direction > 0 ? 'zoom in' : 'zoom out', `zoom:${direction}`, current)),
+        ...(stop ? { end: async () => void (await this.lens(stop, 'stop the zoom', undefined, undefined, true)) } : {}),
       };
     }
     const step = stepOf(pan, tilt);
-    return step === undefined ? undefined : { key: `motor:${step}`, run: () => this.step(step) };
+    return step === undefined ? undefined : { key: `motor:${step}`, run: (current) => this.step(step, current) };
   }
 
   /** A step of a held move; a step still on its way is not followed by another (the zoom goes through the cloud). */
@@ -170,7 +204,7 @@ export class XiaomiPtz extends PTZControl {
       hold.busy = true;
     }
     try {
-      await move.run();
+      await move.run(() => this.canControl() && (!hold || this.hold === hold));
     } finally {
       if (hold) hold.busy = false;
     }
@@ -180,11 +214,15 @@ export class XiaomiPtz extends PTZControl {
    * Lens commands one after another; a failed one is reported and ends the held move it belongs to (`key`), not a
    * move started since. Whether the command went through.
    */
-  private lens(command: () => Promise<void>, what: string, key?: string): Promise<boolean> {
+  private lens(command: () => Promise<void>, what: string, key?: string, current?: () => boolean, cleanup = false): Promise<boolean> {
+    const epoch = this.epoch;
     const done = this.lensQueue.then(async () => {
-      this.setMoving(true);
-      clearTimeout(this.movingTimer);
-      this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.zoomStepMs);
+      if (!cleanup && (!this.isCurrent(epoch) || current?.() === false)) return false;
+      if (!cleanup) {
+        this.setMoving(true);
+        clearTimeout(this.movingTimer);
+        this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.zoomStepMs);
+      }
       try {
         await command();
         return true;
@@ -199,21 +237,24 @@ export class XiaomiPtz extends PTZControl {
   }
 
   /** Steps one after another over one session: two at once would open two sessions with the camera. */
-  private step(step: MotorStep): Promise<void> {
-    this.queue = this.queue.then(() => this.send(step));
+  private step(step: MotorStep, current?: () => boolean): Promise<void> {
+    const epoch = this.epoch;
+    this.queue = this.queue.then(() => this.send(step, () => this.isCurrent(epoch) && current?.() !== false));
     return this.queue;
   }
 
-  private async send(step: MotorStep): Promise<void> {
-    this.setMoving(true);
-    clearTimeout(this.movingTimer);
-    // the motor, not the pace of the steps: with steps closer than a turn the camera would count as still between them
-    this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.turnMs);
-
+  private async send(step: MotorStep, current?: () => boolean): Promise<void> {
+    if (!this.canControl() || current?.() === false) return;
     try {
       const session = await this.openSession();
+      // A WAN handshake may outlive the held arrow, a direction change or removal of the PTZ control.
+      if (!this.canControl() || current?.() === false) return;
+      this.setMoving(true);
+      clearTimeout(this.movingTimer);
+      this.movingTimer = setTimeout(() => this.setMoving(false), this.timing.turnMs);
       await session.move(step);
     } catch (error) {
+      if (!this.canControl() || current?.() === false) return;
       // a session the camera ended is opened again at the next step
       this.closeSession();
       this.endHold();
@@ -221,19 +262,33 @@ export class XiaomiPtz extends PTZControl {
       return;
     }
 
+    this.scheduleIdle();
+  }
+
+  private scheduleIdle(): void {
     clearTimeout(this.idleTimer);
+    if (!this.canControl()) return;
     this.idleTimer = setTimeout(() => this.closeSession(), this.timing.idleMs);
     this.idleTimer.unref?.();
   }
 
   private async openSession(): Promise<MissSession> {
+    const epoch = this.epoch;
     const current = this.session ? await this.session.catch(() => undefined) : undefined;
+    if (!this.isCurrent(epoch)) throw new Error('The Xiaomi PTZ control was stopped');
     if (current && !current.closed) return current;
-    this.session = this.open((answer) => this.onAnswer(answer));
+    const pending = this.open((answer) => this.onAnswer(answer));
+    this.session = pending;
     try {
-      return await this.session;
+      const opened = await pending;
+      if (!this.isCurrent(epoch) || this.session !== pending) {
+        opened.close();
+        throw new Error('The Xiaomi PTZ control was stopped');
+      }
+      this.scheduleIdle();
+      return opened;
     } catch (error) {
-      this.session = undefined;
+      if (this.session === pending) this.session = undefined;
       throw error;
     }
   }

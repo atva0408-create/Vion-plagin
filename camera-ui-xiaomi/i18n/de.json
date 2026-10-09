@@ -1,4 +1,10 @@
 {
+  "Connection": "Verbindung",
+  "Auto": "Automatisch",
+  "Local network": "Lokales Netzwerk",
+  "Remote P2P": "Fernzugriff über P2P",
+  "Auto uses the local network when available, otherwise Xiaomi P2P. Remote P2P connects CS2 cameras in another network. Applies on the next connection.": "Automatisch nutzt das lokale Netzwerk, falls erreichbar, sonst Xiaomi P2P. P2P-Fernzugriff verbindet CS2-Kameras in einem anderen Netzwerk. Die Änderung gilt für die nächste Verbindung.",
+  "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети или удалённому P2P.": "Verbindet Xiaomi Mi Home-Kameras mit ViON: Anmeldung beim Mi-Konto, Kamerasuche und Livebild über das lokale Netzwerk oder P2P-Fernzugriff.",
   "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети.": "Verbindet Kameras von Xiaomi Mi Home mit ViON: Anmeldung beim Mi-Konto, Kamerasuche und Livebild über das lokale Netzwerk.",
   "Pan, tilt and zoom (PTZ)": "Schwenken, Neigen und Zoomen (PTZ)",
   "Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. A camera with a zoom lens also zooms, and its focus is set here.": "Bewegt die Kamera aus ViON: Pfeile im Player und automatische Verfolgung. Für Kameras mit Motor wie Mi 360°, C200 und C300. Eine Kamera mit Zoomobjektiv zoomt auch, und ihr Fokus wird hier eingestellt.",

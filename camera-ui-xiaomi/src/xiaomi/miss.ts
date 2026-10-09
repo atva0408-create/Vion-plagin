@@ -40,6 +40,8 @@ export interface SessionKeys {
   device_public: string;
   sign: string;
   vendor?: string;
+  relay_uid?: string;
+  relay_init?: string;
 }
 
 export class MissSession {
@@ -100,9 +102,15 @@ export class MissSession {
         return; // closed: the next step opens a new session and reports why this one could not be used
       }
       if (command.cmd !== CMD_ENCODED) continue;
-      const plain = decode(command.data, this.key);
-      if (plain.length < 4 || plain.readUInt32BE(0) !== CMD_MOTOR_RES) continue;
-      this.onAnswer(parseAnswer(plain.subarray(4).toString()));
+      try {
+        const plain = decode(command.data, this.key);
+        if (plain.length < 4 || plain.readUInt32BE(0) !== CMD_MOTOR_RES) continue;
+        this.onAnswer(parseAnswer(plain.subarray(4).toString()));
+      } catch {
+        // A damaged response must not reject the detached reader and take down the plugin process.
+        this.connection.close();
+        return;
+      }
     }
   }
 }
@@ -111,7 +119,9 @@ export class MissSession {
 export function parseAnswer(text: string): MotorAnswer {
   const json = text.replace(/\0+$/, '');
   try {
-    return JSON.parse(json) as MotorAnswer;
+    const answer: unknown = JSON.parse(json);
+    if (answer && typeof answer === 'object' && !Array.isArray(answer)) return answer;
+    return { ret: -1, raw: json.slice(0, 200) };
   } catch {
     return { ret: -1, raw: json.slice(0, 200) };
   }

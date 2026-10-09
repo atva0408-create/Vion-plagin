@@ -4,9 +4,11 @@ import { errorText } from './xiaomi/text.js';
 import type { CameraDevice, DeviceStorage, JsonSchema, StreamingInterface } from '@camera.ui/sdk';
 import type { Lens } from './optics.js';
 import type { OpenSession } from './ptz.js';
+import type { ConnectionMode } from './xiaomi/p2p.js';
 
 export interface CameraValues {
   ptz?: boolean;
+  connectionMode?: ConnectionMode;
 }
 
 /** The switch of a camera that turns its motor from ViON. The camera settings show it next to autotracking. */
@@ -32,11 +34,22 @@ export class Camera implements StreamingInterface {
 
   constructor(
     public readonly device: CameraDevice,
-    private readonly resolve: (nativeId: string) => Promise<string>,
-    private readonly openMotor: (nativeId: string) => OpenSession,
+    private readonly resolve: (nativeId: string, mode: ConnectionMode) => Promise<string>,
+    private readonly openMotor: (nativeId: string, mode: ConnectionMode) => OpenSession,
     private readonly lensOf?: LensOf,
   ) {
     this.storage = device.createStorage<CameraValues>([
+      {
+        type: 'string',
+        key: 'connectionMode',
+        title: 'Connection',
+        description:
+          'Auto uses the local network when available, otherwise Xiaomi P2P. Remote P2P connects CS2 cameras in another network. Applies on the next connection.',
+        store: true,
+        defaultValue: 'auto',
+        enum: ['auto', 'lan', 'remote'],
+        enumLabels: { auto: 'Auto', lan: 'Local network', remote: 'Remote P2P' },
+      },
       {
         type: 'boolean',
         key: PTZ_KEY,
@@ -61,8 +74,11 @@ export class Camera implements StreamingInterface {
   }
 
   public async streamUrl(_sourceId: string): Promise<string> {
+    if (this.disposed) throw new Error('The Xiaomi camera has been released');
     if (!this.device.nativeId) throw new Error(`Camera ${this.device.name} has no Xiaomi device id`);
-    return this.resolve(this.device.nativeId);
+    const url = await this.resolve(this.device.nativeId, this.connectionMode());
+    if (this.disposed) throw new Error('The Xiaomi camera has been released');
+    return url;
   }
 
   /** The camera left the plugin: its motor session is closed. */
@@ -83,9 +99,14 @@ export class Camera implements StreamingInterface {
       const lens = await this.readLens(nativeId);
       // the camera left the plugin while its lens was read
       if (this.disposed) return;
-      const ptz = new XiaomiPtz(this.openMotor(nativeId), this.device.logger, {}, lens.zoom);
+      const ptz = new XiaomiPtz((answer) => this.openMotor(nativeId, this.connectionMode())(answer), this.device.logger, {}, lens.zoom);
       try {
         await this.device.addSensor(ptz);
+        if (this.disposed) {
+          ptz.dispose();
+          await this.device.removeSensor(ptz.id);
+          return;
+        }
         this.ptz = ptz;
       } catch (error) {
         this.device.logger.error('Could not add pan and tilt:', errorText(error));
@@ -99,6 +120,11 @@ export class Camera implements StreamingInterface {
       await this.device.removeSensor(ptz.id);
       await this.applyFocus({}).catch((error) => this.device.logger.warn('Could not hide the focus of the camera:', errorText(error)));
     }
+  }
+
+  private connectionMode(): ConnectionMode {
+    const mode = this.storage.values.connectionMode;
+    return mode === 'lan' || mode === 'remote' ? mode : 'auto';
   }
 
   /** The lens of the camera; a camera whose description cannot be read turns without zoom and focus. */

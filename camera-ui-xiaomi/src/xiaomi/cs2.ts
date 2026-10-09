@@ -25,6 +25,8 @@ const MSG_CLOSE = 0xf0;
 const HANDSHAKE_MS = 5000;
 /** A command over UDP is sent again until the camera acknowledges it, this often at most. */
 const UDP_TRIES = 5;
+const MAX_COMMAND_SIZE = 64 * 1024;
+const MAX_QUEUED_COMMANDS = 64;
 
 export type Transport = 'udp' | 'tcp';
 
@@ -42,7 +44,8 @@ export class Cs2Connection {
   private early = new Map<number, Buffer>();
   private queue: Cs2Command[] = [];
   private readers: { resolve: (command: Cs2Command) => void; reject: (error: Error) => void }[] = [];
-  private acked?: () => void;
+  private acked?: { sequence: number; resolve: (acknowledged: boolean) => void };
+  private writing: Promise<void> = Promise.resolve();
   private keepalive: NodeJS.Timeout;
   private error?: Error;
 
@@ -59,10 +62,13 @@ export class Cs2Connection {
 
   /** Connects to the camera at `host` in the local network; `transport` restricts what the camera may choose. */
   public static async dial(host: string, transport?: Transport): Promise<Cs2Connection> {
+    const address = new URL(`udp://${host}`);
+    const port = address.port ? Number(address.port) : PORT;
+    host = address.hostname;
     const udp = createSocket('udp4');
     let ready: { port: number; transport: Transport };
     try {
-      ready = await handshake(udp, host, transport);
+      ready = await handshake(udp, host, transport, port);
     } catch (error) {
       udp.close();
       throw error;
@@ -70,12 +76,15 @@ export class Cs2Connection {
 
     if (ready.transport === 'udp') {
       const connection = new Cs2Connection(
-        (message) => udp.send(message, ready.port, host),
+        (message) =>
+          udp.send(message, ready.port, host, (error) => {
+            if (error) connection.fail(error);
+          }),
         'udp',
         () => udp.close(),
       );
       udp.on('message', (message, from) => {
-        if (from.address === host) connection.receive(message);
+        if (from.address === host && from.port === ready.port) connection.receive(message);
       });
       udp.on('error', (error) => connection.fail(error));
       udp.on('close', () => connection.fail(new Error('cs2: the session was closed')));
@@ -111,6 +120,10 @@ export class Cs2Connection {
       pending = Buffer.concat([pending, chunk]);
       while (pending.length >= 8) {
         const length = pending.readUInt16BE(0);
+        if (pending[2] !== MAGIC_TCP || length < 4) {
+          connection.fail(new Error('cs2: invalid TCP frame'));
+          return;
+        }
         if (pending.length < 8 + length) break;
         connection.receive(pending.subarray(8, 8 + length));
         pending = pending.subarray(8 + length);
@@ -122,8 +135,15 @@ export class Cs2Connection {
   }
 
   /** Sends a command on channel 0; over UDP it is sent again until the camera acknowledges it. */
-  public async writeCommand(cmd: number, data: Buffer): Promise<void> {
+  public writeCommand(cmd: number, data: Buffer): Promise<void> {
+    const write = this.writing.then(() => this.sendCommand(cmd, data));
+    this.writing = write.catch(() => undefined);
+    return write;
+  }
+
+  private async sendCommand(cmd: number, data: Buffer): Promise<void> {
     if (this.error) throw this.error;
+    if (data.length > 0xffff - 16) throw new Error('cs2: command is too large');
     const message = Buffer.alloc(16 + data.length);
     message[0] = MAGIC;
     message[1] = MSG_DRW;
@@ -141,11 +161,16 @@ export class Cs2Connection {
     }
     for (let attempt = 0; attempt < UDP_TRIES; attempt++) {
       const acknowledged = new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 1000);
-        this.acked = () => {
-          clearTimeout(timer);
-          resolve(true);
+        const waiting = {
+          sequence: message.readUInt16BE(6),
+          resolve: (received: boolean) => {
+            clearTimeout(timer);
+            if (this.acked === waiting) this.acked = undefined;
+            resolve(received);
+          },
         };
+        const timer = setTimeout(() => waiting.resolve(false), 1000);
+        this.acked = waiting;
       });
       this.send(message);
       if (await acknowledged) return;
@@ -197,32 +222,45 @@ export class Cs2Connection {
     if (this.error) return;
     this.error = error;
     clearInterval(this.keepalive);
+    this.acked?.resolve(false);
     for (const reader of this.readers.splice(0)) reader.reject(error);
+    this.stream = Buffer.alloc(0);
+    this.early.clear();
+    this.queue = [];
     this.end();
   }
 
   private receive(message: Buffer): void {
-    if (message.length < 4 || message[0] !== MAGIC) return;
+    if (this.error || message.length < 4 || message[0] !== MAGIC || message.readUInt16BE(2) !== message.length - 4) return;
     switch (message[1]) {
       case MSG_DRW: {
-        if (message.length < 8) return;
+        if (message.length < 8 || message[4] !== MAGIC_DRW) return;
         const channel = message[5];
         const seq = message.readUInt16BE(6);
         if (this.transport === 'tcp') {
           if (channel === 0) this.push(message.subarray(8));
         } else {
-          this.send(Buffer.from([MAGIC, MSG_DRW_ACK, 0, 6, MAGIC_DRW, channel, 0, 1, message[6], message[7]]));
-          if (channel === 0) this.pushInOrder(seq, message.subarray(8));
+          const accepted = channel !== 0 || this.pushInOrder(seq, message.subarray(8));
+          if (!this.error && accepted) this.send(Buffer.from([MAGIC, MSG_DRW_ACK, 0, 6, MAGIC_DRW, channel, 0, 1, message[6], message[7]]));
         }
         return;
       }
       case MSG_PING:
         this.send(Buffer.from([MAGIC, MSG_PONG, 0, 0]));
         return;
-      case MSG_DRW_ACK:
-        this.acked?.();
-        this.acked = undefined;
+      case MSG_DRW_ACK: {
+        if (message.length < 10 || message[4] !== MAGIC_DRW || message[5] !== 0) return;
+        const count = message.readUInt16BE(6);
+        if (message.length !== 8 + count * 2) return;
+        const waiting = this.acked;
+        for (let i = 0; waiting && i < count; i++) {
+          if (message.readUInt16BE(8 + i * 2) === waiting.sequence) {
+            waiting.resolve(true);
+            break;
+          }
+        }
         return;
+      }
       case MSG_CLOSE:
         this.fail(new Error('cs2: the camera closed the session'));
         return;
@@ -231,20 +269,24 @@ export class Cs2Connection {
   }
 
   /** Over UDP messages may come out of order: they are put back in order before they are read. */
-  private pushInOrder(seq: number, data: Buffer): void {
+  private pushInOrder(seq: number, data: Buffer): boolean {
     const ahead = (seq - this.waitSeq) & 0xffff;
-    if (ahead >= 0x8000) return; // seen before
+    if (ahead >= 0x8000) return true; // duplicates still need an ACK
     if (ahead > 0) {
-      if (this.early.size < 64) this.early.set(seq, Buffer.from(data));
-      return;
+      if (this.early.has(seq)) return true;
+      if (this.early.size >= 64) return false; // no ACK: the camera must resend this packet later
+      this.early.set(seq, Buffer.from(data));
+      return true;
     }
     let next: Buffer | undefined = data;
     while (next) {
       this.push(next);
+      if (this.error) return false;
       this.waitSeq = (this.waitSeq + 1) & 0xffff;
       next = this.early.get(this.waitSeq);
       this.early.delete(this.waitSeq);
     }
+    return true;
   }
 
   /** Channel 0 is a stream of commands, each with its size in front; one message may carry several, or a part. */
@@ -254,6 +296,10 @@ export class Cs2Connection {
       if (!this.size) {
         if (this.stream.length < 4) return;
         this.size = this.stream.readUInt32BE(0);
+        if (this.size < 4 || this.size > MAX_COMMAND_SIZE) {
+          this.fail(new Error('cs2: invalid command size'));
+          return;
+        }
         this.stream = this.stream.subarray(4);
       }
       if (this.stream.length < this.size) return;
@@ -265,13 +311,19 @@ export class Cs2Connection {
       const read = { cmd: command.readUInt32BE(0), data: Buffer.from(command.subarray(4)) };
       const reader = this.readers.shift();
       if (reader) reader.resolve(read);
-      else this.queue.push(read);
+      else {
+        if (this.queue.length >= MAX_QUEUED_COMMANDS) {
+          this.fail(new Error('cs2: command queue is full'));
+          return;
+        }
+        this.queue.push(read);
+      }
     }
   }
 }
 
 /** The search: the camera answers with a punch message, then with the port and transport of the session. */
-async function handshake(udp: UdpSocket, host: string, transport?: Transport): Promise<{ port: number; transport: Transport }> {
+async function handshake(udp: UdpSocket, host: string, transport?: Transport, port = PORT): Promise<{ port: number; transport: Transport }> {
   await new Promise<void>((resolve, reject) => {
     udp.once('error', reject);
     udp.bind(0, () => {
@@ -307,7 +359,7 @@ async function handshake(udp: UdpSocket, host: string, transport?: Transport): P
       udp.send(request, port, host);
     });
 
-  const punch = await exchange(Buffer.from([MAGIC, MSG_LAN_SEARCH, 0, 0]), PORT, (message) => message[1] === MSG_PUNCH);
+  const punch = await exchange(Buffer.from([MAGIC, MSG_LAN_SEARCH, 0, 0]), port, (message) => message[1] === MSG_PUNCH);
   const accepted = new Set<number>();
   if (transport !== 'tcp') accepted.add(MSG_READY_UDP);
   if (transport !== 'udp') accepted.add(MSG_READY_TCP);

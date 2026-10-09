@@ -1,6 +1,6 @@
 # Xiaomi
 
-Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Konto an, das Plugin findet die Kameras des Kontos und Sie fügen die gewünschten hinzu. Das Video geht von der Kamera über Ihr lokales Netzwerk zum ViON-Server; die Cloud von Mi Home gibt nur die Schlüssel für jede Verbindung aus.
+Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Konto an, das Plugin findet die Kameras des Kontos und Sie fügen die gewünschten hinzu. Kameras verbinden sich über das lokale Netzwerk oder, bei CS2-Modellen, über Xiaomi-P2P-Relays. Die Cloud liefert frische Schlüssel für jede Verbindung.
 
 ## Funktionen
 
@@ -12,7 +12,7 @@ Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Kont
 
 ## Voraussetzungen
 
-- Kameras im selben lokalen Netzwerk wie der ViON-Server
+- Kameras im selben lokalen Netzwerk wie der ViON-Server oder online verfügbare CS2-Kameras in einem anderen Netzwerk
 - Eine Internetverbindung: Jede Verbindung zu einer Kamera fragt die Cloud von Mi Home nach ihren Schlüsseln
 - Konto und Passwort der App Mi Home, in der die Kameras sind
 - Kameras mit dem gemeinsamen Kameraprotokoll von Xiaomi. Die meisten Modelle seit 2020 nutzen es; einige ältere Modelle werden nicht unterstützt. Kameras, die Xiaomi über MTP oder Agora verbindet, können noch nicht abgespielt werden: Sie werden nicht zum Hinzufügen angeboten, und das Fenster der Anmeldung listet sie auf
@@ -31,6 +31,12 @@ Verbindet Kameras von Xiaomi Mi Home mit ViON. Sie melden sich mit Ihrem Mi-Kont
 2. Fragt Xiaomi nach den Zeichen eines Bildes oder nach einem Code, geben Sie sie im Fenster ein, das sich öffnet. Ein vertippter Code kann im selben Fenster erneut eingegeben werden; ein Fenster, das 10 Minuten auf eine Antwort wartet, wird abgebrochen
 3. Danach zeigt das Fenster die gefundenen Kameras
 4. Öffnen Sie in ViON die Seite **Kameras**: Die Kameras stehen unter **Entdeckt**. Klicken Sie eine Kamera an, prüfen Sie den Namen und bestätigen Sie
+
+## Verbindung
+
+In den Einstellungen jeder Kamera gibt es **Verbindung**: **Automatisch** bevorzugt die erreichbare lokale Kamera und nutzt sonst Xiaomi P2P. **Lokales Netzwerk** behält die direkte Verbindung bei. **Fernzugriff über P2P** verbindet CS2-Kameras an einem anderen Standort über Xiaomi-Relays; die Kamera muss in Mi Home online sein. VPN und Portweiterleitung sind nicht erforderlich.
+
+Die Änderung gilt für die nächste Video- oder PTZ-Verbindung. TUTK-Kameras und ältere Modelle behalten die lokale Verbindung. Unbenutzte P2P-Sitzungen werden geschlossen; Abmelden, Entfernen der Kamera und Beenden des Plugins brechen auch laufende Verbindungsversuche ab. Die Geschwindigkeit hängt von Xiaomi und dem Internetanschluss der Kamera ab. Fernzugriff wurde mit `xiaomi.camera.c01a01`, HEVC 2304×1296 und maximaler Qualität geprüft.
 
 ## Schwenken, Neigen und Zoomen
 

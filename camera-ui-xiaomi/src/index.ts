@@ -2,7 +2,8 @@ import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 
 import { Camera } from './camera.js';
 import { lensOf } from './optics.js';
-import { UnplayableCameraError, cameraStreamUrl, checkPlayable, listCameras, motorKeys } from './xiaomi/cameras.js';
+import { UnplayableCameraError, cameraStreamUrl, checkPlayable, connectionHost, listCameras, motorKeys } from './xiaomi/cameras.js';
+import { P2pConnections } from './xiaomi/p2p.js';
 import { LoginChallengeError, TokenRejectedError, XiaomiAuthError, XiaomiCloud } from './xiaomi/cloud.js';
 import { MissSession } from './xiaomi/miss.js';
 import { miotDevice } from './xiaomi/miot.js';
@@ -26,6 +27,7 @@ import type { XiaomiCamera } from './xiaomi/cameras.js';
 import type { MotorAnswer } from './xiaomi/miss.js';
 import type { Lens } from './optics.js';
 import type { XiaomiConfig } from './types.js';
+import type { ConnectionMode } from './xiaomi/p2p.js';
 
 const ID_PREFIX = 'xiaomi:';
 /** The field of the window that reports a finished sign-in. */
@@ -73,6 +75,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   /** the MIoT descriptions of the models, read once each */
   private readonly specs = new SpecSource();
   private started = false;
+  private readonly p2p = new P2pConnections();
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<XiaomiConfig>) {
     super(logger, api, storage);
@@ -163,6 +166,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const camera = this.existing.get(cameraId);
     this.existing.delete(cameraId);
     if (camera?.nativeId) {
+      this.p2p.close(camera.nativeId);
       this.controllers.get(camera.nativeId)?.dispose();
       this.controllers.delete(camera.nativeId);
       const xiaomi = this.cameras.get(camera.nativeId);
@@ -189,7 +193,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     return {
       name: camera.name,
       nativeId: camera.did,
-      // the cloud only hands out the keys; the video comes over the local network
+      // The plugin resolves fresh connection keys and the local/remote transport for every connection.
       isCloud: false,
       info: {
         manufacturer: 'Xiaomi',
@@ -228,6 +232,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   private stop(): void {
     this.started = false;
+    this.p2p.close();
     clearInterval(this.refreshTimer);
     this.endPending();
     for (const controller of this.controllers.values()) controller.dispose();
@@ -348,8 +353,8 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     if (!did || this.controllers.has(did)) return;
     const camera = new Camera(
       device,
-      (nativeId) => this.streamUrl(nativeId),
-      (nativeId) => (onAnswer) => this.openMotor(nativeId, onAnswer),
+      (nativeId, mode) => this.streamUrl(nativeId, mode),
+      (nativeId, mode) => (onAnswer) => this.openMotor(nativeId, onAnswer, mode),
       (nativeId) => this.lensOf(nativeId),
     );
     this.controllers.set(did, camera);
@@ -362,22 +367,48 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   /** The address of one connection to the camera, with keys made for it. */
-  private async streamUrl(did: string): Promise<string> {
+  private async streamUrl(did: string, mode: ConnectionMode = 'auto'): Promise<string> {
+    const token = this.p2p.token(did);
     const camera = await this.knownCamera(did);
     // said at once: the engine tries a camera again and again, and each try would ask the cloud for keys it cannot use
     const unplayable = this.unplayable.get(did);
     if (unplayable) throw unplayable;
     const quality = this.storage.values.quality ?? 'default';
-    return this.withSession((cloud) =>
-      cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error))),
+    const url = await this.withSession((cloud) =>
+      cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error)), {
+        mode,
+        openRelay: (credentials) => this.p2p.open(did, credentials, token),
+      }),
     );
+    if (token !== this.p2p.token(did)) throw new Error('The Xiaomi connection was cancelled');
+    return url;
   }
 
   /** A session of the plugin's own with the camera, to turn it: the stream engine sends no motor commands. */
-  private async openMotor(did: string, onAnswer: (answer: MotorAnswer) => void): Promise<MissSession> {
+  private async openMotor(did: string, onAnswer: (answer: MotorAnswer) => void, mode: ConnectionMode = 'auto'): Promise<MissSession> {
+    const token = this.p2p.token(did);
     const camera = await this.knownCamera(did);
-    const keys = await this.withSession((cloud) => motorKeys(cloud, camera));
-    return MissSession.open(camera.ip, keys, onAnswer);
+    const keys = await this.withSession((cloud) => motorKeys(cloud, camera, mode));
+    const host = await connectionHost(
+      camera,
+      { ...keys, vendor: keys.vendor ?? '', relay_uid: keys.relay_uid ?? '', relay_init: keys.relay_init ?? '' },
+      {
+        mode,
+        openRelay: (credentials) => this.p2p.open(did, credentials, token),
+      },
+    );
+    try {
+      if (token !== this.p2p.token(did)) throw new Error('The Xiaomi connection was cancelled');
+      const session = await MissSession.open(host, keys, onAnswer);
+      if (token !== this.p2p.token(did)) {
+        session.close();
+        throw new Error('The Xiaomi connection was cancelled');
+      }
+      return session;
+    } catch (error) {
+      this.p2p.release(did, host);
+      throw error;
+    }
   }
 
   /** What the lens of the camera can do, from its MIoT description: zoom and focus go through the Mi Home cloud. */
@@ -586,6 +617,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   private async onLogout(): Promise<void> {
+    this.p2p.close();
     this.signOuts++;
     this.cloud = undefined;
     this.endPending();
