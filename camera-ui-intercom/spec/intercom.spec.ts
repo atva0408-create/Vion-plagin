@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { FakeClock, flush, runTests, test } from '../../packages/vion-speech/spec/helpers.js';
+import { hashSecret } from '../src/codes.js';
 import { Intercom } from '../src/intercom.js';
 import { checkProfile } from '../src/panels/profile.js';
 import { placeOf } from '../src/place.js';
@@ -273,11 +274,11 @@ test('opening: a user needs the right of the panel; the opening is logged and to
 
 test('a guest code: opening wants it, it is given once, typed at the panel it opens once; guessing closes the panel', async () => {
   const w = new World();
-  assert.throws(
+  await assert.rejects(
     () => w.intercom.addInstruction(admin, { text: 'сантехник, открой', expect: { label: 'сантехник' }, open: ['Калитка'] }),
     /face, a plate or a guest code/,
   );
-  const made = w.intercom.addInstruction(admin, { text: 'сантехник, открой', expect: { label: 'сантехник' }, open: ['Калитка'], guestCode: true });
+  const made = await w.intercom.addInstruction(admin, { text: 'сантехник, открой', expect: { label: 'сантехник' }, open: ['Калитка'], guestCode: true });
   assert.ok(made.code && /^\d{6}$/.test(made.code.digits));
   assert.ok(made.code.text.includes(`${made.code.digits.slice(0, 3)} ${made.code.digits.slice(3)}`));
   const stored = JSON.stringify(w.store.codes());
@@ -286,10 +287,22 @@ test('a guest code: opening wants it, it is given once, typed at the panel it op
   assert.deepEqual(w.opened, ['gate']);
   assert.equal(w.store.codes()[0].uses, 1);
   await w.pass(100);
+  // a guest with a code needs nobody: no ring, no call in the state, a visit of its own in the archive
+  assert.equal(w.calls().length, 0, 'a code typed with no call rings nobody');
+  const entry = w.store.queryVisits({}).visits[0];
+  assert.deepEqual([entry.trigger, entry.outcome, entry.title], ['code', 'opened', 'Вход по коду: сантехник']);
   assert.equal(await w.intercom.panelInput('cam1', made.code.digits), false, 'used up');
   const wrong = made.code.digits === '000000' ? '111111' : '000000';
   assert.equal(await w.intercom.panelInput('cam1', wrong), false);
   assert.equal(await w.intercom.panelInput('cam1', wrong), false, 'the third try of the visit');
+  assert.equal((w.intercom.intercomState(admin).calls as unknown[]).length, 0, 'the quiet visit is no call');
+  await w.pass(61_000);
+  assert.equal(w.store.queryVisits({}).visits[0].title, 'Неверный код на клавиатуре');
+  // the visitor rings after a wrong code: the ring is a call
+  await w.intercom.panelInput('cam1', wrong);
+  w.intercom.press('gate');
+  await w.pass(100);
+  assert.equal(w.calls().length, 1);
   w.intercom.hangUpCall(admin, w.calls().at(-1)?.data?.callId ?? '');
   await w.pass(100);
   assert.equal(await w.intercom.panelInput('cam1', wrong), false);
@@ -381,7 +394,7 @@ test("the assistant's tools: an instruction in words, the archive with links to 
   assert.deepEqual(listed.content, [], "another user's instructions are not listed");
 });
 
-test('panels: checked on save; a camera that cannot speak is a warning; a hook model gives its address once, the password stays apart', () => {
+test('panels: checked on save; a camera that cannot speak is a warning; a hook model gives its address once, the password stays apart', async () => {
   const w = new World();
   const draft = { name: 'Ворота', cameraId: 'cam2', driver: { profileId: hookProfile.id, host: '10.0.0.5', username: 'admin', password: 'secret-1' } };
   assert.throws(() => w.intercom.savePanel(u1, draft), /forbidden/);
@@ -390,8 +403,15 @@ test('panels: checked on save; a camera that cannot speak is a warning; a hook m
   assert.ok(saved.warnings.some((warning) => warning.includes('no talk channel')));
   const token = saved.hookPath?.split('/').at(-1) ?? '';
   assert.match(saved.hookPath ?? '', new RegExp(`^/api/intercom/hook/${saved.panel.id}/[a-f0-9]{32}$`));
-  assert.ok(w.intercom.hookTokenMatches(saved.panel, token));
-  assert.ok(!w.intercom.hookTokenMatches(saved.panel, 'f'.repeat(32)));
+  assert.equal(await w.intercom.hookTokenMatches(saved.panel, token), true);
+  assert.equal(await w.intercom.hookTokenMatches(saved.panel, 'f'.repeat(32)), false);
+  assert.match(w.store.panel(saved.panel.id)?.driver?.hookTokenHash ?? '', /^sha256:[a-f0-9]{64}$/, 'a fast hash: the address is open to anyone');
+  // a token hashed by scrypt before: still taken, and kept as the fast hash from then on
+  const legacy = { ...saved.panel, driver: { ...saved.panel.driver!, hookTokenHash: hashSecret(token, saved.panel.id).hash } };
+  w.store.savePanel(legacy);
+  assert.equal(await w.intercom.hookTokenMatches(legacy, 'f'.repeat(32)), false);
+  assert.equal(await w.intercom.hookTokenMatches(legacy, token), true);
+  assert.match(w.store.panel(saved.panel.id)?.driver?.hookTokenHash ?? '', /^sha256:/);
   assert.ok(!JSON.stringify(w.store.panels()).includes('secret-1'), 'the password is not in the panel');
   assert.equal(w.intercom.panelPassword(saved.panel.id), 'secret-1');
   assert.equal(w.intercom.savePanel(admin, { id: saved.panel.id, name: 'Ворота у дороги' }).hookPath, undefined, 'the address is given once');
@@ -399,7 +419,7 @@ test('panels: checked on save; a camera that cannot speak is a warning; a hook m
 
 test('the agent tried in text: it answers and tells what it would do, and does nothing', async () => {
   const w = new World();
-  w.intercom.addInstruction(admin, { text: 'курьер Озона', expect: { label: 'курьер Озона', companies: ['Озон'] }, say: 'Оставьте у калитки.' });
+  await w.intercom.addInstruction(admin, { text: 'курьер Озона', expect: { label: 'курьер Озона', companies: ['Озон'] }, say: 'Оставьте у калитки.' });
   const first = await w.intercom.simulate(admin, 's1', '');
   assert.equal(first.say, GREETING);
   const reply = await w.intercom.simulate(admin, 's1', 'Здравствуйте, я из Озона');

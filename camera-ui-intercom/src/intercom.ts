@@ -19,8 +19,8 @@ import { DoorAgent } from './agent/dialog.js';
 import { Conversation, DEFAULT_TIMING } from './agent/conversation.js';
 import { ownerText, ownerTexts, summarizeVisit } from './agent/summary.js';
 import { agentTexts } from './agent/texts.js';
-import { newCall, step } from './call.js';
-import { CodeGuard, codeUsable, findCode, hashSecret, newCode, secretMatches } from './codes.js';
+import { ALL_USERS, newCall, step } from './call.js';
+import { CodeGuard, codeUsable, findCode, hashSecret, newCode, secretMatches, tokenHash, tokenMatches } from './codes.js';
 import { faceIdentifications, knownPerson, plateIdentifications } from './identify.js';
 import { checkCodeRequest, checkInstruction, checkPanel, checkPerson } from './inputs.js';
 import { activeInstructions, matchInstruction } from './instructions.js';
@@ -36,7 +36,7 @@ import type { Clock, Language } from '@vionvision/speech';
 import type { Actor } from './access.js';
 import type { AgentAction, Ask } from './agent/dialog.js';
 import type { ConversationIO } from './agent/conversation.js';
-import type { Call, CallEvent, StepResult } from './call.js';
+import type { Call, CallEvent, StepContext, StepResult } from './call.js';
 import type { FaceSighting, PlateSighting } from './identify.js';
 import type { PanelWorld } from './inputs.js';
 import type { CurrentMode } from './modes.js';
@@ -45,8 +45,7 @@ import type { IntercomSettings } from './settings.js';
 import type { VisitPage, VisitQuery, Store } from './store.js';
 import type { GuestCode, Identification, Instruction, ModeId, ModeState, Outcome, Panel, PanelDoor, Person, Visit } from './types.js';
 
-/** In a call's recipients: every user (the panel calls 'all'); the notification then names nobody and reaches all. */
-export const ALL_USERS = '*';
+export { ALL_USERS };
 /** Ringing with no agent to take over ends as missed after this. */
 export const RING_MAX_MS = 60_000;
 /** A person's call: at most this long. */
@@ -67,6 +66,8 @@ const MAX_SNAPSHOTS = 6;
 const PLATE_AGAIN_MS = 2 * 60_000;
 /** A presence visit is not made again for the same panel within this. */
 const PRESENCE_AGAIN_MS = 5 * 60_000;
+/** a code typed at the keypad with no call: its visit waits this long for more tries, ringing nobody */
+const QUIET_CODE_MS = 60_000;
 const SIMULATION_TTL_MS = 15 * 60_000;
 const INSTRUCTIONS_KEPT_MS = 30 * 24 * 60 * 60_000;
 
@@ -151,6 +152,8 @@ interface Live {
   spoke: boolean;
   usedLlm: boolean;
   finishing?: Promise<void>;
+  /** a code typed with no call: a visit of its own that rings nobody and is not a call for the household */
+  quiet?: boolean;
 }
 
 interface Simulation {
@@ -180,6 +183,7 @@ export interface CallView {
 const NOTIFY_SEVERITY: Record<Instruction['notify'], Severity | undefined> = { none: undefined, quiet: Severity.Info, normal: Severity.Info, urgent: Severity.Warn };
 
 export class Intercom {
+  private everyone: string[] | undefined;
   private live = new Map<string, Live>();
   private byCall = new Map<string, Live>();
   private guard = new CodeGuard();
@@ -269,7 +273,7 @@ export class Intercom {
         model: panel.driver?.profileId,
       })),
       mode: { ...mode, setBy: this.modeState().setBy, canSet: canSetMode(actor, settings) },
-      calls: [...this.live.values()].filter((live) => live.call.state !== 'ended').map((live) => this.view(live)),
+      calls: [...this.live.values()].filter((live) => live.call.state !== 'ended' && !live.quiet).map((live) => this.view(live)),
       instructions: activeInstructions(this.store.instructions(), '', this.now(), this.timeZone()).length,
       agent: { enabled: settings.agent.enabled },
       isAdmin: isAdmin(actor),
@@ -378,7 +382,9 @@ export class Intercom {
     if (!panel?.enabled) return;
     const now = this.now();
     const live = this.live.get(panelId);
-    if (live && live.call.state !== 'ended') {
+    // a ring after a code typed at the keypad: the quiet visit of the code ends, the ring is a call of its own
+    if (live?.quiet && live.call.state !== 'ended') this.event(live, { type: 'hang_up', outcome: 'declined' });
+    else if (live && live.call.state !== 'ended') {
       const result = step(live.call, { type: 'press' }, this.stepContext(live));
       live.call = result.call;
       live.visit.presses = result.call.presses;
@@ -391,8 +397,13 @@ export class Intercom {
     this.startCall(panel, now, 'ring');
   }
 
-  private stepContext(live: Live): { now: number; agentEnabled: boolean } {
-    return { now: this.now(), agentEnabled: this.agentEnabled(live) };
+  private stepContext(live: Live): StepContext {
+    return { now: this.now(), agentEnabled: this.agentEnabled(live), ...(this.everyone ? { everyone: this.everyone } : {}) };
+  }
+
+  /** The users of ViON, as the server tells them: who a call to "all" rings, so that all of them declining ends it. */
+  setUsers(userIds: string[]): void {
+    this.everyone = [...new Set(userIds.filter((id) => typeof id === 'string' && id))];
   }
 
   private agentEnabled(live: Live): boolean {
@@ -620,7 +631,7 @@ export class Intercom {
       if (effect === 'ring_stop') this.clearTimers(live);
       else if (effect === 'agent_start') void this.runAgent(live);
       else if (effect === 'agent_stop') live.conversation?.stop('taken_over');
-      else void this.publishUpdate(live);
+      else if (!live.quiet) void this.publishUpdate(live);
     }
     if (live.call.state === 'answered') {
       void this.host
@@ -730,7 +741,8 @@ export class Intercom {
       const door = live.panel.doors[0];
       if (!door) throw new IntercomError('invalid', 'the panel has no door');
       await this.openDoorAs(actor, live.panel.id, door.id);
-      return this.sayInCall(actor, callId, agentTexts(this.language()).open);
+      // the door is open: a call that is answered, over, or without an agent to say so is not an error of the opening
+      return this.sayInCall(actor, callId, agentTexts(this.language()).open).catch(() => this.view(live));
     }
     if (!(option in texts)) throw new IntercomError('invalid', `option: one of ${Object.keys(texts).join(', ')}`);
     return this.sayInCall(actor, callId, texts[option as keyof typeof texts]);
@@ -857,16 +869,16 @@ export class Intercom {
   }
 
   /** Digits said or typed as a code or a PIN: a guest code of the panel's doors, or a PIN of the family. */
-  private verifyDigits(live: Live, digits: string): Identification | 'locked' | undefined {
+  private async verifyDigits(live: Live, digits: string): Promise<Identification | 'locked' | undefined> {
     const now = this.now();
     if (this.guard.locked(live.panel.id, now)) return 'locked';
-    const code = findCode(this.panelCodes(live.panel), digits, now);
+    const code = await findCode(this.panelCodes(live.panel), digits, now);
     let identification: Identification | undefined;
     if (code) identification = { kind: 'code', value: code.id, strength: 'strong', at: now };
     else {
-      const person = this.store
-        .people()
-        .find((p) => p.role !== 'blocked' && p.pinHash && secretMatches(digits, p.pinHash.split(':')[1] ?? '', p.pinHash.split(':')[0] ?? ''));
+      const withPin = this.store.people().filter((p) => p.role !== 'blocked' && p.pinHash);
+      const matches = await Promise.all(withPin.map((p) => secretMatches(digits, p.pinHash!.split(':')[1] ?? '', p.pinHash!.split(':')[0] ?? '')));
+      const person = withPin.find((_, index) => matches[index]);
       if (person) identification = { kind: 'pin', value: person.name, personId: person.id, strength: 'strong', at: now };
     }
     live.visit.actions.push({
@@ -1093,11 +1105,13 @@ export class Intercom {
     visit.endedAt = now;
     visit.outcome = visit.outcome === 'opened' && call.outcome !== 'answered' ? 'opened' : call.outcome;
     visit.answeredBy = call.answeredBy;
-    visit.presses = call.presses;
-    void this.host
-      .port(panel)
-      ?.hangUp?.()
-      .catch(() => undefined);
+    visit.presses = live.quiet ? 0 : call.presses;
+    // the panel was not in a call for a code typed at its keypad
+    if (!live.quiet)
+      void this.host
+        .port(panel)
+        ?.hangUp?.()
+        .catch(() => undefined);
 
     if (call.outcome === 'nobody') {
       const recent = [...(this.nobodyAt.get(panel.id) ?? []).filter((at) => now - at < NOBODY_WINDOW_MS), now];
@@ -1119,7 +1133,7 @@ export class Intercom {
       answeredBy: visit.answeredBy ? (this.userName(visit.answeredBy) ?? '') : undefined,
       voicemail: Boolean(visit.voiceMessage),
     });
-    visit.title = summary.title;
+    visit.title = live.quiet ? this.codeVisitTitle(live) : summary.title;
     visit.summary = summary.summary;
     visit.who.category ??= summary.category;
     visit.who.company ??= summary.company;
@@ -1144,10 +1158,11 @@ export class Intercom {
     const minor = visit.outcome === 'nobody' || visit.flags.includes('sales');
     if (visit.outcome === 'answered' && !needsAction) return;
     if (minor && !this.settings().notifyMinor) return;
-    if (instruction?.notify === 'none' && !needsAction) {
-      await this.postResult(instruction, visit, panel);
-      return;
-    }
+    // "do not notify": the result goes only into the assistant's thread, and as a notification when it cannot
+    const posted = instruction ? await this.postResult(instruction, visit, panel) : false;
+    if (instruction?.notify === 'none' && !needsAction && (posted || !instruction.threadId)) return;
+    // a code that opened at the keypad: the door's own notice ("opened — by a code") says it all
+    if (live.quiet && visit.outcome === 'opened') return;
     const thumbnail = await this.firstSnapshot(visit);
     const title = visit.outcome === 'missed' ? t('missedTitle', { panel: panel.name }) : t('visitTitle', { panel: panel.name, title: visit.title });
     const body = [visit.summary, visit.messageForOwner && !visit.summary?.includes(visit.messageForOwner) ? visit.messageForOwner : undefined].filter(Boolean).join(' ');
@@ -1155,21 +1170,20 @@ export class Intercom {
       title,
       body,
       severity: instruction ? (NOTIFY_SEVERITY[instruction.notify] ?? Severity.Info) : Severity.Info,
-      silent: instruction?.notify === 'quiet',
+      silent: instruction?.notify === 'quiet' || instruction?.notify === 'none',
       thumbnail,
       tag: `intercom-visit:${visit.id}`,
       deepLink: `/intercom/visits/${visit.id}`,
       data: { visitId: visit.id, panelId: panel.id, cameraId: panel.cameraId },
     });
-    if (instruction) await this.postResult(instruction, visit, panel);
   }
 
   /** The result of an instruction in the assistant's thread it was made in (ТЗ 5.5). */
-  private async postResult(instruction: Instruction, visit: Visit, panel: Panel): Promise<void> {
-    if (!instruction.threadId || !this.host.postToThread) return;
+  private async postResult(instruction: Instruction, visit: Visit, panel: Panel): Promise<boolean> {
+    if (!instruction.threadId || !this.host.postToThread) return false;
     const time = formatClock(visit.startedAt, this.timeZone());
     const text = `${panel.name}, ${time}: ${visit.title ?? ''}. ${visit.summary ?? ''}`.trim();
-    await this.host.postToThread(instruction.threadId, instruction.createdBy, text, visit.id).catch(() => false);
+    return this.host.postToThread(instruction.threadId, instruction.createdBy, text, visit.id).catch(() => false);
   }
 
   private async linkRecording(live: Live): Promise<void> {
@@ -1330,21 +1344,30 @@ export class Intercom {
    * A new instruction. With `guestCode` a code is made for its window and doors, and its digits are given back once,
    * here, to pass on to the guest; they are never stored or shown again.
    */
-  addInstruction(
+  async addInstruction(
     actor: Actor,
     input: Record<string, unknown>,
     threadId?: string,
-  ): { instruction: Instruction; warnings: string[]; code?: { digits: string; text: string } } {
+  ): Promise<{ instruction: Instruction; warnings: string[]; code?: { digits: string; text: string } }> {
     const checked = checkInstruction(input ?? {}, actor.userId, this.instructionWorld(actor));
     if (checked.errors) throw new IntercomError('invalid', checked.errors.join('; '));
     const instruction = { ...checked.value, ...(threadId ? { threadId } : {}) };
     let code: { digits: string; text: string } | undefined;
     if (input.guestCode === true) {
+      // a code opens only what its author may open (checkInstruction checked `open`; the main doors are checked here)
       const doors = instruction.open?.length
         ? instruction.open
-        : this.store.panels().flatMap((p) => (instruction.panels === 'all' || instruction.panels.includes(p.id) ? p.doors.slice(0, 1).map((d) => d.id) : []));
+        : this.store
+            .panels()
+            .filter((p) => (instruction.panels === 'all' || instruction.panels.includes(p.id)) && canOpen(actor, p))
+            .flatMap((p) => p.doors.slice(0, 1).map((d) => d.id));
+      if (!doors.length) throw new IntercomError('forbidden', 'a guest code needs a door you may open');
       const window = instruction.when.kind === 'window' ? instruction.when : { from: this.now(), to: instruction.when.until ?? this.now() + 7 * 24 * 60 * 60_000 };
-      const made = this.makeCode(actor, { label: instruction.expect.label, doors, from: window.from, to: window.to, maxUses: instruction.once ? 1 : 20 }, instruction.id);
+      const made = await this.makeCode(
+        actor,
+        { label: instruction.expect.label, doors, from: window.from, to: window.to, maxUses: instruction.once ? 1 : 20 },
+        instruction.id,
+      );
       instruction.expect.guestCodeId = made.code.id;
       code = { digits: made.digits, text: made.text };
     }
@@ -1411,23 +1434,23 @@ export class Intercom {
       .map(({ hash: _hash, salt: _salt, ...rest }) => rest);
   }
 
-  createGuestCode(actor: Actor, input: Record<string, unknown>): { code: Omit<GuestCode, 'hash' | 'salt'>; digits: string; text: string } {
+  async createGuestCode(actor: Actor, input: Record<string, unknown>): Promise<{ code: Omit<GuestCode, 'hash' | 'salt'>; digits: string; text: string }> {
     const checked = checkCodeRequest(input ?? {}, this.store.panels(), this.now(), this.timeZone(), (panel) => canOpen(actor, panel));
     if (checked.errors) throw new IntercomError('invalid', checked.errors.join('; '));
-    const made = this.makeCode(actor, checked.value);
+    const made = await this.makeCode(actor, checked.value);
     const { hash: _hash, salt: _salt, ...code } = made.code;
     return { code, digits: made.digits, text: made.text };
   }
 
-  private makeCode(
+  private async makeCode(
     actor: Actor,
     request: { label: string; doors: string[]; from: number; to: number; maxUses: number },
     instructionId?: string,
-  ): { code: GuestCode; digits: string; text: string } {
+  ): Promise<{ code: GuestCode; digits: string; text: string }> {
     const usable = this.store.codes().filter((c) => codeUsable(c, this.now()));
     let digits = newCode();
     // a new code is never one that already opens something
-    for (let i = 0; i < 20 && findCode(usable, digits, this.now()); i++) digits = newCode();
+    for (let i = 0; i < 20 && (await findCode(usable, digits, this.now())); i++) digits = newCode();
     const { hash, salt } = hashSecret(digits);
     const code: GuestCode = {
       id: randomUUID(),
@@ -1486,7 +1509,7 @@ export class Intercom {
     const profile = panel.driver ? world.profile(panel.driver.profileId) : undefined;
     if (panel.driver && profile?.events.via === 'hook' && (!panel.driver.hookTokenHash || input.newHookToken === true)) {
       const token = randomUUID().replace(/-/g, '');
-      panel.driver.hookTokenHash = hashSecret(token, panel.id).hash;
+      panel.driver.hookTokenHash = tokenHash(token, panel.id);
       hookPath = `/api/intercom/hook/${panel.id}/${token}`;
     }
     this.store.savePanel(panel);
@@ -1508,19 +1531,29 @@ export class Intercom {
   }
 
   /** The hook's token is right for the panel (compared by its hash, the token itself is not kept). */
-  hookTokenMatches(panel: Panel, token: string): boolean {
-    const hash = panel.driver?.hookTokenHash;
-    return Boolean(hash && /^[a-f0-9]{32}$/.test(token) && secretMatches(token, hash, panel.id));
+  async hookTokenMatches(panel: Panel, token: string): Promise<boolean> {
+    const stored = panel.driver?.hookTokenHash;
+    if (!stored || !panel.driver || !/^[a-f0-9]{32}$/.test(token)) return false;
+    if (stored.startsWith('sha256:')) return tokenMatches(token, panel.id, stored);
+    // a token hashed by scrypt (before 0.1.0 was out): checked in the thread pool, then kept as the fast hash
+    if (!(await secretMatches(token, stored, panel.id))) return false;
+    const current = this.store.panel(panel.id);
+    if (current?.driver) this.store.savePanel({ ...current, driver: { ...current.driver, hookTokenHash: tokenHash(token, panel.id) } });
+    return true;
   }
 
-  /** Digits typed on a panel's keypad: a code or a PIN, which opens what it may. */
+  /**
+   * Digits typed on a panel's keypad: a code or a PIN, which opens what it may. Typed during a call, they belong to
+   * it; typed with no call, they make a quiet visit that rings nobody (a guest with a code needs no one).
+   */
   async panelInput(cameraId: string, digits: string): Promise<boolean> {
     const panel = this.store.panels().find((p) => p.cameraId === cameraId && p.enabled);
     if (!panel || !/^\d{4,8}$/.test(digits)) return false;
-    const live = this.live.get(panel.id) ?? this.startCall(panel, this.now(), 'ring');
+    const current = this.live.get(panel.id);
+    const live = current && current.call.state !== 'ended' ? current : this.quietVisit(panel, this.now());
     if (live.codeTries >= 3) return false;
     live.codeTries++;
-    const id = this.verifyDigits(live, digits);
+    const id = await this.verifyDigits(live, digits);
     if (!id || id === 'locked') return false;
     const now = this.now();
     const people = this.store.people();
@@ -1535,6 +1568,62 @@ export class Intercom {
       }
     }
     return false;
+  }
+
+  /** The visit of a code typed with no call: recorded and kept for the archive, ringing nobody, no agent. */
+  private quietVisit(panel: Panel, now: number): Live {
+    const visit: Visit = {
+      id: randomUUID(),
+      panelId: panel.id,
+      startedAt: now,
+      trigger: 'code',
+      presses: 0,
+      who: { identification: [] },
+      transcript: [],
+      actions: [],
+      flags: [],
+      nvrEventIds: [],
+      snapshots: [],
+      seenBy: [],
+    };
+    const call = newCall(randomUUID(), visit.id, panel.id, [], now);
+    const route: Route = { ring: [], silent: true, agentAfterMs: null, chime: false, reason: 'a code typed at the keypad' };
+    const live: Live = {
+      call,
+      visit,
+      panel,
+      route,
+      timers: [],
+      ownerQueue: [],
+      faces: [],
+      plates: [],
+      local: [],
+      codeTries: 0,
+      spoke: false,
+      usedLlm: false,
+      quiet: true,
+    };
+    this.live.set(panel.id, live);
+    this.byCall.set(call.id, live);
+    this.store.saveVisit(visit);
+    this.record(live);
+    void this.host
+      .port(panel)
+      ?.snapshot()
+      .then((jpeg) => (jpeg ? this.keepSnapshot(live, jpeg) : undefined))
+      .catch(() => undefined);
+    // more tries may follow; with no right code the visit ends as declined
+    this.timer(live, QUIET_CODE_MS, () => this.event(live, { type: 'hang_up', outcome: 'declined' }));
+    this.host.log(`${panel.name}: a code typed at the keypad`);
+    return live;
+  }
+
+  private codeVisitTitle(live: Live): string {
+    const t = (key: string, values?: Record<string, string | undefined>) => ownerText(this.language(), key, values);
+    const id = live.local.find((i) => i.kind === 'code' || i.kind === 'pin');
+    if (live.visit.outcome !== 'opened' || !id) return t('codeWrongTitle', { panel: live.panel.name });
+    const who = id.kind === 'code' ? this.store.code(id.value)?.label : id.value;
+    return t('codeOpenTitle', { panel: live.panel.name, who: who ?? '' });
   }
 
   // ---- the agent tried in text ----
@@ -1575,8 +1664,8 @@ export class Intercom {
         recordNotice: settings.agent.recordNotice,
         ask: this.host.ask(),
         // a code said in the test is checked, but not counted against the panel
-        verifyDigits: (digits) => {
-          const code = findCode(this.panelCodes(panel), digits, this.now());
+        verifyDigits: async (digits) => {
+          const code = await findCode(this.panelCodes(panel), digits, this.now());
           return code ? { kind: 'code', value: code.id, strength: 'strong', at: this.now() } : undefined;
         },
         maxTurns: settings.agent.maxTurns,

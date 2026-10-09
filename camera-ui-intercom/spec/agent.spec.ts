@@ -97,8 +97,9 @@ function agent(setup: Setup = {}): DoorAgent {
     houseRules: setup.houseRules,
     recordNotice: true,
     ask: setup.ask,
-    verifyDigits: (digits) => {
-      const found = codes.find((c) => secretMatches(digits, c.code.hash, c.code.salt));
+    verifyDigits: async (digits) => {
+      const matches = await Promise.all(codes.map((c) => secretMatches(digits, c.code.hash, c.code.salt)));
+      const found = codes.find((_, index) => matches[index]);
       return found ? { kind: 'code', value: found.code.id, strength: 'strong', at: NOW } : undefined;
     },
     maxTurns: 8,

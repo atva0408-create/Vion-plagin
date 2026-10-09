@@ -327,7 +327,7 @@ export async function callTool(intercom: Intercom, name: string, input: Record<s
       case 'intercom_add_instruction': {
         const { label, category, companies, names, people, plates, from, to, days, until, ...rest } = input;
         const when = days ? { days, from, to, until } : from !== undefined || to !== undefined ? { from, to } : undefined;
-        const result = intercom.addInstruction(
+        const result = await intercom.addInstruction(
           actor,
           { ...rest, expect: { label, category, companies, names, people, plates }, ...(when ? { when } : {}) },
           ctx.threadId,
@@ -351,7 +351,7 @@ export async function callTool(intercom: Intercom, name: string, input: Record<s
         return { content: { mode: set.mode, until: moment(intercom, set.until) } };
       }
       case 'intercom_guest_code': {
-        const made = intercom.createGuestCode(actor, input);
+        const made = await intercom.createGuestCode(actor, input);
         return {
           content: {
             text: made.text,

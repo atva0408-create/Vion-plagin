@@ -52,7 +52,7 @@ export interface AgentWorld {
   /** the LLM; undefined when the plugin may not ask it */
   ask?: Ask;
   /** digits said as a code or a PIN: an identification, 'locked' when the panel takes no codes now, else nothing */
-  verifyDigits(digits: string): Identification | 'locked' | undefined;
+  verifyDigits(digits: string): Promise<Identification | 'locked' | undefined>;
   maxTurns: number;
   turnTimeoutMs: number;
   log?: (message: string) => void;
@@ -442,9 +442,9 @@ export class DoorAgent {
     return who ? `${who}: ${what}` : what;
   }
 
-  private code(digits: string): AgentReply {
+  private async code(digits: string): Promise<AgentReply> {
     this.codeTries++;
-    const result = this.world.verifyDigits(digits);
+    const result = await this.world.verifyDigits(digits);
     if (result === 'locked') {
       this.phase = 'talk';
       return this.reply(this.t('codesLocked'), [{ kind: 'ask_owner', question: this.ownerQuestion('came, codes are locked now'), options: ['open', 'refuse'] }]);

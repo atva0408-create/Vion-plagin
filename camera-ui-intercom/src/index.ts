@@ -63,6 +63,7 @@ const OFFLINE_REPORT_MS = 5 * 60_000;
 const CATALOG_EVERY_MS = 24 * 60 * 60_000;
 const ACCESS_EVERY_MS = 10 * 60_000;
 const PLAN_EVERY_MS = 10 * 60_000;
+const USERS_EVERY_MS = 60_000;
 /** The settings page acts as an administrator: only administrators reach it. */
 const SETTINGS_ACTOR = { userId: 'settings', role: 'admin' } as const;
 
@@ -134,6 +135,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
   private tickTimer: NodeJS.Timeout | undefined;
   private catalogAt = 0;
   private plan: { view?: FloorPlanView; at: number } = { at: 0 };
+  private usersAt = 0;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginValues>) {
     super(logger, api, storage);
@@ -242,8 +244,9 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     const core = this.api.coreManager as unknown as Record<string, unknown>;
     if (typeof core.assistantPost !== 'function') return false;
     try {
-      await (core.assistantPost as (post: unknown) => Promise<unknown>)({ threadId, userId, text, references: [{ kind: 'intercom-visit', id: visitId }] });
-      return true;
+      // the server answers false when it refuses the thread (its grants are gone after a restart)
+      const posted = await (core.assistantPost as (post: unknown) => Promise<unknown>)({ threadId, userId, text, references: [{ kind: 'intercom-visit', id: visitId }] });
+      return posted === true;
     } catch {
       return false;
     }
@@ -368,6 +371,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     this.tickTimer = setInterval(() => void this.tick(), TICK_MS);
     void this.refreshCatalog();
     void this.refreshPlan();
+    void this.refreshUsers();
   }
 
   private async stop(): Promise<void> {
@@ -386,7 +390,17 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     if (Date.now() - this.allowed.at > ACCESS_EVERY_MS) void this.refreshAccess();
     if (Date.now() - this.catalogAt > CATALOG_EVERY_MS) void this.refreshCatalog();
     if (Date.now() - this.plan.at > PLAN_EVERY_MS) void this.refreshPlan();
+    if (Date.now() - this.usersAt > USERS_EVERY_MS) void this.refreshUsers();
     this.reportOffline();
+  }
+
+  /** The users of ViON, from servers that give them to plugins: a call to "all" ends when every one declined. */
+  private async refreshUsers(): Promise<void> {
+    this.usersAt = Date.now();
+    const core = this.api.coreManager as unknown as { getUserIds?: () => Promise<string[]> };
+    if (typeof core.getUserIds !== 'function') return;
+    const ids = await core.getUserIds().catch(() => undefined);
+    if (Array.isArray(ids)) this.intercom.setUsers(ids);
   }
 
   /** The floor plan, from servers that give it to plugins; an older server leaves the agent without places. */
@@ -1064,7 +1078,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
   /** An event a panel sent to the server's hook address; the token is checked here. */
   async panelHook(panelId: string, token: string, request: { query?: Record<string, string>; body?: string; contentType?: string }) {
     const panel = this.store.panel(panelId);
-    if (!panel?.enabled || !this.intercom.hookTokenMatches(panel, token)) throw new IntercomError('not_found', 'no such hook');
+    if (!panel?.enabled || !(await this.intercom.hookTokenMatches(panel, token))) throw new IntercomError('not_found', 'no such hook');
     const engine = this.engines.get(panel.id);
     if (!engine) throw new IntercomError('unavailable', 'the panel is not connected');
     const kinds = engine.engine.hook({ query: request?.query ?? {}, body: request?.body, contentType: request?.contentType });

@@ -80,7 +80,7 @@ class Rig {
       codes: () => [],
       identifications: () => [],
       recordNotice: true,
-      verifyDigits: () => undefined,
+      verifyDigits: async () => undefined,
       maxTurns: 8,
       turnTimeoutMs: 6_000,
       ...over,

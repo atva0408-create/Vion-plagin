@@ -4,7 +4,8 @@
  * Only a scrypt hash with its salt is kept; the code itself is shown to the owner once, to pass on. Guessing is bounded:
  * three tries in a visit, and five wrong ones on a panel within ten minutes close the panel to codes for ten minutes.
  */
-import { randomBytes, randomInt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
 import type { GuestCode } from './types.js';
 
@@ -22,9 +23,29 @@ export function hashSecret(secret: string, salt = randomBytes(16).toString('hex'
   return { hash: scryptSync(secret, salt, 32).toString('hex'), salt };
 }
 
-export function secretMatches(secret: string, hash: string, salt: string): boolean {
-  const got = scryptSync(secret, salt, 32);
+const scryptAsync = promisify(scrypt) as (secret: string, salt: string, length: number) => Promise<Buffer>;
+
+/**
+ * Whether the secret is the one hashed. scrypt runs in the thread pool, not on the plugin's event loop: a check takes
+ * tens of milliseconds, and the event loop also paces the sound of SIP calls.
+ */
+export async function secretMatches(secret: string, hash: string, salt: string): Promise<boolean> {
+  const got = await scryptAsync(secret, salt, 32);
   const wanted = Buffer.from(hash, 'hex');
+  return got.length === wanted.length && timingSafeEqual(got, wanted);
+}
+
+/**
+ * The hash of a token of 128 random bits (a panel's hook address): a fast hash is enough for it, and the address can be
+ * called by anyone, so a slow one would let them load the plugin.
+ */
+export function tokenHash(token: string, panelId: string): string {
+  return `sha256:${createHash('sha256').update(`${panelId}:${token}`).digest('hex')}`;
+}
+
+export function tokenMatches(token: string, panelId: string, stored: string): boolean {
+  const got = Buffer.from(tokenHash(token, panelId));
+  const wanted = Buffer.from(stored);
   return got.length === wanted.length && timingSafeEqual(got, wanted);
 }
 
@@ -33,12 +54,11 @@ export function codeUsable(code: GuestCode, now: number): boolean {
 }
 
 /** The guest code the digits are, among those usable now; a code that is right but used up or out of its window is not. */
-export function findCode(codes: GuestCode[], digits: string, now: number): GuestCode | undefined {
+export async function findCode(codes: GuestCode[], digits: string, now: number): Promise<GuestCode | undefined> {
   if (!/^\d+$/.test(digits)) return undefined;
-  // every code is checked, so the time does not tell which one was close
-  let found: GuestCode | undefined;
-  for (const code of codes) if (secretMatches(digits, code.hash, code.salt) && codeUsable(code, now)) found ??= code;
-  return found;
+  // every code is checked, so the time does not tell which one was close; together, in the thread pool
+  const matches = await Promise.all(codes.map((code) => secretMatches(digits, code.hash, code.salt)));
+  return codes.find((code, index) => matches[index] && codeUsable(code, now));
 }
 
 /** Wrong codes said at the panels: a panel that had too many lately does not take codes for a while. */

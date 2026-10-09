@@ -285,6 +285,6 @@ export function infoDigit(message: SipMessage): string | undefined {
   if (!digit) return undefined;
   // some panels send the events' numbers: 10 is "*", 11 is "#"
   const named: Record<string, string> = { 10: '*', 11: '#' };
-  const value = named[(/Signal\s*=\s*(\d{2})/i.exec(body))?.[1] ?? ''] ?? digit.toUpperCase();
+  const value = named[/Signal\s*=\s*(\d{2})/i.exec(body)?.[1] ?? ''] ?? digit.toUpperCase();
   return /^[0-9*#A-D]$/.test(value) ? value : undefined;
 }

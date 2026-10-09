@@ -54,6 +54,9 @@ export interface StepResult {
   insistent?: boolean;
 }
 
+/** In a call's recipients: every user (the panel calls 'all'); the notification then names nobody and reaches all. */
+export const ALL_USERS = '*';
+
 export const INSISTENT_PRESSES = 3;
 export const INSISTENT_WINDOW_MS = 10_000;
 
@@ -65,6 +68,8 @@ export interface StepContext {
   now: number;
   /** whether the agent may answer this call (the mode, the agent's settings, a talk channel) */
   agentEnabled: boolean;
+  /** the users of ViON, whom a call to "all" rings; unknown on a server that does not tell them */
+  everyone?: readonly string[];
 }
 
 function end(call: Call, outcome: Outcome, now: number, effects: Effect[]): StepResult {
@@ -99,7 +104,9 @@ export function step(call: Call, event: CallEvent, ctx: StepContext): StepResult
         case 'decline': {
           const declinedBy = call.declinedBy.includes(event.userId) ? call.declinedBy : [...call.declinedBy, event.userId];
           const declined = { ...call, declinedBy };
-          if (call.recipients.some((user) => !declinedBy.includes(user))) return { call: declined, effects: ['update'] };
+          // a call to "all" rings every user; with them unknown, the first decline speaks for all (one user is the common home)
+          const ringing = call.recipients.includes(ALL_USERS) ? (ctx.everyone ?? declinedBy) : call.recipients;
+          if (ringing.some((user) => !declinedBy.includes(user))) return { call: declined, effects: ['update'] };
           return ctx.agentEnabled ? toAgent(declined, now) : end(declined, 'declined', now, ['ring_stop']);
         }
         case 'to_agent':

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 
 import { runTests, test } from '../../packages/vion-speech/spec/helpers.js';
-import { newCall, step } from '../src/call.js';
+import { ALL_USERS, newCall, step } from '../src/call.js';
 import { CodeGuard, findCode, hashSecret, newCode, secretMatches } from '../src/codes.js';
 import { findCompany, sameCompany } from '../src/companies.js';
 import { faceIdentifications, normalizePlate, plateIdentifications } from '../src/identify.js';
@@ -97,6 +97,17 @@ test('everyone declined: the agent answers, or the call ends declined; one decli
   assert.equal(both.call.state, 'agent');
   const noAgent = step(one.call, { type: 'decline', userId: 'u2' }, ctx(TUE_NOON + 2000, false));
   assert.equal(noAgent.call.outcome, 'declined');
+});
+
+test('a call to "all": every user of ViON must decline; with the users unknown the first decline speaks for all', () => {
+  const call = newCall('c1', 'v1', 'gate', [ALL_USERS], TUE_NOON);
+  const everyone = ['u1', 'u2'];
+  const one = step(call, { type: 'decline', userId: 'u1' }, { ...ctx(TUE_NOON + 1000), everyone });
+  assert.equal(one.call.state, 'ringing', 'u2 has not declined');
+  const both = step(one.call, { type: 'decline', userId: 'u2' }, { ...ctx(TUE_NOON + 2000), everyone });
+  assert.equal(both.call.state, 'agent');
+  const alone = step(call, { type: 'decline', userId: 'u1' }, ctx(TUE_NOON + 1000));
+  assert.equal(alone.call.state, 'agent', 'an older server that does not tell the users: one decline is enough');
 });
 
 test('an ended call takes nothing; a restart ends a call as interrupted; a rule opening while it rings ends it opened', () => {
@@ -268,12 +279,12 @@ test('companies: forms and mishearings; whole words only', () => {
 
 // ---- guest codes ----
 
-test('codes: six digits, kept as a hash; usable only in the window and while uses are left', () => {
+test('codes: six digits, kept as a hash; usable only in the window and while uses are left', async () => {
   const code = newCode();
   assert.match(code, /^\d{6}$/);
   const { hash, salt } = hashSecret(code);
-  assert.equal(secretMatches(code, hash, salt), true);
-  assert.equal(secretMatches('000000' === code ? '111111' : '000000', hash, salt), false);
+  assert.equal(await secretMatches(code, hash, salt), true);
+  assert.equal(await secretMatches('000000' === code ? '111111' : '000000', hash, salt), false);
   const guest: GuestCode = {
     id: 'g1',
     label: 'гость',
@@ -287,10 +298,10 @@ test('codes: six digits, kept as a hash; usable only in the window and while use
     createdBy: 'u1',
     createdAt: TUE_NOON,
   };
-  assert.equal(findCode([guest], code, TUE_NOON + MIN)?.id, 'g1');
-  assert.equal(findCode([guest], code, TUE_NOON - MIN), undefined, 'before its window');
-  assert.equal(findCode([{ ...guest, uses: 1 }], code, TUE_NOON + MIN), undefined, 'used up');
-  assert.equal(findCode([{ ...guest, revokedAt: TUE_NOON }], code, TUE_NOON + MIN), undefined, 'revoked');
+  assert.equal((await findCode([guest], code, TUE_NOON + MIN))?.id, 'g1');
+  assert.equal(await findCode([guest], code, TUE_NOON - MIN), undefined, 'before its window');
+  assert.equal(await findCode([{ ...guest, uses: 1 }], code, TUE_NOON + MIN), undefined, 'used up');
+  assert.equal(await findCode([{ ...guest, revokedAt: TUE_NOON }], code, TUE_NOON + MIN), undefined, 'revoked');
 });
 
 test('codes: five wrong ones in ten minutes close the panel to codes for ten minutes', () => {

@@ -149,11 +149,18 @@ export class SipServer {
     handler.seen();
     const callId = header(message, 'Call-ID');
     if (message.status !== undefined) {
-      if (callId) this.calls.get(callId)?.onResponse(message);
+      const answered = callId ? this.calls.get(callId) : undefined;
+      if (answered?.remoteHost === from.address) answered.onResponse(message);
       return;
     }
     const method = message.method!;
-    const call = callId ? this.calls.get(callId) : undefined;
+    // a call takes requests only from its own panel: another panel cannot end it or press keys in it
+    const found = callId ? this.calls.get(callId) : undefined;
+    const call = found?.remoteHost === from.address ? found : undefined;
+    if (found && !call) {
+      this.send(response(message, from, 481, 'Call/Transaction Does Not Exist'), ...replyTo(message, from));
+      return;
+    }
     if (call) {
       call.onRequest(message, from);
       return;

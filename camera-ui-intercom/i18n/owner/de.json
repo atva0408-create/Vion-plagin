@@ -28,6 +28,8 @@
   "agentMuteTitle": "{panel}: der Agent konnte nicht sprechen",
   "presenceTitle": "{panel}: jemand an der Tür ohne zu klingeln",
   "plateTitle": "{panel}: Einfahrt — {who}",
+  "codeWrongTitle": "Falscher Code an der Tastatur",
+  "codeOpenTitle": "Eingang per Code: {who}",
   "codeText": "Code für „{doors}“: {code}, gültig {from} — {to}. Nennen Sie ihn an der Tür.",
   "llmLimitTitle": "Gegensprechanlage: der Agent spricht bis morgen ohne KI",
   "categories": {

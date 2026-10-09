@@ -222,7 +222,8 @@ export interface Visit {
   panelId: string;
   startedAt: number;
   endedAt?: number;
-  trigger: 'ring' | 'presence' | 'plate';
+  /** `code`: digits typed at the keypad with no call: nobody is rung */
+  trigger: 'ring' | 'presence' | 'plate' | 'code';
   presses: number;
   outcome?: Outcome;
   answeredBy?: string;
