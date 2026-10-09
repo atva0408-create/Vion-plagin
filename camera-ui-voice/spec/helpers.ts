@@ -1,4 +1,6 @@
 // Fakes for the specs: a clock moved by hand, a speech engine, cameras, the LLM. Run a spec with: npx tsx spec/<name>.spec.ts
+import { Hearing } from '@vionvision/speech';
+
 import type { AssistantAskRequest, AssistantAskResult, Notification } from '@camera.ui/sdk';
 import type { Audio, SpeakResult, SpeechEngine, VoiceActivity } from '@vionvision/speech';
 import type { Sighting } from '../src/presence.js';
@@ -90,11 +92,40 @@ export class FakeEngine implements SpeechEngine {
   }
 }
 
+/** Voice activity of the open sound: each fed chunk is one whole phrase. */
+export class PhraseVad implements VoiceActivity {
+  private done: Float32Array[] = [];
+  saying = false;
+  accept(samples: Float32Array): void {
+    if (samples.length) this.done.push(samples);
+  }
+  utterance(): Float32Array | undefined {
+    return this.done.shift();
+  }
+  speaking(): boolean {
+    return this.saying;
+  }
+  flush(): void {}
+}
+
+/** The sound of a camera kept open for calls; the spec says phrases into it and ends it. */
+export interface FakeSound {
+  hearing: Hearing;
+  vad: PhraseVad;
+  stopped: boolean;
+  end(reason?: string): void;
+}
+
 export interface FakeCamera extends CameraPort {
   spoken: number;
   problemText?: string;
   answers: (Float32Array | undefined)[];
   snapshots: number;
+  sounds: FakeSound[];
+  /** Opening the sound fails with this. */
+  soundError?: string;
+  /** Says a phrase of that many seconds into the open sound. */
+  utter(seconds?: number): void;
 }
 
 export function fakeCamera(
@@ -105,6 +136,7 @@ export function fakeCamera(
     [50, 100],
     [0, 100],
   ],
+  clock: Clock = new FakeClock(0),
 ): FakeCamera {
   const camera: FakeCamera = {
     id,
@@ -112,6 +144,28 @@ export function fakeCamera(
     spoken: 0,
     answers: [],
     snapshots: 0,
+    sounds: [],
+    utter: (seconds = 2) => {
+      const sound = camera.sounds[camera.sounds.length - 1];
+      if (!sound || sound.stopped) throw new Error('no open sound to say a phrase into');
+      sound.hearing.feed(new Float32Array(16_000 * seconds).fill(0.1));
+    },
+    hear: async () => {
+      if (camera.soundError) throw new Error(camera.soundError);
+      const vad = new PhraseVad();
+      let end: (reason: string | undefined) => void = () => undefined;
+      const ended = new Promise<string | undefined>((resolve) => (end = resolve));
+      const sound: FakeSound = { hearing: new Hearing(vad, clock), vad, stopped: false, end: (reason) => end(reason) };
+      camera.sounds.push(sound);
+      return {
+        hearing: sound.hearing,
+        ended,
+        stop: () => {
+          sound.stopped = true;
+          end(undefined);
+        },
+      };
+    },
     speaker: {
       problem: () => camera.problemText,
       speak: async (): Promise<SpeakResult> => {

@@ -3,7 +3,7 @@ import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { API_EVENT, BasePlugin, SensorType, Severity } from '@camera.ui/sdk';
-import { CameraSpeaker, FfmpegListener, ModelStore, PROBLEM_TEXT, SherpaEngine, speakerProblem, speakerProblemCode } from '@vionvision/speech';
+import { CameraSpeaker, FfmpegListener, ModelStore, PROBLEM_TEXT, SherpaEngine, listenToCamera, speakerProblem, speakerProblemCode } from '@vionvision/speech';
 
 import { DoorWatcher } from './door.js';
 import { nativeRequire } from './runtime.js';
@@ -389,6 +389,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         return data ? new Uint8Array(data) : undefined;
       },
       listen: (windowMs, signal) => this.listener.listen(device, windowMs, signal),
+      hear: () => listenToCamera(() => this.api.coreManager.getFFmpegPath(), this.engine, device, systemClock),
     };
     this.voice.addCamera(port);
     entry.disposers.push(device.onDetectionEvent.subscribe(({ type, event }) => this.onDetection(entry, type, event)));
@@ -526,6 +527,14 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
               title: 'Answer the child',
               description: 'After a phrase VOICE listens and answers questions like "when can I play?".',
               defaultValue: d.answerQuestions,
+            }),
+            item('answerOnCall', {
+              type: 'boolean',
+              title: 'Answer when called',
+              description:
+                'The child says «ВиОН» and a question («ВиОН, сколько мне ещё отдыхать?»), and VOICE answers in minutes. ' +
+                'The microphone of this camera stays open while this is on: speech is recognized on this server, nothing is recorded or kept. Russian only for now.',
+              defaultValue: d.answerOnCall,
             }),
             item('breakReminder', {
               type: 'boolean',
@@ -755,6 +764,8 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   private statusText(entry: CameraEntry): string {
     const lines = this.voice.scenariosOf(entry.device.id).map(({ key }) => this.voice.statusOf(key));
+    const call = this.voice.callStatusOf(entry.device.id);
+    if (call) lines.push(call);
     return lines.join('\n') || '—';
   }
 

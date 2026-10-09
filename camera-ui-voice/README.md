@@ -4,7 +4,7 @@ The voice of ViON: it speaks through the speaker of a camera and listens to its 
 
 ## What it does
 
-- **Screen time.** The camera sees a child at the computer and VOICE counts the time. When a break or bedtime comes, VOICE says so kindly and by name. If the child stays, it repeats more firmly, then tells the parents with a snapshot. The child may ask "when can I play?" and gets the time from the schedule.
+- **Screen time.** The camera sees a child at the computer and VOICE counts the time. When a break or bedtime comes, VOICE says so kindly and by name. If the child stays, it repeats more firmly, then tells the parents with a snapshot. The child may ask "how long is my break?" after a phrase of VOICE, or at any time by calling «ViON» ("ViON, how long is my break?", Russian for now), and hears the minutes left by the schedule.
 - **Who is at the door.** A door camera sees a person and VOICE says in the rooms who came: "Dad has arrived", "There is a stranger at the door", or, with a model that sees pictures, "A courier with a box is at the door".
 - **Say.** Any phrase through a camera speaker: from the assistant chat ("tell Artem dinner is ready"), from an automation, from another extension through a notification.
 
@@ -38,6 +38,6 @@ A camera with a speaker is a notification device "<camera> (VOICE)". Turn it on 
 
 ## Good to know
 
-- The microphone opens only for a few seconds after a phrase of VOICE and closes; the sound is not kept. The text of the child's question goes to the assistant: if its model runs in the cloud, the text goes there.
+- The microphone opens only for a few seconds after a phrase of VOICE and closes; the sound is not kept. With "Answer when called" on for a child, the microphone of that camera stays open while the scenario works: each short phrase is recognized on the server to find «ViON», a phrase without it is dropped at once, nothing is recorded. The camera's status says when it listens. The text of the child's question goes to the assistant: if its model runs in the cloud, the text goes there.
 - A camera says at most 6 phrases a minute (setting); more are not said.
 - A child sitting still at the computer can stay out of detection events. VOICE reads the object sensor of the camera every 5 seconds, still people included.

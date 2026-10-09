@@ -84,6 +84,12 @@ export const TOOLS: AssistantToolSpec[] = [
         freeTo: CLOCK('Wake-up after free nights'),
         schoolEvenings: DAY_LIST,
         answerQuestions: { type: 'boolean', description: 'Listen 10 s after a phrase and answer what the child asks.' },
+        answerOnCall: {
+          type: 'boolean',
+          description:
+            'Answer when the child calls «ВиОН» with a question, at any time. Keeps the microphone of the camera open ' +
+            '(recognized on the server, nothing kept): turn on only when the owner asks.',
+        },
         repeatMinutes: { type: 'integer', minimum: 1, maximum: 60, description: 'Minutes between the soft phrase, the firm one and the notice to the parents.' },
         enabled: { type: 'boolean' },
       },
@@ -261,6 +267,7 @@ async function setScreenTime(host: ToolHost, input: Record<string, unknown>): Pr
     'freeTo',
     'schoolEvenings',
     'answerQuestions',
+    'answerOnCall',
     'repeatMinutes',
     'enabled',
   ] as const) {

@@ -26,6 +26,8 @@ export interface ScreenTimeConfig {
   /** Say how long the break still lasts when the child comes back too early. */
   breakReminder: boolean;
   answerQuestions: boolean;
+  /** The microphone stays open and VOICE answers when the child calls it by name («ВиОН, сколько мне ещё отдыхать?»). */
+  answerOnCall: boolean;
   minPresenceSeconds: number;
   gapSeconds: number;
 }
@@ -85,6 +87,19 @@ export interface Facts {
 }
 
 export type ScreenTimeAction = { type: 'speak'; kind: 'nudge' | 'remaining'; facts: Facts } | { type: 'notify'; facts: Facts };
+
+/** Where the child stands now, for an answer in minutes: what is allowed and for how long. */
+export type Standing =
+  /** May play this many minutes more, until the limit that comes first. */
+  | { kind: 'play'; minutes: number; until: Reason }
+  /** A parent gave time: this many minutes of it are left. */
+  | { kind: 'granted'; minutes: number }
+  /** Away on a break: this many minutes of it are left. */
+  | { kind: 'break'; minutes: number }
+  /** At the computer while a break is due: the whole break, counted from leaving. */
+  | { kind: 'break_due'; minutes: number }
+  /** Not until then: a time, not minutes (the next morning is hundreds of minutes away). */
+  | { kind: 'bedtime' | 'daily_limit'; next: string; day: 'today' | 'tomorrow' };
 
 export function freshState(date: string): ScreenTimeState {
   return { date, todayMs: 0, history: {}, present: false, workMs: 0 };
@@ -258,6 +273,36 @@ export class ScreenTimeEngine {
       nextAllowedAt: formatClock(nextAllowed, timeZone),
       nextAllowedDay: localTime(nextAllowed, timeZone).date === today ? 'today' : 'tomorrow',
     };
+  }
+
+  /**
+   * The answer to "how long": minutes of the break left, or minutes of play before the next limit. A break is waited
+   * for whole once the child leaves (a return during it starts it over), so at the computer it is the whole break.
+   * Minutes of play are rounded down and of a break up: the answer never promises more play than there is.
+   */
+  standing(now: number, timeZone: string): Standing {
+    const s = this.state;
+    const c = this.config;
+    if (s.grantUntil !== undefined && now < s.grantUntil) return { kind: 'granted', minutes: Math.ceil((s.grantUntil - now) / MINUTE) };
+    const reason = this.reason(now, timeZone);
+    if (reason === 'bedtime' || reason === 'daily_limit') {
+      const facts = this.facts(now, { timeZone, language: '' });
+      return { kind: reason, next: facts.nextAllowedAt, day: facts.nextAllowedDay };
+    }
+    const breakMs = c.breakMinutes * MINUTE;
+    const away = !s.present && s.leftAt !== undefined ? now - s.leftAt : 0;
+    if (reason === 'break') {
+      if (s.present) return { kind: 'break_due', minutes: c.breakMinutes };
+      if (s.leftAt !== undefined && away < breakMs) return { kind: 'break', minutes: Math.ceil((breakMs - away) / MINUTE) };
+    }
+    // away for a whole break: the next session starts from nothing
+    const workMs = away >= breakMs || reason === 'break' ? 0 : s.workMs;
+    const limits: [number, Reason][] = [[c.sessionMinutes * MINUTE - workMs, 'break']];
+    if (c.dailyMinutes) limits.push([c.dailyMinutes * MINUTE - s.todayMs, 'daily_limit']);
+    const bed = nextIntervalStart(c.bedtime, now, timeZone);
+    if (bed !== undefined) limits.push([bed - now, 'bedtime']);
+    const [ms, until] = limits.reduce((first, limit) => (limit[0] < first[0] ? limit : first));
+    return { kind: 'play', minutes: Math.max(1, Math.floor(ms / MINUTE)), until };
   }
 
   /**

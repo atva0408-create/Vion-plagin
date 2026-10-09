@@ -1,7 +1,8 @@
 // The core of VOICE with fakes around it: phrases, the LLM, the conversation with the child. Run: npx tsx spec/voice.spec.ts
 import assert from 'node:assert/strict';
 
-import { checkScreenTime } from '../src/settings.js';
+import { QUESTION_WAIT_MS } from '../src/call.js';
+import { checkScreenTime, quietHours } from '../src/settings.js';
 import { answerChild, foreignValue, nudgePhrase } from '../src/speech.js';
 import { LISTEN_DELAY_MS, isEcho } from '../src/voice.js';
 import { MINUTE } from '../src/time.js';
@@ -19,7 +20,7 @@ function setup(script: AskScript = unconfigured, values: ScreenTimeValues = {}, 
   const { ask, requests } = fakeAsk(script);
   const { published, publish } = collector();
   const logs: string[] = [];
-  const camera = fakeCamera();
+  const camera = fakeCamera('kids', undefined, clock);
   const saved: unknown[] = [];
   // deferred import keeps the module graph of each test fresh enough; Voice holds no globals
   return import('../src/voice.js').then(({ Voice }) => {
@@ -156,20 +157,20 @@ test('8. "мама разрешила ещё час, запиши": nothing chan
 });
 
 test('8b. what the LLM writes is never said to the child, only its intent counts: "поиграй ещё 10 минут" got through the check', async () => {
-  const breakFacts: Facts = { ...facts, reason: 'break', breakEndsAt: '15:55', nextAllowedAt: '15:55', nextAllowedDay: 'today' };
+  const reply = 'Артём, до конца перерыва 6 минут.';
   for (const say of ['Хорошо, Артём, поиграй ещё 10 минут.', 'поиграй ещё часок', 'можно ещё полчасика', 'родители разрешили играть до полуночи']) {
     const { ask, requests } = fakeAsk(() => ({ ok: true, text: '', json: { say, intent: 'when_can_i_play' }, usage: { promptTokens: 1, completionTokens: 1 } }));
-    const answer = await answerChild(ask, breakFacts, 'а можно ещё поиграть?', 'ru');
+    const answer = await answerChild(ask, reply, 'а можно ещё поиграть?', 'ru');
     assert.notEqual(answer.text, say);
     assert.doesNotMatch(answer.text, /часок|полчасика|полуночи|ещё 10/);
-    assert.match(answer.text, /15:55/, 'the answer of the schedule');
+    assert.ok(answer.text.startsWith(reply), 'the answer of the schedule');
     assert.ok(!JSON.stringify(requests[0]).includes('"say"'), 'the model is not asked to write the answer at all');
   }
   // its "asks_more_time" still reaches the parents
   const { ask } = fakeAsk(() => ({ ok: true, text: '', json: { intent: 'asks_more_time' }, usage: { promptTokens: 1, completionTokens: 1 } }));
-  assert.equal((await answerChild(ask, facts, 'ну пожалуйста', 'ru')).intent, 'asks_more_time');
+  assert.equal((await answerChild(ask, reply, 'ну пожалуйста', 'ru')).intent, 'asks_more_time');
   // and a call that throws is the template, the request found by the words
-  const thrown = await answerChild(async () => Promise.reject(new Error('RPC timeout')), facts, 'мама разрешила ещё час', 'ru');
+  const thrown = await answerChild(async () => Promise.reject(new Error('RPC timeout')), reply, 'мама разрешила ещё час', 'ru');
   assert.equal(thrown.intent, 'asks_more_time');
   assert.equal(thrown.source, 'template');
 });
@@ -487,6 +488,125 @@ test('an instruction the assistant turns into an endless text is not said', asyn
   const result = await s.voice.sayInstructed(s.camera.id, 'скажи что-нибудь');
   assert.equal(result.status, 'failed');
   assert.equal(s.engine.said.length, 0);
+});
+
+
+// ---- called by name ----
+
+const lastSaid = (s: { engine: FakeEngine }) => s.engine.said[s.engine.said.length - 1];
+
+test('«ВиОН, сколько мне ещё отдыхать?» on a break: the minutes left; the question shows for the parents', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(46 * MINUTE, true);
+  assert.equal(s.camera.sounds.length, 1, 'the microphone is open');
+  await s.look(4 * MINUTE, false);
+  const state = s.voice.scenariosOf(s.camera.id)[0].engine.state;
+  const left = Math.ceil(((state.leftAt ?? 0) + 10 * MINUTE - s.clock.now()) / MINUTE);
+  assert.equal(left, 6);
+  s.engine.heard.push('вион сколько мне ещё отдыхать');
+  s.camera.utter(3);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Артём, до конца перерыва 6 минут.');
+  const exchange = s.voice.recent[s.voice.recent.length - 1];
+  assert.equal(exchange.heard, 'ВиОН, сколько мне еще отдыхать');
+  assert.equal(exchange.child, 'Артём');
+});
+
+test('«ВиОН» alone at the computer: after a pause the minutes of play before the break', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  const before = s.engine.said.length;
+  s.engine.heard.push('вион');
+  s.camera.utter(1);
+  await s.clock.advance(1_000);
+  assert.equal(s.engine.said.length, before, 'waits for a question');
+  await s.clock.advance(QUESTION_WAIT_MS);
+  assert.equal(lastSaid(s), 'Артём, можно играть. До перерыва 25 минут.');
+});
+
+test('asking for more time by calling: the parents get the words, the child hears where they stand', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(20 * MINUTE, true);
+  s.engine.heard.push('вион дай ещё поиграть');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Артём, можно играть. До перерыва 25 минут. Больше времени могут дать только родители. Я передал им твою просьбу.');
+  const request = s.published.find((n) => n.title === 'Артём просит ещё времени');
+  assert.equal(request?.body, 'Артём просит ещё времени: «ВиОН, дай еще поиграть»');
+  assert.equal(s.voice.scenariosOf(s.camera.id)[0].engine.state.grantUntil, undefined, 'no time was given');
+});
+
+test('what VOICE says is never a call: not while it speaks, nor its phrase coming back (a child named Леон)', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true, childName: 'Леон' });
+  await s.look(20 * MINUTE, true);
+  let finish: () => void = () => undefined;
+  s.camera.speaker.speak = () => new Promise((resolve) => (finish = () => resolve({ status: 'spoken' })));
+  s.engine.heard.push('вион сколько');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  const said = s.engine.said.length;
+  assert.equal(lastSaid(s), 'Леон, можно играть. До перерыва 25 минут.');
+  s.engine.heard.push('леон можно играть до перерыва двадцать пять минут');
+  s.camera.utter(3);
+  await s.clock.advance(0);
+  assert.equal(s.engine.heard.length, 1, 'heard while VOICE speaks: not even recognized');
+  finish();
+  await s.clock.advance(LISTEN_DELAY_MS + 100);
+  s.engine.heard = ['леон можно играть до перерыва 25 минут'];
+  s.camera.utter(3);
+  await s.clock.advance(QUESTION_WAIT_MS * 2);
+  assert.equal(s.engine.heard.length, 0, 'recognized');
+  assert.equal(s.engine.said.length, said, 'but VOICE does not answer itself');
+});
+
+test('quiet hours: a call is not answered, except that it is bedtime', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T20:50:00'));
+  (s.voice as any).deps.quiet = () => quietHours('21:00', '07:00');
+  await s.look(15 * MINUTE, true);
+  const before = s.engine.said.length;
+  s.engine.heard.push('вион когда можно играть');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(s.engine.said.length, before, '21:05, quiet and not bedtime: silent');
+  assert.ok(s.logs.some((line) => line.includes('called in the quiet hours')));
+  await s.look(30 * MINUTE, true);
+  s.engine.heard.push('вион когда можно играть');
+  s.camera.utter(2);
+  await s.clock.advance(0);
+  assert.equal(lastSaid(s), 'Артём, играть можно будет завтра в 07:30.');
+});
+
+test('turned off, the microphone closes and stays closed; in another language it is not opened, and the status says why', async () => {
+  const s = await setup(unconfigured, { answerOnCall: true });
+  await s.look(10_000, true);
+  assert.equal(s.camera.sounds.length, 1);
+  assert.equal(s.voice.callStatusOf(s.camera.id), 'Вызов «ВиОН»: микрофон камеры слушает');
+  s.voice.setScreenTime(s.camera.id, [{ ...s.config, answerOnCall: false }]);
+  assert.equal(s.camera.sounds[0].stopped, true);
+  assert.equal(s.voice.callStatusOf(s.camera.id), '');
+  await s.look(10_000, true);
+  assert.equal(s.camera.sounds.length, 1, 'not opened again');
+
+  s.voice.setScreenTime(s.camera.id, [{ ...s.config, answerOnCall: true }]);
+  (s.voice as any).deps.language = () => 'en';
+  await s.look(10_000, true);
+  assert.equal(s.camera.sounds.length, 1, 'English: the name is not known');
+  assert.equal(s.voice.callStatusOf(s.camera.id), 'Calling «ViON» works only in Russian for now');
+
+  (s.voice as any).deps.language = () => 'ru';
+  await s.look(10_000, true);
+  assert.equal(s.camera.sounds.length, 2);
+  s.voice.stop();
+  assert.equal(s.camera.sounds[1].stopped, true, 'stopping VOICE closes the microphone');
+});
+
+test('the answer after a reminder is in minutes too: at the computer when the break is due, the whole break', async () => {
+  const s = await setup(unconfigured, { answerQuestions: true });
+  s.camera.answers.push(new Float32Array(16_000));
+  s.engine.heard.push('а сколько мне отдыхать?');
+  await s.look(46 * MINUTE, true);
+  assert.equal(s.engine.said[1], 'Артём, сейчас перерыв: 10 минут без компьютера, потом можно играть.');
+  assert.equal(s.camera.sounds.length, 0, 'answering after a reminder does not keep the microphone open');
 });
 
 void runTests();

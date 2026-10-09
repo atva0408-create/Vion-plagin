@@ -1,3 +1,8 @@
+## [0.3.0]
+
+- VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «ViON» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert. Vorerst nur auf Russisch; standardmäßig aus
+- Antworten in Minuten: „noch 5 Minuten Pause“, „du kannst spielen, noch 20 Minuten bis zur Pause“; ist die Pause am Computer fällig, die ganze Pause. Der nächste Morgen bleibt eine Uhrzeit („morgen um 07:30“)
+
 ## [0.2.1]
 
 - Ausstehende Sätze, Erinnerungen und Zuhören werden beim Entfernen einer Kamera, Deaktivieren eines Szenarios, Gewähren zusätzlicher Zeit und Beenden von VOICE abgebrochen. Verspätete Antworten öffnen die Kamera nicht erneut.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
-import { FfmpegListener, FloatChunks, Hearing } from '../src/listen.js';
+import { FfmpegListener, FloatChunks, Hearing, listenToCamera } from '../src/listen.js';
 import { FakeClock, flush, runTests, test } from './helpers.js';
 
 import type { SpeechEngine, VoiceActivity } from '../src/engine.js';
@@ -197,6 +197,28 @@ test('the first complete utterance stops the stream and is returned for recognit
   // stopped at the utterance, not by the end of the window (which would return the same samples 30 s later)
   assert.equal(s.kills(), 1);
   assert.deepEqual(await result, samples);
+});
+
+test('open sound: voice activity that throws ends the sound with the reason instead of taking the plugin down', async () => {
+  const s = ffmpegSetup();
+  const open = await listenToCamera(async () => 'ffmpeg', s.engine, s.camera, new FakeClock(0), (() => s.child) as never);
+  s.vad.accept = () => {
+    throw new Error('vad state');
+  };
+  assert.doesNotThrow(() => s.child.stdout.write(Buffer.alloc(16)));
+  await flush();
+  assert.equal(s.kills(), 1, 'ffmpeg is closed');
+  assert.doesNotThrow(() => s.child.stdout.write(Buffer.alloc(16)), 'later output is not fed again');
+  s.child.emit('close', null);
+  assert.equal(await open.ended, 'vad state');
+});
+
+test('open sound: stopped by its owner, the end carries no reason', async () => {
+  const s = ffmpegSetup();
+  const open = await listenToCamera(async () => 'ffmpeg', s.engine, s.camera, new FakeClock(0), (() => s.child) as never);
+  open.stop();
+  s.child.emit('close', null);
+  assert.equal(await open.ended, undefined);
 });
 
 void runTests();

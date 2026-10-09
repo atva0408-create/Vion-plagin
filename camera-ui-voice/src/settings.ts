@@ -26,6 +26,7 @@ export interface ScreenTimeValues {
   freeTo?: string;
   schoolEvenings?: Day[];
   answerQuestions?: boolean;
+  answerOnCall?: boolean;
   breakReminder?: boolean;
   labels?: string[];
   face?: string;
@@ -48,6 +49,8 @@ export const SCREEN_TIME_DEFAULTS = {
   // the evenings before a school day: Sunday to Thursday; Friday and Saturday nights are free nights
   schoolEvenings: ['sun', 'mon', 'tue', 'wed', 'thu'] as Day[],
   answerQuestions: true,
+  // off until a parent turns it on: the microphone of the room stays open the whole time
+  answerOnCall: false,
   breakReminder: true,
   labels: ['person'],
   repeatMinutes: 3,
@@ -125,6 +128,7 @@ export function checkScreenTime(values: ScreenTimeValues, zones: string[]): Chec
       maxRepeats: v.maxRepeats,
       breakReminder: v.breakReminder,
       answerQuestions: v.answerQuestions,
+      answerOnCall: v.answerOnCall,
       minPresenceSeconds: v.minPresenceSeconds,
       gapSeconds: v.gapSeconds,
     },

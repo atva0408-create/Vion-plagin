@@ -222,21 +222,48 @@ export interface OpenAudio {
 }
 
 /** Opens the camera's sound for a conversation: it stays open until `stop()`. */
-export async function listenToCamera(ffmpegPath: () => Promise<string>, engine: SpeechEngine, camera: ListenCamera, clock: Clock): Promise<OpenAudio> {
+export async function listenToCamera(
+  ffmpegPath: () => Promise<string>,
+  engine: SpeechEngine,
+  camera: ListenCamera,
+  clock: Clock,
+  /** Starts ffmpeg; the specs give a fake process. */
+  spawnProcess: typeof spawn = spawn,
+): Promise<OpenAudio> {
   const [ffmpeg, vad] = await Promise.all([ffmpegPath(), engine.voiceActivity()]);
   const hearing = new Hearing(vad, clock);
-  const child = cameraAudio(ffmpeg, camera);
+  const child = cameraAudio(ffmpeg, camera, spawnProcess);
   const chunks = new FloatChunks();
   let stopped = false;
+  let failed: string | undefined;
   let errors = '';
   child.stderr.on('data', (chunk: Buffer) => {
     errors = (errors + chunk.toString()).slice(-500);
   });
-  child.stdout.on('data', (chunk: Buffer) => hearing.feed(chunks.take(chunk)));
+  // the native voice activity throws on a state it does not expect; thrown in a stream callback, that would take the
+  // whole plugin down (VOICE listens for hours), so the sound ends with the reason instead
+  const fail = (error: unknown) => {
+    failed ??= error instanceof Error ? error.message : String(error);
+    child.kill('SIGKILL');
+  };
+  child.stdout.on('data', (chunk: Buffer) => {
+    if (failed !== undefined) return;
+    try {
+      hearing.feed(chunks.take(chunk));
+    } catch (error) {
+      fail(error);
+    }
+  });
   const ended = new Promise<string | undefined>((resolve) => {
     child.on('close', (code) => {
-      hearing.end();
-      resolve(stopped ? undefined : errors.trim() || `ffmpeg exit ${code}`);
+      if (failed === undefined) {
+        try {
+          hearing.end();
+        } catch (error) {
+          failed = error instanceof Error ? error.message : String(error);
+        }
+      }
+      resolve(stopped ? undefined : (failed ?? (errors.trim() || `ffmpeg exit ${code}`)));
     });
     child.on('error', (error) => resolve(stopped ? undefined : error.message));
   });

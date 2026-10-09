@@ -26,7 +26,14 @@
   },
   "remaining": "{name}, die Pause ist noch nicht vorbei, noch {left} {leftWord}.",
   "answer": {
-    "break": "{name}, du kannst um {next} wieder spielen, nach der Pause.",
+    "play": {
+      "break": "{name}, du kannst spielen. Noch {minutes} {minutesWord} bis zur Pause.",
+      "daily_limit": "{name}, du kannst spielen. Noch {minutes} {minutesWord} für heute.",
+      "bedtime": "{name}, du kannst spielen. Noch {minutes} {minutesWord} bis zur Schlafenszeit."
+    },
+    "granted": "{name}, du kannst spielen, deine Eltern haben dir Zeit gegeben. Noch {minutes} {minutesWord}.",
+    "break": "{name}, die Pause dauert noch {minutes} {minutesWord}.",
+    "break_due": "{name}, jetzt ist Pause: {minutes} {minutesWord} ohne Computer, dann kannst du spielen.",
     "bedtime": "{name}, du kannst {day} um {next} spielen.",
     "daily_limit": "{name}, du kannst {day} um {next} spielen."
   },
@@ -65,7 +72,10 @@
     "daily_limit": "Jetzt: Tageslimit erreicht",
     "granted": "Jetzt: die Eltern haben Zeit bis {time} gegeben",
     "hours": "{hours} Std. {minutes} Min.",
-    "onlyMinutes": "{minutes} Min."
+    "onlyMinutes": "{minutes} Min.",
+    "call": "Ruf «ViON»: das Mikrofon der Kamera hört zu",
+    "callFailed": "Ruf «ViON»: das Mikrofon der Kamera ist nicht verfügbar ({reason})",
+    "callLanguage": "Der Ruf «ViON» funktioniert vorerst nur auf Russisch"
   },
   "test": "Sprachtest. Kannst du mich gut hören?",
   "speakerYes": "VOICE kann über diese Kamera sprechen.",

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { ScreenTimeEngine, freshState } from '../src/screenTime.js';
 import { checkScreenTime } from '../src/settings.js';
-import { templateAnswer, templateNudge } from '../src/speech.js';
+import { replyText, templateNudge } from '../src/speech.js';
 import { MINUTE } from '../src/time.js';
 import { msk, runTests, test } from './helpers.js';
 
@@ -250,7 +250,7 @@ test('4. 21:30 on a school evening: phrase about sleep, "when can I play" → to
   assert.ok(phrase.at >= msk('2026-10-07T21:30:00'));
   assert.equal(phrase.action.facts.nextAllowedAt, '07:30');
   assert.equal(phrase.action.facts.nextAllowedDay, 'tomorrow');
-  assert.equal(templateAnswer(phrase.action.facts, 'ru'), 'Артём, играть можно будет завтра в 07:30.');
+  assert.equal(replyText(run.engine.standing(run.t, MOSCOW), 'Артём', 'ru'), 'Артём, играть можно будет завтра в 07:30.');
 });
 
 test('4b. Friday evening follows the weekend bedtime; the night runs over midnight', () => {
@@ -339,6 +339,67 @@ test('quiet hours: no break phrase, but bedtime is still said', () => {
   said.push(...engine.tick({ now: t, present: true, quiet: true, timeZone: MOSCOW, language: 'ru' }));
   assert.equal(said.length, 1);
   assert.equal(said[0].type === 'speak' && said[0].facts.reason, 'bedtime');
+});
+
+const answer = (run: Run) => replyText(run.engine.standing(run.t, MOSCOW), 'Артём', 'ru');
+
+test('"how long": minutes of play before the break, of the break once away, the whole break at the computer', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 20 * MINUTE, true);
+  assert.equal(answer(run), 'Артём, можно играть. До перерыва 25 минут.');
+  pass(run, 26 * MINUTE, true);
+  assert.equal(run.engine.reason(run.t, MOSCOW), 'break');
+  assert.equal(answer(run), 'Артём, сейчас перерыв: 10 минут без компьютера, потом можно играть.');
+  pass(run, 3 * MINUTE, false);
+  const left = (run.engine.state.leftAt ?? 0) + 10 * MINUTE - run.t;
+  assert.ok(left > 6 * MINUTE && left < 8 * MINUTE, `${left / 1000} s left`);
+  assert.equal(answer(run), `Артём, до конца перерыва ${Math.ceil(left / MINUTE)} минут.`);
+  pass(run, left - 5_000, false);
+  assert.equal(answer(run), 'Артём, до конца перерыва 1 минута.', 'the last seconds still count as a minute, never "0 minutes"');
+  pass(run, 5_000, false);
+  assert.equal(answer(run), 'Артём, можно играть. До перерыва 45 минут.', 'the break is over: a whole session ahead');
+});
+
+test('"how long": back during the break, the break is due again in whole, as the engine counts it', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 46 * MINUTE, true);
+  pass(run, 5 * MINUTE, false);
+  pass(run, 30_000, true);
+  assert.equal(answer(run), 'Артём, сейчас перерыв: 10 минут без компьютера, потом можно играть.');
+});
+
+test('"how long": the limit that comes first is named; play is rounded down, never promising more', () => {
+  const daily = start(config({ dailyMinutes: 30 }), msk('2026-10-07T15:00:00'));
+  pass(daily, 20 * MINUTE, true);
+  assert.equal(answer(daily), 'Артём, можно играть. До конца времени на сегодня 10 минут.');
+  pass(daily, 30_000, true);
+  assert.equal(answer(daily), 'Артём, можно играть. До конца времени на сегодня 9 минут.', '9.5 minutes left are 9');
+
+  const evening = start(config(bedtime), msk('2026-10-07T21:10:00'));
+  pass(evening, MINUTE, true);
+  assert.equal(answer(evening), 'Артём, можно играть. До времени сна 19 минут.');
+  pass(evening, 20 * MINUTE, true);
+  assert.equal(answer(evening), 'Артём, играть можно будет завтра в 07:30.', 'a time for the morning, not 600 minutes');
+});
+
+test('"how long": time given by a parent is counted down in minutes', () => {
+  const run = start(config(), msk('2026-10-07T15:00:00'));
+  pass(run, 50 * MINUTE, true);
+  run.engine.extend(15, run.t);
+  pass(run, 5 * MINUTE, true);
+  assert.equal(answer(run), 'Артём, можно играть, родители дали время. До его конца 10 минут.');
+});
+
+test('"how long": the word for minutes agrees with the number', () => {
+  const said = (minutes: number) => replyText({ kind: 'break', minutes }, 'Артём', 'ru');
+  assert.equal(said(1), 'Артём, до конца перерыва 1 минута.');
+  assert.equal(said(2), 'Артём, до конца перерыва 2 минуты.');
+  assert.equal(said(5), 'Артём, до конца перерыва 5 минут.');
+  assert.equal(said(11), 'Артём, до конца перерыва 11 минут.');
+  assert.equal(said(21), 'Артём, до конца перерыва 21 минута.');
+  assert.equal(said(22), 'Артём, до конца перерыва 22 минуты.');
+  assert.equal(replyText({ kind: 'break', minutes: 1 }, 'Artem', 'en'), 'Artem, 1 minute of the break left.');
+  assert.equal(replyText({ kind: 'play', minutes: 3, until: 'bedtime' }, 'Artem', 'de'), 'Artem, du kannst spielen. Noch 3 Minuten bis zur Schlafenszeit.');
 });
 
 void runTests();

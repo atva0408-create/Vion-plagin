@@ -6,14 +6,15 @@
 import { Severity } from '@camera.ui/sdk';
 import { PhraseQueue, isEcho } from '@vionvision/speech';
 
+import { CALL_LANGUAGES, CallListener } from './call.js';
 import { PresenceTracker } from './presence.js';
 import { ScreenTimeEngine, freshState } from './screenTime.js';
 import { restoreScreenTime } from './state.js';
-import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, saidText, templateNotify, texts } from './speech.js';
+import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, replyText, saidText, templateNotify, texts } from './speech.js';
 import { MINUTE, activeInterval, formatClock, localTime } from './time.js';
 
 import type { Notification } from '@camera.ui/sdk';
-import type { SpeakResult, SpeechEngine } from '@vionvision/speech';
+import type { OpenAudio, SpeakResult, SpeechEngine } from '@vionvision/speech';
 import type { Point, Sighting } from './presence.js';
 import type { Facts, ScreenTimeAction, ScreenTimeConfig, ScreenTimeState } from './screenTime.js';
 import type { Ask, Language } from './speech.js';
@@ -33,6 +34,8 @@ export interface CameraPort {
   snapshot(): Promise<Uint8Array | undefined>;
   /** The first utterance heard within the window. */
   listen(windowMs: number, signal?: AbortSignal): Promise<Float32Array | undefined>;
+  /** The sound of the camera kept open, for a child calling VOICE by name. */
+  hear(): Promise<OpenAudio>;
 }
 
 export interface VoiceDeps {
@@ -84,6 +87,8 @@ const MAX_EXCHANGES = 3;
  */
 export const LISTEN_DELAY_MS = 1_500;
 const MAX_INSTRUCTED = 300;
+/** How a call of VOICE is shown to the parents: the name the child said. */
+const CALL_NAME = 'ВиОН';
 /** State fields that change with every look; a change of only these waits for the minute. */
 const COUNTERS = new Set(['lastTick', 'lastSeen', 'todayMs', 'workMs', 'history', 'candidateSince']);
 
@@ -103,6 +108,9 @@ export class Voice {
   /** The last phrase said on each camera: what its microphone may hear again. */
   private lastSaid = new Map<string, string>();
   private looking = new Set<string>();
+  /** Phrases being said per camera: the microphone open for a call hears them, they are not the child. */
+  private speakingOn = new Map<string, number>();
+  private calls: CallListener;
   private lastSaved = '';
   private lastSavedAt = 0;
   private saved: SavedState;
@@ -114,6 +122,19 @@ export class Voice {
   ) {
     this.saved = { screenTime: restoreScreenTime(saved) };
     if (JSON.stringify(this.saved) !== JSON.stringify(saved)) this.deps.log('invalid VOICE state entries were discarded');
+    this.calls = new CallListener({
+      clock: deps.clock,
+      engine: deps.engine,
+      open: (cameraId) => {
+        const camera = this.cameras.get(cameraId);
+        return camera ? camera.hear() : Promise.reject(new Error('the camera was released'));
+      },
+      busy: (cameraId) => this.talking.has(cameraId) || this.speakingOn.has(cameraId),
+      language: () => this.deps.language(),
+      onCall: (cameraId, question, heard) => void this.answerCall(cameraId, question, heard),
+      name: (cameraId) => this.cameras.get(cameraId)?.name ?? cameraId,
+      log: (message) => this.deps.log(message),
+    });
   }
 
   // ---- cameras ----
@@ -132,6 +153,7 @@ export class Voice {
     this.queues.delete(cameraId);
     this.talking.delete(cameraId);
     this.lastSaid.delete(cameraId);
+    this.calls.close(cameraId);
     for (const [key, scenario] of this.scenarios)
       if (scenario.cameraId === cameraId) {
         scenario.controller.abort();
@@ -146,6 +168,7 @@ export class Voice {
     for (const queue of this.queues.values()) queue.stop();
     this.queues.clear();
     this.talking.clear();
+    this.calls.closeAll();
   }
 
   start(): void {
@@ -211,7 +234,16 @@ export class Voice {
         if (!valid() || signal.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
         const audio = await this.waitFor(this.deps.engine.synthesize(text, this.deps.language(), this.deps.speed()), signal);
         if (!valid() || signal.aborted) return { status: 'failed', reason: 'the phrase was cancelled' };
-        return camera.speaker.speak(audio.samples, audio.sampleRate, signal);
+        this.speakingOn.set(cameraId, (this.speakingOn.get(cameraId) ?? 0) + 1);
+        try {
+          return await camera.speaker.speak(audio.samples, audio.sampleRate, signal);
+        } finally {
+          const left = (this.speakingOn.get(cameraId) ?? 1) - 1;
+          if (left > 0) this.speakingOn.set(cameraId, left);
+          else this.speakingOn.delete(cameraId);
+          // the camera still plays the end of the phrase: half heard, it would come out as a phrase of the room
+          this.calls.deafen(cameraId, LISTEN_DELAY_MS);
+        }
       },
     });
     this.remember({ at: this.deps.clock.now(), cameraId, said: text, source, result: result.status + (result.reason ? `: ${result.reason}` : '') });
@@ -289,6 +321,7 @@ export class Voice {
         tracker,
       });
     }
+    this.syncCalls(cameraId, false);
   }
 
   scenariosOf(cameraId: string): { key: string; engine: ScreenTimeEngine }[] {
@@ -316,6 +349,8 @@ export class Voice {
   }
 
   private async lookNow(cameraId: string, sighting: Sighting | undefined): Promise<void> {
+    // the microphone opens with the looks: they run once VOICE has started, and a change of language is seen here too
+    this.syncCalls(cameraId, true);
     const now = this.deps.clock.now();
     const timeZone = this.deps.timeZone();
     const quiet = Boolean(activeInterval(this.deps.quiet(), now, timeZone));
@@ -395,6 +430,85 @@ export class Voice {
     return `${engine.config.childName}: ${parts.join('. ')}`;
   }
 
+  // ---- called by name ----
+
+  /** Whether the microphone of the camera listens for «ВиОН», for the parents' status; '' when no child asks for it. */
+  callStatusOf(cameraId: string): string {
+    const t = texts(this.deps.language()).status;
+    if (!this.callWanted(cameraId, true)) return this.callWanted(cameraId, false) ? t.callLanguage : '';
+    const state = this.calls.stateOf(cameraId);
+    if (state.state === 'failing') return fill(t.callFailed, { reason: state.reason });
+    return state.state === 'listening' ? t.call : '';
+  }
+
+  /** The child called VOICE by name: where they stand, in minutes; a request for more time goes to the parents. */
+  async answerCall(cameraId: string, question: string, heard: string): Promise<void> {
+    const camera = this.cameras.get(cameraId);
+    const controller = this.controllers.get(cameraId);
+    if (!camera || !controller || this.stopped || controller.signal.aborted || this.talking.has(cameraId)) return;
+    // VOICE's own phrase coming back: a child named Леон would have VOICE answer itself
+    if (isEcho(heard, this.lastSaid.get(cameraId))) return;
+    const candidates = [...this.scenarios.entries()].filter(([, s]) => s.cameraId === cameraId && s.engine.config.enabled && s.engine.config.answerOnCall);
+    if (!candidates.length) return;
+    // the child at the computer, else the one seen last: two children of one room each ask about themselves
+    candidates.sort(([, a], [, b]) => Number(b.engine.state.present) - Number(a.engine.state.present) || (b.engine.state.lastSeen ?? 0) - (a.engine.state.lastSeen ?? 0));
+    const [key, scenario] = candidates[0];
+    const now = this.deps.clock.now();
+    const timeZone = this.deps.timeZone();
+    const standing = scenario.engine.standing(now, timeZone);
+    if (activeInterval(this.deps.quiet(), now, timeZone) && standing.kind !== 'bedtime') {
+      this.deps.log(`${camera.name}: called in the quiet hours, not answered`);
+      return;
+    }
+    const language = this.deps.language();
+    const name = scenario.engine.config.childName;
+    // the answer takes the camera like a conversation: a reminder said now would be talked over
+    let endTurn = () => {};
+    const turn = new Promise<void>((resolve) => (endTurn = resolve));
+    this.talking.set(cameraId, turn);
+    const valid = () =>
+      !this.stopped &&
+      this.controllers.get(cameraId) === controller &&
+      !controller.signal.aborted &&
+      this.scenarios.get(key) === scenario &&
+      scenario.engine.config.enabled;
+    try {
+      const answer = await this.waitFor(answerChild(this.deps.ask, replyText(standing, name, language), question, language, 'call'), controller.signal);
+      if (!valid()) return;
+      const said = question ? `${CALL_NAME}, ${question}` : CALL_NAME;
+      if (answer.intent === 'asks_more_time') {
+        const t = texts(language).notify;
+        const values = { name, text: said };
+        await this.notifyParents(camera, fill(t.moreTimeTitle, values), fill(t.moreTime, values), `voice:${key}:more`, valid);
+      }
+      await this.speak(cameraId, answer.text, answer.source, valid, controller.signal);
+      const last = this.recent[this.recent.length - 1];
+      if (last?.cameraId === cameraId && last.said === answer.text) {
+        last.heard = said;
+        last.child = name;
+      }
+    } catch (error) {
+      this.deps.log(`${camera.name}: the call was not answered: ${(error as Error).message}`);
+    } finally {
+      if (this.talking.get(cameraId) === turn) this.talking.delete(cameraId);
+      endTurn();
+    }
+  }
+
+  /** A child of the camera asks to be answered when calling; with `inLanguage`, in a language the name is known in. */
+  private callWanted(cameraId: string, inLanguage: boolean): boolean {
+    if (this.stopped || !this.cameras.has(cameraId)) return false;
+    if (inLanguage && !CALL_LANGUAGES.includes(this.deps.language())) return false;
+    return [...this.scenarios.values()].some((s) => s.cameraId === cameraId && s.engine.config.enabled && s.engine.config.answerOnCall);
+  }
+
+  /** Opens the microphone where a child may call (`open`), and closes it where none may any more. */
+  private syncCalls(cameraId: string, open: boolean): void {
+    const wanted = this.callWanted(cameraId, true);
+    if (!wanted) this.calls.want(cameraId, false);
+    else if (open) this.calls.want(cameraId, true);
+  }
+
   // ---- inside ----
 
   private async act(key: string, scenario: Scenario, action: ScreenTimeAction, scenarioSignal: AbortSignal, valid: () => boolean): Promise<void> {
@@ -463,8 +577,10 @@ export class Voice {
           this.deps.log(`${camera.name}: heard its own phrase, not an answer`);
           return;
         }
-        const facts: Facts = scenario.engine.facts(this.deps.clock.now(), { timeZone: this.deps.timeZone(), language });
-        const answer = await this.waitFor(answerChild(this.deps.ask, facts, heard, language), signal);
+        const now = this.deps.clock.now();
+        const facts: Facts = scenario.engine.facts(now, { timeZone: this.deps.timeZone(), language });
+        const reply = replyText(scenario.engine.standing(now, this.deps.timeZone()), facts.childName, language);
+        const answer = await this.waitFor(answerChild(this.deps.ask, reply, heard, language), signal);
         if (!valid()) return;
         if (answer.intent === 'asks_more_time') {
           const t = texts(language).notify;

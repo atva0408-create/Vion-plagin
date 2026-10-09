@@ -28,7 +28,14 @@
   },
   "remaining": "{name}, перерыв ещё не закончился, осталось {left} {leftWord}.",
   "answer": {
-    "break": "{name}, играть можно будет в {next}, после перерыва.",
+    "play": {
+      "break": "{name}, можно играть. До перерыва {minutes} {minutesWord}.",
+      "daily_limit": "{name}, можно играть. До конца времени на сегодня {minutes} {minutesWord}.",
+      "bedtime": "{name}, можно играть. До времени сна {minutes} {minutesWord}."
+    },
+    "granted": "{name}, можно играть, родители дали время. До его конца {minutes} {minutesWord}.",
+    "break": "{name}, до конца перерыва {minutes} {minutesWord}.",
+    "break_due": "{name}, сейчас перерыв: {minutes} {minutesWord} без компьютера, потом можно играть.",
     "bedtime": "{name}, играть можно будет {day} в {next}.",
     "daily_limit": "{name}, играть можно будет {day} в {next}."
   },
@@ -72,7 +79,10 @@
     "daily_limit": "Сейчас: лимит на сегодня исчерпан",
     "granted": "Сейчас: родители дали время до {time}",
     "hours": "{hours} ч {minutes} мин",
-    "onlyMinutes": "{minutes} мин"
+    "onlyMinutes": "{minutes} мин",
+    "call": "Вызов «ВиОН»: микрофон камеры слушает",
+    "callFailed": "Вызов «ВиОН»: микрофон камеры недоступен ({reason})",
+    "callLanguage": "Вызов «ВиОН» пока работает только на русском языке"
   },
   "test": "Проверка голоса. Меня хорошо слышно?",
   "speakerYes": "Этой камерой можно говорить.",

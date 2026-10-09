@@ -89,6 +89,8 @@
   "08:30": "08:30",
   "Answer the child": "Dem Kind antworten",
   "After a phrase VOICE listens and answers questions like \"when can I play?\".": "Nach einem Satz hört VOICE zu und beantwortet Fragen wie „Wann darf ich spielen?“.",
+  "Answer when called": "Antworten, wenn gerufen",
+  "The child says «ВиОН» and a question («ВиОН, сколько мне ещё отдыхать?»), and VOICE answers in minutes. The microphone of this camera stays open while this is on: speech is recognized on this server, nothing is recorded or kept. Russian only for now.": "Das Kind sagt «ViON» und eine Frage («ViON, wie lange dauert meine Pause noch?»), und VOICE antwortet in Minuten. Solange das an ist, bleibt das Mikrofon dieser Kamera offen: die Sprache wird auf diesem Server erkannt, nichts wird aufgenommen oder gespeichert. Vorerst nur auf Russisch.",
   "Say how long the break still lasts": "Sagen, wie lange die Pause noch dauert",
   "When the child comes back too early.": "Wenn das Kind zu früh zurückkommt.",
   "The scenario works.": "Das Szenario ist aktiv.",

@@ -89,6 +89,8 @@
   "08:30": "08:30",
   "Answer the child": "Answer the child",
   "After a phrase VOICE listens and answers questions like \"when can I play?\".": "After a phrase VOICE listens and answers questions like \"when can I play?\".",
+  "Answer when called": "Answer when called",
+  "The child says «ВиОН» and a question («ВиОН, сколько мне ещё отдыхать?»), and VOICE answers in minutes. The microphone of this camera stays open while this is on: speech is recognized on this server, nothing is recorded or kept. Russian only for now.": "The child says «ViON» and a question («ViON, how long is my break?»), and VOICE answers in minutes. The microphone of this camera stays open while this is on: speech is recognized on this server, nothing is recorded or kept. Russian only for now.",
   "Say how long the break still lasts": "Say how long the break still lasts",
   "When the child comes back too early.": "When the child comes back too early.",
   "The scenario works.": "The scenario works.",
