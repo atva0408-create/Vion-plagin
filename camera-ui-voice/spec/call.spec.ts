@@ -23,11 +23,13 @@ test('the name as the Russian recognizer wrote it for «ВиОН» (bench, VOICE
     // the live chain on the bench (Silero cuts, zipformer writes): «ВиОН» as "виллан", «Эй, ВиОН» as "и вион"
     ['виллан сколько мне ещё отдыхать', 'сколько мне еще отдыхать'],
     ['и вион сколько времени осталось', 'сколько времени осталось'],
+    ['вио', ''],
   ];
   for (const [text, question] of heard) assert.equal(calledWith(text, 'ru')?.question, question, text);
   assert.equal(calledWith('вион', 'ru')?.exact, true);
   assert.equal(calledWith('ви он сколько', 'ru')?.exact, true);
   assert.equal(calledWith('леон сколько', 'ru')?.exact, false, 'only sounds like the name');
+  assert.equal(calledWith('вио', 'ru')?.exact, false, 'cut short: a call only with a question');
 });
 
 test('a word that only sounds like the name calls VOICE only with a question about the time', () => {

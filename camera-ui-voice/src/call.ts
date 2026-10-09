@@ -25,6 +25,8 @@ export const CALL_LANGUAGES: readonly Language[] = ['ru'];
  */
 const NAME_RU = /^(?:в|л|р|пр|б)[ие]й?[рл]{0,2}и?[оеа]н$/u;
 const EXACT_RU = 'вион';
+/** The name cut short, as the recognizer also wrote it alone ("вио"). */
+const CUT_RU = new Set(['вио']);
 /** Words a call may start with before the name: «эй, ВиОН»; the recognizer wrote "эй" as "и". */
 const LEADS_RU = new Set(['эй', 'и', 'ну', 'а', 'слушай', 'привет', 'скажи']);
 /** «ви он» in two words; not "ли он", which starts an ordinary question. */
@@ -56,7 +58,7 @@ export function calledWith(text: string, language: Language): Called | undefined
   const at = LEADS_RU.has(words[0] ?? '') ? 1 : 0;
   const first = words[at];
   if (first === undefined) return undefined;
-  if (NAME_RU.test(first)) return { question: words.slice(at + 1).join(' '), exact: first === EXACT_RU };
+  if (NAME_RU.test(first) || CUT_RU.has(first)) return { question: words.slice(at + 1).join(' '), exact: first === EXACT_RU };
   const second = words[at + 1];
   if (SPLIT_RU.has(first) && second !== undefined && NAME_RU.test(first + second)) {
     return { question: words.slice(at + 2).join(' '), exact: first + second === EXACT_RU };
