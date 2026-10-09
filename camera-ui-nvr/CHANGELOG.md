@@ -4,6 +4,7 @@
 - The data of the people search is kept 7 days by default (Settings → People search) and can be deleted in one go; it is deleted with its event, favourites included. The person vectors never reach the stored events or the interface
 - The search by description on the recordings page finds older events too, together with ViON's paged search: the page looked for matches only among the events it had loaded, so a match older than the loaded pages was never shown. The recorder now applies the page's filters (cameras, time, score, favourites, the rest of the filter) and sends the matches page by page
 - A link to an older episode opens it: the recorder answers for one episode by its id
+- H.265 cameras whose stream go2rtc starts with an H.264 access unit delimiter (Xiaomi) are recorded: the recorder took the delimiter for the start of a picture and never saw a keyframe
 
 ## [0.12.2]
 

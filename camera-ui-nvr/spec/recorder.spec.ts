@@ -96,7 +96,7 @@ function pes(pts: number, es: Buffer, counter: { value: number }): Buffer[] {
  * picture of every keyframe, which moves the picture out of the first TS packet; `keyframes: false` sends no
  * keyframe at all; `ptsOffset` moves the clock of the stream (ticks of 90 kHz, wrapping at 33 bits like a real one).
  */
-function stream(codec: VideoCodec, opts: { gops: number; seiBytes?: number; keyframes?: boolean; firstGop?: number; ptsOffset?: number }): Buffer {
+function stream(codec: VideoCodec, opts: { gops: number; seiBytes?: number; keyframes?: boolean; firstGop?: number; ptsOffset?: number; h264Aud?: boolean }): Buffer {
   const c = CODECS[codec];
   const counter = { value: 0 };
   const out: Buffer[] = [];
@@ -106,7 +106,8 @@ function stream(codec: VideoCodec, opts: { gops: number; seiBytes?: number; keyf
       if (frame === 0) out.push(pat(), pmt(c.streamType));
       const key = frame === 0 && opts.keyframes !== false;
       const es = key ? Buffer.concat([...c.header, ...(opts.seiBytes ? [c.sei(opts.seiBytes)] : []), c.key(gop + 1)]) : c.delta();
-      out.push(...pes(pts, es, counter));
+      // go2rtc's Xiaomi HEVC transport stream also prefixes each access unit with this AVC delimiter.
+      out.push(...pes(pts, opts.h264Aud ? Buffer.concat([nal('09f0'), es]) : es, counter));
     }
   }
   return Buffer.concat(out);
@@ -182,6 +183,24 @@ for (const codec of ['h264', 'h265'] as const) {
     }
     store.close();
   }
+}
+
+// Xiaomi HEVC through go2rtc: an AVC access-unit delimiter precedes the actual HEVC NAL units.
+for (const seiBytes of [0, 200, 2400]) {
+  const name = `xiaomi-hevc-sei${seiBytes}`;
+  const { rec, store, feed } = recorder(name);
+  feed(stream('h265', { gops: 4, seiBytes, h264Aud: true }));
+  await rec.stop();
+  const [segment] = store.segments(name, 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.ok(segment, `${name}: HEVC behind an AVC delimiter must still record`);
+  const keyframes = parseKeyframes(segment.keyframes);
+  assert.equal(keyframes.length, 4, 'every Xiaomi keyframe is indexed');
+  for (const [i, keyframe] of keyframes.entries()) {
+    const frame = await readKeyframe(segment, keyframe);
+    const picture = [...nalUnits(frame?.data ?? Buffer.alloc(0))].find((n) => nalType(n, 'h265') === CODECS.h265.idr);
+    assert.equal(picture?.[2], i + 1, 'the recorded keyframe can be read back for playback');
+  }
+  store.close();
 }
 
 // the rest runs on a clock the spec moves: the recorder reads the time for its flushes and its warning

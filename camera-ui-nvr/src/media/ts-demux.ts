@@ -242,6 +242,9 @@ export function isKeyframe(data: Buffer, codec: VideoCodec): boolean {
  */
 export function keyframeStart(data: Buffer, codec: VideoCodec): boolean | undefined {
   for (const nal of nalUnits(data)) {
+    // go2rtc can prefix HEVC with the AVC AUD 09 f0. It is not a HEVC picture: its temporal_id_plus1 is zero.
+    // Wait for a complete HEVC header and ignore invalid NALs before deciding whether the picture is a keyframe.
+    if (codec === 'h265' && (nal.length < 2 || (nal[0] & 0x80) !== 0 || (nal[1] & 0x07) === 0)) continue;
     const t = nalType(nal, codec);
     if (codec === 'h264' ? t >= 1 && t <= 5 : t < 32) return codec === 'h264' ? t === 5 : t >= 16 && t <= 21;
   }

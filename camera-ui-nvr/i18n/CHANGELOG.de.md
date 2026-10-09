@@ -4,6 +4,7 @@
 - Die Daten der Personensuche werden standardmäßig 7 Tage aufbewahrt (Einstellungen → Personensuche) und lassen sich auf einmal löschen; sie werden mit ihrem Ereignis gelöscht, auch bei Favoriten. Die Personenvektoren gelangen weder in die gespeicherten Ereignisse noch in die Oberfläche
 - Die Suche nach Beschreibung auf der Aufnahmenseite findet auch ältere Ereignisse, zusammen mit der seitenweisen Suche von ViON: Die Seite suchte Treffer nur unter den bereits geladenen Ereignissen, ein Treffer älter als die geladenen Seiten wurde nie gezeigt. Jetzt wendet der Rekorder die Filter der Seite an (Kameras, Zeit, Bewertung, Favoriten und die übrigen Bedingungen) und liefert die Treffer seitenweise
 - Ein Link auf eine ältere Episode öffnet sie: Der Rekorder liefert eine Episode anhand ihrer Kennung
+- H.265-Kameras, deren Stream go2rtc mit einem H.264-Zugriffseinheitstrenner beginnt (Xiaomi), werden aufgezeichnet: der Rekorder hielt den Trenner für den Beginn eines Bildes und sah nie ein Schlüsselbild
 
 ## [0.12.2]
 

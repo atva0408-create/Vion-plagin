@@ -410,7 +410,8 @@ export class Recorder {
     if (keyframe !== undefined) this.release(keyframe);
     // bounded: when the video stalls inside such a frame and the sound goes on, the packets must not pile up without end
     else if (held.packets.length >= HELD_MAX_PACKETS) this.release(false);
-    else if (data) held.tail = data.subarray(Math.max(0, data.length - 3));
+    // Keep a three-byte start code plus the first HEVC header byte if the second byte is in the next packet.
+    else if (data) held.tail = data.subarray(Math.max(0, data.length - 4));
   }
 
   private release(keyframe: boolean): void {
