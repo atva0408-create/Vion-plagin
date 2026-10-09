@@ -18,7 +18,7 @@
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./",
-    "test": "tsx spec/core.spec.ts"
+    "test": "tsx spec/core.spec.ts && tsx spec/store.spec.ts"
   },
   "dependencies": {
     "sherpa-onnx-node": "1.13.8"

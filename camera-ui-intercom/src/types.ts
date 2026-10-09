@@ -209,6 +209,8 @@ export interface VisitAction {
   at: number;
   kind: 'open' | 'notify' | 'ask_owner' | 'say' | 'record' | 'code';
   detail: string;
+  /** of an opening: the door confirmed it, the command went without a confirmation, or it failed */
+  result?: 'confirmed' | 'sent' | 'failed';
   /** a user id, 'rule:<person>', 'instruction:<id>', 'agent' */
   by: string;
 }
