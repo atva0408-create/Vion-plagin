@@ -543,9 +543,12 @@ export class Intercom {
   private async publishUpdate(live: Live): Promise<void> {
     const t = (key: string, values?: Record<string, string | undefined>) => ownerText(this.language(), key, values);
     const call = live.call;
+    const answeredBy = this.userName(call.answeredBy);
     const title =
       call.state === 'answered'
-        ? t('answeredBy', { user: call.answeredBy })
+        ? answeredBy
+          ? t('answeredBy', { user: answeredBy })
+          : t('answeredBySomeone')
         : call.state === 'agent'
           ? t('agentTitle', { panel: live.panel.name })
           : call.outcome === 'missed'
@@ -627,6 +630,18 @@ export class Intercom {
     return result;
   }
 
+  /**
+   * The household's texts name the user who answered or opened, not their id: the server gives the name with the actor
+   * (the assistant does not), and the store keeps it so a restart or an opening through the assistant still has it.
+   */
+  private remember(actor: Actor): void {
+    if (actor.name && this.store.getMeta<string>(`userName:${actor.userId}`) !== actor.name) this.store.setMeta(`userName:${actor.userId}`, actor.name);
+  }
+
+  private userName(userId: string | undefined): string | undefined {
+    return userId ? this.store.getMeta<string>(`userName:${userId}`) : undefined;
+  }
+
   private liveCall(callId: string): Live {
     const live = this.byCall.get(callId);
     if (!live || live.call.state === 'ended') throw new IntercomError('not_found', 'the call is over');
@@ -635,6 +650,7 @@ export class Intercom {
 
   answerCall(actor: Actor, callId: string): { ok: true; cameraId: string } | { ok: false; taken: string } {
     const live = this.liveCall(callId);
+    this.remember(actor); // before the step: it tells the household who answered
     const result = this.event(live, { type: live.call.state === 'agent' ? 'take_over' : 'answer', userId: actor.userId });
     if (result.refused === 'taken') return { ok: false, taken: result.takenBy ?? '' };
     if (result.refused) throw new IntercomError('conflict', `the call cannot be answered: ${result.refused}`);
@@ -954,6 +970,7 @@ export class Intercom {
     const door = panel.doors.find((d) => d.id === doorId || d.name.toLowerCase() === doorId.toLowerCase());
     if (!door) throw new IntercomError('not_found', 'no such door');
     if (!canOpen(actor, panel)) throw new IntercomError('forbidden', `you may not open the doors of ${panel.name}`);
+    this.remember(actor);
     return this.openDoor(panel, door, actor.userId, this.live.get(panel.id));
   }
 
@@ -991,7 +1008,8 @@ export class Intercom {
       this.store.saveVisit(live.visit);
     }
     const who = (live && this.who(live)) ?? (identification?.personId ? this.store.person(identification.personId)?.name : undefined) ?? '';
-    const how = by === 'sensor' ? '' : kind === 'user' ? t.how.user.replace('{user}', by) : t.how[kind];
+    const name = kind === 'user' ? this.userName(by) : undefined;
+    const how = by === 'sensor' ? '' : kind === 'user' ? (name ? t.how.user.replace('{user}', name) : t.how.someone) : t.how[kind];
     await this.notify({
       title: ownerText(this.language(), 'openedTitle', { panel: panel.name, door: door.name }),
       body: [who, how, t.how[outcome.result]].filter(Boolean).join(', '),
@@ -1077,7 +1095,7 @@ export class Intercom {
       visitor: { name: visit.who.name, company: visit.who.company, category: visit.who.category, purpose: visit.purpose, callback: visit.callback },
       messages: live.agent?.messages ?? [],
       outcome: visit.outcome ?? 'missed',
-      answeredBy: visit.answeredBy,
+      answeredBy: visit.answeredBy ? (this.userName(visit.answeredBy) ?? '') : undefined,
       voicemail: Boolean(visit.voiceMessage),
     });
     visit.title = summary.title;

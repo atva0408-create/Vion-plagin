@@ -13,6 +13,8 @@ import type { IntercomSettings } from './settings.js';
 export interface Actor {
   userId: string;
   role: 'user' | 'admin' | 'master';
+  /** the user's name, for the household's notifications and the visits ("Anna answered"); the assistant has none */
+  name?: string;
 }
 
 export type ErrorCode = 'forbidden' | 'not_found' | 'invalid' | 'conflict' | 'unavailable';
@@ -37,7 +39,8 @@ export function asActor(value: unknown): Actor {
   if (typeof a.userId !== 'string' || !a.userId || !['user', 'admin', 'master'].includes(a.role as string)) {
     throw new IntercomError('forbidden', 'no user');
   }
-  return { userId: a.userId, role: a.role as Actor['role'] };
+  const name = typeof a.name === 'string' ? a.name.trim().slice(0, 64) : '';
+  return { userId: a.userId, role: a.role as Actor['role'], ...(name ? { name } : {}) };
 }
 
 export function canOpen(actor: Actor, panel: Panel): boolean {

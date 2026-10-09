@@ -5,6 +5,7 @@
   "ringStranger": "Unbekannte Person",
   "ringLooksLike": "Sieht aus wie: {sees}",
   "answeredBy": "{user} hat abgenommen",
+  "answeredBySomeone": "Der Anruf wurde angenommen",
   "missedTitle": "Verpasstes Klingeln: {panel}",
   "agentTitle": "Agent: {panel}",
   "visitTitle": "{panel}: {title}",
@@ -54,7 +55,8 @@
     "instruction": "nach einem Auftrag",
     "confirmed": "die Tür hat es bestätigt",
     "sent": "Befehl gesendet, keine Bestätigung",
-    "failed": "fehlgeschlagen"
+    "failed": "fehlgeschlagen",
+    "someone": "von einem Benutzer geöffnet"
   },
   "summary": {
     "said": "Gesagt: „{text}“",
@@ -62,7 +64,8 @@
     "nobody": "Es klingelte, aber niemand war im Bild.",
     "answered": "{user} hat abgenommen.",
     "missed": "Niemand hat abgenommen.",
-    "voicemail": "Hat eine Sprachnachricht hinterlassen."
+    "voicemail": "Hat eine Sprachnachricht hinterlassen.",
+    "answeredSomeone": "Der Anruf wurde angenommen."
   },
   "quickAnswers": {
     "open": "Öffnen",

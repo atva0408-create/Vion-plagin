@@ -19,8 +19,8 @@ export interface OwnerTexts {
   [key: string]: string | Record<string, string>;
   categories: Record<Category | 'sales', string>;
   titles: Record<'stranger' | 'nobody' | 'named' | 'company', string>;
-  how: Record<'user' | 'rule' | 'code' | 'instruction' | 'confirmed' | 'sent' | 'failed', string>;
-  summary: Record<'said' | 'message' | 'nobody' | 'answered' | 'missed' | 'voicemail', string>;
+  how: Record<'user' | 'someone' | 'rule' | 'code' | 'instruction' | 'confirmed' | 'sent' | 'failed', string>;
+  summary: Record<'said' | 'message' | 'nobody' | 'answered' | 'answeredSomeone' | 'missed' | 'voicemail', string>;
   quickAnswers: Record<'open' | 'leave_at_door' | 'call_me' | 'refuse', string>;
 }
 
@@ -59,6 +59,7 @@ export interface SummaryInput {
   visitor: { name?: string; company?: string; category?: Category; purpose?: string; callback?: string };
   messages: string[];
   outcome: Outcome;
+  /** the name of the user who answered; empty when the call was answered by someone whose name is not known */
   answeredBy?: string;
   voicemail: boolean;
 }
@@ -95,7 +96,7 @@ export function templateSummary(input: SummaryInput): VisitSummary {
             : t.titles.stranger;
   const sentences: string[] = [];
   if (input.outcome === 'nobody') sentences.push(t.summary.nobody);
-  if (input.answeredBy) sentences.push(fill(t.summary.answered, { user: input.answeredBy }));
+  if (input.answeredBy !== undefined) sentences.push(input.answeredBy ? fill(t.summary.answered, { user: input.answeredBy }) : t.summary.answeredSomeone);
   else if (input.outcome === 'missed') sentences.push(t.summary.missed);
   if (v.purpose) sentences.push(fill(t.summary.said, { text: v.purpose }));
   const message = [...input.messages, v.callback].filter(Boolean).join('. ') || undefined;

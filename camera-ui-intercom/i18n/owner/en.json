@@ -5,6 +5,7 @@
   "ringStranger": "A stranger",
   "ringLooksLike": "Looks like: {sees}",
   "answeredBy": "{user} answered",
+  "answeredBySomeone": "The call was answered",
   "missedTitle": "Missed ring: {panel}",
   "agentTitle": "Agent: {panel}",
   "visitTitle": "{panel}: {title}",
@@ -54,7 +55,8 @@
     "instruction": "by an instruction",
     "confirmed": "the door confirmed",
     "sent": "the command went, no confirmation",
-    "failed": "it failed"
+    "failed": "it failed",
+    "someone": "opened by a user"
   },
   "summary": {
     "said": "Said: \"{text}\"",
@@ -62,7 +64,8 @@
     "nobody": "A ring, but nobody was in view.",
     "answered": "{user} answered.",
     "missed": "Nobody answered.",
-    "voicemail": "Left a voice message."
+    "voicemail": "Left a voice message.",
+    "answeredSomeone": "The call was answered."
   },
   "quickAnswers": {
     "open": "Open",

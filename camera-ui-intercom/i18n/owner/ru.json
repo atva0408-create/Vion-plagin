@@ -5,6 +5,7 @@
   "ringStranger": "Незнакомый посетитель",
   "ringLooksLike": "Похоже: {sees}",
   "answeredBy": "Ответил(а) {user}",
+  "answeredBySomeone": "Звонок принят",
   "missedTitle": "Пропущенный звонок: {panel}",
   "agentTitle": "Агент: {panel}",
   "visitTitle": "{panel}: {title}",
@@ -54,7 +55,8 @@
     "instruction": "по поручению",
     "confirmed": "дверь подтвердила",
     "sent": "команда отправлена, подтверждения нет",
-    "failed": "не получилось"
+    "failed": "не получилось",
+    "someone": "открыл(а) пользователь"
   },
   "summary": {
     "said": "Сказал(а): «{text}»",
@@ -62,7 +64,8 @@
     "nobody": "Звонок, но в кадре никого не было.",
     "answered": "Ответил(а) {user}.",
     "missed": "Никто не ответил.",
-    "voicemail": "Оставил(а) голосовое сообщение."
+    "voicemail": "Оставил(а) голосовое сообщение.",
+    "answeredSomeone": "Звонок приняли."
   },
   "quickAnswers": {
     "open": "Открыть",

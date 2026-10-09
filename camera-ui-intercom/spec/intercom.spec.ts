@@ -189,8 +189,11 @@ test('the first who answers gets the call, the next is told who did; the agent d
   w.intercom.press('gate');
   await w.pass(100);
   const callId = w.callId();
-  assert.deepEqual(w.intercom.answerCall(u1, callId), { ok: true, cameraId: 'cam1' });
+  assert.deepEqual(w.intercom.answerCall({ ...u1, name: 'Маша' }, callId), { ok: true, cameraId: 'cam1' });
   assert.deepEqual(w.intercom.answerCall(u2, callId), { ok: false, taken: 'u1' });
+  await w.pass(100);
+  // the household is told by name, never by id
+  assert.equal(w.calls('intercom.call.update').at(-1)?.title, 'Ответил(а) Маша');
   await w.pass(30_000);
   assert.deepEqual(w.said, []);
   w.intercom.hangUpCall(u1, callId);
@@ -198,6 +201,7 @@ test('the first who answers gets the call, the next is told who did; the agent d
   const visit = w.store.queryVisits({}).visits[0];
   assert.equal(visit.outcome, 'answered');
   assert.equal(visit.answeredBy, 'u1');
+  assert.match(visit.summary ?? '', /Ответил\(а\) Маша\./);
   assert.throws(() => w.intercom.answerCall(u2, callId), /not_found/);
 });
 
@@ -243,6 +247,9 @@ test('opening: a user needs the right of the panel; the opening is logged and to
   w.openResult = { result: 'sent' };
   assert.equal((await w.intercom.openDoorAs(u1, 'gate', 'gate')).result, 'sent');
   assert.match(w.published.at(-1)?.body ?? '', /команда отправлена, подтверждения нет/);
+  assert.match(w.published.at(-1)?.body ?? '', /открыл\(а\) пользователь/, 'a user whose name is not known is not named by id');
+  await w.intercom.openDoorAs({ ...u1, name: 'Маша' }, 'gate', 'gate');
+  assert.match(w.published.at(-1)?.body ?? '', /открыл\(а\) Маша/);
 });
 
 test('a guest code: opening wants it, it is given once, typed at the panel it opens once; guessing closes the panel', async () => {
