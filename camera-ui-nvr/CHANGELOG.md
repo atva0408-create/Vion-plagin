@@ -1,3 +1,8 @@
+## [0.11.4]
+
+- The search by description on the recordings page finds older events too, together with ViON's paged search: the page looked for matches only among the events it had loaded, so a match older than the loaded pages was never shown. The recorder now applies the page's filters (cameras, time, score, favourites, the rest of the filter) and sends the matches page by page
+- A link to an older episode opens it: the recorder answers for one episode by its id
+
 ## [0.11.3]
 
 - The hover preview of an event finds the event where it is recorded: an event recorded only from its middle, or from a camera that sends a keyframe rarely, showed "no preview"; the excerpt now starts where the recording of the event begins, at the next keyframe when the one before is further back than the excerpt is long

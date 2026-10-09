@@ -1,3 +1,8 @@
+## [0.11.4]
+
+- Die Suche nach Beschreibung auf der Aufnahmenseite findet auch ältere Ereignisse, zusammen mit der seitenweisen Suche von ViON: Die Seite suchte Treffer nur unter den bereits geladenen Ereignissen, ein Treffer älter als die geladenen Seiten wurde nie gezeigt. Jetzt wendet der Rekorder die Filter der Seite an (Kameras, Zeit, Bewertung, Favoriten und die übrigen Bedingungen) und liefert die Treffer seitenweise
+- Ein Link auf eine ältere Episode öffnet sie: Der Rekorder liefert eine Episode anhand ihrer Kennung
+
 ## [0.11.3]
 
 - Die Vorschau eines Ereignisses beim Überfahren findet das Ereignis dort, wo es aufgezeichnet ist: ein erst ab der Mitte aufgezeichnetes Ereignis oder eines von einer Kamera, die selten ein Schlüsselbild sendet, zeigte „keine Vorschau“; der Ausschnitt beginnt jetzt dort, wo die Aufzeichnung des Ereignisses beginnt, und am nächsten Schlüsselbild, wenn das vorherige weiter zurückliegt, als der Ausschnitt lang ist
