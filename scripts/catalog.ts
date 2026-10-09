@@ -87,8 +87,9 @@ const EXTERNAL_PLUGINS: Record<string, CatalogEntry> = {
 };
 
 // Not in the registry yet, so not in the store: apple-llm is built on macOS only; voice waits for its check on a
-// camera with a speaker and for its speech models on the models mirror.
-const DRAFT_PLUGINS = new Set<string>(['camera-ui-apple-llm', 'camera-ui-voice']);
+// camera with a speaker and for its speech models on the models mirror; the intercom waits for the server's
+// /api/intercom routes and for its check on a panel.
+const DRAFT_PLUGINS = new Set<string>(['camera-ui-apple-llm', 'camera-ui-voice', 'camera-ui-intercom']);
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif']);
 

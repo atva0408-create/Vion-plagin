@@ -25,6 +25,10 @@
   "arrivalTitle": "{name} ist gekommen",
   "codesLockedTitle": "{panel}: Codes wurden geraten",
   "agentMuteTitle": "{panel}: der Agent konnte nicht sprechen",
+  "presenceTitle": "{panel}: jemand an der Tür ohne zu klingeln",
+  "plateTitle": "{panel}: Einfahrt — {who}",
+  "codeText": "Code für „{doors}“: {code}, gültig {from} — {to}. Nennen Sie ihn an der Tür.",
+  "llmLimitTitle": "Gegensprechanlage: der Agent spricht bis morgen ohne KI",
   "categories": {
     "delivery": "Lieferung",
     "food": "Essen und Lebensmittel",

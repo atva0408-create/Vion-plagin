@@ -25,6 +25,10 @@
   "arrivalTitle": "Пришёл(пришла) {name}",
   "codesLockedTitle": "{panel}: подбирали код",
   "agentMuteTitle": "{panel}: агент не смог говорить",
+  "presenceTitle": "{panel}: у двери без звонка",
+  "plateTitle": "{panel}: въезд — {who}",
+  "codeText": "Код для «{doors}»: {code}, действует {from} — {to}. Назовите его у двери.",
+  "llmLimitTitle": "Домофон: агент говорит без ИИ до завтра",
   "categories": {
     "delivery": "Доставка",
     "food": "Еда и продукты",

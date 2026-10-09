@@ -31,3 +31,18 @@ export function shippedDir(name: string, probe: string): string {
   }
   throw new Error(`${name}/ is missing from the plugin`);
 }
+
+/** The version of this plugin, from its package.json (next to the bundle's folder, or up from src/). */
+export function pluginVersion(): string {
+  let dir = codeDir();
+  for (let i = 0; i < 4; i++) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: string; version?: string };
+      if (pkg.name === '@vionvision/camera-ui-intercom' && pkg.version) return pkg.version;
+    } catch {
+      // not here
+    }
+    dir = dirname(dir);
+  }
+  return '0.0.0';
+}

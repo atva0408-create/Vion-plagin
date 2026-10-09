@@ -25,6 +25,10 @@
   "arrivalTitle": "{name} came",
   "codesLockedTitle": "{panel}: codes were guessed",
   "agentMuteTitle": "{panel}: the agent could not speak",
+  "presenceTitle": "{panel}: someone at the door without ringing",
+  "plateTitle": "{panel}: entry — {who}",
+  "codeText": "Code for \"{doors}\": {code}, valid {from} — {to}. Say it at the door.",
+  "llmLimitTitle": "Intercom: the agent speaks without AI until tomorrow",
   "categories": {
     "delivery": "Delivery",
     "food": "Food and groceries",

@@ -1,3 +1,4 @@
+// i18n-skip-file: the schema descriptions below are read by the model, not shown in the interface.
 /**
  * One step of the door agent's LLM: what it is told (only what this step needs) and what it must answer.
  *

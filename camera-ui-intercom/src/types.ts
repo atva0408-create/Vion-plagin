@@ -54,6 +54,8 @@ export interface Panel {
   presenceZone?: string;
   /** users who may open the doors of this panel besides the admins */
   openUserIds: string[];
+  /** a gate: a plate of the directory with access opens without a ring (ТЗ 8.3) */
+  openByPlate?: boolean;
   enabled: boolean;
 }
 

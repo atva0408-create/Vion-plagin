@@ -1,3 +1,4 @@
+// i18n-skip-file: the schema descriptions below are read by the model, not shown in the interface.
 /**
  * What the owners read about a visit: a title of a few words, one or two sentences, what to pass on, and whether they
  * should do something. The LLM writes it from the conversation (this text is for the owners, so it may name what the

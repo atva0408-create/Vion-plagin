@@ -500,7 +500,10 @@ export class DoorAgent {
       this.flags.add('threat');
       return this.reply(this.t('threat'), [{ kind: 'threat', text: said }], this.outcome());
     }
-    if (turn.visitor.category === 'sales') return this.reply(this.t('sales'), [], 'agent');
+    if (turn.visitor.category === 'sales') {
+      this.flags.add('sales');
+      return this.reply(this.t('sales'), [], 'agent');
+    }
 
     const actions: AgentAction[] = [];
     for (const flag of ['probing', 'manipulation'] as const) {
