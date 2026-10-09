@@ -341,6 +341,24 @@ test('quiet hours: no break phrase, but bedtime is still said', () => {
   assert.equal(said[0].type === 'speak' && said[0].facts.reason, 'bedtime');
 });
 
+test('the daily limit reached at 15:11: playing again tomorrow at 00:00 local, not at midnight UTC (03:00 in Moscow)', () => {
+  const moscow = start(config({ dailyMinutes: 10 }), msk('2026-10-07T15:00:00'));
+  pass(moscow, 11 * MINUTE, true);
+  const phrase = speaks(moscow)[0];
+  assert.ok(phrase && phrase.action.type === 'speak');
+  assert.equal(phrase.action.facts.reason, 'daily_limit');
+  assert.equal(phrase.action.facts.nextAllowedAt, '00:00');
+  assert.equal(phrase.action.facts.nextAllowedDay, 'tomorrow');
+  assert.equal(replyText(moscow.engine.standing(moscow.t, MOSCOW), 'Артём', 'ru'), 'Артём, играть можно будет завтра в 00:00.');
+
+  // half an hour off UTC: no whole hour from 15:11 is midnight
+  const kolkata = start(config({ dailyMinutes: 10 }), Date.parse('2026-10-07T15:00:00+05:30'));
+  pass(kolkata, 11 * MINUTE, true, 'Asia/Kolkata');
+  const there = kolkata.engine.facts(kolkata.t, { timeZone: 'Asia/Kolkata', language: 'ru' });
+  assert.equal(there.reason, 'daily_limit');
+  assert.equal(there.nextAllowedAt, '00:00');
+});
+
 const answer = (run: Run) => replyText(run.engine.standing(run.t, MOSCOW), 'Артём', 'ru');
 
 test('"how long": minutes of play before the break, of the break once away, the whole break at the computer', () => {

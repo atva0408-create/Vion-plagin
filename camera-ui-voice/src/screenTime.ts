@@ -5,7 +5,7 @@
  * returns into speech and notifications. It never reads the clock itself, so tests move time by hand, and its state is
  * plain JSON, so a restart in the middle of a session continues where it stopped.
  */
-import { MINUTE, activeInterval, addDays, formatClock, localTime, nextIntervalStart } from './time.js';
+import { MINUTE, activeInterval, addDays, formatClock, instantOf, localTime, nextIntervalStart } from './time.js';
 
 import type { PresenceSource } from './presence.js';
 import type { WeeklyInterval } from './time.js';
@@ -248,8 +248,8 @@ export class ScreenTimeEngine {
     else if (reason === 'daily_limit') {
       // the next day, or the end of the night if a bedtime runs over midnight
       const tomorrow = addDays(localTime(now, timeZone).date, 1);
-      const midnight = activeInterval(c.bedtime, startOfDay(tomorrow, now, timeZone), timeZone);
-      nextAllowed = midnight ? midnight.to : startOfDay(tomorrow, now, timeZone);
+      const midnight = activeInterval(c.bedtime, startOfDay(tomorrow, timeZone), timeZone);
+      nextAllowed = midnight ? midnight.to : startOfDay(tomorrow, timeZone);
     } else nextAllowed = breakEnds;
 
     const today = localTime(now, timeZone).date;
@@ -350,12 +350,11 @@ export class ScreenTimeEngine {
   }
 }
 
-function startOfDay(date: string, near: number, timeZone: string): number {
-  // midnight of the local date; the day may start at 01:00 where the clocks jump at midnight
-  for (let step = -48; step <= 48; step++) {
-    const probe = near - (near % MINUTE) + step * 60 * MINUTE;
-    const t = localTime(probe, timeZone);
-    if (t.date === date && t.hour === 0 && t.minute === 0) return probe;
-  }
-  return Date.parse(`${date}T00:00:00Z`);
+/**
+ * Midnight of the local date; the day starts at 01:00 where the clocks jump at midnight. Stepping whole hours from the
+ * present minute never met 00:00 unless the minute was :00, and the fallback was midnight UTC: "играть можно будет
+ * завтра в 03:00" in Moscow.
+ */
+function startOfDay(date: string, timeZone: string): number {
+  return instantOf(date, '00:00', timeZone);
 }
