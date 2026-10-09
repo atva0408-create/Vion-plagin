@@ -1,3 +1,8 @@
+## [0.2.0]
+
+- With the intercom installed: a ring at a panel is announced on the speakers for notifications ("Ring: Gate"), through the queue, the limits and the quiet hours of VOICE
+- The cameras of the intercom's panels are no longer VOICE's speakers: the door agent speaks there
+
 ## [0.1.1]
 
 - The speech engine, the speaker, listening and the model downloads now live in the shared package `packages/vion-speech`, which the intercom uses too. Nothing changes in what VOICE does

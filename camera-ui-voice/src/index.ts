@@ -55,6 +55,9 @@ interface CameraEntry {
 
 const DEVICE_PREFIX = 'voice:';
 const MAX_NOTIFICATION_CHARS = 300;
+const INTERCOM_PLUGIN = '@vionvision/camera-ui-intercom';
+/** How often VOICE asks the intercom which cameras are its panels. */
+const PANELS_EVERY_MS = 60_000;
 
 type Field = Record<string, unknown> & { type: string; title: string; description: string };
 // the SDK types array items as Omit<union, 'key'>, which keeps only the keys common to all field kinds (no enum,
@@ -75,6 +78,9 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private listener: FfmpegListener;
   private stateFile: string;
   private lookTimer: NodeJS.Timeout | undefined;
+  private panelsTimer: NodeJS.Timeout | undefined;
+  /** Cameras of the intercom's panels: the door agent speaks there, VOICE does not. */
+  private panelCameras = new Set<string>();
   private writing: Promise<void> = Promise.resolve();
   private started = false;
 
@@ -622,11 +628,14 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   private start(): void {
     this.started = true;
     this.lookTimer = setInterval(() => void this.lookAll(), LOOK_EVERY_MS);
+    this.panelsTimer = setInterval(() => void this.refreshPanels(), PANELS_EVERY_MS);
+    void this.refreshPanels();
   }
 
   private stop(): void {
     this.started = false;
     clearInterval(this.lookTimer);
+    clearInterval(this.panelsTimer);
     this.door.stop();
     for (const entry of this.cameras.values()) void entry.speaker.close();
   }
@@ -858,7 +867,36 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   }
 
   private speakerOptions(): { id: string; name: string }[] {
-    return [...this.cameras.values()].filter((e) => !speakerProblem(e.device)).map((e) => ({ id: e.device.id, name: e.device.name }));
+    return [...this.cameras.values()]
+      .filter((e) => !speakerProblem(e.device) && !this.panelCameras.has(e.device.id))
+      .map((e) => ({ id: e.device.id, name: e.device.name }));
+  }
+
+  /** The intercom's panels, when it is installed: their cameras are not VOICE's speakers. */
+  private async refreshPanels(): Promise<void> {
+    try {
+      const intercom = (await this.api.coreManager.connectToPlugin(INTERCOM_PLUGIN)) as { panelCameraIds?: () => Promise<string[]> } | undefined;
+      const ids = typeof intercom?.panelCameraIds === 'function' ? await intercom.panelCameraIds() : [];
+      const changed = ids.length !== this.panelCameras.size || ids.some((id) => !this.panelCameras.has(id));
+      this.panelCameras = new Set(ids);
+      if (changed) await this.refreshSchemas();
+    } catch {
+      // no intercom, or it is not running: every camera with a speaker is VOICE's
+      this.panelCameras.clear();
+    }
+  }
+
+  /**
+   * For the intercom (ТЗ 4.8): a phrase on the house's speakers, "a ring at the gate". It goes through the speakers for
+   * notifications, VOICE's queue, limits and quiet hours, and never through the panels' cameras.
+   */
+  public async announce(text: string, options: { exceptCameraIds?: string[] } = {}): Promise<{ said: string[]; skipped: string[] }> {
+    const phrase = typeof text === 'string' ? text.trim() : '';
+    const except = new Set([...(options?.exceptCameraIds ?? []), ...this.panelCameras]);
+    const targets = (this.values().channelSpeakers ?? []).filter((id) => !except.has(id) && this.cameras.has(id));
+    if (!phrase || phrase.length > MAX_NOTIFICATION_CHARS || this.inQuietHours()) return { said: [], skipped: targets };
+    const results = await Promise.all(targets.map(async (id) => ({ id, result: await this.voice.say(id, phrase, 'owner') })));
+    return { said: results.filter((r) => r.result.status === 'spoken').map((r) => r.id), skipped: results.filter((r) => r.result.status !== 'spoken').map((r) => r.id) };
   }
 
   // ---- door ----
