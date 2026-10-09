@@ -1642,6 +1642,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return this.episodes.list(opts ?? {});
   }
 
+  /** One episode by its id, as getEpisodes lists it: a link to an episode older than the newest page opens it too. */
+  public async getEpisode(episodeId: string): Promise<RecordedEpisode | undefined> {
+    await this.ready;
+    return typeof episodeId === 'string' ? this.episodes.get(episodeId) : undefined;
+  }
+
   /** The pictures of up to four of the episode's events, cameras first, in one JPEG; cached until the members change. */
   public async getEpisodeMosaic(episodeId: string): Promise<Uint8Array | undefined> {
     await this.ready;
