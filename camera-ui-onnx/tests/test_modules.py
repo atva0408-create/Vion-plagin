@@ -406,3 +406,38 @@ def test_an_invalid_updated_graph_keeps_the_loaded_cpu_model(tmp_path: Path, mon
         await old.close()
 
     asyncio.run(scenario())
+
+
+def test_the_report_tells_the_server_what_loaded_and_what_did_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("PLUGIN_NAME", "@vionvision/camera-ui-onnx")
+    store = modules.InstalledModules(str(tmp_path))
+    assert store.report({"id": "bikes", "version": "1.0.0", "tier": "light"})
+    assert store.report({"id": "cats", "version": "2.0.0", "tier": "heavy"}, "invalid graph")
+    # the latest state per module: a newer version that failed replaces the loaded one
+    assert store.report({"id": "bikes", "version": "1.1.0", "tier": "light"}, "x" * 500)
+    files = list((tmp_path / ".engines").iterdir())
+    assert [f.name for f in files] == ["vionvision_camera-ui-onnx.json"]
+    data = json.loads(files[0].read_text(encoding="utf-8"))
+    assert data["plugin"] == "@vionvision/camera-ui-onnx"
+    assert data["modules"]["cats"] == {
+        **data["modules"]["cats"],
+        "version": "2.0.0",
+        "tier": "heavy",
+        "state": "failed",
+        "error": "invalid graph",
+    }
+    assert data["modules"]["bikes"]["version"] == "1.1.0" and data["modules"]["bikes"]["state"] == "failed"
+    assert len(data["modules"]["bikes"]["error"]) == 300
+    # nothing left behind of the atomic write
+    assert not [p for p in (tmp_path / ".engines").iterdir() if p.name.endswith(".tmp")]
+
+
+def test_a_report_that_cannot_be_written_says_so(tmp_path: Path):
+    blocked = tmp_path / "blocked"
+    blocked.write_text("a file where the folder of the reports would go", encoding="utf-8")
+    store = modules.InstalledModules(str(blocked))
+    assert store.report({"id": "bikes", "version": "1.0.0"}) is False
+    # no modules folder (a remote worker): nothing to tell, nothing failed
+    assert modules.InstalledModules("").report({"id": "bikes", "version": "1.0.0"}) is True

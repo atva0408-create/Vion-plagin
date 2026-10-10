@@ -261,17 +261,34 @@ class ONNXPlugin(
     async def _initialize_object_detector(self, detector: BoxDetector, model_name: str) -> object:
         # Keep the labels and signature of the version whose load is being started.
         signature = self._module_signature(model_name) if is_module(model_name) else None
+        # the version this load starts with: its labels, and what the server is told of it
+        module = installed_modules.entry(model_name, MODULE_BACKENDS) if is_module(model_name) else None
         classes = None
         if is_trained(model_name):
             trained = trained_models.entry(model_name)
             classes = trained.get("classes") if trained else None
-        elif is_module(model_name):
-            module = installed_modules.entry(model_name, MODULE_BACKENDS)
-            classes = module.get("labels") if module else None
-        await detector.initialize(model_name)
+        elif module is not None:
+            classes = module.get("labels")
+        try:
+            await detector.initialize(model_name)
+        except Exception as error:
+            if module is not None:
+                self._report_module(module, str(error) or type(error).__name__)
+            raise
         if classes and not detector.labels:
             detector.labels = {index: str(label) for index, label in enumerate(classes)}
+        if module is not None:
+            self._report_module(module, None)
         return signature
+
+    def _report_module(self, module: dict[str, Any], error: str | None) -> None:
+        # the server keeps a version that loaded as the way back of an update (server/src/manager/moduleManager.ts)
+        if not installed_modules.report(module, error):
+            self.logger.warn(f"Модуль {module.get('id')}: состояние загрузки не записано для сервера")
+
+    def model_failed(self, model_name: str) -> bool:
+        """The model failed to load a short while ago and is not tried again yet."""
+        return time.monotonic() < self._failed_models.get(model_name, 0)
 
     async def get_face_detector(self, model_name: str) -> BoxDetector:
         detector = self.face_detectors.get(model_name)
@@ -1150,6 +1167,9 @@ class ONNXPlugin(
         if installed_modules.version == self._modules_version:
             return
         self._modules_version = installed_modules.version
+        # other files (a rollback, a fixed version): a module that failed is tried again now, not after its wait
+        for name in [n for n in self._failed_models if is_module(n)]:
+            self._failed_models.pop(name, None)
         for sensors in self._sensors.values():
             obj = sensors.get("object")
             if obj is not None:
@@ -1236,6 +1256,9 @@ class ONNXPlugin(
 
     async def _close_all(self) -> None:
         self._models_generation += 1
+        # a reload of the models loads the installed version as it is then: the next check compares every module
+        # again, so an update that came while a load was cut off is not missed
+        self._modules_version = -1
         await asyncio.gather(
             *(d.close() for d in self.object_detectors.values()),
             *(d.close() for d in self.face_detectors.values()),

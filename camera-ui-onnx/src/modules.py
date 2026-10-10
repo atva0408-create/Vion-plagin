@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -19,6 +20,15 @@ MODULE_PREFIX = "vion-module-"
 _CHECK_EVERY_S = 5.0
 # the files a backend's model is made of, by extension (server/src/api/schemas/modules.schema.ts BACKEND_FILES)
 BACKEND_FILES: dict[str, tuple[str, ...]] = {"onnx": (".onnx",), "openvino": (".xml", ".bin")}
+
+
+# what this plugin loaded of each module, for the server (server/src/manager/moduleManager.ts): one file per plugin
+REPORTS_DIR = ".engines"
+
+
+def _report_file_name() -> str:
+    name = os.environ.get("PLUGIN_NAME", "") or "engine"
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "engine"
 
 
 def is_module(model_name: str | None) -> bool:
@@ -66,6 +76,41 @@ class InstalledModules:
             self._installed = [m for m in modules or [] if isinstance(m, dict) and m.get("id")]
             self.version += 1
         return self._installed
+
+    def report(self, entry: dict[str, Any], error: str | None = None) -> bool:
+        """Tells the server whether this plugin loaded the version of a module in ``entry`` (``error``: why not). The
+        server keeps a version that loaded as the way back of an update, and shows a version that did not. The latest
+        state per module, in this plugin's own file, replaced atomically. False: not written (logged by the caller),
+        which costs the server that knowledge, not the load."""
+        if not self.dir or not entry.get("id"):
+            return True
+        folder = os.path.join(self.dir, REPORTS_DIR)
+        path = os.path.join(folder, f"{_report_file_name()}.json")
+        try:
+            os.makedirs(folder, exist_ok=True)
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except (OSError, ValueError):
+                data = None
+            modules = data.get("modules") if isinstance(data, dict) else None
+            modules = dict(modules) if isinstance(modules, dict) else {}
+            state: dict[str, Any] = {
+                "version": entry.get("version"),
+                "tier": entry.get("tier"),
+                "state": "failed" if error is not None else "loaded",
+                "at": int(time.time() * 1000),
+            }
+            if error is not None:
+                state["error"] = error[:300]
+            modules[str(entry["id"])] = state
+            temporary = f"{path}.{os.getpid()}.tmp"
+            with open(temporary, "w", encoding="utf-8") as handle:
+                json.dump({"plugin": os.environ.get("PLUGIN_NAME", ""), "modules": modules}, handle)
+            os.replace(temporary, path)
+            return True
+        except OSError:
+            return False
 
     def files(self, entry: dict[str, Any], backends: tuple[str, ...]) -> tuple[str, dict[str, str]] | None:
         """The first backend of ``backends`` whose files are all on disk: (backend, {extension: path})."""

@@ -105,6 +105,20 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             # a newly published model loads in the background; the current one keeps detecting
             self._plugin.prepare_object_detector(wanted)
             detector = self._plugin.object_detectors.get(self._active_model) if self._active_model else None
+            if (
+                (detector is None or not detector.initialized)
+                and wanted != DEFAULT_OBJECT_MODEL
+                and self._plugin.model_failed(wanted)
+            ):
+                # the model failed and nothing serves (a broken module version after a reload of the models): the
+                # standard one detects meanwhile, as on start, instead of nothing until the next try
+                detector = self._plugin.object_detectors.get(DEFAULT_OBJECT_MODEL)
+                if detector is not None and detector.initialized:
+                    self._logger.error(f"Модель {wanted} не загрузилась, используется стандартная")
+                    self._active_model = DEFAULT_OBJECT_MODEL
+                    self.updateModelSpec()
+                else:
+                    self._plugin.prepare_object_detector(DEFAULT_OBJECT_MODEL)
         elif wanted != self._active_model:
             previous = self._active_model
             self._active_model = wanted

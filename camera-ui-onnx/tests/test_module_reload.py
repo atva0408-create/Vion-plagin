@@ -20,7 +20,16 @@ NAME = "vion-module-bikes"
 
 class Models:
     def __init__(self) -> None:
-        self.current: dict[str, Any] | None = {"version": "1", "labels": ["bicycle"]}
+        self.current: dict[str, Any] | None = {"id": "bikes", "version": "1", "labels": ["bicycle"]}
+        self.reports: list[tuple[str, str | None]] = []
+        self.version = 1
+
+    def installed(self) -> list[dict[str, Any]]:
+        return [self.current] if self.current else []
+
+    def report(self, entry: dict[str, Any], error: str | None = None) -> bool:
+        self.reports.append((entry["version"], error))
+        return True
 
     def entry(self, _name: str, _backends: tuple[str, ...]) -> dict[str, Any] | None:
         return self.current
@@ -38,13 +47,14 @@ class Detector:
         self.version: str | None = None
         manager.created.append(self)
 
-    async def initialize(self, _name: str) -> None:
+    async def initialize(self, name: str) -> None:
         if self.initialized:
             return
-        self.version = self.manager.models.current["version"]
+        self.version = self.manager.loads.setdefault(name, self.manager.models.current["version"])
         if self.manager.gate is not None:
             await self.manager.gate.wait()
         if self.manager.fail or self.version in self.manager.fail_versions:
+            self.manager.loads.pop(name, None)
             raise RuntimeError("model cannot be loaded")
         self.initialized = True
 
@@ -55,6 +65,9 @@ class Detector:
 @pytest.fixture(params=["onnx", "openvino", "onnx-legacy", "openvino-legacy"])
 def plugin(request: pytest.FixtureRequest) -> Any:
     path = ROOT / f"camera-ui-{request.param}" / "src" / "main.py"
+    if not path.exists():
+        # the legacy plugins get src/ from scripts/sync.mjs (it is not in git)
+        pytest.skip(f"{path} not synced: node camera-ui-{request.param}/scripts/sync.mjs")
     tree = ast.parse(path.read_text(encoding="utf-8"))
     cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name.endswith("Plugin"))
     methods = {
@@ -63,6 +76,9 @@ def plugin(request: pytest.FixtureRequest) -> Any:
         "_module_signature",
         "_reload_module_detector",
         "_close_all",
+        "_report_module",
+        "model_failed",
+        "check_modules",
     }
     cls.bases = []
     cls.decorator_list = []
@@ -74,10 +90,11 @@ def plugin(request: pytest.FixtureRequest) -> Any:
     models = Models()
     globals_: dict[str, Any] = {
         "asyncio": asyncio,
+        "time": __import__("time"),
         "BoxDetector": Detector,
         "installed_modules": models,
         "MODULE_BACKENDS": (request.param,),
-        "is_module": lambda _: True,
+        "is_module": lambda name: str(name).startswith("vion-module-"),
         "is_trained": lambda _: False,
         "OBJECT_LABELS": {0: "person"},
     }
@@ -87,15 +104,23 @@ def plugin(request: pytest.FixtureRequest) -> Any:
     )
     exec(compile(ast.fix_missing_locations(module), str(path), "exec"), globals_)
     instance = object.__new__(globals_[cls.name])
-    instance.logger = types.SimpleNamespace(error=lambda _: None, success=lambda _: None)
+    instance.logger = types.SimpleNamespace(error=lambda _: None, success=lambda _: None, warn=lambda _: None)
+    loads: dict[str, str] = {}
     instance.model_manager = types.SimpleNamespace(
-        models=models, gate=None, fail=False, fail_versions=set(), created=[], forget=lambda _: None
+        models=models,
+        gate=None,
+        fail=False,
+        fail_versions=set(),
+        created=[],
+        loads=loads,
+        forget=lambda name: loads.pop(name, None),
     )
     instance.object_detectors = {}
     instance._module_files = {}
     instance._failed_models = {}
     instance._module_reloading = set()
     instance._models_generation = 0
+    instance._modules_version = models.version
     instance._sensors = {}
     for key in [
         "face_detectors",
@@ -262,5 +287,41 @@ def test_cancellation_keeps_the_old_detector_and_allows_another_update(plugin: A
         plugin.model_manager.gate.set()
         await plugin._reload_module_detector(NAME)
         assert plugin.object_detectors[NAME] is not old
+
+    asyncio.run(scenario())
+
+
+def test_the_server_hears_which_version_loaded_and_which_did_not(plugin: Any) -> None:
+    async def scenario() -> None:
+        await plugin.get_object_detector(NAME)
+        plugin.model_manager.fail_versions.add("2")
+        plugin.model_manager.models.current = {"id": "bikes", "version": "2", "labels": ["bicycle"]}
+        await plugin._reload_module_detector(NAME)
+        assert plugin.model_manager.models.reports == [("1", None), ("2", "model cannot be loaded")]
+        # the working version still serves, as the server is told it loaded
+        assert plugin.object_detectors[NAME].version == "1"
+
+    asyncio.run(scenario())
+
+
+def test_a_change_of_the_installed_modules_retries_a_module_that_failed(plugin: Any) -> None:
+    plugin._failed_models = {
+        NAME: __import__("time").monotonic() + 600,
+        "yolo-v9-s-320": __import__("time").monotonic() + 600,
+    }
+    assert plugin.model_failed(NAME)
+    plugin.model_manager.models.version += 1
+    plugin.check_modules()
+    # a rollback or a fixed version is tried at once, not after the wait; other models keep theirs
+    assert not plugin.model_failed(NAME)
+    assert plugin.model_failed("yolo-v9-s-320")
+
+
+def test_a_reload_of_all_models_checks_the_modules_again(plugin: Any) -> None:
+    async def scenario() -> None:
+        await plugin.get_object_detector(NAME)
+        await plugin._close_all()
+        # the next check compares every module, so an update that came during the reload is not missed
+        assert plugin._modules_version == -1
 
     asyncio.run(scenario())
