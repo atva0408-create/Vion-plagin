@@ -51,8 +51,9 @@ class Detector:
         if self.initialized:
             return
         self.version = self.manager.loads.setdefault(name, self.manager.models.current["version"])
-        if self.manager.gate is not None:
-            await self.manager.gate.wait()
+        gate = self.manager.gates.get(self.version, self.manager.gate)
+        if gate is not None:
+            await gate.wait()
         if self.manager.fail or self.version in self.manager.fail_versions:
             self.manager.loads.pop(name, None)
             raise RuntimeError("model cannot be loaded")
@@ -79,6 +80,9 @@ def plugin(request: pytest.FixtureRequest) -> Any:
         "_report_module",
         "model_failed",
         "check_modules",
+        "prepare_object_detector",
+        "_object_load_failed",
+        "_reload_models",
     }
     cls.bases = []
     cls.decorator_list = []
@@ -109,15 +113,19 @@ def plugin(request: pytest.FixtureRequest) -> Any:
     instance.model_manager = types.SimpleNamespace(
         models=models,
         gate=None,
+        gates={},
         fail=False,
         fail_versions=set(),
         created=[],
         loads=loads,
         forget=lambda name: loads.pop(name, None),
+        reset=lambda: None,
     )
     instance.object_detectors = {}
     instance._module_files = {}
     instance._failed_models = {}
+    instance._failed_module_files = {}
+    instance._preparing = set()
     instance._module_reloading = set()
     instance._models_generation = 0
     instance._modules_version = models.version
@@ -305,16 +313,119 @@ def test_the_server_hears_which_version_loaded_and_which_did_not(plugin: Any) ->
 
 
 def test_a_change_of_the_installed_modules_retries_a_module_that_failed(plugin: Any) -> None:
-    plugin._failed_models = {
-        NAME: __import__("time").monotonic() + 600,
-        "yolo-v9-s-320": __import__("time").monotonic() + 600,
-    }
+    models = plugin.model_manager.models
+    plugin._object_load_failed(NAME, plugin._module_signature(NAME))
+    plugin._object_load_failed("yolo-v9-s-320", None)
     assert plugin.model_failed(NAME)
-    plugin.model_manager.models.version += 1
+    # the same files read again (the recheck after a reload of all models): the camera stays on the standard model
+    models.version += 1
     plugin.check_modules()
+    assert plugin.model_failed(NAME)
     # a rollback or a fixed version is tried at once, not after the wait; other models keep theirs
+    models.current = {"id": "bikes", "version": "0", "labels": ["bicycle"]}
+    models.version += 1
+    plugin.check_modules()
     assert not plugin.model_failed(NAME)
     assert plugin.model_failed("yolo-v9-s-320")
+
+
+@pytest.mark.parametrize("first", ["rollback", "failed load"])
+def test_a_rollback_during_a_failing_load_is_loaded_at_once(plugin: Any, first: str) -> None:
+    async def scenario() -> None:
+        m = plugin.model_manager
+        await plugin.get_object_detector(NAME)
+        # the update to v2 does not load, v1 goes on serving
+        m.models.current = {"id": "bikes", "version": "2", "labels": ["bicycle"]}
+        m.fail_versions.add("2")
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        assert plugin.object_detectors[NAME].version == "1"
+        # «Скачать модели заново»: v2 is loaded for good, does not load, and nothing serves the module
+        m.loads.clear()
+        await plugin._reload_models()
+        plugin.check_modules()
+        # its wait over, the camera's next frame loads it again in the background, slowly
+        plugin._failed_models.clear()
+        m.gates = {"1": asyncio.Event(), "2": asyncio.Event()}
+        plugin.prepare_object_detector(NAME)
+        await settle()
+        # the owner presses «Вернуть v1» while that load runs: v1 loads next to it at once
+        m.models.current = {"id": "bikes", "version": "1", "labels": ["bicycle"]}
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        for version in ("1", "2") if first == "rollback" else ("2", "1"):
+            m.gates[version].set()
+            await settle()
+        detector = plugin.object_detectors[NAME]
+        assert detector.version == "1" and detector.initialized and not detector.closed
+        assert plugin._module_files[NAME] == plugin._module_signature(NAME)
+        # the failure of the version gone back from holds nothing back
+        assert not plugin.model_failed(NAME)
+
+    asyncio.run(scenario())
+
+
+def test_a_load_that_ends_after_its_replacement_leaves_it_in_service(plugin: Any) -> None:
+    async def scenario() -> None:
+        m = plugin.model_manager
+        m.gates = {"1": asyncio.Event(), "2": asyncio.Event()}
+        plugin.prepare_object_detector(NAME)
+        await settle()
+        # an update while v1 loads: v2 is loaded next to it, and ready first
+        m.models.current = {"id": "bikes", "version": "2", "labels": ["scooter"]}
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        m.gates["2"].set()
+        await settle()
+        m.gates["1"].set()
+        await settle()
+        assert plugin.object_detectors[NAME].version == "2"
+        # v2 is what serves, so going back to v1 is a change the next check acts on
+        assert plugin._module_files[NAME] == plugin._module_signature(NAME)
+
+    asyncio.run(scenario())
+
+
+def test_a_change_of_another_module_does_not_load_a_loading_one_twice(plugin: Any) -> None:
+    async def scenario() -> None:
+        m = plugin.model_manager
+        m.gates = {"1": asyncio.Event()}
+        plugin.prepare_object_detector(NAME)
+        await settle()
+        # another module added: installed.json changed, this module's files did not
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        m.gates["1"].set()
+        await settle()
+        assert len(m.created) == 1
+        assert plugin.object_detectors[NAME].initialized
+
+    asyncio.run(scenario())
+
+
+def test_a_module_that_fails_in_a_reload_of_all_models_waits_like_a_failed_load(plugin: Any) -> None:
+    async def scenario() -> None:
+        m = plugin.model_manager
+        await plugin.get_object_detector(NAME)
+        m.models.current = {"id": "bikes", "version": "2", "labels": ["bicycle"]}
+        m.fail_versions.add("2")
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        # «Скачать модели заново»: v2 is loaded for good, and does not load
+        m.loads.clear()
+        await plugin._reload_models()
+        assert NAME not in plugin.object_detectors and NAME not in plugin._module_files
+        # the camera goes on with the standard model at once, also after the recheck that follows the reload
+        assert plugin.model_failed(NAME)
+        plugin.check_modules()
+        assert plugin.model_failed(NAME)
+
+    asyncio.run(scenario())
 
 
 def test_a_reload_of_all_models_checks_the_modules_again(plugin: Any) -> None:

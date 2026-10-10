@@ -415,7 +415,7 @@ def test_the_report_tells_the_server_what_loaded_and_what_did_not(
     store = modules.InstalledModules(str(tmp_path))
     assert store.report({"id": "bikes", "version": "1.0.0", "tier": "light"})
     assert store.report({"id": "cats", "version": "2.0.0", "tier": "heavy"}, "invalid graph")
-    # the latest state per module: a newer version that failed replaces the loaded one
+    # a newer version that failed is kept apart from the one that loaded
     assert store.report({"id": "bikes", "version": "1.1.0", "tier": "light"}, "x" * 500)
     files = list((tmp_path / ".engines").iterdir())
     assert [f.name for f in files] == ["vionvision_camera-ui-onnx.json"]

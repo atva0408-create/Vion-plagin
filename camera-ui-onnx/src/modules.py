@@ -80,8 +80,8 @@ class InstalledModules:
     def report(self, entry: dict[str, Any], error: str | None = None) -> bool:
         """Tells the server whether this plugin loaded the version of a module in ``entry`` (``error``: why not). The
         server keeps a version that loaded as the way back of an update, and shows a version that did not. Per module
-        the version that loaded last and the last that failed, in this plugin's own file, replaced atomically. False: not written (logged by the caller),
-        which costs the server that knowledge, not the load."""
+        the version that loaded last and the last that failed, in this plugin's own file, replaced atomically.
+        False: not written (logged by the caller), which costs the server that knowledge, not the load."""
         if not self.dir or not entry.get("id"):
             return True
         folder = os.path.join(self.dir, REPORTS_DIR)

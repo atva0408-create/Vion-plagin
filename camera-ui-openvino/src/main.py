@@ -142,9 +142,12 @@ class OpenVinoPlugin(
         self.attribute_backends: dict[str, Any] = {}
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
+        # the files of the module version each pause above is for: only another version lifts it early
+        self._failed_module_files: dict[str, object] = {}
         self._trained_version = -1
         self._modules_version = -1
-        # the files each loaded module detector was built from: an update keeps the model name, not the files
+        # the files each module detector was built from, or is being built from while it loads: an update keeps the
+        # model name, not the files
         self._module_files: dict[str, object] = {}
         self._module_reloading: set[str] = set()
         self._models_generation = 0
@@ -241,13 +244,18 @@ class OpenVinoPlugin(
         if not detector:
             detector = BoxDetector(self.model_manager, self.logger, name="object detector")
             self.object_detectors[model_name] = detector
-            try:
-                signature = await self._initialize_object_detector(detector, model_name)
-            except Exception:
-                self.object_detectors.pop(model_name, None)
-                raise
             if is_module(model_name):
-                self._module_files[model_name] = signature
+                # known while it loads: a rollback meanwhile differs from it, and check_modules loads that version
+                # next to this load instead of waiting for it to end
+                self._module_files[model_name] = self._module_signature(model_name)
+            try:
+                await self._initialize_object_detector(detector, model_name)
+            except Exception:
+                # a replacement check_modules put in meanwhile stays
+                if self.object_detectors.get(model_name) is detector:
+                    self.object_detectors.pop(model_name, None)
+                    self._module_files.pop(model_name, None)
+                raise
         else:
             await detector.initialize(model_name)
         return detector
@@ -1016,10 +1024,11 @@ class OpenVinoPlugin(
         person = list(self.person_embedders)
         seg = list(self.segmenters)
 
+        signatures = {n: self._module_signature(n) for n in obj if is_module(n)}
         await self._close_all()
         self.model_manager.reset()
 
-        await asyncio.gather(
+        loaded = await asyncio.gather(
             *(self.get_object_detector(n) for n in obj),
             *(self.get_face_detector(n) for n in fdet),
             *(self.get_face_embedder(n) for n in femb),
@@ -1030,6 +1039,10 @@ class OpenVinoPlugin(
             *(self.get_segmenter(n) for n in seg),
             return_exceptions=True,
         )
+        # its cameras go on with the standard model at once, without one more failed load on their next frame
+        for name, result in zip(obj, loaded[: len(obj)], strict=True):
+            if name in signatures and isinstance(result, Exception):
+                self._object_load_failed(name, signatures[name])
 
         for sensors in self._sensors.values():
             for sensor in sensors.values():
@@ -1053,18 +1066,28 @@ class OpenVinoPlugin(
         if model_name in self._preparing or time.monotonic() < self._failed_models.get(model_name, 0):
             return
         self._preparing.add(model_name)
+        signature = self._module_signature(model_name) if is_module(model_name) else None
 
         async def load() -> None:
             try:
                 await self.get_object_detector(model_name)
                 self.logger.success(f"Загружена модель объектов {model_name}")
             except Exception as error:
-                self._failed_models[model_name] = time.monotonic() + 600
+                self._object_load_failed(model_name, signature)
                 self.logger.error(f"Модель объектов {model_name} не загрузилась: {error}")
             finally:
                 self._preparing.discard(model_name)
 
         asyncio.create_task(load())
+
+    def _object_load_failed(self, model_name: str, signature: object) -> None:
+        """A detector that failed is tried again after a while, not on every frame. A module whose installed version
+        changed during the load (a rollback) waits for nothing: the version now installed is due at once."""
+        if is_module(model_name):
+            if signature != self._module_signature(model_name):
+                return
+            self._failed_module_files[model_name] = signature
+        self._failed_models[model_name] = time.monotonic() + 600
 
     def prepare_person_embedder(self) -> None:
         """Loads the re-ID model in the background, on the first person a camera with Person Re-ID sees."""
@@ -1133,9 +1156,12 @@ class OpenVinoPlugin(
         if installed_modules.version == self._modules_version:
             return
         self._modules_version = installed_modules.version
-        # other files (a rollback, a fixed version): a module that failed is tried again now, not after its wait
+        # other files (a rollback, a fixed version): a module that failed is tried again now, not after its wait. The
+        # same files (the recheck after a reload of all models) keep the wait: the camera stays on the standard model
         for name in [n for n in self._failed_models if is_module(n)]:
-            self._failed_models.pop(name, None)
+            if self._module_signature(name) != self._failed_module_files.get(name):
+                self._failed_models.pop(name, None)
+                self._failed_module_files.pop(name, None)
         for sensors in self._sensors.values():
             obj = sensors.get("object")
             if obj is not None:
