@@ -35,9 +35,13 @@ class OpenVinoFaceEmbedderSensor(FaceEmbedderSensor):
             "input": {"width": FACE_EMBEDDER_CROP_SIZE, "height": FACE_EMBEDDER_CROP_SIZE, "format": "rgb"},
             "triggerLabels": [],
             "embeddingModel": space,
-            **model_runtime(
-                (self._plugin.face_landmarkers.get(FACE_LANDMARK_MODEL), "landmarks"),
-                (self._plugin.face_embedders.get(space), "embed"),
+            **self._plugin.load_state(
+                model_runtime(
+                    (self._plugin.face_landmarkers.get(FACE_LANDMARK_MODEL), "landmarks"),
+                    (self._plugin.face_embedders.get(space), "embed"),
+                ),
+                FACE_LANDMARK_MODEL,
+                space,
             ),
         }
 

@@ -63,7 +63,9 @@ class ONNXSegmenterSensor(SegmenterSensor["SegmenterStorageValues"]):
         return {
             "input": {"width": size, "height": size, "format": "rgb"},
             "triggerLabels": ["person", "vehicle", "animal"],
-            **model_runtime((self._plugin.segmenters.get(self._model()), "segment")),
+            **self._plugin.load_state(
+                model_runtime((self._plugin.segmenters.get(self._model()), "segment")), self._model()
+            ),
         }
 
     async def segmentObjects(self, frames: list[SegmentationFrame]) -> list[SegmentationResult]:

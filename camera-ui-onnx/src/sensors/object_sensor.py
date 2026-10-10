@@ -90,11 +90,17 @@ class ONNXObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
 
     @property
     def modelSpec(self) -> ObjectModelSpec:
-        detector = self._plugin.object_detectors.get(self._active_model or self._wanted_model())
+        wanted = self._wanted_model()
+        detector = self._plugin.object_detectors.get(self._active_model or wanted)
         width, height = detector.input_size if detector is not None and detector.initialized else (320, 320)
+        # the model the camera asks for while another one detects (a module loading, or failed: the standard one
+        # detects meanwhile): the server tells «loads» from «failed» by it
+        chosen = self._plugin.object_detectors.get(wanted)
+        asked = {} if chosen is not None and chosen.initialized else self._plugin.load_state({}, wanted)
         return {
             "input": {"width": width, "height": height, "format": "rgb"},
             **model_runtime((detector, "detect")),
+            **asked,
         }
 
     async def detectObjects(self, frame: VideoFrameData) -> ObjectResult:

@@ -105,9 +105,13 @@ class OpenVinoLPDSensor(LicensePlateDetectorSensor["LPDStorageValues"]):
         return {
             "input": {"width": size, "height": size, "format": "rgb"},
             "triggerLabels": ["vehicle"],
-            **model_runtime(
-                (self._plugin.plate_detectors.get(detector_name), "detect"),
-                (self._plugin.ocr_models.get(ocr_name), "ocr"),
+            **self._plugin.load_state(
+                model_runtime(
+                    (self._plugin.plate_detectors.get(detector_name), "detect"),
+                    (self._plugin.ocr_models.get(ocr_name), "ocr"),
+                ),
+                detector_name,
+                ocr_name,
             ),
         }
 

@@ -32,7 +32,9 @@ class ONNXClipSensor(ClipDetectorSensor):
             "input": {"width": input_size, "height": input_size, "format": "rgb"},
             "triggerLabels": ["person", "vehicle", "animal"],
             "embeddingModel": clip_family(model_name),
-            **model_runtime((self._plugin.clip_encoders.get(model_name), "encode")),
+            **self._plugin.load_state(
+                model_runtime((self._plugin.clip_encoders.get(model_name), "encode")), model_name
+            ),
         }
 
     async def detectEmbeddings(self, frames: list[VideoFrameData]) -> list[ClipResult]:

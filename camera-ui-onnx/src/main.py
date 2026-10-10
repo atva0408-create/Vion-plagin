@@ -5,7 +5,7 @@ import os
 import platform
 import shutil
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import onnxruntime as ort
@@ -137,6 +137,8 @@ class ONNXPlugin(
         self._failed_models: dict[str, float] = {}
         # the files of the module version each pause above is for: only another version lifts it early
         self._failed_module_files: dict[str, object] = {}
+        # why the last load of a model failed, until it loads: what a sensor tells the server (load_state)
+        self._load_errors: dict[str, str] = {}
         self._trained_version = -1
         self._modules_version = -1
         # the files each module detector was built from, or is being built from while it loads: an update keeps the
@@ -282,7 +284,9 @@ class ONNXPlugin(
         except Exception as error:
             if module is not None:
                 self._report_module(module, str(error) or type(error).__name__)
+            self._load_failed(model_name, error)
             raise
+        self._load_succeeded(model_name)
         if classes and not detector.labels:
             detector.labels = {index: str(label) for index, label in enumerate(classes)}
         if module is not None:
@@ -298,6 +302,37 @@ class ONNXPlugin(
         """The model failed to load a short while ago and is not tried again yet."""
         return time.monotonic() < self._failed_models.get(model_name, 0)
 
+    def load_state(self, runtime: Mapping[str, Any], *names: str) -> Any:
+        """A sensor's models as the server reads them (modelSpec): with nothing of `runtime` loaded, whether the last load
+        of one of `names` failed (`loadState: failed`, `loadError`) or the first only waits to be loaded when it is
+        first needed (`loadState: pending`, Re-ID with the first person). The server shows a waiting model as
+        connected and only a failed one as not working (server/src/manager/analyticsRegistry.ts). Any: the SDK's
+        ModelSpec has no keys for it yet, the server reads them as they come."""
+        if runtime.get("models") or not names:
+            return dict(runtime)
+        failed = next((name for name in names if name in self._load_errors), None)
+        if failed is None:
+            return {**runtime, "loadModel": names[0], "loadState": "pending"}
+        return {**runtime, "loadModel": failed, "loadState": "failed", "loadError": self._load_errors[failed]}
+
+    def _load_failed(self, model_name: str, error: BaseException) -> None:
+        message = (str(error) or type(error).__name__)[:300]
+        # a model a sensor asks for on every frame fails on every frame: the server hears of it once
+        if self._load_errors.get(model_name) == message:
+            return
+        self._load_errors[model_name] = message
+        self._refresh_model_specs()
+
+    def _load_succeeded(self, model_name: str) -> None:
+        if self._load_errors.pop(model_name, None) is not None:
+            self._refresh_model_specs()
+
+    def _refresh_model_specs(self) -> None:
+        # the server learns of a failed or a mended load at once, not with the sensor's next change of model
+        for sensors in self._sensors.values():
+            for sensor in sensors.values():
+                sensor.updateModelSpec()
+
     async def get_face_detector(self, model_name: str) -> BoxDetector:
         detector = self.face_detectors.get(model_name)
         if not detector:
@@ -305,11 +340,13 @@ class ONNXPlugin(
             self.face_detectors[model_name] = detector
             try:
                 await detector.initialize(model_name)
-            except Exception:
+            except Exception as error:
                 self.face_detectors.pop(model_name, None)
+                self._load_failed(model_name, error)
                 raise
         else:
             await detector.initialize(model_name)
+        self._load_succeeded(model_name)
         return detector
 
     async def get_face_embedder(self, space: str) -> Embedder:
@@ -326,11 +363,13 @@ class ONNXPlugin(
             self.face_embedders[space] = embedder
             try:
                 await embedder.initialize(spec.model)
-            except Exception:
+            except Exception as error:
                 self.face_embedders.pop(space, None)
+                self._load_failed(space, error)
                 raise
         else:
             await embedder.initialize(spec.model)
+        self._load_succeeded(space)
         return embedder
 
     async def get_face_landmarker(self) -> LandmarkDetector:
@@ -340,11 +379,13 @@ class ONNXPlugin(
             self.face_landmarkers[FACE_LANDMARK_MODEL] = landmarker
             try:
                 await landmarker.initialize(FACE_LANDMARK_MODEL)
-            except Exception:
+            except Exception as error:
                 self.face_landmarkers.pop(FACE_LANDMARK_MODEL, None)
+                self._load_failed(FACE_LANDMARK_MODEL, error)
                 raise
         else:
             await landmarker.initialize(FACE_LANDMARK_MODEL)
+        self._load_succeeded(FACE_LANDMARK_MODEL)
         return landmarker
 
     async def get_person_embedder(self) -> PersonEmbedder:
@@ -359,11 +400,13 @@ class ONNXPlugin(
             self.person_embedders[PERSON_EMBEDDER_MODEL] = embedder
             try:
                 await embedder.initialize(PERSON_EMBEDDER_MODEL)
-            except Exception:
+            except Exception as error:
                 self.person_embedders.pop(PERSON_EMBEDDER_MODEL, None)
+                self._load_failed(PERSON_EMBEDDER_MODEL, error)
                 raise
         else:
             await embedder.initialize(PERSON_EMBEDDER_MODEL)
+        self._load_succeeded(PERSON_EMBEDDER_MODEL)
         return embedder
 
     async def get_segmenter(self, model_name: str) -> Segmenter:
@@ -375,11 +418,13 @@ class ONNXPlugin(
             self.segmenters[model_name] = segmenter
             try:
                 await segmenter.initialize(model_name)
-            except Exception:
+            except Exception as error:
                 self.segmenters.pop(model_name, None)
+                self._load_failed(model_name, error)
                 raise
         else:
             await segmenter.initialize(model_name)
+        self._load_succeeded(model_name)
         return segmenter
 
     async def get_plate_detector(self, model_name: str) -> BoxDetector:
@@ -395,11 +440,13 @@ class ONNXPlugin(
             self.plate_detectors[model_name] = detector
             try:
                 await detector.initialize(model_name)
-            except Exception:
+            except Exception as error:
                 self.plate_detectors.pop(model_name, None)
+                self._load_failed(model_name, error)
                 raise
         else:
             await detector.initialize(model_name)
+        self._load_succeeded(model_name)
         return detector
 
     async def get_ocr(self, model_name: str) -> PlateOcr:
@@ -417,11 +464,13 @@ class ONNXPlugin(
             self.ocr_models[model_name] = ocr
             try:
                 await ocr.initialize(model_name)
-            except Exception:
+            except Exception as error:
                 self.ocr_models.pop(model_name, None)
+                self._load_failed(model_name, error)
                 raise
         else:
             await ocr.initialize(model_name)
+        self._load_succeeded(model_name)
         return ocr
 
     async def get_clip_encoder(self, model_name: str) -> ClipEncoder:
@@ -438,11 +487,13 @@ class ONNXPlugin(
             self.clip_encoders[model_name] = encoder
             try:
                 await encoder.initialize(model_name, clip_text_for(model_name))
-            except Exception:
+            except Exception as error:
                 self.clip_encoders.pop(model_name, None)
+                self._load_failed(model_name, error)
                 raise
         else:
             await encoder.initialize(model_name, clip_text_for(model_name))
+        self._load_succeeded(model_name)
         return encoder
 
     async def objectDetectionSettings(self) -> list[JsonSchema] | None:

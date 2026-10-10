@@ -74,7 +74,9 @@ class OpenVinoFaceSensor(FaceDetectorSensor["FaceStorageValues"]):
         return {
             "input": {"width": size, "height": size, "format": "rgb"},
             "triggerLabels": ["person"],
-            **model_runtime((self._plugin.face_detectors.get(detector_name), "detect")),
+            **self._plugin.load_state(
+                model_runtime((self._plugin.face_detectors.get(detector_name), "detect")), detector_name
+            ),
         }
 
     async def detectFaces(self, frames: list[VideoFrameData]) -> list[FaceResult]:

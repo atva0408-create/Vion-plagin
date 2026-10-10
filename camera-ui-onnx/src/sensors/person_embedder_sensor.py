@@ -31,7 +31,10 @@ class ONNXPersonEmbedderSensor(PersonEmbedderSensor):
             "input": {"width": PERSON_EMBEDDER_WIDTH, "height": PERSON_EMBEDDER_HEIGHT, "format": "rgb"},
             "triggerLabels": ["person"],
             "embeddingModel": PERSON_EMBEDDER_MODEL,
-            **model_runtime((self._plugin.person_embedders.get(PERSON_EMBEDDER_MODEL), "embed")),
+            **self._plugin.load_state(
+                model_runtime((self._plugin.person_embedders.get(PERSON_EMBEDDER_MODEL), "embed")),
+                PERSON_EMBEDDER_MODEL,
+            ),
         }
 
     async def embedPersons(self, frames: list[VideoFrameData]) -> list[PersonEmbeddingResult]:

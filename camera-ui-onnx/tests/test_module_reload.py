@@ -83,6 +83,10 @@ def plugin(request: pytest.FixtureRequest) -> Any:
         "prepare_object_detector",
         "_object_load_failed",
         "_reload_models",
+        "load_state",
+        "_load_failed",
+        "_load_succeeded",
+        "_refresh_model_specs",
     }
     cls.bases = []
     cls.decorator_list = []
@@ -125,6 +129,7 @@ def plugin(request: pytest.FixtureRequest) -> Any:
     instance._module_files = {}
     instance._failed_models = {}
     instance._failed_module_files = {}
+    instance._load_errors = {}
     instance._preparing = set()
     instance._module_reloading = set()
     instance._models_generation = 0
