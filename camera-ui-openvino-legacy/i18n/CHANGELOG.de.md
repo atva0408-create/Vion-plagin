@@ -1,3 +1,9 @@
+## [1.3.1]
+
+- Bei einem fehlgeschlagenen Modul-Update bleibt der funktionierende Detektor aktiv. Parallele Updates erzeugen einen Ersatz, überholte Ladevorgänge werden verworfen und die Eingangsgröße der Kamera wird nach dem Wechsel aktualisiert.
+- Ein nach dem Stoppen oder Gerätewechsel abgeschlossener Ladevorgang aktiviert die alte Sitzung nicht erneut.
+- Das Plugin meldet ViON, welche Version eines Moduls es geladen hat und welche nicht: Die Modulkarte nennt eine Version, die nicht geladen wurde, und ein Update behält die Version, die funktioniert hat, für den Weg zurück. Eine Kamera, deren Modulversion nach einem Neustart nicht lädt, arbeitet mit dem Standardmodell, bis das Modul geladen ist. Ein Update oder eine Rückkehr des Moduls wird sofort geladen, ohne die zehnminütige Pause nach einem fehlgeschlagenen Laden.
+
 ## [1.3.0]
 
 - Ähnlich aussehende Personen lassen sich über Kameras hinweg finden, zusammen mit ViON NVR 0.12.0: Wählen Sie dieses Plugin in den Einstellungen der Kamera → Plugins → Sensor-Typen → „Personen-Wiedererkennung“. Es merkt sich, wie Kleidung und Statur einer Person aussehen, nicht wer sie ist. Das Modell lädt mit der ersten Person, die eine solche Kamera sieht, nicht beim Start

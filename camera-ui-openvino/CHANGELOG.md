@@ -1,7 +1,8 @@
-## Unreleased
+## [1.5.1]
 
 - A failed module update keeps the working detector. Overlapping updates build one replacement, obsolete loads are discarded, and a successful swap refreshes the camera's input size.
 - A model load that completes after shutdown or a device change cannot reactivate the old session.
+- The plugin tells ViON which version of a module it loaded and which it could not: the module card names a version that did not load, and an update keeps the version that worked as the way back. A camera whose module version does not load after a restart works on the standard model until the module loads. An update or a rollback of a module is loaded at once, without the ten-minute pause after a failed load.
 
 ## [1.5.0]
 
