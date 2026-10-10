@@ -79,8 +79,8 @@ class InstalledModules:
 
     def report(self, entry: dict[str, Any], error: str | None = None) -> bool:
         """Tells the server whether this plugin loaded the version of a module in ``entry`` (``error``: why not). The
-        server keeps a version that loaded as the way back of an update, and shows a version that did not. The latest
-        state per module, in this plugin's own file, replaced atomically. False: not written (logged by the caller),
+        server keeps a version that loaded as the way back of an update, and shows a version that did not. Per module
+        the version that loaded last and the last that failed, in this plugin's own file, replaced atomically. False: not written (logged by the caller),
         which costs the server that knowledge, not the load."""
         if not self.dir or not entry.get("id"):
             return True
@@ -95,15 +95,25 @@ class InstalledModules:
                 data = None
             modules = data.get("modules") if isinstance(data, dict) else None
             modules = dict(modules) if isinstance(modules, dict) else {}
+            record = modules.get(str(entry["id"]))
+            record = dict(record) if isinstance(record, dict) else {}
             state: dict[str, Any] = {
                 "version": entry.get("version"),
                 "tier": entry.get("tier"),
-                "state": "failed" if error is not None else "loaded",
                 "at": int(time.time() * 1000),
             }
-            if error is not None:
-                state["error"] = error[:300]
-            modules[str(entry["id"])] = state
+            if error is None:
+                # the version that loaded last stays known after a newer one fails: it is the way back
+                record["loaded"] = state
+                failed = record.get("failed")
+                if isinstance(failed, dict) and (failed.get("version"), failed.get("tier")) == (
+                    state["version"],
+                    state["tier"],
+                ):
+                    record.pop("failed")
+            else:
+                record["failed"] = {**state, "error": error[:300]}
+            modules[str(entry["id"])] = record
             temporary = f"{path}.{os.getpid()}.tmp"
             with open(temporary, "w", encoding="utf-8") as handle:
                 json.dump({"plugin": os.environ.get("PLUGIN_NAME", ""), "modules": modules}, handle)

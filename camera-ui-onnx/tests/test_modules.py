@@ -421,15 +421,23 @@ def test_the_report_tells_the_server_what_loaded_and_what_did_not(
     assert [f.name for f in files] == ["vionvision_camera-ui-onnx.json"]
     data = json.loads(files[0].read_text(encoding="utf-8"))
     assert data["plugin"] == "@vionvision/camera-ui-onnx"
-    assert data["modules"]["cats"] == {
-        **data["modules"]["cats"],
+    assert data["modules"]["cats"]["failed"] == {
+        **data["modules"]["cats"]["failed"],
         "version": "2.0.0",
         "tier": "heavy",
-        "state": "failed",
         "error": "invalid graph",
     }
-    assert data["modules"]["bikes"]["version"] == "1.1.0" and data["modules"]["bikes"]["state"] == "failed"
-    assert len(data["modules"]["bikes"]["error"]) == 300
+    assert "loaded" not in data["modules"]["cats"]
+    # a newer version that failed keeps the one that loaded known: the server's way back
+    assert data["modules"]["bikes"]["loaded"]["version"] == "1.0.0"
+    assert data["modules"]["bikes"]["failed"]["version"] == "1.1.0"
+    assert len(data["modules"]["bikes"]["failed"]["error"]) == 300
+    # the same version loading after all clears its failure
+    assert store.report({"id": "bikes", "version": "1.1.0", "tier": "light"})
+    data = json.loads(files[0].read_text(encoding="utf-8"))
+    assert (
+        data["modules"]["bikes"]["loaded"]["version"] == "1.1.0" and "failed" not in data["modules"]["bikes"]
+    )
     # nothing left behind of the atomic write
     assert not [p for p in (tmp_path / ".engines").iterdir() if p.name.endswith(".tmp")]
 
