@@ -1,3 +1,8 @@
+## [1.5.2]
+
+- A model a sensor has not loaded yet is reported to ViON as waiting to be loaded when first needed (Re-ID with the first person a camera sees) or as failed, with the reason: ViON shows the first as connected and only the second as not working.
+- A module version gone back to, or a fixed one, is loaded at once also for a camera that fell back to the standard model, not with its next frame with motion.
+
 ## [1.5.1]
 
 - A failed module update keeps the working detector. Overlapping updates build one replacement, obsolete loads are discarded, and a successful swap refreshes the camera's input size.

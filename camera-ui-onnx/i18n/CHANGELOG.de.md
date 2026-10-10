@@ -1,3 +1,8 @@
+## [1.5.2]
+
+- Das Plugin meldet ViON, warum das Modell eines Sensors noch nicht geladen ist: Es wartet auf den ersten Einsatz (Personen-Wiedererkennung auf die erste Person im Bild) oder es wurde nicht geladen, mit Grund. ViON zeigt das Erste als „Verbunden“ und nur das Zweite als „Funktioniert nicht“.
+- Eine Modulversion, zu der zurückgekehrt wurde, oder eine korrigierte wird sofort geladen, auch für eine Kamera, die auf das Standardmodell ausgewichen ist, nicht erst mit dem nächsten Bild mit Bewegung.
+
 ## [1.5.1]
 
 - Bei einem fehlgeschlagenen Modul-Update bleibt der funktionierende Detektor aktiv. Parallele Updates erzeugen einen Ersatz, überholte Ladevorgänge werden verworfen und die Eingangsgröße der Kamera wird nach dem Wechsel aktualisiert.
