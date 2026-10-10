@@ -271,8 +271,8 @@ def onnx_plugin(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
     pytest.importorskip("aiohttp")
     if not SDK.is_dir():
         pytest.skip(f"camera_ui_sdk (python) not found at {SDK}")
-    if importlib.util.find_spec("transformers") is None:
-        monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(CLIPProcessor=object))
+    # CLIP is unrelated to module updates; do not load its optional torch stack in these tests.
+    monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(CLIPProcessor=object))
     for name in ("main", "model_manager", "defaults", "modules", "trained", "inference"):
         monkeypatch.delitem(sys.modules, name, raising=False)
     monkeypatch.syspath_prepend(str(ONNX_SRC))
@@ -341,6 +341,8 @@ def test_an_updated_module_is_loaded_again_without_a_restart(tmp_path: Path, mon
     plugin._sensors = {}
     plugin._failed_models = {}
     plugin._module_files = {}
+    plugin._module_reloading = set()
+    plugin._models_generation = 0
     plugin._modules_version = -1
 
     async def scenario() -> None:
@@ -363,5 +365,44 @@ def test_an_updated_module_is_loaded_again_without_a_restart(tmp_path: Path, mon
         assert new is not old and new.backend._input_size == (64, 64)
         assert new.labels == {0: "bicycle", 1: "scooter"}
         assert old.closed
+
+    asyncio.run(scenario())
+
+
+def test_an_invalid_updated_graph_keeps_the_loaded_cpu_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    main = onnx_plugin(monkeypatch)
+    import model_manager  # type: ignore[import-not-found]
+    from modules import installed_modules  # type: ignore[import-not-found]
+
+    directory = tmp_path / "modules"
+    directory.mkdir()
+    installed_modules.dir = str(directory)
+    installed_modules._checked = float("-inf")
+    write_installed(directory, [module_entry(directory, "bikes")])
+    logger = types.SimpleNamespace(log=print, warn=print, error=print, debug=print, success=print)
+    plugin = object.__new__(main.ONNXPlugin)
+    plugin.logger = logger
+    plugin.model_manager = model_manager.OnnxModelManager(
+        str(tmp_path / "storage"), logger, lambda: [["CPUExecutionProvider"]]
+    )
+    plugin.object_detectors = {}
+    plugin._sensors = {}
+    plugin._failed_models = {}
+    plugin._module_files = {}
+    plugin._module_reloading = set()
+    plugin._models_generation = 0
+
+    async def scenario() -> None:
+        old = await plugin.get_object_detector("vion-module-bikes")
+        updated = module_entry(directory, "bikes", version="1.1.0")
+        Path(updated["files"]["onnx"][0]["path"]).write_bytes(b"invalid ONNX graph")
+        write_installed(directory, [updated])
+        installed_modules._checked = float("-inf")
+        await plugin._reload_module_detector("vion-module-bikes")
+        assert await plugin.get_object_detector("vion-module-bikes") is old
+        assert old.initialized and not old.closed
+        assert old.backend._input_size == (32, 32)
+        assert plugin._module_files["vion-module-bikes"][0] == "1.0.0"
+        await old.close()
 
     asyncio.run(scenario())

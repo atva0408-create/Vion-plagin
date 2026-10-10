@@ -139,6 +139,8 @@ class ONNXPlugin(
         self._modules_version = -1
         # the files each loaded module detector was built from: an update keeps the model name, not the files
         self._module_files: dict[str, object] = {}
+        self._module_reloading: set[str] = set()
+        self._models_generation = 0
         self._modules_watch: asyncio.Task[None] | None = None
 
         self._sensors: dict[str, dict[str, Any]] = {}
@@ -246,23 +248,30 @@ class ONNXPlugin(
             detector = BoxDetector(self.model_manager, self.logger, name="object detector", multiclass=True)
             self.object_detectors[model_name] = detector
             try:
-                await detector.initialize(model_name)
+                signature = await self._initialize_object_detector(detector, model_name)
             except Exception:
                 self.object_detectors.pop(model_name, None)
                 raise
-            classes = None
-            if is_trained(model_name):
-                trained = trained_models.entry(model_name)
-                classes = trained.get("classes") if trained else None
-            elif is_module(model_name):
-                module = installed_modules.entry(model_name, MODULE_BACKENDS)
-                self._module_files[model_name] = self._module_signature(model_name)
-                classes = module.get("labels") if module else None
-            if classes and not detector.labels:
-                detector.labels = {index: str(label) for index, label in enumerate(classes)}
+            if is_module(model_name):
+                self._module_files[model_name] = signature
         else:
             await detector.initialize(model_name)
         return detector
+
+    async def _initialize_object_detector(self, detector: BoxDetector, model_name: str) -> object:
+        # Keep the labels and signature of the version whose load is being started.
+        signature = self._module_signature(model_name) if is_module(model_name) else None
+        classes = None
+        if is_trained(model_name):
+            trained = trained_models.entry(model_name)
+            classes = trained.get("classes") if trained else None
+        elif is_module(model_name):
+            module = installed_modules.entry(model_name, MODULE_BACKENDS)
+            classes = module.get("labels") if module else None
+        await detector.initialize(model_name)
+        if classes and not detector.labels:
+            detector.labels = {index: str(label) for index, label in enumerate(classes)}
+        return signature
 
     async def get_face_detector(self, model_name: str) -> BoxDetector:
         detector = self.face_detectors.get(model_name)
@@ -1154,20 +1163,59 @@ class ONNXPlugin(
         return (entry.get("version"), installed_modules.files(entry, MODULE_BACKENDS)) if entry else None
 
     async def _reload_module_detector(self, model_name: str) -> None:
-        """An updated module: the new files load while the old detector keeps serving, then it is closed."""
-        old = self.object_detectors.pop(model_name, None)
-        self._module_files.pop(model_name, None)
-        self._failed_models.pop(model_name, None)
-        self.model_manager.forget(model_name)
+        """Publish a ready replacement only: a failed load leaves the working detector in service."""
+        if model_name in self._module_reloading:
+            return
+        self._module_reloading.add(model_name)
+        generation = self._models_generation
         try:
-            if installed_modules.entry(model_name, MODULE_BACKENDS):
-                await self.get_object_detector(model_name)
+            while generation == self._models_generation:
+                if not installed_modules.entry(model_name, MODULE_BACKENDS):
+                    old = self.object_detectors.pop(model_name, None)
+                    self._module_files.pop(model_name, None)
+                    self.model_manager.forget(model_name)
+                    if old is not None:
+                        await old.close()
+                    return
+                self.model_manager.forget(model_name)
+                candidate = BoxDetector(
+                    self.model_manager, self.logger, name="object detector", multiclass=True
+                )
+                wanted_signature = self._module_signature(model_name)
+                try:
+                    signature = await self._initialize_object_detector(candidate, model_name)
+                except Exception:
+                    await candidate.close()
+                    if generation == self._models_generation and wanted_signature != self._module_signature(
+                        model_name
+                    ):
+                        continue
+                    raise
+                except BaseException:
+                    await candidate.close()
+                    raise
+                if generation != self._models_generation:
+                    await candidate.close()
+                    return
+                if signature != self._module_signature(model_name):
+                    await candidate.close()
+                    continue
+                old = self.object_detectors.get(model_name)
+                self.object_detectors[model_name] = candidate
+                self._module_files[model_name] = signature
+                self._failed_models.pop(model_name, None)
+                for sensors in self._sensors.values():
+                    obj = sensors.get("object")
+                    if obj is not None and obj._active_model == model_name:
+                        obj.updateModelSpec()
+                if old is not None:
+                    await old.close()
                 self.logger.success(f"Модуль {model_name} загружен заново")
+                return
         except Exception as error:
             self.logger.error(f"Модуль {model_name} не загрузился заново: {error}")
         finally:
-            if old is not None:
-                await old.close()
+            self._module_reloading.discard(model_name)
 
     async def _watch_modules(self) -> None:
         # the settings show a module before any camera detects again: detection only runs while something moves
@@ -1187,6 +1235,7 @@ class ONNXPlugin(
         return backend
 
     async def _close_all(self) -> None:
+        self._models_generation += 1
         await asyncio.gather(
             *(d.close() for d in self.object_detectors.values()),
             *(d.close() for d in self.face_detectors.values()),

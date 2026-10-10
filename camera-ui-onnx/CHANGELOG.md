@@ -1,3 +1,8 @@
+## Unreleased
+
+- A failed module update keeps the working detector. Overlapping updates build one replacement, obsolete loads are discarded, and a successful swap refreshes the camera's input size.
+- A model load that completes after shutdown or a provider change cannot reactivate the old session.
+
 ## [1.5.0]
 
 - People who look alike can be found across cameras, together with ViON NVR 0.12.0: choose this plugin for a camera in its settings → Plugins → Sensor Types → Person Re-ID. It keeps what a person's clothes and build look like, not who they are. Its model loads with the first person such a camera sees, never at start
