@@ -58,7 +58,10 @@ def sensor(request: pytest.FixtureRequest) -> Any:
     cls.bases = []
     cls.decorator_list = []
     cls.body = [
-        node for node in cls.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "detectObjects"
+        node
+        for node in cls.body
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
+        and node.name in {"detectObjects", "wanted_model", "take_wanted_model"}
     ]
     namespace: dict[str, Any] = {
         "DEFAULT_OBJECT_MODEL": DEFAULT,
@@ -129,3 +132,25 @@ def test_the_camera_goes_back_to_its_model_once_it_loads(sensor: Any) -> None:
     result = asyncio.run(sensor.detectObjects(None))
     assert result["detections"] == [{"label": "bikes"}]
     assert sensor._active_model == MODULE
+
+
+def test_a_model_loaded_in_the_background_is_taken_without_a_frame(sensor: Any) -> None:
+    sensor._storage = object()
+    sensor._active_model = DEFAULT
+    sensor._plugin.object_detectors[DEFAULT] = Detector("standard")
+    # not loaded yet: the camera stays on what detects
+    sensor.take_wanted_model()
+    assert sensor._active_model == DEFAULT and sensor.spec_updates == 0
+    sensor._plugin.object_detectors[MODULE] = Detector("bikes")
+    sensor.take_wanted_model()
+    assert sensor._active_model == MODULE and sensor.spec_updates == 1
+    # once is enough
+    sensor.take_wanted_model()
+    assert sensor.spec_updates == 1
+
+
+def test_a_sensor_without_its_settings_asks_for_nothing(sensor: Any) -> None:
+    sensor._plugin.object_detectors[MODULE] = Detector("bikes")
+    assert sensor.wanted_model() is None
+    sensor.take_wanted_model()
+    assert sensor._active_model == MODULE and sensor.spec_updates == 0

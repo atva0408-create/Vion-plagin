@@ -441,3 +441,38 @@ def test_a_reload_of_all_models_checks_the_modules_again(plugin: Any) -> None:
         assert plugin._modules_version == -1
 
     asyncio.run(scenario())
+
+
+def test_a_camera_on_the_standard_model_gets_the_version_gone_back_to_without_a_frame(plugin: Any) -> None:
+    async def scenario() -> None:
+        m = plugin.model_manager
+        taken: list[Any] = []
+        obj = types.SimpleNamespace(
+            wanted_model=lambda: NAME,
+            take_wanted_model=lambda: taken.append(plugin.object_detectors.get(NAME)),
+            refresh_model_choices=lambda: None,
+            updateModelSpec=lambda: None,
+        )
+        plugin._sensors = {"lift": {"object": obj}}
+        # after a restart v2 does not load: nothing serves the module, the camera detects with the standard model
+        m.models.current = {"id": "bikes", "version": "2", "labels": ["bicycle"]}
+        m.fail_versions.add("2")
+        with pytest.raises(RuntimeError):
+            await plugin.get_object_detector(NAME)
+        # «Вернуть v1» on a quiet camera: loaded at once and taken by the camera, with no frame of its own
+        m.models.current = {"id": "bikes", "version": "1", "labels": ["bicycle"]}
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        detector = plugin.object_detectors[NAME]
+        assert detector.version == "1" and detector.initialized
+        assert taken and taken[-1] is detector
+        # a camera that asks for the standard model is not given a module
+        taken.clear()
+        obj.wanted_model = lambda: "yolo-v9-s-320"
+        m.models.version += 1
+        plugin.check_modules()
+        await settle()
+        assert taken == []
+
+    asyncio.run(scenario())

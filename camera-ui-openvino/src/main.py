@@ -1123,6 +1123,12 @@ class OpenVinoPlugin(
             try:
                 await self.get_object_detector(model_name)
                 self.logger.success(f"Загружена модель объектов {model_name}")
+                # a camera waiting for this model takes it now, not with its next frame: a quiet one may see none
+                # for hours
+                for sensors in self._sensors.values():
+                    obj = sensors.get("object")
+                    if obj is not None:
+                        obj.take_wanted_model()
             except Exception as error:
                 self._object_load_failed(model_name, signature)
                 self.logger.error(f"Модель объектов {model_name} не загрузилась: {error}")
@@ -1217,6 +1223,13 @@ class OpenVinoPlugin(
             obj = sensors.get("object")
             if obj is not None:
                 obj.refresh_model_choices()
+        # a camera whose module is not loaded (its version failed after a restart, the standard model detecting
+        # meanwhile) gets the version now installed at once, not with its next frame with motion
+        for sensors in self._sensors.values():
+            obj = sensors.get("object")
+            wanted = obj.wanted_model() if obj is not None else None
+            if wanted is not None and is_module(wanted) and wanted not in self.object_detectors:
+                self.prepare_object_detector(wanted)
         for name in [n for n in self.object_detectors if is_module(n)]:
             if self._module_signature(name) != self._module_files.get(name):
                 asyncio.create_task(self._reload_module_detector(name))

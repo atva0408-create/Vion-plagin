@@ -83,6 +83,24 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         if not task.cancelled() and task.exception():
             self._logger.error(f"Список моделей не обновлён: {task.exception()}")
 
+    def wanted_model(self) -> str | None:
+        """The model the camera asks for; None before the sensor has its settings."""
+        if getattr(self, "_storage", None) is None:
+            return None
+        return self._wanted_model()
+
+    def take_wanted_model(self) -> None:
+        """The model the camera asks for has loaded in the background (a module, or the version gone back to after a
+        failed one): detect with it from now on, and tell the server now, not with the next frame."""
+        wanted = self.wanted_model()
+        detector = self._plugin.object_detectors.get(wanted) if wanted is not None else None
+        if wanted is None or wanted == self._active_model or detector is None or not detector.initialized:
+            return
+        previous, self._active_model = self._active_model, wanted
+        self.updateModelSpec()
+        if previous:
+            self._logger.log(f"Модель объектов: {previous} → {wanted}")
+
     def _wanted_model(self) -> str:
         # a module removed in the store leaves the camera on the default model, not on a missing file
         requested = usable_choice(self.storage.values.get("model"), MODULE_BACKENDS, DEFAULT_OPTION)
