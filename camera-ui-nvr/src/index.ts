@@ -952,6 +952,36 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }
   }
 
+  /**
+   * Every event of a range that the filters of queryEvents let through, handed to `visit` one at a time and not kept:
+   * statistics over months read each event once instead of holding tens of thousands of them. Stops after `maxRows`.
+   */
+  private scanEvents(cameraIds: string[] | undefined, opts: GetEventsOptions, visit: (ev: RecordedEvent) => void, maxRows: number): { scanned: number; capped: boolean } {
+    const batch = 2000;
+    let before = opts.before;
+    let scanned = 0;
+    for (;;) {
+      const rows = this.store.events({
+        cameraIds,
+        startMs: opts.startMs,
+        endMs: opts.endMs,
+        startedSinceMs: opts.startedSinceMs,
+        before,
+        favoritesOnly: opts.favoritesOnly,
+        state: opts.state,
+        limit: batch,
+      });
+      for (const row of rows) {
+        const ev = JSON.parse(row.data) as RecordedEvent;
+        if (matchesEvent(ev, opts)) visit(ev);
+      }
+      scanned += rows.length;
+      if (rows.length < batch) return { scanned, capped: false };
+      if (scanned >= maxRows) return { scanned, capped: true };
+      before = rows.at(-1)!.start_ms;
+    }
+  }
+
   public async getEventStats(
     cameraIds: string[],
     opts: GetEventsOptions = {},
@@ -2174,6 +2204,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private assistantHost(): AssistantHost {
     return {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
+      scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
       eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),
       event: (eventId) => {
         const row = this.store.event(eventId);

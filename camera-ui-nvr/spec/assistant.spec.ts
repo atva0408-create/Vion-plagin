@@ -114,6 +114,7 @@ const reading = nvr
   .map((t) => t.name);
 assert.deepEqual(reading.sort(), [
   'attribute_time',
+  'event_stats',
   'get_event_image',
   'list_faces',
   'list_plates',

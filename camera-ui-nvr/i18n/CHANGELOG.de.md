@@ -1,3 +1,8 @@
+## [0.16.0]
+
+- Der Assistent zählt Ereignisse über die Zeit für Diagramme: pro Stunde, Tag oder Woche eines Zeitraums bis 92 Tage oder zusammengefasst in die Stunden eines Tages und die Tage einer Woche, wie viele begannen oder wie viele Minuten sie dauerten, zusammen oder getrennt nach Kamera, Label oder Antwort eines Moduls (event_stats). Jede Reihe hat einen Wert pro Abschnitt, keinen für eine Stunde, die noch kommt; die sieben größten Gruppen bleiben getrennt, der Rest ist «other». Ein Ereignis zählt am Tag seines Beginns, seine Minuten werden an den Stunden und um Mitternacht geteilt
+- attribute_time nimmt einen Monat: «wie lange hat er diesen Monat gespielt» pro Tag; über eine Woche gibt es die Summen jedes Tages statt jeder Strecke
+
 ## [0.15.0]
 
 - Der Assistent liest, was trainierte Module antworten ("играет в компьютер: да/нет"): er findet Ereignisse nach der Antwort, zählt sie in der Tageszusammenfassung und rechnet zusammen, wie lange am Tag die Antwort "ja" war, mit den Pausen dazwischen (attribute_time). Die Zeit ist ungefähr: ein Modul antwortet nur auf den Bildern, die der Detektor ansieht, daher werden Momente unter 10 Minuten Abstand zusammengefasst, außer das Modul sagte dazwischen zweimal oder öfter über 3 Minuten "nein". Jede Kamera hat ihre eigene Zählung (zwei Kinder werden nicht addiert), und ein Ereignis, das seit vor Mitternacht läuft, zählt am gefragten Tag

@@ -1,3 +1,8 @@
+## [0.16.0]
+
+- The assistant counts events over time for charts: per hour, day or week of a period up to 92 days, or added up into the hours of a day and the days of a week, how many began or how many minutes they lasted, together or apart by camera, label or a module's answer (event_stats). Each series has a value per bucket, none for an hour still to come, and the biggest seven groups stay apart, the rest is «other». An event counts on the day it began; its minutes are cut at the hours and at midnight
+- attribute_time takes a month: «how long did he play this month» per day; over a week it gives each day's sums instead of every stretch
+
 ## [0.15.0]
 
 - The assistant reads what trained modules answer ("играет в компьютер: да/нет"): it finds events by the answer, counts them in a day's summary and adds up how long a day the answer was "yes", with the pauses between (attribute_time). The time is approximate: a module answers only on the frames the detector looks at, so moments closer than 10 minutes are joined, unless the module said "no" twice or more for 3 minutes between them. Each camera has its own count (two children are not added up), and an event still going on since before midnight counts on the day asked
