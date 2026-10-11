@@ -498,16 +498,19 @@ export class Store {
     this.db.prepare('DELETE FROM episodes WHERE id = ?').run(id);
   }
 
-  /** Events still "active" from a previous run (crash, restart): end them at their last update. */
-  public closeStaleActive(): number {
+  /**
+   * Events still "active" that no update reached since `before` (a frame worker that crashed, an "end" the server
+   * lost): ended at their last update. Without `before`, every active event: at the start of the plugin none is live.
+   */
+  public closeStaleActive(before?: number): number {
     const res = this.db
       .prepare(
         `UPDATE events SET state = 'ended',
            end_ms = COALESCE(json_extract(data, '$.lastUpdate'), start_ms),
            data = json_set(data, '$.state', 'ended', '$.endTime', COALESCE(json_extract(data, '$.lastUpdate'), start_ms))
-         WHERE state = 'active'`,
+         WHERE state = 'active'${before === undefined ? '' : " AND COALESCE(json_extract(data, '$.lastUpdate'), start_ms) < ?"}`,
       )
-      .run();
+      .run(...(before === undefined ? [] : [before]));
     return Number(res.changes);
   }
 

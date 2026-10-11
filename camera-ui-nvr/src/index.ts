@@ -79,6 +79,13 @@ const STATS_SCAN_ROWS = 100_000;
 const STATS_CAP = 5000;
 const TRACE_PAGE = 60;
 const EPISODE_SWEEP_MS = 60_000;
+/**
+ * An event the server keeps alive sends an update every second: one no update reached this long was lost (a frame
+ * worker that crashed, an "end" that never came) and is ended at its last update, as the start of the plugin does.
+ * Left "active", it counted in every range from its start to the next restart.
+ */
+const STALE_ACTIVE_MS = 10 * 60_000;
+const STALE_SWEEP_MS = 60_000;
 /** An episode clip starts a little before the camera saw the visit and ends a little after (as in the player). */
 const EPISODE_HEAD_MS = 1500;
 const EPISODE_TAIL_MS = 2000;
@@ -227,6 +234,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private describer!: EventDescriber;
   private episodes!: Episodes;
   private episodeTimer: NodeJS.Timeout | undefined;
+  private staleTimer: NodeJS.Timeout | undefined;
   private readonly proxies = new Map<string, unknown>();
   /**
    * How far back a hover preview decodes from the keyframe before the event: 8 s is 240 frames at 30 fps, so the
@@ -604,6 +612,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.entitlementsTimer = setInterval(() => void this.refreshEntitlements(), ENTITLEMENTS_INTERVAL_MS);
     this.retentionTimer = setInterval(() => void this.enforceRetention(), RETENTION_INTERVAL_MS);
     this.episodeTimer = setInterval(() => this.episodes.sweep(Date.now()), EPISODE_SWEEP_MS);
+    this.staleTimer = setInterval(() => this.closeStaleEvents(Date.now()), STALE_SWEEP_MS);
     this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
     void this.enforceRetention();
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
@@ -614,6 +623,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
     clearInterval(this.episodeTimer);
+    clearInterval(this.staleTimer);
     clearInterval(this.clipAutoTimer);
     this.clipAutoTimer = undefined;
     clearTimeout(this.clipAutoSoon);
@@ -1584,6 +1594,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       paused: this.paused,
       cameras,
     };
+  }
+
+  /** Ends the events still "active" that no update reached for STALE_ACTIVE_MS. */
+  private closeStaleEvents(now: number): void {
+    const closed = this.store.closeStaleActive(now - STALE_ACTIVE_MS);
+    if (closed) this.logger.log(`Закрыто событий, к которым 10 минут не приходили обновления: ${closed}`);
   }
 
   private async enforceRetention(): Promise<void> {
