@@ -584,6 +584,32 @@
       "node": ">=22.0.0"
     }
   },
+  "@vionvision/camera-ui-voice": {
+    "displayName": "VOICE",
+    "category": "other",
+    "featured": false,
+    "tagline": "The voice of ViON through the camera speaker: reminds a child of breaks and bedtime, answers the child's questions, says who has come, and speaks phrases from the chat, automations and notifications.",
+    "i18n": {
+      "en": {
+        "tagline": "The voice of ViON through the camera speaker: reminds a child of breaks and bedtime, answers the child's questions, says who has come, and speaks phrases from the chat, automations and notifications."
+      },
+      "ru": {
+        "tagline": "Голос ViON через динамик камеры: напоминает ребёнку о перерыве и времени сна, отвечает на его вопросы, говорит, кто пришёл, и произносит фразы из чата, автоматизаций и уведомлений."
+      },
+      "de": {
+        "tagline": "Die Stimme von ViON über den Lautsprecher der Kamera: erinnert ein Kind an Pausen und Schlafenszeit, beantwortet seine Fragen, sagt, wer gekommen ist, und spricht Sätze aus dem Chat, aus Automationen und Benachrichtigungen."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-voice/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.3.4",
+      "node": ">=22.0.0"
+    }
+  },
   "@vionvision/camera-ui-wasm-motion": {
     "displayName": "WASM Motion",
     "category": "detection",
