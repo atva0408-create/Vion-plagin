@@ -171,6 +171,22 @@ await nvr.ingestCrossings('cam-gate', [
   for (let i = 500; i < many.length; i += 500) await nvr.ingestCrossings('cam-door', many.slice(i, i + 500));
   const turnstile = await counts({ date: '2026-10-07', days: 1, bucket: 'day', line: 'Турникет' });
   assert.equal(turnstile.total, 5100);
+
+  // a long read gives way between its pages: the recording and the other calls go on meanwhile
+  let turns = 0;
+  let running = true;
+  const spin = () => {
+    turns++;
+    if (running) setImmediate(spin);
+  };
+  setImmediate(spin);
+  const seen: number[] = [];
+  type Scan = (ids: undefined, from: number, to: number, max: number, visit: () => void) => Promise<{ scanned: number }> | { scanned: number };
+  const scan = (nvr as unknown as { scanCrossings: Scan }).scanCrossings.bind(nvr);
+  const read = await scan(undefined, at('2026-10-07T00:00:00'), at('2026-10-07T23:59:59'), 300_000, () => void seen.push(turns));
+  running = false;
+  assert.equal(read.scanned, 5100);
+  assert.ok(seen.at(-1)! > seen[0], `the other work ran between the pages (turns ${seen[0]} → ${seen.at(-1)})`);
 }
 
 // ---- no more than 500 crossings from one call

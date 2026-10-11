@@ -1038,13 +1038,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** The crossings of a range, newest first, a page at a time; stops after `maxRows` (counts are small rows). */
-  private scanCrossings(
+  private async scanCrossings(
     cameraIds: string[] | undefined,
     startMs: number,
     endMs: number,
     maxRows: number,
     visit: (crossing: StoredCrossing) => void,
-  ): { scanned: number; capped: boolean; oldestMs?: number } {
+  ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }> {
     const batch = 5000;
     let before: number | undefined;
     let scanned = 0;
@@ -1056,6 +1056,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (rows.length) oldestMs = rows.at(-1)!.at;
       if (rows.length < batch) return { scanned, capped: false, oldestMs };
       if (scanned >= maxRows) return { scanned, capped: true, oldestMs };
+      // 300 000 rows read at once held the recorder 1.5 s (measured in review): the recording and the other calls go
+      // on after each full page, as in scanEvents
+      await new Promise<void>((resolve) => setImmediate(resolve));
       // the next page from the moment of the last row: rows of that same millisecond would be lost with a strict `<`
       // past a full page, so that moment is read again and its rows already taken are skipped
       const lastAt = rows.at(-1)!.at;

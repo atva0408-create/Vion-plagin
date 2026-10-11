@@ -44,7 +44,7 @@ export interface AssistantHost {
     endMs: number,
     maxRows: number,
     visit: (crossing: StoredCrossing) => void,
-  ): { scanned: number; capped: boolean; oldestMs?: number };
+  ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }>;
   /** Where a person went, camera after camera, around a recorded moment (people.ts routeOf). */
   personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number }): Promise<PersonRouteResult>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
@@ -1172,7 +1172,7 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   const buckets = timeBuckets(period, ctx);
   const { sums, add } = perHourSums(buckets.hours);
   const cameraLabel = cameraNames(host);
-  const read = host.crossings(camera.ids, from, to, STATS_ROWS, (crossing) => {
+  const read = await host.crossings(camera.ids, from, to, STATS_ROWS, (crossing) => {
     if (line && crossing.line !== line) return;
     if (labels.length && !labels.includes(crossing.label.toLowerCase())) return;
     let group: string;
