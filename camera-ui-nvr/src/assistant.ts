@@ -572,8 +572,8 @@ function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolCont
   if ('error' in question) return question;
   const type = question.type;
 
-  // one read for all the days, a day before and the joining gap after: an event still going on since before midnight
-  // (its end is not written yet) was missing from the day, and a stretch over midnight lost its other part
+  // one read for all the days, a day before and the joining gap after: a stretch over midnight keeps its other part
+  // (an event ended just before midnight, one begun just after the day); an event still going on is in any range
   const { events, hasMore } = host.events(camera.ids, { startMs: first - DAY_MS, endMs: end + ATTRIBUTE_GAP_MS, attributes: [type], limit: SUMMARY_SCAN }, SUMMARY_SCAN);
   const byCamera = new Map<string, Look[]>();
   for (const ev of events) {

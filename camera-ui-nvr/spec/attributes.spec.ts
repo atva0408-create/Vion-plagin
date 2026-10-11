@@ -229,6 +229,9 @@ assert.deepEqual(
   ['2026-09-20', '2026-09-21'],
 );
 assert.deepEqual(spans(both.days[1]), [['00:00', '00:40']]);
+// the event ends as the server ends it: still "active", it reaches now and is in every range after it began
+const a1 = september.find((ev) => ev.id === 'a1')!;
+await nvr.ingestDetectionEvent('cam-kid', 'end' as never, { ...a1, state: 'ended', endTime: at('2026-09-21T00:40:10'), lastUpdate: at('2026-09-21T00:40:10') } as never);
 
 // two cameras: each its own count, never added up
 const apart = content<{ camera: string; cameras: ({ camera: string } & Day)[]; hint: string }>(await call('attribute_time', { attribute: Q, date: '2026-09-22' }));

@@ -6,9 +6,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import VionNvr from '../src/index.js';
+import VionNvr, { inEventRange } from '../src/index.js';
 import { Store } from '../src/store.js';
 
+import type { EventRow } from '../src/store.js';
 import type { RecordedEvent } from '../src/types.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'nvr-active-'));
@@ -30,6 +31,43 @@ const active = (id: string, startTime: number, lastUpdate: number, cameraId = 'c
   assert.equal(store.closeStaleActive(), 1);
   assert.equal(store.event('live')?.state, 'ended');
   store.close();
+}
+
+// ------------------------------------------------------------------ a range reaches the events still going on
+{
+  const store = new Store(join(dir, 'range.db'));
+  // running since before midnight, on two cameras; one ended before the range
+  store.upsertEvent(active('since-evening', NOW - 13 * 60 * MINUTE, NOW - 1_000));
+  store.upsertEvent(active('since-evening-2', NOW - 13 * 60 * MINUTE, NOW - 1_000, 'cam2'));
+  store.upsertEvent({ ...active('ended-evening', NOW - 13 * 60 * MINUTE, NOW - 12 * 60 * MINUTE), state: 'ended', endTime: NOW - 12 * 60 * MINUTE } as RecordedEvent);
+  // of another camera, inside the range: kept out of a query for the first one
+  store.upsertEvent({ ...active('today-2', NOW - 60 * MINUTE, NOW - 50 * MINUTE, 'cam2'), state: 'ended', endTime: NOW - 50 * MINUTE } as RecordedEvent);
+  const today = { startMs: NOW - 12 * 60 * MINUTE + 1, endMs: NOW, limit: 50 };
+  assert.deepEqual(
+    store
+      .events(today)
+      .map((row) => row.id)
+      .sort(),
+    ['since-evening', 'since-evening-2', 'today-2'],
+    'an event going on since before the range is in it, one ended before is not',
+  );
+  assert.deepEqual(
+    store.events({ ...today, cameraIds: ['cam1'] }).map((row) => row.id),
+    ['since-evening'],
+    'the camera still holds',
+  );
+  assert.deepEqual([...store.eventTypeCounts({ ...today, cameraIds: ['cam1'] })], [['person', 1]]);
+  store.close();
+}
+
+// the same rule where the searches check rows themselves (by description, people who look alike)
+{
+  const row = (state: string, end: number | null) =>
+    ({ id: 'r', camera_id: 'cam1', start_ms: NOW - 13 * 60 * MINUTE, end_ms: end, state, data: '{}', favorite: 0 }) as EventRow;
+  const today = { startMs: NOW - 12 * 60 * MINUTE + 1, endMs: NOW };
+  assert.equal(inEventRange(row('active', null), today), true);
+  assert.equal(inEventRange(row('ended', NOW - 12 * 60 * MINUTE), today), false);
+  assert.equal(inEventRange(row('active', null), { ...today, endMs: NOW - 14 * 60 * MINUTE }), false, 'a range before it began');
 }
 
 // ------------------------------------------------------------------ the recorder

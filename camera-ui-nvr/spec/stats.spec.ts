@@ -170,8 +170,9 @@ const BEFORE: Stats[] = [
   { total: 0, segments: 0, episodes: 0, byType: {}, capped: false },
   { total: 344, segments: 593, episodes: 0, byType: { person: 164, vehicle: 75, motion: 69, animal: 48 }, capped: false },
   { total: 167, segments: 257, episodes: 0, byType: { motion: 11, animal: 28, vehicle: 59, person: 59 }, capped: false },
-  { total: 917, segments: 1579, episodes: 0, byType: { vehicle: 246, animal: 163, person: 402, motion: 159 }, capped: false },
-  { total: 851, segments: 1793, episodes: 0, byType: { vehicle: 248, person: 465, animal: 110, motion: 122 }, capped: false },
+  // the events still going on (2% of the fixture) reach now: they are in a range that began after them (nvr 0.15.0)
+  { total: 938, segments: 1620, episodes: 0, byType: { vehicle: 256, animal: 163, person: 402, motion: 160 }, capped: false },
+  { total: 890, segments: 1891, episodes: 0, byType: { vehicle: 277, person: 475, animal: 110, motion: 122 }, capped: false },
   { total: 1563, segments: 3386, episodes: 0, byType: { person: 885, vehicle: 455, motion: 291, animal: 193 }, capped: false },
   { total: 3116, segments: 5584, episodes: 0, byType: { person: 1779, vehicle: 928, animal: 477, motion: 433 }, capped: false },
   { total: 4337, segments: 8364, episodes: 0, byType: { person: 3907, vehicle: 1321, motion: 418, animal: 317 }, capped: false },

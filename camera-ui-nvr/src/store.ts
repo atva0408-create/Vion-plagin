@@ -6,6 +6,13 @@ import type { StatementSync } from 'node:sqlite';
 import type { VideoCodec } from './media/ts-demux.js';
 import type { RecordedEvent } from './types.js';
 
+/**
+ * An event still going on reaches now: one running since before a range was missing from it ("today" did not show the
+ * child at the computer since 23:30), the range is about when the event was, not when it began. Events lost by the
+ * server are ended within 10 minutes (closeStaleActive), so this does not keep a dead one in every range.
+ */
+const stillOn = (table = '') => `(${table}end_ms IS NULL AND ${table}state = 'active')`;
+
 export interface SegmentRow {
   id: number;
   camera_id: string;
@@ -332,7 +339,7 @@ export class Store {
    * busy recorder is not parsed event by event, and none is left out by a page of the newest.
    */
   public eventTypeCounts(opts: { cameraIds?: string[]; startMs: number; endMs: number; attributes?: boolean }): Map<string, number> {
-    const where = ['COALESCE(e.end_ms, e.start_ms) >= ?', 'e.start_ms <= ?'];
+    const where = [`(${stillOn('e.')} OR COALESCE(e.end_ms, e.start_ms) >= ?)`, 'e.start_ms <= ?'];
     const args: (string | number)[] = [opts.startMs, opts.endMs];
     if (opts.cameraIds?.length) {
       where.push(`e.camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
@@ -354,7 +361,8 @@ export class Store {
       args.push(...opts.cameraIds);
     }
     if (opts.startMs !== undefined) {
-      where.push('COALESCE(end_ms, start_ms) >= ?');
+      // in brackets: the conditions are joined by AND, an OR outside them let the events of other cameras in
+      where.push(`(${stillOn()} OR COALESCE(end_ms, start_ms) >= ?)`);
       args.push(opts.startMs);
     }
     if (opts.endMs !== undefined) {

@@ -214,8 +214,10 @@ interface PersonEmbedder {
 const TEXT_SEARCH_POOL = 2000;
 
 /** The time, favourite and state conditions of an event query, as the store applies them (store.ts eventPage). */
-function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
-  if (opts.startMs !== undefined && (row.end_ms ?? row.start_ms) < opts.startMs) return false;
+export function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
+  // an event still going on reaches now, as in the store (stillOn)
+  const stillOn = row.end_ms === null && row.state === 'active';
+  if (opts.startMs !== undefined && !stillOn && (row.end_ms ?? row.start_ms) < opts.startMs) return false;
   if (opts.endMs !== undefined && row.start_ms > opts.endMs) return false;
   if (opts.startedSinceMs !== undefined && row.start_ms < opts.startedSinceMs) return false;
   if (opts.before !== undefined && row.start_ms >= opts.before) return false;
