@@ -1012,7 +1012,8 @@ function seriesOf(
     return options.round ? Math.round(v) : v;
   };
   return {
-    readFrom: dates[readFromDay] ?? dates[0],
+    /** the first day read in full; none when the read stopped inside the last day */
+    readFrom: dates[readFromDay] as string | undefined,
     series: rows.map((row) => ({ name: row.name, values: row.values.map(shown), total: options.round ? Math.round(row.total) : row.total })),
     totals: new Map(ranked.map((row) => [row.name, row.total])),
     total: Math.round(ranked.reduce((sum, row) => sum + row.total, 0)),
@@ -1107,7 +1108,7 @@ async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolC
   });
   return {
     content: {
-      from: result.readFrom,
+      from: result.readFrom ?? period.dates[0],
       to: last,
       timezone: ctx.timezone,
       bucket,
@@ -1131,7 +1132,7 @@ async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolC
       ...(read.capped
         ? {
             capped: true,
-            hint: `Only the newest events were read, from ${result.readFrom}: earlier buckets have no value (null). Ask for fewer days or one camera.`,
+            hint: `Only the newest events were read, from ${result.readFrom ?? last}: earlier buckets have no value (null). Ask for fewer days or one camera.`,
           }
         : {}),
     },
@@ -1200,7 +1201,7 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   const inside = groupBy === 'way' ? (result.totals.get(word('in')) ?? 0) - (result.totals.get(word('out')) ?? 0) : undefined;
   return {
     content: {
-      from: result.readFrom,
+      from: result.readFrom ?? period.dates[0],
       to: last,
       timezone: ctx.timezone,
       bucket,
@@ -1223,7 +1224,7 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
               'No line counted anything in the last 30 days. Lines are drawn in the zone editor of a camera (tab «Линии»), with the side that is ' +
               'the way in; each crossing of a person or a vehicle is counted from then on.',
           }),
-      ...(read.capped ? { capped: true, hint: `Only the newest crossings were read, from ${result.readFrom}: earlier buckets have no value (null).` } : {}),
+      ...(read.capped ? { capped: true, hint: `Only the newest crossings were read, from ${result.readFrom ?? last}: earlier buckets have no value (null).` } : {}),
     },
   };
 }

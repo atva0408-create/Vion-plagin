@@ -294,6 +294,11 @@ const call2 = async (h: AssistantHost, input: Record<string, unknown>, c: Assist
   assert.equal(capped.from, '2026-10-08', 'it says from which day it read');
   const profile = await call2(host(daily('MSK', '2026-10-01', 10), 4), { date: '2026-10-10', days: 10, bucket: 'weekday' });
   assert.deepEqual(profile.daysPerBucket, [0, 0, 0, 1, 1, 1, 0], 'a profile holds only the days read');
+  // stopped inside the last day: no day was read in full, and the hint does not claim the whole period
+  const busy = [...daily('MSK', '2026-10-01', 10), ...daily('MSK', '2026-10-10', 1, '13:00:00')];
+  const lastDay = await call2(host(busy, 1), { date: '2026-10-10', days: 10 });
+  assert.ok(series(lastDay, 'события')!.every((v) => v === null), JSON.stringify(series(lastDay, 'события')));
+  assert.match((lastDay as { hint?: string }).hint ?? '', /from 2026-10-10/, (lastDay as { hint?: string }).hint);
 }
 
 {
