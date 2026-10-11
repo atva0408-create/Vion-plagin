@@ -706,7 +706,8 @@ function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext
   const measure = input.measure === 'minutes' ? 'minutes' : 'events';
   const groupBy = ['camera', 'label', 'answer'].includes(input.group_by as string) ? (input.group_by as 'camera' | 'label' | 'answer') : 'none';
   if (bucket === 'hour' && count * 24 > STATS_POINTS) {
-    return { error: `${count} days by hour are ${count * 24} points, too many to read: at most ${Math.floor(STATS_POINTS / 24)} days by hour; use day, or hour_of_day for the hours of a day` };
+    const most = Math.floor(STATS_POINTS / 24);
+    return { error: `${count} days by hour are ${count * 24} points, too many to read: at most ${most} days by hour; use day, or hour_of_day for the hours of a day` };
   }
   const camera = resolveCamera(host, input.camera);
   if ('error' in camera) return camera;
@@ -835,7 +836,8 @@ function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext
       }
       // the minutes it lasted, cut at the edges of the period and of the hours: an hour is never in two buckets
       const end = Math.min(to + 1, ev.endTime ?? Math.min(now, ev.lastUpdate ?? now));
-      for (let t = Math.max(from, ev.startTime); t < end; ) {
+      let t = Math.max(from, ev.startTime);
+      while (t < end) {
         const next = Math.min(end, from + (Math.floor((t - from) / HOUR_MS) + 1) * HOUR_MS);
         const index = bucketOf(t);
         if (index >= 0) for (const group of groups) add(group, index, (next - t) / 60_000);
@@ -849,7 +851,9 @@ function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext
   const ranked = [...sums.entries()].map(([name, values]) => ({ name, values, total: values.reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
   const kept = ranked.slice(0, STATS_GROUPS);
   const rest = ranked.slice(STATS_GROUPS);
-  if (rest.length) kept.push({ name: 'other', values: names.map((_, i) => rest.reduce((sum, row) => sum + row.values[i], 0)), total: rest.reduce((a, b) => a + b.total, 0) });
+  if (rest.length) {
+    kept.push({ name: 'other', values: names.map((_, i) => rest.reduce((sum, row) => sum + row.values[i], 0)), total: rest.reduce((a, b) => a + b.total, 0) });
+  }
   // a bucket still to come has no value, not a zero: a chart of today does not fall to nothing at the next hour
   const future = (index: number) => (bucket === 'hour' || bucket === 'day' || bucket === 'week') && edges[index] > now;
   const rounded = (v: number) => (measure === 'minutes' ? Math.round(v) : v);
