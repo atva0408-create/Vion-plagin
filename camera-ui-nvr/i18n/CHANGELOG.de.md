@@ -1,3 +1,8 @@
+## [0.15.0]
+
+- Der Assistent liest, was trainierte Module antworten ("играет в компьютер: да/нет"): er findet Ereignisse nach der Antwort, zählt sie in der Tageszusammenfassung und rechnet zusammen, wie lange am Tag die Antwort "ja" war, mit den Pausen dazwischen (attribute_time). Die Zeit ist ungefähr: ein Modul antwortet nur auf den Bildern, die der Detektor ansieht, daher werden Momente unter 10 Minuten Abstand zusammengefasst, außer das Modul sagte dazwischen zweimal oder öfter über 3 Minuten "nein". Jede Kamera hat ihre eigene Zählung (zwei Kinder werden nicht addiert), und ein Ereignis, das seit vor Mitternacht läuft, zählt am gefragten Tag
+- Die Ereignissuche des Assistenten nimmt jedes Objekt, das ein Modul erkennt, nicht nur die eingebauten; ein Label, das kein Ereignis hatte, wird genannt statt nichts zu finden, eine Frage auch über einen Teil, und mit Label und Frage müssen beide gelten
+
 ## [0.14.0]
 
 - Andere Erweiterungen können ein eigenes Ereignis mit eigenen Worten in die Aufnahmen legen: VOICE legt «Сыночка за компьютером во время сна» mit den übergangenen Erinnerungen an. Das Ereignis wird wie eine Erkennung aufgenommen (eine Kamera, die nach Ereignissen aufnimmt, beginnt die Aufnahme), schließt sich selbst, wird über seine Worte gefunden und von den KI-Beschreibungen nicht angefasst

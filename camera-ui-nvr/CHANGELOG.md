@@ -1,3 +1,8 @@
+## [0.15.0]
+
+- The assistant reads what trained modules answer ("играет в компьютер: да/нет"): it finds events by the answer, counts them in a day's summary and adds up how long a day the answer was "yes", with the pauses between (attribute_time). The time is approximate: a module answers only on the frames the detector looks at, so moments closer than 10 minutes are joined, unless the module said "no" twice or more for 3 minutes between them. Each camera has its own count (two children are not added up), and an event still going on since before midnight counts on the day asked
+- The assistant's event search takes any object a module recognises, not only the built-in ones; a label no event had is said instead of finding nothing, a question by a part of it, and with a label and a question both must hold
+
 ## [0.14.0]
 
 - Other extensions can put an event of their own in the recordings, in their own words: VOICE adds «Сыночка за компьютером во время сна» with the reminders the child let pass. The event is recorded like a detection (a camera that records by events starts recording), closes by itself, is found by its words in the search and is left alone by the AI descriptions
