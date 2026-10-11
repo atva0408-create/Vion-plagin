@@ -49,6 +49,8 @@ export interface AssistantHost {
   personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number }): Promise<PersonRouteResult>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
   crossingLines(cameraIds: string[] | undefined, startMs: number, endMs: number): { cameraId: string; line: string; hasWay: boolean }[];
+  /** The labels the lines counted in a range, each once. */
+  crossingLabels(cameraIds: string[] | undefined, startMs: number, endMs: number): string[];
   /** The event types of a while with the events of each; `attributes`: the attribute types of their segments. */
   eventTypes(cameraIds: string[] | undefined, startMs: number, endMs: number, attributes?: boolean): Map<string, number>;
   event(eventId: string): RecordedEvent | undefined;
@@ -1152,6 +1154,15 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   if ('error' in camera) return camera;
   const word = statsWord(ctx);
   const labels = stringList(input.labels).map((l) => l.toLowerCase());
+
+  // a label no crossing had is said, not counted as nobody: «car» found 0 where the lines count «vehicle»
+  if (labels.some((label) => !LABELS.includes(label))) {
+    const seen = host.crossingLabels(camera.ids, Math.min(from, to - KNOWN_MS), to);
+    const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.includes(label));
+    if (unknown.length) {
+      return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the crossings of the last 30 days: ${seen.join(', ') || 'none'}` };
+    }
+  }
 
   // the lines that counted in the period and the month before: a line asked by a part of its name, or said unknown
   const known = host.crossingLines(camera.ids, Math.min(from, to - KNOWN_MS), to);

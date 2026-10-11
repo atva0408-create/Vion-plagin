@@ -2353,6 +2353,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       personRoute: (query, opts) => this.personRoute(query, opts),
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
+      crossingLabels: (cameraIds, startMs, endMs) => this.store.crossingLabels({ cameraIds, startMs, endMs }),
       eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),
       event: (eventId) => {
         const row = this.store.event(eventId);

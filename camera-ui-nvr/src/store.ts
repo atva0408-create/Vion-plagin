@@ -199,6 +199,18 @@ export class Store {
     }));
   }
 
+  /** The labels the lines counted in a range, each once, in order. */
+  public crossingLabels(opts: { cameraIds?: string[]; startMs: number; endMs: number }): string[] {
+    const where = ['at_ms >= ?', 'at_ms <= ?'];
+    const args: (string | number)[] = [opts.startMs, opts.endMs];
+    if (opts.cameraIds?.length) {
+      where.push(`camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
+      args.push(...opts.cameraIds);
+    }
+    const rows = this.db.prepare(`SELECT DISTINCT label FROM crossings WHERE ${where.join(' AND ')} ORDER BY label`).all(...args) as { label: string }[];
+    return rows.map((row) => row.label);
+  }
+
   /** The lines that counted in a range, by camera, and whether one of them was counted with a way in. */
   public crossingLines(opts: { cameraIds?: string[]; startMs: number; endMs: number }): { cameraId: string; line: string; hasWay: boolean }[] {
     const where = ['at_ms >= ?', 'at_ms <= ?'];

@@ -144,6 +144,17 @@ await nvr.ingestCrossings('cam-gate', [
   assert.equal((await counts({ date: '2026-10-10', days: 3, camera: 'Ворота' })).total, 2, 'one camera');
 }
 
+// ---- a label no crossing had is said, not counted as nobody: «car» is not «vehicle»
+{
+  const car = await nvr.callAssistantTool('line_counts', { date: '2026-10-10', days: 3, labels: ['car'] }, ctx);
+  assert.match(car.error ?? '', /Unknown label "car"\. Labels of the crossings of the last 30 days: person, vehicle/);
+  // a class of a module counts once a line counted it
+  await nvr.ingestCrossings('cam-gate', [crossing('Въезд', 'a-to-b', 'in', 'bicycle', '2026-10-05T15:00:00', 40)]);
+  assert.equal((await counts({ date: '2026-10-05', days: 1, labels: ['bicycle'] })).total, 1);
+  // and a built-in class is known before anything of it crossed
+  assert.equal((await counts({ date: '2026-10-10', days: 3, labels: ['animal'] })).total, 0);
+}
+
 // ---- the hours of a day, on average
 {
   const hours = await counts({ date: '2026-10-08', days: 1, bucket: 'hour', line: 'Дверь' });
