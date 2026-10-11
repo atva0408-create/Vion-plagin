@@ -208,6 +208,15 @@ await nvr.ingestCrossings('cam-gate', [
   assert.ok(values.slice(0, 8).every((v) => v === null), JSON.stringify(values));
 }
 
+// ---- the totals of the modules page: by camera, line, label and way, in one answer
+{
+  const totals = await nvr.lineTotals(at('2026-10-08T00:00:00'), at('2026-10-08T23:59:59'));
+  const key = (row: { cameraId: string; line: string; label: string; way?: string; count: number }) => `${row.cameraId}/${row.line}/${row.label}/${row.way ?? '-'}=${row.count}`;
+  assert.deepEqual(totals.map(key).sort(), ['cam-door/Дверь/person/in=2', 'cam-door/Дверь/person/out=1', 'cam-gate/Въезд/vehicle/in=1']);
+  assert.deepEqual(await nvr.lineTotals(at('2026-10-09T00:00:00'), at('2026-10-08T00:00:00')), [], 'a range the wrong way round is empty');
+  assert.deepEqual(await nvr.lineTotals(Number.NaN, at('2026-10-08T00:00:00')), []);
+}
+
 // ---- counts older than 400 days go, the rest stays
 {
   type Store = { crossingsPage(opts: { startMs: number; endMs: number; limit: number }): StoredCrossing[] };

@@ -213,6 +213,20 @@ export class Store {
     return rows.map((row) => ({ cameraId: row.camera_id, line: row.line, hasWay: row.has_way === 1 }));
   }
 
+  /** How many crossed each line of a range, by camera, line, label and way: one query for the modules page. */
+  public crossingTotals(opts: { startMs: number; endMs: number }): { cameraId: string; line: string; label: string; way?: 'in' | 'out'; count: number }[] {
+    const rows = this.db
+      .prepare('SELECT camera_id, line, label, way, COUNT(*) AS n FROM crossings WHERE at_ms >= ? AND at_ms <= ? GROUP BY camera_id, line, label, way')
+      .all(opts.startMs, opts.endMs) as { camera_id: string; line: string; label: string; way: string | null; n: number }[];
+    return rows.map((row) => ({
+      cameraId: row.camera_id,
+      line: row.line,
+      label: row.label,
+      ...(row.way === 'in' || row.way === 'out' ? { way: row.way } : {}),
+      count: Number(row.n),
+    }));
+  }
+
   /** Counts are kept longer than the video (a year of a busy door is under a million short rows): older ones go. */
   public pruneCrossings(beforeMs: number): number {
     return Number(this.db.prepare('DELETE FROM crossings WHERE at_ms < ?').run(beforeMs).changes);

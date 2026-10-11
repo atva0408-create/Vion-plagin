@@ -781,6 +781,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (rows.length) this.store.addCrossings(rows);
   }
 
+  /**
+   * How many crossed each line of the cameras from `startMs` to `endMs`, by camera, line, label and way in or out: the
+   * counts the server shows with its line modules («Пересечение линий», «Подсчёт людей», «Подсчёт транспорта»).
+   */
+  public async lineTotals(startMs: number, endMs: number): Promise<{ cameraId: string; line: string; label: string; way?: 'in' | 'out'; count: number }[]> {
+    await this.ready;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return [];
+    return this.store.crossingTotals({ startMs, endMs });
+  }
+
   public ingestDetectionEvent(cameraId: string, type: DetectionEventType, event: RecordedEvent, attachments?: EventAttachments): Promise<void> {
     const previous = this.eventChains.get(event.id) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(() => this.ingestNow(cameraId, type, event, attachments));
