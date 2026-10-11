@@ -255,6 +255,23 @@ await nvr.ingestCrossings('cam-gate', [
   const kept = store.crossingsPage({ startMs: Date.now() - 500 * day, endMs: Date.now() - 300 * day, limit: 10 });
   assert.deepEqual(kept.map((row) => row.trackId), [99]);
   assert.equal((await counts({ date: '2026-10-10', days: 3 })).total, 7);
+
+  // the counts failing to go (a busy or full disk) does not stop the video's retention behind them
+  const live = (nvr as unknown as { store: { pruneCrossings(before: number): number; segmentsBefore(cutoff: number, limit: number): unknown[] } }).store;
+  const prune = live.pruneCrossings;
+  const segmentsBefore = live.segmentsBefore;
+  let asked = 0;
+  live.pruneCrossings = () => {
+    throw new Error('database is locked');
+  };
+  live.segmentsBefore = (cutoff, limit) => {
+    asked++;
+    return segmentsBefore.call(live, cutoff, limit);
+  };
+  await (nvr as unknown as { enforceRetention(): Promise<void> }).enforceRetention();
+  live.pruneCrossings = prune;
+  live.segmentsBefore = segmentsBefore;
+  assert.ok(asked > 0, 'the old recordings are still looked for');
 }
 
 console.log('line-counts.spec: crossings kept once, counted by line, way, direction, label and camera, read in pages OK');

@@ -1724,8 +1724,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private async enforceRetention(): Promise<void> {
     if (!this.store) return;
+    // apart: counts that fail to go (a busy or full disk) must not stop the video's retention and the free-space guard
     try {
       this.store.pruneCrossings(Date.now() - CROSSINGS_KEEP_MS);
+    } catch (error) {
+      this.logger.warn(`Retention: the old line counts were not deleted: ${(error as Error).message}`);
+    }
+    try {
       const s = this.setting;
       const cutoffUs = (Date.now() - s.retentionDays * 86_400_000) * 1000;
       let removed = 0;
