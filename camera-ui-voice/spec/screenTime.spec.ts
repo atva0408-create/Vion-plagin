@@ -763,15 +763,95 @@ test('journal: a damaged journal is dropped on restore, the minutes and the even
     log: {
       '2026-10-10': {
         sessions: [{ from: 5, to: 9, rested: true }],
-        reminders: [{ at: 7, reason: 'bedtime', level: 2, said: 1, told: true }],
+        reminders: [{ at: 7, reason: 'bedtime', level: 2, said: [1], told: true }],
         unseen: [{ from: 10, to: 20 }],
         capped: true,
       },
     },
   };
-  assert.deepEqual(restoreScreenTime({ screenTime: { s: good } }).s.log, good.log);
-  const said = { ...good, log: { '2026-10-10': { sessions: [], reminders: [{ at: 7, reason: 'bedtime', level: 2, said: 7 }] } } };
-  assert.equal(restoreScreenTime({ screenTime: { s: said } }).s.log, undefined, 'a step out of range is damage');
+  // restored from a copy: the restore drops a damaged journal from the object it is given
+  assert.deepEqual(restoreScreenTime({ screenTime: { s: structuredClone(good) } }).s.log, good.log);
+  for (const said of [[7], 1]) {
+    const damaged = structuredClone({ ...good, log: { '2026-10-10': { sessions: [], reminders: [{ at: 7, reason: 'bedtime', level: 2, said }] } } });
+    const back = restoreScreenTime({ screenTime: { s: damaged } }).s;
+    assert.deepEqual(
+      { log: back.log, logSince: back.logSince },
+      { log: undefined, logSince: undefined },
+      `said ${JSON.stringify(said)} is damage, the journal begins anew`,
+    );
+  }
+});
+
+test('a restart during a break moves nothing: the child back at the time VOICE named is not reminded, the parents not told', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  passSaid(run, 46 * MINUTE, true); // the break falls due at 15:45, the child gets up at 15:46
+  const said = speaks(run).length;
+  passSaid(run, 4 * MINUTE + 5_000, false);
+  run.t += 85_000; // VOICE down from 15:50:05 to 15:51:30, the last look saved before it
+  passSaid(run, 4.5 * MINUTE, false);
+  passSaid(run, 10 * MINUTE, true); // back at 15:56, as VOICE said
+  assert.equal(
+    speaks(run).length,
+    said,
+    speaks(run)
+      .map((a) => new Date(a.at).toISOString())
+      .join(' '),
+  );
+  assert.equal(notifies(run).length, 0);
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual({ count: day.breaks.count, full: day.breaks.full }, { count: 1, full: 1 });
+  assert.deepEqual(
+    day.unwatched?.list.map((s) => [s.from, s.to]),
+    [['15:50', '15:51']],
+  );
+});
+
+test('a pause of the looks: under half an hour the session goes on uncounted, longer it ends where the child was last seen', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 10 * MINUTE, true);
+  run.t += 20 * MINUTE;
+  pass(run, 10 * MINUTE, true);
+  assert.equal(report(run, '2026-10-10')[0].sessions.length, 1);
+  assert.ok(run.engine.state.history['2026-10-10'] <= 20.05, `played ${run.engine.state.history['2026-10-10']}`);
+  run.t += 31 * MINUTE;
+  pass(run, 2 * MINUTE, true);
+  assert.deepEqual(
+    report(run, '2026-10-10')[0].sessions.map((s) => s.from),
+    ['15:00', '16:11'],
+  );
+});
+
+test('a step falls due after the child got up (the session runs on through the gap): nothing is said to the empty room', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  passSaid(run, 47 * MINUTE + 5_000, true); // the first step at 15:45, the child up two minutes later
+  passSaid(run, 10 * MINUTE, false); // the second step was due at 15:48, inside the gap
+  assert.equal(speaks(run).length, 1, 'the first step only');
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual({ reminders: day.reminders, violations: day.violations }, { reminders: 1, violations: [] });
+});
+
+test('a reminder let pass is a step heard and the child seen at a later one: the first step unsaid, the second said, is not', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 45 * MINUTE + 10_000, true);
+  const since = run.engine.state.escalation!.since!;
+  pass(run, 3 * MINUTE, true); // the second step: said, the first one was not (no speaker then)
+  run.engine.noteSaid(since, 'break', 2, MOSCOW);
+  pass(run, 30_000, true);
+  pass(run, 10 * MINUTE, false);
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual({ reminders: day.reminders, violations: day.violations }, { reminders: 1, violations: [] });
+});
+
+test('an update from 0.4.0 a few minutes after the last look: the session running is one session, no break of 0 minutes', () => {
+  const run = start(config(), msk('2026-10-10T17:00:00'));
+  pass(run, 20 * MINUTE, true);
+  delete run.engine.state.log;
+  delete run.engine.state.logSince;
+  run.t += 12 * MINUTE; // the update
+  pass(run, 10 * MINUTE, true);
+  const [day] = report(run, '2026-10-10');
+  assert.equal(day.sessions.length, 1, JSON.stringify(day.sessions));
+  assert.equal(day.breaks.count, 0);
 });
 
 void runTests();

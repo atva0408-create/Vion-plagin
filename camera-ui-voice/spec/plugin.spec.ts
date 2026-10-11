@@ -331,6 +331,9 @@ test('13d. voice_report: the days asked of the child asked, the zone of the time
 
   const wrong: [Record<string, unknown>, RegExp][] = [
     [{ date: '10.10.2026' }, /date: YYYY-MM-DD/],
+    [{ date: '2026-02-31' }, /date: YYYY-MM-DD/],
+    [{ date: '2026-13-45' }, /date: YYYY-MM-DD/],
+    [{ date: '2999-01-01' }, /has not come yet/],
     [{ days: 31 }, /days: from 1 to 30/],
     [{ days: 0 }, /days: from 1 to 30/],
     [{ child: 'Маша' }, /No screen-time scenario for "Маша"/],

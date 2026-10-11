@@ -85,7 +85,7 @@ test('1. the third step tells the parents, with a snapshot of the camera', async
   assert.equal(s.camera.spoken, 3);
   // the journal: three steps heard, the notice went
   const [entry] = Object.values(s.voice.scenariosOf(s.camera.id)[0].engine.state.log ?? {}).flatMap((day) => day.reminders);
-  assert.deepEqual({ level: entry.level, said: entry.said, told: entry.told }, { level: 3, said: 3, told: true });
+  assert.deepEqual({ level: entry.level, said: entry.said, told: entry.told }, { level: 3, said: [1, 2, 3], told: true });
 });
 
 test('the report: a session runs on while the scenario looks, and ends at the last look once it is switched off', async () => {
@@ -231,7 +231,7 @@ test('parents are told why a reminder was not heard, and only parents (admins) g
   assert.equal(s.published[0].adminOnly, true);
   // nothing was heard: the journal has no reminder the child let pass
   const [entry] = Object.values(s.voice.scenariosOf(s.camera.id)[0].engine.state.log ?? {}).flatMap((day) => day.reminders);
-  assert.deepEqual({ said: entry.said, told: entry.told }, { said: 0, told: true });
+  assert.deepEqual({ said: entry.said, told: entry.told }, { said: [], told: true });
 });
 
 test('a camera that goes blind counts nothing: the look without a sighting', async () => {

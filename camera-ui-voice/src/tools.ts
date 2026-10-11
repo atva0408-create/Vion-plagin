@@ -5,6 +5,7 @@
  * through the same checks and into the same settings as the camera drawer, so both always show the same.
  */
 import { checkDoorRule, checkScreenTime, SCREEN_TIME_DEFAULTS } from './settings.js';
+import { today } from './report.js';
 import { DAYS } from './time.js';
 
 import type { AssistantToolProperty, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
@@ -268,6 +269,12 @@ function status(host: ToolHost, input: Record<string, unknown>): AssistantToolRe
   };
 }
 
+/** A date that exists: "2026-02-31" is read as 3 March, "2026-13-45" is no date at all. */
+function realDate(value: string): boolean {
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
 function report(host: ToolHost, input: Record<string, unknown>): AssistantToolResult {
   let cameras = host.cameras();
   if (input.camera !== undefined) {
@@ -276,7 +283,12 @@ function report(host: ToolHost, input: Record<string, unknown>): AssistantToolRe
     cameras = [one];
   }
   const date = text(input.date);
-  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'date: YYYY-MM-DD' };
+  // "2026-02-31" read as 3 March, and a day to come as 0 minutes played
+  if (date !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !realDate(date))) {
+    return { error: 'date: YYYY-MM-DD' };
+  }
+  const todayHere = today(Date.now(), host.voice.timeZone());
+  if (date !== undefined && date > todayHere) return { error: `date: ${date} has not come yet (today is ${todayHere})` };
   const days = input.days === undefined ? 1 : Number(input.days);
   if (!Number.isInteger(days) || days < 1 || days > 30) return { error: 'days: from 1 to 30' };
   const child = text(input.child)?.toLowerCase();

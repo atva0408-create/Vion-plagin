@@ -114,7 +114,10 @@ export function dayReports(state: ScreenTimeState, options: ReportOptions): DayR
     const notWatchedMs = notWatched.reduce((sum, s) => sum + (s.to - s.from), 0);
     const reminders = log?.reminders ?? [];
     // entries of before `said` was kept: the steps as the engine took them
-    const heard = (r: (typeof reminders)[number]) => r.said ?? r.level;
+    const heard = (r: (typeof reminders)[number]) => r.said?.length ?? r.level;
+    // the child heard a step and was still seen at a later one (the engine raises a step only on a look that sees the
+    // child): a step said into an empty room, or the first said one, is no reminder let pass
+    const passed = (r: (typeof reminders)[number]) => r.level >= 2 && (r.said === undefined || r.said.some((level) => level < r.level));
     const notSaid = reminders.filter((r) => heard(r) === 0).length;
     out.push({
       ...base,
@@ -130,7 +133,7 @@ export function dayReports(state: ScreenTimeState, options: ReportOptions): DayR
       reminders: reminders.length - notSaid,
       ...(notSaid ? { notSaid } : {}),
       violations: reminders
-        .filter((r) => r.level >= 2 && heard(r) >= 1)
+        .filter(passed)
         .sort((a, b) => a.at - b.at)
         .map((r) => ({
           at: formatClock(r.at, timeZone),

@@ -59,10 +59,10 @@ export interface LoggedReminder {
   reason: Reason;
   level: number;
   /**
-   * The steps the child heard: a phrase never said (no speaker, the camera gone) is not a reminder the child let pass.
+   * The steps said, so heard: a phrase never said (no speaker, the camera gone) is not a reminder the child let pass.
    * Missing in entries of before it was kept.
    */
-  said?: number;
+  said?: number[];
   /** The parents' notice went (a parent who gave time meanwhile stops it). */
   told?: true;
 }
@@ -158,6 +158,8 @@ export const MAX_STEP_MS = MINUTE;
 /** An absence this short is a look the detector missed, still time at the computer. */
 const FLICKER_MS = 15_000;
 export const HISTORY_DAYS = 30;
+/** A pause in the looks this long ends a session (a restart is a minute or two; a scenario off for the night is not). */
+const PAUSE_LIMIT_MS = 30 * MINUTE;
 /** Entries of one day's log at most: a flickering detector must not grow the state without a bound. */
 const LOG_DAY_ENTRIES = 300;
 /**
@@ -191,13 +193,11 @@ export class ScreenTimeEngine {
     const { now, timeZone } = input;
     const s = this.state;
     const previous = s.lastTick;
-    // no look for longer than a step: the scenario was off, VOICE or the server down. Nothing was seen meanwhile, as
-    // when the camera drops: a session went on through two days off and its evening was kept as 2930 minutes
+    // no look for longer than a step: the scenario was off, VOICE or the server down (endPause)
     const paused = previous !== undefined && now - previous > MAX_STEP_MS;
     const step = previous === undefined || paused ? 0 : Math.max(0, now - previous);
     s.lastTick = now;
     this.rollDate(now, timeZone);
-    this.startLog(now, timeZone);
 
     if (input.present === undefined) {
       // a camera that dropped (Wi-Fi, a crashed detector) keeps the last boxes of a still child for hours: they counted
@@ -207,8 +207,10 @@ export class ScreenTimeEngine {
       s.blindSince ??= previous ?? now;
       return [];
     }
-    const blindFrom = s.blindSince ?? (paused ? previous : undefined);
-    if (blindFrom !== undefined) this.endBlindness(blindFrom, paused ? now : (previous ?? now), timeZone);
+    if (s.blindSince !== undefined) this.endBlindness(s.blindSince, paused ? now : (previous ?? now), timeZone);
+    else if (paused) this.endPause(previous, now, timeZone);
+    // after the pause: a session it ended is not one running when the journal begins
+    this.startLog(now, timeZone);
 
     if (input.present) {
       s.lastSeen = now;
@@ -263,6 +265,10 @@ export class ScreenTimeEngine {
       s.escalation = undefined;
       return actions;
     }
+
+    // said only to a child seen in this look: a step due in the minute after the child got up (the session runs on
+    // through the gap) went to an empty room and was reported as a reminder let pass
+    if (!input.present) return actions;
 
     const repeatMs = this.config.repeatMinutes * MINUTE;
     const e = s.escalation;
@@ -393,7 +399,7 @@ export class ScreenTimeEngine {
   /** VOICE said this step of a reminder: the child heard it. */
   noteSaid(since: number, reason: Reason, level: number, timeZone: string): void {
     const entry = this.reminderOf(since, reason, timeZone);
-    if (entry) entry.said = Math.max(entry.said ?? 0, level);
+    if (entry && !entry.said?.includes(level)) entry.said = [...(entry.said ?? []), level].sort();
   }
 
   /** The parents' notice of a reminder went. */
@@ -422,6 +428,24 @@ export class ScreenTimeEngine {
       if (s.escalation) s.escalation.at += blindMs;
       return;
     }
+    this.loseSight();
+  }
+
+  /**
+   * No look from `from` to `to`: the scenario off, VOICE or the server restarting. Nothing of it is known and nothing is
+   * moved: the break or the session ran on, as they most likely did. Cut out of the clock like a blind camera, a
+   * restart during a break moved its end, and the child back at the time VOICE had named was reminded and reported to
+   * the parents. A pause longer than PAUSE_LIMIT_MS (and than a break) ends the session where the child was last seen:
+   * two days off were kept as one evening of 2930 minutes.
+   */
+  private endPause(from: number, to: number, timeZone: string): void {
+    if (to - from >= MINUTE) this.logUnseen(from, to, timeZone);
+    if (to - from >= Math.max(this.config.breakMinutes * MINUTE, PAUSE_LIMIT_MS)) this.loseSight();
+  }
+
+  /** VOICE cannot vouch that the child stayed: the session ended where the child was last seen. */
+  private loseSight(): void {
+    const s = this.state;
     s.candidateSince = undefined;
     if (!s.present) return;
     s.present = false;
@@ -498,7 +522,7 @@ export class ScreenTimeEngine {
 
   private logReminder(reason: Reason, at: number, timeZone: string): void {
     const day = this.dayLog(localTime(at, timeZone).date);
-    this.push(day, day.reminders, { at, reason, level: 1, said: 0 });
+    this.push(day, day.reminders, { at, reason, level: 1, said: [] });
   }
 
   /** The child went on after a reminder: its entry (found by when it began) takes the new step. */

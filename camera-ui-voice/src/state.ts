@@ -12,7 +12,12 @@ function validDay(day: unknown): day is DayLog {
   const flag = (value: unknown) => value === undefined || value === true;
   const session = (s: unknown) => object(s) && counter(s.from) && (s.to === undefined || counter(s.to)) && flag(s.rested);
   const reminder = (r: unknown) =>
-    object(r) && counter(r.at) && REASONS.includes(String(r.reason)) && step(r.level, 1) && (r.said === undefined || step(r.said, 0)) && flag(r.told);
+    object(r) &&
+    counter(r.at) &&
+    REASONS.includes(String(r.reason)) &&
+    step(r.level, 1) &&
+    (r.said === undefined || (Array.isArray(r.said) && r.said.every((level) => step(level, 1)))) &&
+    flag(r.told);
   const unseen = (u: unknown) => object(u) && counter(u.from) && counter(u.to);
   return (
     day.sessions.every(session) &&
@@ -36,6 +41,8 @@ export function restoreScreenTime(value: unknown): Record<string, ScreenTimeStat
     // a damaged journal costs the journal, not the minutes and the state of the evening
     if (state.log !== undefined && (!object(state.log) || !Object.entries(state.log).every(([date, day]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && validDay(day)))) {
       delete state.log;
+      // the journal begins anew: since `logSince` every day would read as watched with nothing in it
+      delete state.logSince;
     }
     if (state.attributeYes !== undefined && typeof state.attributeYes !== 'boolean') return false;
     const escalation = state.escalation;
