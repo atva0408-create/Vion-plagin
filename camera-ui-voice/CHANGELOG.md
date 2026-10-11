@@ -1,3 +1,9 @@
+## [0.5.0]
+
+- VOICE keeps a journal of every day: when the child sat down and got up, the breaks between, the reminders and the ones the child went on after or that reached the parents. The assistant (and Alice through it) answers for any of the last 30 days how long the child played, how many times and how long they rested, and when and how often they broke the rules (voice_report). Days before this version have the minutes only
+- The journal tells what VOICE did not see: while the camera was offline, the scenario off or VOICE down, the time is "not watched", not "did not play", and a session ends where the child was last seen (a session across two days off was kept as 2930 minutes). A reminder VOICE could not say is not one the child let pass, and the parents count as told only when the notice went. A break counts as whole as the rule took it (rest added up over absences)
+- A pause in the looks (the scenario off, VOICE or the server down) no longer goes on with the session and its minute: it is handled as a camera gone blind
+
 ## [0.4.0]
 
 - When the child keeps on after three reminders, the parents' notice opens an event in the camera's recordings («Сыночка за компьютером во время сна», the reminders let pass, from the first one) with its video. Needs ViON NVR 0.14.0; without it the notice goes as before

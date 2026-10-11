@@ -8,6 +8,7 @@ import { PhraseQueue, isEcho } from '@vionvision/speech';
 
 import { CALL_LANGUAGES, CallListener } from './call.js';
 import { PresenceTracker } from './presence.js';
+import { dayReports, today } from './report.js';
 import { ScreenTimeEngine, freshState } from './screenTime.js';
 import { restoreScreenTime } from './state.js';
 import { LANGUAGE_NAMES, answerChild, fill, nudgePhrase, replyText, saidText, templateNotify, texts } from './speech.js';
@@ -16,6 +17,7 @@ import { MINUTE, activeInterval, formatClock, localTime } from './time.js';
 import type { Notification } from '@camera.ui/sdk';
 import type { OpenAudio, SpeakResult, SpeechEngine } from '@vionvision/speech';
 import type { Point, Sighting } from './presence.js';
+import type { DayReport } from './report.js';
 import type { Facts, ScreenTimeAction, ScreenTimeConfig, ScreenTimeState } from './screenTime.js';
 import type { Ask, Language } from './speech.js';
 import type { Clock, WeeklyInterval } from './time.js';
@@ -447,6 +449,20 @@ export class Voice {
     void this.persist(this.deps.clock.now(), true);
   }
 
+  /** The zone of the clock times VOICE says and reports. */
+  timeZone(): string {
+    return this.deps.timeZone();
+  }
+
+  /** A child's past days: minutes, sessions, breaks, reminders and violations, the last `days` up to `lastDate`. */
+  reportOf(key: string, lastDate: string | undefined, days: number): DayReport[] {
+    const scenario = this.scenarios.get(key);
+    if (!scenario) return [];
+    const now = this.deps.clock.now();
+    const timeZone = this.deps.timeZone();
+    return dayReports(scenario.engine.state, { lastDate: lastDate ?? today(now, timeZone), days, now, timeZone, watching: scenario.engine.config.enabled });
+  }
+
   /** "Today: 1 h 20 min. Now: break until 18:40" for a child. */
   statusOf(key: string): string {
     const scenario = this.scenarios.get(key);
@@ -585,6 +601,8 @@ export class Voice {
       if (phrase.fallback) this.deps.log(`${camera.name}: template phrase (${phrase.fallback})`);
       const result = await this.speak(camera.id, phrase.text, phrase.source, valid, signal);
       scenario.unspoken = result.status === 'spoken' ? undefined : (result.reason ?? result.status);
+      // the journal counts what the child heard: a step VOICE could not say is not a reminder let pass
+      if (result.status === 'spoken' && reminders) scenario.engine.noteSaid(reminders.since, action.facts.reason, action.facts.level, this.deps.timeZone());
       // the conversation runs beside the looks: the camera keeps being watched while the child answers
       if (result.status === 'spoken' && converses && valid()) talk = this.converse(key, scenario, camera, signal);
     } finally {
@@ -711,6 +729,7 @@ export class Voice {
       this.deps.log(`${camera.name}: the parents were not told «${title}»: ${(error as Error).message}`);
       return;
     }
+    if (reminders) scenario.engine.noteTold(reminders.since, facts.reason, this.deps.timeZone());
     this.deps.log(`${camera.name}: the parents were told «${title}»${event ? `, event ${event.eventId}` : ', without an event in the recordings'}`);
   }
 

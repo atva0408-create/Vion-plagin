@@ -226,13 +226,14 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
 
 test('13. the tools: confirmation for every change, none for reading', () => {
   for (const tool of TOOLS) {
-    const reads = tool.name === 'voice_status' || tool.name === 'voice_speakers';
+    const reads = tool.name === 'voice_status' || tool.name === 'voice_speakers' || tool.name === 'voice_report';
     assert.equal(Boolean(tool.approval), !reads, tool.name);
     assert.equal(Boolean(tool.adminOnly), !reads, tool.name);
   }
   assert.deepEqual(TOOLS.map((t) => t.name).sort(), [
     'voice_disable',
     'voice_extend',
+    'voice_report',
     'voice_say',
     'voice_set_door',
     'voice_set_screen_time',
@@ -302,6 +303,44 @@ test('13c. "перерыв каждые 45 минут на 10, спать в б�
   assert.equal(s.kids.device.storage.values.screenTime.length, 1);
   assert.equal(s.kids.device.storage.values.screenTime[0].dailyMinutes, 120);
   assert.equal(s.kids.device.storage.values.screenTime[0].breakMinutes, 15);
+});
+
+test('13d. voice_report: the days asked of the child asked, the zone of the times, and what to fix when the input is wrong', async () => {
+  const s = await setup();
+  await s.pluginStorage.setValue('timeZone', 'Asia/Vladivostok');
+  await s.plugin.callAssistantTool('voice_set_screen_time', { camera: 'Детская', child: 'Артём', zone: 'desk' }, ctx);
+  const engine = (s.plugin as any).voice.scenariosOf('kids')[0].engine;
+  const at = (clock: string) => Date.parse(`2026-10-10T${clock}+10:00`);
+  engine.state.logSince = at('08:00:00');
+  engine.state.history['2026-10-10'] = 40;
+  engine.state.log = { '2026-10-10': { sessions: [{ from: at('15:00:00'), to: at('15:40:00') }], reminders: [] } };
+
+  const result = await s.plugin.callAssistantTool('voice_report', { date: '2026-10-10', days: 3 }, ctx);
+  assert.equal(result.error, undefined, result.error);
+  const content = result.content as any;
+  assert.equal(content.timezone, 'Asia/Vladivostok');
+  assert.equal(content.reports.length, 1);
+  assert.deepEqual({ camera: content.reports[0].camera, child: content.reports[0].child }, { camera: 'Детская', child: 'Артём' });
+  assert.deepEqual(
+    content.reports[0].days.map((d: any) => d.date),
+    ['2026-10-08', '2026-10-09', '2026-10-10'],
+  );
+  const day = content.reports[0].days[2];
+  assert.deepEqual({ played: day.playedMinutes, sessions: day.sessions.map((x: any) => [x.from, x.to]) }, { played: 40, sessions: [['15:00', '15:40']] });
+  assert.equal(content.reports[0].days[0].journal, false);
+
+  const wrong: [Record<string, unknown>, RegExp][] = [
+    [{ date: '10.10.2026' }, /date: YYYY-MM-DD/],
+    [{ days: 31 }, /days: from 1 to 30/],
+    [{ days: 0 }, /days: from 1 to 30/],
+    [{ child: 'Маша' }, /No screen-time scenario for "Маша"/],
+    [{ camera: 'Кухня' }, /Unknown camera "Кухня"/],
+  ];
+  for (const [input, expected] of wrong) {
+    const answer = await s.plugin.callAssistantTool('voice_report', input, ctx);
+    assert.match(answer.error ?? '', expected, `${JSON.stringify(input)} → ${JSON.stringify(answer)}`);
+  }
+  assert.equal(((await s.plugin.callAssistantTool('voice_report', { child: 'артём' }, ctx)).content as any).reports.length, 1, 'the name in any case');
 });
 
 test('the buttons of the camera drawer: give time, say a phrase, test the speaker', async () => {

@@ -47,6 +47,28 @@ export const TOOLS: AssistantToolSpec[] = [
     inputSchema: { type: 'object', properties: { camera: CAMERA } },
   },
   {
+    name: 'voice_report',
+    description:
+      "A child's past days by the screen-time scenario, exact (VOICE's own count): minutes at the computer per day, each session (from-to), " +
+      'the breaks between sessions (how many, how many minutes, `full` = the rule counted the whole break as taken), the reminders the child heard, ' +
+      'and the violations: a reminder the child heard and went on playing after (level 2; level 3 the parents were to be told, parentsTold if they ' +
+      'were), with the time and the reason (break, bedtime, daily_limit). Use it for "how long did he play yesterday", "how many times did he rest", ' +
+      '"when did he break the rules". Minutes count on the day they were played, sessions on the day they began (a session over midnight). ' +
+      'journal:false: only the minutes are known (before the journal began). watched:false or unwatched: VOICE did not see the camera then ' +
+      '(offline, scenario off), so no play then is unknown, not "did not play"; lostSight: the session ends where VOICE last saw the child. ' +
+      'Times are in `timezone`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: CAMERA,
+        child: { type: 'string', description: 'Name of the child; omit when the camera has one scenario, or for every child' },
+        date: { type: 'string', format: 'date', description: 'Last day, YYYY-MM-DD in local time; default today' },
+        days: { type: 'integer', minimum: 1, maximum: 30, description: 'Days ending with `date`, default 1' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'voice_speakers',
     description: 'Cameras VOICE can speak through (they have a speaker and a talk channel) and, for the others, why not. Use it to find camera names.',
     inputSchema: { type: 'object', properties: {} },
@@ -196,6 +218,8 @@ export async function callTool(host: ToolHost, name: string, input: Record<strin
     switch (name) {
       case 'voice_status':
         return status(host, input);
+      case 'voice_report':
+        return report(host, input);
       case 'voice_speakers':
         return {
           content: host.cameras().map((c) => ({ camera: c.name, id: c.id, canSpeak: !c.problem, ...(c.problem ? { why: c.problem } : {}) })),
@@ -242,6 +266,37 @@ function status(host: ToolHost, input: Record<string, unknown>): AssistantToolRe
       recent: host.voice.recent.slice(-20).map(({ at, cameraId, ...e }) => ({ ...e, at: new Date(at).toISOString(), camera: host.voice.camera(cameraId)?.name })),
     },
   };
+}
+
+function report(host: ToolHost, input: Record<string, unknown>): AssistantToolResult {
+  let cameras = host.cameras();
+  if (input.camera !== undefined) {
+    const one = findCamera(host, input.camera);
+    if ('error' in one) return one;
+    cameras = [one];
+  }
+  const date = text(input.date);
+  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'date: YYYY-MM-DD' };
+  const days = input.days === undefined ? 1 : Number(input.days);
+  if (!Number.isInteger(days) || days < 1 || days > 30) return { error: 'days: from 1 to 30' };
+  const child = text(input.child)?.toLowerCase();
+  const reports = cameras.flatMap((camera) =>
+    host.voice
+      .scenariosOf(camera.id)
+      .filter(({ engine }) => !child || engine.config.childName.toLowerCase() === child)
+      .map(({ key, engine }) => ({
+        camera: camera.name,
+        child: engine.config.childName,
+        rules: {
+          sessionMinutes: engine.config.sessionMinutes,
+          breakMinutes: engine.config.breakMinutes,
+          ...(engine.config.dailyMinutes ? { dailyMinutes: engine.config.dailyMinutes } : {}),
+        },
+        days: host.voice.reportOf(key, date, days),
+      })),
+  );
+  if (!reports.length) return { error: `No screen-time scenario${child ? ` for "${input.child}"` : ''}. voice_status lists them.` };
+  return { content: { timezone: host.voice.timeZone(), reports } };
 }
 
 async function setScreenTime(host: ToolHost, input: Record<string, unknown>): Promise<AssistantToolResult> {

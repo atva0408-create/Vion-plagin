@@ -42,6 +42,46 @@ export interface Escalation {
   since?: number;
 }
 
+/** A session at the computer; `to` is missing while it runs. */
+export interface LoggedSession {
+  from: number;
+  to?: number;
+  /** The time away before it was the whole break to the rule (absences add up while the break is due). */
+  rested?: true;
+}
+
+/**
+ * A rule VOICE reminded the child of, and how far it went: 1 the first reminder, 2 the child went on after it (a firm
+ * one), 3 the parents were told.
+ */
+export interface LoggedReminder {
+  at: number;
+  reason: Reason;
+  level: number;
+  /**
+   * The steps the child heard: a phrase never said (no speaker, the camera gone) is not a reminder the child let pass.
+   * Missing in entries of before it was kept.
+   */
+  said?: number;
+  /** The parents' notice went (a parent who gave time meanwhile stops it). */
+  told?: true;
+}
+
+/** A while VOICE saw nothing: the camera or its detector gone, the scenario off, VOICE or the server down. */
+export interface LoggedUnseen {
+  from: number;
+  to: number;
+}
+
+/** What happened on a local date: what the parents ask about later («сколько отдыхал», «когда нарушил»). */
+export interface DayLog {
+  sessions: LoggedSession[];
+  reminders: LoggedReminder[];
+  unseen?: LoggedUnseen[];
+  /** More came than a day keeps: the latest entries are missing. */
+  capped?: true;
+}
+
 export interface ScreenTimeState {
   date: string;
   todayMs: number;
@@ -66,6 +106,10 @@ export interface ScreenTimeState {
   attributeYes?: boolean;
   /** VOICE has been blind since then (camera offline, no detector, boxes frozen). */
   blindSince?: number;
+  /** The sessions and the reminders by local date (the date they began), the last 30 days like the history. */
+  log?: Record<string, DayLog>;
+  /** When the journal began: of the days before only the minutes are known. */
+  logSince?: number;
 }
 
 export interface Facts {
@@ -110,10 +154,12 @@ export function freshState(date: string): ScreenTimeState {
 }
 
 /** Longest step counted as continuous: after a restart or a stalled timer the time between is not presence. */
-const MAX_STEP_MS = MINUTE;
+export const MAX_STEP_MS = MINUTE;
 /** An absence this short is a look the detector missed, still time at the computer. */
 const FLICKER_MS = 15_000;
-const HISTORY_DAYS = 30;
+export const HISTORY_DAYS = 30;
+/** Entries of one day's log at most: a flickering detector must not grow the state without a bound. */
+const LOG_DAY_ENTRIES = 300;
 /**
  * Bedtime and the daily limit go on all evening: a child back this soon after the session ended goes on with the
  * reminders where they were. A classifier that said "no" for two minutes, or a child stepping out and back, started
@@ -145,9 +191,13 @@ export class ScreenTimeEngine {
     const { now, timeZone } = input;
     const s = this.state;
     const previous = s.lastTick;
-    const step = previous === undefined ? 0 : Math.max(0, Math.min(now - previous, MAX_STEP_MS));
+    // no look for longer than a step: the scenario was off, VOICE or the server down. Nothing was seen meanwhile, as
+    // when the camera drops: a session went on through two days off and its evening was kept as 2930 minutes
+    const paused = previous !== undefined && now - previous > MAX_STEP_MS;
+    const step = previous === undefined || paused ? 0 : Math.max(0, now - previous);
     s.lastTick = now;
     this.rollDate(now, timeZone);
+    this.startLog(now, timeZone);
 
     if (input.present === undefined) {
       // a camera that dropped (Wi-Fi, a crashed detector) keeps the last boxes of a still child for hours: they counted
@@ -157,7 +207,8 @@ export class ScreenTimeEngine {
       s.blindSince ??= previous ?? now;
       return [];
     }
-    if (s.blindSince !== undefined) this.endBlindness(Math.max(0, (previous ?? now) - s.blindSince));
+    const blindFrom = s.blindSince ?? (paused ? previous : undefined);
+    if (blindFrom !== undefined) this.endBlindness(blindFrom, paused ? now : (previous ?? now), timeZone);
 
     if (input.present) {
       s.lastSeen = now;
@@ -179,6 +230,7 @@ export class ScreenTimeEngine {
         // away longer than the gap: the session is over, the break starts when the child was last seen
         s.present = false;
         s.leftAt = s.lastSeen;
+        this.logSessionEnd(s.leftAt ?? now);
         if (!s.escalation || !LASTING.has(s.escalation.reason)) s.escalation = undefined;
         s.name = undefined;
         s.attributeYes = undefined;
@@ -191,7 +243,8 @@ export class ScreenTimeEngine {
       // only the rest of it; before it is due, only one absence as long as a break counts as one
       const due = s.workMs >= this.config.sessionMinutes * MINUTE;
       const rest = due ? (s.restMs ?? 0) + away : away;
-      if (rest >= this.config.breakMinutes * MINUTE) {
+      const rested = rest >= this.config.breakMinutes * MINUTE;
+      if (rested) {
         s.workMs = 0;
         s.restMs = undefined;
       } else if (due) {
@@ -200,6 +253,7 @@ export class ScreenTimeEngine {
       }
       // the first seconds of the session were already at the computer
       this.count(now - s.candidateSince, now, timeZone);
+      this.logSessionStart(s.candidateSince, timeZone, rested && s.leftAt !== undefined);
     }
 
     if (!s.present) return actions;
@@ -214,6 +268,7 @@ export class ScreenTimeEngine {
     const e = s.escalation;
     if (e?.reason !== reason) {
       s.escalation = { reason, level: 1, at: now, repeats: 0, since: now };
+      this.logReminder(reason, now, timeZone);
       const remaining = returnedDuringBreak && reason === 'break' && this.config.breakReminder;
       actions.push({ type: 'speak', kind: remaining ? 'remaining' : 'nudge', facts: this.facts(now, input) });
       return actions;
@@ -224,6 +279,7 @@ export class ScreenTimeEngine {
       e.repeats++;
     } else {
       e.level++;
+      this.logReminderLevel(e, timeZone);
     }
     e.at = now;
     actions.push({ type: 'speak', kind: 'nudge', facts: this.facts(now, input) });
@@ -334,15 +390,31 @@ export class ScreenTimeEngine {
     return { kind: 'play', minutes: Math.max(0, Math.floor(ms / MINUTE)), until };
   }
 
+  /** VOICE said this step of a reminder: the child heard it. */
+  noteSaid(since: number, reason: Reason, level: number, timeZone: string): void {
+    const entry = this.reminderOf(since, reason, timeZone);
+    if (entry) entry.said = Math.max(entry.said ?? 0, level);
+  }
+
+  /** The parents' notice of a reminder went. */
+  noteTold(since: number, reason: Reason, timeZone: string): void {
+    const entry = this.reminderOf(since, reason, timeZone);
+    if (entry) entry.told = true;
+  }
+
   /**
-   * Sight is back after `blindMs`. Shorter than a break, the blindness is cut out of the clock: the gap, the break and
-   * the reminders go on as if it never happened. As long as a break or longer, VOICE cannot vouch that the child
-   * stayed: the session ended where sight was lost. Frozen without a bound, a break begun in the evening and a camera
-   * off for the night said "the break is not over" in the morning and told the parents yesterday's minutes.
+   * Sight is back after a blind while from `from` to `to`. Shorter than a break, the blindness is cut out of the clock:
+   * the gap, the break and the reminders go on as if it never happened. As long as a break or longer, VOICE cannot
+   * vouch that the child stayed: the session ended where sight was lost. Frozen without a bound, a break begun in the
+   * evening and a camera off for the night said "the break is not over" in the morning and told the parents
+   * yesterday's minutes.
    */
-  private endBlindness(blindMs: number): void {
+  private endBlindness(from: number, to: number, timeZone: string): void {
     const s = this.state;
+    const blindMs = Math.max(0, to - from);
     s.blindSince = undefined;
+    // the journal says the while was not watched: no play then is not "did not play"
+    if (blindMs >= MINUTE) this.logUnseen(from, to, timeZone);
     if (blindMs < this.config.breakMinutes * MINUTE) {
       if (s.lastSeen !== undefined) s.lastSeen += blindMs;
       if (s.candidateSince !== undefined) s.candidateSince += blindMs;
@@ -354,6 +426,7 @@ export class ScreenTimeEngine {
     if (!s.present) return;
     s.present = false;
     s.leftAt = s.lastSeen;
+    if (s.leftAt !== undefined) this.logSessionEnd(s.leftAt);
     s.escalation = undefined;
     s.name = undefined;
     s.attributeYes = undefined;
@@ -376,6 +449,67 @@ export class ScreenTimeEngine {
     s.todayMs = 0;
     const oldest = addDays(date, -HISTORY_DAYS);
     for (const key of Object.keys(s.history)) if (key < oldest) delete s.history[key];
+    for (const key of Object.keys(s.log ?? {})) if (key < oldest) delete s.log![key];
+  }
+
+  /** The journal begins (VOICE 0.4.0 kept none): a session running then is in it from now. */
+  private startLog(now: number, timeZone: string): void {
+    const s = this.state;
+    if (s.logSince !== undefined) return;
+    s.logSince = now;
+    if (s.present) this.logSessionStart(now, timeZone, false);
+  }
+
+  private dayLog(date: string): DayLog {
+    const log = (this.state.log ??= {});
+    return (log[date] ??= { sessions: [], reminders: [] });
+  }
+
+  /** A day keeps so many entries of a kind: a flickering detector must not grow the state, the report says it is capped. */
+  private push<T>(day: DayLog, list: T[], entry: T): void {
+    if (list.length < LOG_DAY_ENTRIES) list.push(entry);
+    else day.capped = true;
+  }
+
+  private logSessionStart(at: number, timeZone: string, rested: boolean): void {
+    const day = this.dayLog(localTime(at, timeZone).date);
+    this.push(day, day.sessions, rested ? { from: at, rested: true as const } : { from: at });
+  }
+
+  /** Filed by the day it ended: one begun days ago (the scenario off) must not bring back a day the history let go. */
+  private logUnseen(from: number, to: number, timeZone: string): void {
+    const day = this.dayLog(localTime(to, timeZone).date);
+    this.push(day, (day.unseen ??= []), { from, to });
+  }
+
+  /** The open session ends: the last one without an end, whatever the day it began. */
+  private logSessionEnd(at: number): void {
+    const days = Object.keys(this.state.log ?? {})
+      .sort()
+      .reverse();
+    for (const date of days) {
+      const open = [...this.state.log![date].sessions].reverse().find((session) => session.to === undefined);
+      if (open) {
+        open.to = Math.max(open.from, at);
+        return;
+      }
+    }
+  }
+
+  private logReminder(reason: Reason, at: number, timeZone: string): void {
+    const day = this.dayLog(localTime(at, timeZone).date);
+    this.push(day, day.reminders, { at, reason, level: 1, said: 0 });
+  }
+
+  /** The child went on after a reminder: its entry (found by when it began) takes the new step. */
+  private logReminderLevel(e: Escalation, timeZone: string): void {
+    if (e.since === undefined) return;
+    const entry = this.reminderOf(e.since, e.reason, timeZone);
+    if (entry) entry.level = e.level;
+  }
+
+  private reminderOf(since: number, reason: Reason, timeZone: string): LoggedReminder | undefined {
+    return this.state.log?.[localTime(since, timeZone).date]?.reminders.find((r) => r.at === since && r.reason === reason);
   }
 }
 

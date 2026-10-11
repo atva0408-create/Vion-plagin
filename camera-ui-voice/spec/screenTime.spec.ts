@@ -1,7 +1,9 @@
 // Screen time: sessions, breaks, bedtime, escalation, daylight saving and a restart. Run: npx tsx spec/screenTime.spec.ts
 import assert from 'node:assert/strict';
 
+import { dayReports } from '../src/report.js';
 import { ScreenTimeEngine, freshState } from '../src/screenTime.js';
+import { restoreScreenTime } from '../src/state.js';
 import { checkScreenTime } from '../src/settings.js';
 import { replyText, templateNudge } from '../src/speech.js';
 import { MINUTE } from '../src/time.js';
@@ -36,6 +38,23 @@ function pass(run: Run, ms: number, present: boolean | undefined, timeZone = MOS
     for (const action of run.engine.tick({ now: run.t, present, quiet: false, timeZone, language: 'ru' })) run.actions.push({ at: run.t, action });
   }
 }
+
+/** As `pass`, VOICE saying every phrase and the parents' notice going, as the plugin notes them in the journal. */
+function passSaid(run: Run, ms: number, present: boolean | undefined): void {
+  const end = run.t + ms;
+  while (run.t < end) {
+    run.t += 5_000;
+    for (const action of run.engine.tick({ now: run.t, present, quiet: false, timeZone: MOSCOW, language: 'ru' })) {
+      run.actions.push({ at: run.t, action });
+      const since = run.engine.state.escalation?.since;
+      if (since === undefined) continue;
+      if (action.type === 'speak') run.engine.noteSaid(since, action.facts.reason, action.facts.level, MOSCOW);
+      else run.engine.noteTold(since, action.facts.reason, MOSCOW);
+    }
+  }
+}
+
+const report = (run: Run, lastDate: string, days = 1, watching = true) => dayReports(run.engine.state, { lastDate, days, now: run.t, timeZone: MOSCOW, watching });
 
 const speaks = (run: Run) => run.actions.filter((a) => a.action.type === 'speak');
 const notifies = (run: Run) => run.actions.filter((a) => a.action.type === 'notify');
@@ -335,8 +354,9 @@ test('quiet hours: no break phrase, but bedtime is still said', () => {
   const said: ScreenTimeAction[] = [];
   for (let i = 0; i < 12 * 10; i++) said.push(...engine.tick({ now: (t += 5_000), present: true, quiet: true, timeZone: MOSCOW, language: 'ru' }));
   assert.equal(said.length, 0);
+  // looks again at 21:40 (the hours between had none: VOICE saw a new session begin)
   t = msk('2026-10-07T21:40:00');
-  said.push(...engine.tick({ now: t, present: true, quiet: true, timeZone: MOSCOW, language: 'ru' }));
+  for (let i = 0; i < 12; i++) said.push(...engine.tick({ now: (t += 5_000), present: true, quiet: true, timeZone: MOSCOW, language: 'ru' }));
   assert.equal(said.length, 1);
   assert.equal(said[0].type === 'speak' && said[0].facts.reason, 'bedtime');
 });
@@ -488,7 +508,6 @@ test('"how long": the word for minutes agrees with the number', () => {
   assert.equal(replyText({ kind: 'play', minutes: 3, until: 'bedtime' }, 'Artem', 'de'), 'Artem, du kannst spielen. Noch 3 Minuten bis zur Schlafenszeit.');
 });
 
-
 const levels = (run: Run) => speaks(run).map((a) => (a.action.type === 'speak' ? a.action.facts.level : 0));
 
 test('bedtime: a child gone a few minutes (or a classifier saying "no") comes back to the same step, and the third tells the parents', () => {
@@ -521,6 +540,238 @@ test('bedtime: back after a long absence, the reminders start over; a break neve
   pass(pause, MINUTE, true);
   const last = speaks(pause)[speaks(pause).length - 1].action;
   assert.ok(last.type === 'speak' && last.kind === 'remaining' && last.facts.level === 1, 'back early from a break: the rest of it, as before');
+});
+
+test('journal: an evening with an ignored break, the parents told, a full break and a short one, reported by day', () => {
+  const t0 = msk('2026-10-10T15:00:00');
+  const run = start(config(), t0);
+  passSaid(run, 52 * MINUTE, true); // 45 min, the soft reminder, 3 min later the firm one, 3 more the parents
+  passSaid(run, 12 * MINUTE, false); // away 12 min: a whole break (10)
+  passSaid(run, 20 * MINUTE, true);
+  passSaid(run, 4 * MINUTE, false); // away 4 min: not a whole break
+  passSaid(run, 5 * MINUTE, true);
+  passSaid(run, 10 * MINUTE, false);
+  const [day] = report(run, '2026-10-10');
+  assert.equal(day.journal, true);
+  assert.equal(day.watched, undefined);
+  assert.equal(day.unwatched, undefined);
+  assert.equal(day.sessions.length, 3, JSON.stringify(day.sessions));
+  assert.equal(day.sessions[0].from, '15:00');
+  assert.ok(Math.abs(day.playedMinutes - 77) <= 1, `played ${day.playedMinutes}`);
+  assert.equal(day.breaks.count, 2);
+  assert.equal(day.breaks.full, 1, 'the 12-minute absence is a whole break, the 4-minute one is not');
+  assert.ok(day.breaks.list[0].minutes >= 11 && day.breaks.list[0].minutes <= 13, JSON.stringify(day.breaks.list));
+  assert.equal(day.reminders, 1, 'one break reminder, its steps are one entry');
+  assert.equal(day.violations.length, 1);
+  assert.deepEqual({ ...day.violations[0], at: undefined }, { at: undefined, reason: 'break', level: 3, heard: 3, parentsTold: true });
+  assert.equal(day.violations[0].at, '15:45');
+});
+
+test('journal: a reminder VOICE could not say is not one the child let pass; the parents told only when the notice went', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 52 * MINUTE, true); // the steps come, none is said (no speaker), no notice goes
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual({ reminders: day.reminders, notSaid: day.notSaid, violations: day.violations }, { reminders: 0, notSaid: 1, violations: [] });
+  // the first said, the rest not: the child heard one and went on; the parents were not told
+  const heard = start(config(), msk('2026-10-10T15:00:00'));
+  pass(heard, 45 * MINUTE + 10_000, true);
+  const since = heard.engine.state.escalation!.since!;
+  heard.engine.noteSaid(since, 'break', 1, MOSCOW);
+  pass(heard, 7 * MINUTE, true);
+  assert.deepEqual(
+    report(heard, '2026-10-10')[0].violations.map(({ level, heard: steps, parentsTold }) => ({ level, steps, parentsTold })),
+    [{ level: 3, steps: 1, parentsTold: false }],
+  );
+});
+
+test('journal: the rest added up over two absences is a whole break, as the rule took it; 9.5 minutes is not', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 46 * MINUTE, true); // the break is due
+  pass(run, 6 * MINUTE, false);
+  pass(run, 2 * MINUTE, true);
+  pass(run, 6 * MINUTE, false); // 12 minutes of rest added up: the break is taken
+  pass(run, 2 * MINUTE, true);
+  assert.ok(run.engine.state.workMs < 5 * MINUTE, 'the engine took the break');
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual({ count: day.breaks.count, full: day.breaks.full }, { count: 2, full: 1 });
+
+  const short = start(config(), msk('2026-10-10T15:00:00'));
+  pass(short, 46 * MINUTE, true);
+  pass(short, 9.5 * MINUTE, false);
+  pass(short, 2 * MINUTE, true);
+  assert.ok(short.engine.state.workMs >= 45 * MINUTE, 'the engine did not take the break');
+  assert.deepEqual({ count: report(short, '2026-10-10')[0].breaks.count, full: report(short, '2026-10-10')[0].breaks.full }, { count: 1, full: 0 });
+});
+
+test('journal: two days with the scenario off end the session where the child was last seen, and are not watched', () => {
+  const run = start(config(), msk('2026-10-10T17:00:00'));
+  pass(run, 30 * MINUTE, true);
+  // the scenario is off: no looks until the 12th, the child at the computer when they come back
+  run.t = msk('2026-10-12T17:30:00');
+  pass(run, 21 * MINUTE, true);
+  const [tenth, eleventh, twelfth] = report(run, '2026-10-12', 3);
+  assert.equal(tenth.sessions.length, 1);
+  assert.ok(tenth.sessions[0].minutes >= 29 && tenth.sessions[0].minutes <= 31, JSON.stringify(tenth.sessions));
+  assert.equal(tenth.sessions[0].to, '17:30');
+  assert.deepEqual({ watched: eleventh.watched, played: eleventh.playedMinutes, sessions: eleventh.sessions.length }, { watched: false, played: 0, sessions: 0 });
+  assert.equal(twelfth.sessions.length, 1, 'the 21 minutes of the 12th are a session of their own');
+  assert.equal(twelfth.sessions[0].from, '17:30');
+  assert.ok(twelfth.unwatched && twelfth.unwatched.list[0].to === '17:30', JSON.stringify(twelfth.unwatched));
+  const twelve = run.engine.state.history['2026-10-12'];
+  assert.ok(twelve >= 20.5 && twelve <= 21.05, `no minute counted for the days off: ${twelve}`);
+});
+
+test('journal: three hours of the server down while the child played: the session ends at the last look, the rest is unknown', () => {
+  const run = start(config(), msk('2026-10-10T17:00:00'));
+  pass(run, 30 * MINUTE, true);
+  run.t = msk('2026-10-10T20:30:00'); // VOICE is back, the child at the computer
+  pass(run, 21 * MINUTE, true);
+  const [day] = report(run, '2026-10-10');
+  assert.deepEqual(
+    day.sessions.map((s) => [s.from, s.to]),
+    [
+      ['17:00', '17:30'],
+      ['20:30', '20:51'],
+    ],
+  );
+  assert.equal(day.sessions[1].ongoing, true);
+  assert.deepEqual(
+    day.unwatched?.list.map((s) => [s.from, s.to]),
+    [['17:30', '20:30']],
+  );
+  const played = run.engine.state.history['2026-10-10'];
+  assert.ok(played >= 50.5 && played <= 51.05, `played ${played}: not a minute for the hours down`);
+});
+
+test('journal: five minutes without looks while the child plays: the session goes on, the minutes are not counted, the while is unknown', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 10 * MINUTE, true);
+  run.t += 5 * MINUTE; // VOICE restarted
+  pass(run, 10 * MINUTE, true);
+  const played = run.engine.state.history['2026-10-10'];
+  assert.ok(played >= 19.5 && played <= 20.05, `played ${played}: not the minute after the restart`);
+  const [day] = report(run, '2026-10-10');
+  assert.equal(day.sessions.length, 1, 'shorter than a break: one session');
+  assert.deepEqual(
+    day.unwatched?.list.map((s) => [s.from, s.to]),
+    [['15:10', '15:15']],
+  );
+});
+
+test('journal: an open session is "ongoing" only while VOICE sees: blind or switched off, it ends at the last look', () => {
+  const run = start(config(), msk('2026-10-10T20:00:00'));
+  pass(run, 30 * MINUTE, true);
+  pass(run, 150 * MINUTE, undefined); // the camera is offline until 23:00
+  const [blind] = report(run, '2026-10-10');
+  assert.deepEqual(
+    { to: blind.sessions[0].to, lostSight: blind.sessions[0].lostSight, ongoing: blind.sessions[0].ongoing },
+    { to: '20:30', lostSight: true, ongoing: undefined },
+  );
+  assert.deepEqual(
+    blind.unwatched?.list.map((s) => [s.from, s.to]),
+    [['20:30', '23:00']],
+  );
+  // the next morning, still offline: yesterday is still 30 minutes, today not watched at all
+  run.t = msk('2026-10-11T08:00:00');
+  const [eve, morning] = report(run, '2026-10-11', 2);
+  assert.equal(eve.sessions[0].minutes, 30);
+  assert.equal(morning.watched, false);
+
+  const off = start(config(), msk('2026-10-10T20:00:00'));
+  pass(off, 30 * MINUTE, true);
+  // switched off this moment: the session is not running on, though the last look was just now
+  assert.equal(report(off, '2026-10-10', 1, false)[0].sessions[0].lostSight, true);
+  assert.equal(report(off, '2026-10-10', 1, true)[0].sessions[0].ongoing, true);
+  off.t = msk('2026-10-11T12:00:00'); // switched off at 20:30, asked the next day
+  const [evening] = report(off, '2026-10-10', 1, false);
+  assert.deepEqual({ minutes: evening.sessions[0].minutes, lostSight: evening.sessions[0].lostSight }, { minutes: 30, lostSight: true });
+  assert.equal(report(off, '2026-10-10', 1, true)[0].sessions[0].lostSight, true, 'on, but no look for a day: not seeing either');
+});
+
+test('journal: a camera blind longer than a break closes the session at the last look', () => {
+  const run = start(config(), msk('2026-10-10T15:00:00'));
+  pass(run, 20 * MINUTE, true);
+  pass(run, 15 * MINUTE, undefined);
+  pass(run, 10 * MINUTE, false); // sight is back, nobody there
+  const session = run.engine.state.log!['2026-10-10'].sessions[0];
+  assert.equal(session.to, msk('2026-10-10T15:20:00'));
+});
+
+test('journal: begun on a day with minutes and a session running (an update from 0.4.0), it says from when it is whole', () => {
+  const run = start(config(), msk('2026-10-10T17:00:00'));
+  pass(run, 20 * MINUTE, true);
+  const state = run.engine.state;
+  delete state.log;
+  delete state.logSince; // as VOICE 0.4.0 saved it, the child at the computer
+  state.history['2026-10-10'] = 120;
+  pass(run, 10 * MINUTE, true);
+  pass(run, 15 * MINUTE, false);
+  const [day] = report(run, '2026-10-10');
+  assert.equal(day.journalSince, '17:20');
+  assert.deepEqual(
+    day.sessions.map((s) => [s.from, s.to]),
+    [['17:20', '17:30']],
+  );
+  assert.ok(day.playedMinutes >= 130, 'the minutes of before are kept');
+  assert.equal(report(run, '2026-10-09')[0].journal, false);
+});
+
+test('journal: days older than the history are dropped; a day keeps its entries up to a bound and says so', () => {
+  const run = start(config({ gapSeconds: 10, minPresenceSeconds: 5 }), msk('2026-09-01T15:00:00'));
+  pass(run, 5 * MINUTE, true);
+  run.t = msk('2026-10-10T15:00:00');
+  pass(run, 10_000, false);
+  assert.equal(run.engine.state.log!['2026-09-01'], undefined, 'pruned after 30 days');
+  assert.equal(report(run, '2026-09-01')[0].journal, false);
+  // a flickering detector: a session every 30 s
+  for (let i = 0; i < 320; i++) {
+    pass(run, 10_000, true);
+    pass(run, 20_000, false);
+  }
+  const day = run.engine.state.log!['2026-10-10'];
+  assert.equal(day.sessions.length, 300);
+  assert.equal(day.capped, true);
+  assert.equal(report(run, '2026-10-10')[0].capped, true);
+});
+
+test('journal: a session over midnight belongs to the day it began; days before the journal have the minutes only', () => {
+  const run = start(config({ freeFrom: '', freeTo: '' }), msk('2026-10-10T23:50:00'));
+  pass(run, 20 * MINUTE, true);
+  pass(run, 10 * MINUTE, false);
+  run.engine.state.history['2026-10-08'] = 90; // minutes from before the journal existed
+  const [before, eve, next] = report(run, '2026-10-11', 4).slice(1);
+  assert.deepEqual({ date: before.date, played: before.playedMinutes, journal: before.journal }, { date: '2026-10-09', played: 0, journal: false });
+  assert.equal(eve.sessions.length, 1);
+  assert.equal(eve.sessions[0].from, '23:50');
+  assert.equal(eve.journalSince, '23:50');
+  assert.equal(next.sessions.length, 0);
+  assert.equal(next.journal, true, 'a day after the journal began with no play is known to have none');
+  assert.ok(next.playedMinutes >= 9, 'the minutes after midnight count on the next day, as before');
+  const all = report(run, '2026-10-11', 4);
+  assert.deepEqual({ played: all[0].playedMinutes, journal: all[0].journal }, { played: 90, journal: false });
+});
+
+test('journal: a damaged journal is dropped on restore, the minutes and the evening are kept', () => {
+  const state = { ...freshState('2026-10-10'), history: { '2026-10-10': 42 }, log: { '2026-10-10': { sessions: [{ from: -5 }], reminders: [] } } };
+  const restored = restoreScreenTime({ screenTime: { s: state } }).s;
+  assert.ok(restored, 'the state is kept');
+  assert.equal(restored.log, undefined);
+  assert.equal(restored.history['2026-10-10'], 42);
+  const good = {
+    ...freshState('2026-10-10'),
+    logSince: 1,
+    log: {
+      '2026-10-10': {
+        sessions: [{ from: 5, to: 9, rested: true }],
+        reminders: [{ at: 7, reason: 'bedtime', level: 2, said: 1, told: true }],
+        unseen: [{ from: 10, to: 20 }],
+        capped: true,
+      },
+    },
+  };
+  assert.deepEqual(restoreScreenTime({ screenTime: { s: good } }).s.log, good.log);
+  const said = { ...good, log: { '2026-10-10': { sessions: [], reminders: [{ at: 7, reason: 'bedtime', level: 2, said: 7 }] } } };
+  assert.equal(restoreScreenTime({ screenTime: { s: said } }).s.log, undefined, 'a step out of range is damage');
 });
 
 void runTests();
