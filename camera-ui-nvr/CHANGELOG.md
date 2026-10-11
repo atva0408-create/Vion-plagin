@@ -1,5 +1,6 @@
 ## [0.17.0]
 
+- Where a person went, camera after camera: from a moment of the people search the recordings page shows the route (Маршрут) — the stays of the person on each camera with person re-ID, in time order, half an hour before and after, each with its moment; the assistant answers «куда он пошёл потом» with the same route (person_route). Re-ID compares clothes and build, so a stay can be someone dressed alike; the cameras that saw nobody are named
 - The recorder keeps how many people and vehicles cross each line drawn on a camera, in or out when the line has a way in (from ViON's version that reports each crossing once): the assistant counts them over time for charts — per hour, day or week, or the hours of a day on average — together or apart by line, in and out (with how many are inside: in minus out), direction, object or camera (line_counts). The counts are kept 400 days whatever the retention of the recordings: this month can be compared with the same month last year. The modules page of ViON shows each line's counts of the last 24 hours (lineTotals)
 
 ## [0.16.0]

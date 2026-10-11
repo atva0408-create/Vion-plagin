@@ -120,6 +120,36 @@ export interface SimilarMatch {
 
 export type SimilarReason = 'no-vectors' | 'no-embedder' | 'no-person' | 'model-mismatch' | 'unsupported';
 
+/** One stay of a person on a camera along a route: from, to, and the moment to show (the asked one on its own stay). */
+export interface PersonRouteVisit {
+  cameraId: string;
+  from: number;
+  to: number;
+  eventId: string;
+  segment: number;
+  trackId: number;
+  /** raw cosine with the person asked about; 1 for the moment asked from */
+  score: number;
+  origin?: true;
+}
+
+/** Where a person went, camera after camera, around a moment (personRoute). */
+export interface PersonRouteResult {
+  mode: 'person' | 'none';
+  reason?: SimilarReason;
+  origin?: { eventId: string; segment: number; cameraId: string; time: number; people: number };
+  visits: PersonRouteVisit[];
+  /** the events of the stays, as the event list gives them (favourite, recording), for their cards */
+  events: RecordedEvent[];
+  /** before and after the moment */
+  windowMs: number;
+  minScore: number;
+  scoreBand: [number, number];
+  /** the cameras that filed people in the window: one not listed has no person re-ID and cannot be on the route */
+  camerasWithPeople: string[];
+  indexedSince?: number;
+}
+
 export interface SimilarResult {
   mode: 'person' | 'none';
   label?: string;

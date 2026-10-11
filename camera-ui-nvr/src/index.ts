@@ -15,7 +15,7 @@ import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
-import { PersonIndex, personEmbeddings } from './people.js';
+import { PersonIndex, personEmbeddings, routeOf } from './people.js';
 import { parseKeyframes, Store } from './store.js';
 
 import type {
@@ -46,6 +46,7 @@ import type {
   NvrFeatures,
   NvrFrame,
   NvrPlaybackCallbacks,
+  PersonRouteResult,
   PluginStorageValues,
   RecordedEvent,
   RecordedSegment,
@@ -204,6 +205,11 @@ function withoutVectors(event: RecordedEvent): RecordedEvent {
 const PERSON_SCORE_BAND: [number, number] = [0.4, 0.65];
 const PERSON_WINDOW_EVENT_MS = 3 * 86_400_000;
 const PERSON_WINDOW_PICTURE_MS = 7 * 86_400_000;
+/** A route looks this far before and after the moment by default, at most three hours. */
+const PERSON_ROUTE_WINDOW_MS = 30 * 60_000;
+const PERSON_ROUTE_MAX_MS = 3 * 3_600_000;
+/** Moments on one camera closer than this are one stay (the server files a person per segment of an event). */
+const PERSON_ROUTE_GAP_MS = 3 * 60_000;
 const PERSON_SEARCH_DAYS = 7;
 /** a picture is embedded by a plugin that may load its model first */
 const PERSON_EMBED_TIMEOUT_MS = 60_000;
@@ -1828,6 +1834,62 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * Re-ID tells clothes and build, not who it is: by default the search keeps to three days around the moment
    * (seven back from now for a picture), and only cameras given «Идентификация людей» have people to find.
    */
+  /**
+   * Where a person went, camera after camera, around a recorded moment: the moments `minutes` before and after whose
+   * people look like them, joined into stays per camera in time order (people.ts routeOf). A moment of several people
+   * follows them all, `trackId` one of them. For admins, as the people search: the page and the assistant ask.
+   */
+  public async personRoute(
+    query: { eventId: string; segment?: number; trackId?: number },
+    opts: { minutes?: number; minScore?: number } = {},
+  ): Promise<PersonRouteResult> {
+    await this.ready;
+    const minutes = Math.round(Number(opts.minutes) || PERSON_ROUTE_WINDOW_MS / 60_000);
+    const windowMs = Math.min(Math.max(minutes, 1) * 60_000, PERSON_ROUTE_MAX_MS);
+    const middle = (PERSON_SCORE_BAND[0] + PERSON_SCORE_BAND[1]) / 2;
+    const minScore = Math.max(PERSON_SCORE_BAND[0], Number.isFinite(opts.minScore) ? Number(opts.minScore) : middle);
+    const none = (reason: SimilarReason): PersonRouteResult => ({
+      mode: 'none',
+      reason,
+      visits: [],
+      events: [],
+      windowMs,
+      minScore,
+      scoreBand: PERSON_SCORE_BAND,
+      camerasWithPeople: [],
+      indexedSince: this.people.oldest(),
+    });
+    if (typeof query?.eventId !== 'string' || !query.eventId) return none('unsupported');
+    const row = this.store.event(query.eventId);
+    if (!row) return none('no-vectors');
+    // the first segment with people when none is named: the assistant knows events, not their segments
+    const segment = query.segment === undefined ? this.people.segmentsOf(query.eventId)[0] : Math.trunc(Number(query.segment));
+    if (segment === undefined || !Number.isFinite(segment)) return none('no-vectors');
+    const trackId = query.trackId === undefined ? undefined : Math.trunc(Number(query.trackId));
+    const queries = this.people.vectors(query.eventId, segment, trackId);
+    if (!queries.length) return none('no-vectors');
+    const event = JSON.parse(row.data) as RecordedEvent;
+    const time = event.segments?.[segment]?.firstSeen ?? row.start_ms;
+    const hits = this.people.search(queries, { fromMs: time - windowMs, toMs: time + windowMs, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: 500 });
+    const origin = { eventId: query.eventId, cameraId: event.cameraId, seg: segment, trackId: queries[0].trackId, ts: time, score: 1 };
+    const visits = routeOf(origin, hits, PERSON_ROUTE_GAP_MS);
+    const events = [...new Set(visits.map((visit) => visit.eventId))].flatMap((id) => {
+      const stored = this.store.event(id);
+      return stored ? [this.decorate(JSON.parse(stored.data) as RecordedEvent, stored.favorite === 1, true)] : [];
+    });
+    return {
+      mode: 'person',
+      origin: { eventId: query.eventId, segment, cameraId: event.cameraId, time, people: new Set(queries.map((q) => q.trackId)).size },
+      visits,
+      events,
+      windowMs,
+      minScore,
+      scoreBand: PERSON_SCORE_BAND,
+      camerasWithPeople: this.people.camerasBetween(time - windowMs, time + windowMs),
+      indexedSince: this.people.oldest(),
+    };
+  }
+
   public async searchSimilarQuery(query: SimilarQuery, opts: SimilarOptions = {}): Promise<SimilarResult> {
     await this.ready;
     const run = this.similarChain.then(() => this.similarNow(query ?? {}, opts ?? {}));
@@ -2285,6 +2347,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
+      personRoute: (query, opts) => this.personRoute(query, opts),
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
       eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),

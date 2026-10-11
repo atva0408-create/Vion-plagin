@@ -119,6 +119,7 @@ assert.deepEqual(reading.sort(), [
   'line_counts',
   'list_faces',
   'list_plates',
+  'person_route',
   'query_events',
   'recording_health',
   'search_events_by_text',

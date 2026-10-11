@@ -11,7 +11,7 @@
 import type { AssistantToolContext, AssistantToolImage, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
 import type { FaceProfile } from './faces.js';
 import type { ClipSearchResult } from './semantic.js';
-import type { GetEventsOptions, ManualRecording, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
+import type { GetEventsOptions, ManualRecording, PersonRouteResult, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
 
 /** An unknown face where it was seen: the event, the segment and the place among the segment's attributes. */
 export interface UnknownSighting {
@@ -45,6 +45,8 @@ export interface AssistantHost {
     maxRows: number,
     visit: (crossing: StoredCrossing) => void,
   ): { scanned: number; capped: boolean; oldestMs?: number };
+  /** Where a person went, camera after camera, around a recorded moment (people.ts routeOf). */
+  personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number }): Promise<PersonRouteResult>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
   crossingLines(cameraIds: string[] | undefined, startMs: number, endMs: number): { cameraId: string; line: string; hasWay: boolean }[];
   /** The event types of a while with the events of each; `attributes`: the attribute types of their segments. */
@@ -147,6 +149,23 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         favorites: { type: 'boolean', description: 'Only events marked as favorite' },
         limit: { type: 'integer', minimum: 1, maximum: MAX_EVENTS, description: `Events to return, default ${DEFAULT_EVENTS}` },
       },
+    },
+  },
+  {
+    name: 'person_route',
+    description:
+      'Where a person went, camera after camera, around a recorded moment: the stays of people who look like the person of `event` (an id ' +
+      'from query_events or summarize_day) on each camera with person re-ID, in time order, `minutes` before and after (default 30). For ' +
+      '«куда он пошёл потом», «откуда пришёл курьер», «проследи за ним по камерам». Re-ID compares clothes and build, not who someone is: a ' +
+      'stay with a lower score may be someone dressed alike. The cameras without person re-ID cannot be on the route and are named.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        event: { type: 'string', description: 'Event id' },
+        person: { type: 'integer', description: 'Track id of one person, when the moment has several (`people` > 1); all of them otherwise' },
+        minutes: { type: 'integer', minimum: 1, maximum: 180, description: 'Minutes before and after the moment, default 30' },
+      },
+      required: ['event'],
     },
   },
   {
@@ -414,6 +433,8 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
       return eventStats(host, input, ctx);
     case 'line_counts':
       return lineCounts(host, input, ctx);
+    case 'person_route':
+      return personRoute(host, input, ctx);
     case 'search_events_by_text':
       return searchByText(host, input, ctx);
     case 'list_plates':
@@ -1734,6 +1755,62 @@ function titleOf(ev: RecordedEvent): string {
   // the first non-empty of: AI title, what was seen, the event types
   const candidates = [ev.ai?.title?.trim() ?? '', [...labelsOf(ev), ...platesOf(ev), ...facesOf(ev)].join(', '), (ev.types ?? []).join(', ')];
   return candidates.find((text) => text.length > 0) ?? 'motion';
+}
+
+/**
+ * person_route: the stays of a person on the cameras around a moment, in time order, with the person's clock times;
+ * a button for each stay's moment. Said when nothing can be followed and which cameras cannot see anyone.
+ */
+async function personRoute(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  const eventId = typeof input.event === 'string' ? input.event.trim() : '';
+  if (!eventId) return { error: 'event is required: an event id from query_events or summarize_day' };
+  if (!host.event(eventId)) return { error: `No event "${eventId}"` };
+  const trackId = Number.isInteger(input.person) ? (input.person as number) : undefined;
+  const route = await host.personRoute({ eventId, ...(trackId !== undefined ? { trackId } : {}) }, { minutes: clampInt(input.minutes, 1, 180, 30) });
+  const names = cameraNames(host);
+  if (route.mode === 'none' || !route.origin) {
+    return {
+      error:
+        route.reason === 'no-vectors'
+          ? 'This moment has no person to follow: person re-ID was not on for its camera then, or nobody was in the picture (or no such person).'
+          : 'This moment cannot be followed.',
+    };
+  }
+  const clock = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const withPeople = new Set(route.camerasWithPeople);
+  const blind = host
+    .cameras()
+    .filter((camera) => !withPeople.has(camera.id))
+    .map((camera) => camera.name);
+  const references = route.visits
+    .map((visit) => host.event(visit.eventId))
+    .filter((ev): ev is RecordedEvent => !!ev)
+    .slice(0, MAX_REFERENCES)
+    .map((ev) => reference(ev, names, ctx));
+  return {
+    content: {
+      date: dateIn(route.origin.time, ctx.timezone),
+      timezone: ctx.timezone,
+      minutes: route.windowMs / 60_000,
+      people: route.origin.people,
+      route: route.visits.map((visit) => ({
+        camera: names.get(visit.cameraId) ?? visit.cameraId,
+        from: clock.format(visit.from),
+        to: clock.format(visit.to),
+        score: visit.score,
+        event: visit.eventId,
+        ...(visit.origin ? { asked: true } : {}),
+      })),
+      ...(blind.length ? { camerasWithoutPeople: blind } : {}),
+      note:
+        `Re-ID compares clothes and build: a score from ${route.scoreBand[1]} is about sure, from ${route.minScore} to ${route.scoreBand[1]} ` +
+        'maybe someone dressed alike. The cameras without people in the window have no person re-ID on, or nobody passed them.',
+      ...(route.origin.people > 1 && trackId === undefined
+        ? { hint: `The moment has ${route.origin.people} people: the route follows all of them; name one with \`person\` (a track id of the event).` }
+        : {}),
+    },
+    references,
+  };
 }
 
 function brief(ev: RecordedEvent, names: Map<string, string>) {

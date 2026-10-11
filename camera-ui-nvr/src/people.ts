@@ -7,7 +7,7 @@
 import { dot, fromBlob, normalize, toBlob } from './vectors.js';
 
 import type { DatabaseSync } from 'node:sqlite';
-import type { RecordedEvent } from './types.js';
+import type { PersonRouteVisit, RecordedEvent } from './types.js';
 
 /** What the server attaches to a segment when it ends (server/src/camera/decoder/nvr-sink.ts). */
 export interface PersonEmbedding {
@@ -66,6 +66,28 @@ export function personEmbeddings(segment: unknown): PersonEmbedding[] {
       (p as PersonEmbedding).embedding.length > 0 &&
       (p as PersonEmbedding).embedding.every((v) => typeof v === 'number' && Number.isFinite(v)),
   );
+}
+
+/**
+ * The route of a person: the moments that look like them in time order, one stay on a camera while its moments are less
+ * than `gapMs` apart and no other camera saw them in between. The stay of the moment asked from shows that moment; the
+ * others their best match. Re-ID describes clothes and build: two people dressed alike on one camera read as one stay.
+ */
+export function routeOf(origin: PersonHit, hits: PersonHit[], gapMs: number): PersonRouteVisit[] {
+  const moments = [{ ...origin, origin: true }, ...hits.map((hit) => ({ ...hit, origin: false }))].sort((a, b) => a.ts - b.ts);
+  const visits: PersonRouteVisit[] = [];
+  for (const moment of moments) {
+    const last = visits.at(-1);
+    const best = { eventId: moment.eventId, segment: moment.seg, trackId: moment.trackId, score: moment.score };
+    if (last?.cameraId === moment.cameraId && moment.ts - last.to <= gapMs) {
+      last.to = Math.max(last.to, moment.ts);
+      if (moment.origin) Object.assign(last, best, { origin: true });
+      else if (!last.origin && moment.score > last.score) Object.assign(last, best);
+      continue;
+    }
+    visits.push({ cameraId: moment.cameraId, from: moment.ts, to: moment.ts, ...best, ...(moment.origin ? { origin: true as const } : {}) });
+  }
+  return visits;
 }
 
 export class PersonIndex {
@@ -133,6 +155,18 @@ export class PersonIndex {
       }
     }
     return [...best.values()].sort((a, b) => b.score - a.score || b.ts - a.ts).slice(0, Math.max(0, o.limit));
+  }
+
+  /** The segments of an event with people to find, in order. */
+  public segmentsOf(eventId: string): number[] {
+    return (this.db.prepare('SELECT DISTINCT seg FROM person_vectors WHERE event_id = ? ORDER BY seg').all(eventId) as { seg: number }[]).map((r) => r.seg);
+  }
+
+  /** The cameras that filed people in a while: a camera that filed none cannot be on a route. */
+  public camerasBetween(fromMs: number, toMs: number): string[] {
+    return (this.db.prepare('SELECT DISTINCT camera_id FROM person_vectors WHERE ts BETWEEN ? AND ?').all(fromMs, toMs) as { camera_id: string }[]).map(
+      (r) => r.camera_id,
+    );
   }
 
   public hasModel(model: string): boolean {
