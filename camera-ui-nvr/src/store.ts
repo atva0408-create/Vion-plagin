@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import type { StatementSync } from 'node:sqlite';
 import type { VideoCodec } from './media/ts-demux.js';
-import type { RecordedEvent } from './types.js';
+import type { RecordedEvent, StoredCrossing } from './types.js';
 
 /**
  * An event still going on reaches now: one running since before a range was missing from it ("today" did not show the
@@ -133,6 +133,17 @@ export class Store {
         PRIMARY KEY (episode_id, event_id)
       );
       CREATE INDEX IF NOT EXISTS episode_members_event ON episode_members (event_id);
+      CREATE TABLE IF NOT EXISTS crossings (
+        camera_id TEXT NOT NULL,
+        line TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        way TEXT,
+        label TEXT NOT NULL,
+        track_id INTEGER NOT NULL,
+        at_ms INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS crossings_time ON crossings (at_ms);
+      CREATE INDEX IF NOT EXISTS crossings_camera_time ON crossings (camera_id, at_ms);
     `);
     // databases created before recorded sound have no such column
     const columns = this.db.prepare('PRAGMA table_info(segments)').all() as { name: string }[];
@@ -146,6 +157,65 @@ export class Store {
   /** The database, shared with the semantic index and the face store. */
   public get sql(): DatabaseSync {
     return this.db;
+  }
+
+  // --- crossings of the lines ---
+
+  public addCrossings(rows: StoredCrossing[]): void {
+    const insert = this.db.prepare('INSERT INTO crossings (camera_id, line, direction, way, label, track_id, at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    this.db.exec('BEGIN');
+    try {
+      for (const row of rows) insert.run(row.cameraId, row.line, row.direction, row.way ?? null, row.label, row.trackId, row.at);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** The crossings of a range, newest first, a page at a time (`before`: the moment of the last one taken). */
+  public crossingsPage(opts: { cameraIds?: string[]; startMs: number; endMs: number; before?: number; limit: number }): StoredCrossing[] {
+    const where = ['at_ms >= ?', 'at_ms <= ?'];
+    const args: (string | number)[] = [opts.startMs, opts.endMs];
+    if (opts.before !== undefined) {
+      where.push('at_ms < ?');
+      args.push(opts.before);
+    }
+    if (opts.cameraIds?.length) {
+      where.push(`camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
+      args.push(...opts.cameraIds);
+    }
+    const rows = this.db
+      .prepare(`SELECT camera_id, line, direction, way, label, track_id, at_ms FROM crossings WHERE ${where.join(' AND ')} ORDER BY at_ms DESC LIMIT ?`)
+      .all(...args, opts.limit) as { camera_id: string; line: string; direction: string; way: string | null; label: string; track_id: number; at_ms: number }[];
+    return rows.map((row) => ({
+      cameraId: row.camera_id,
+      line: row.line,
+      direction: row.direction === 'a-to-b' ? 'a-to-b' : 'b-to-a',
+      ...(row.way === 'in' || row.way === 'out' ? { way: row.way } : {}),
+      label: row.label,
+      trackId: row.track_id,
+      at: row.at_ms,
+    }));
+  }
+
+  /** The lines that counted in a range, by camera, and whether one of them was counted with a way in. */
+  public crossingLines(opts: { cameraIds?: string[]; startMs: number; endMs: number }): { cameraId: string; line: string; hasWay: boolean }[] {
+    const where = ['at_ms >= ?', 'at_ms <= ?'];
+    const args: (string | number)[] = [opts.startMs, opts.endMs];
+    if (opts.cameraIds?.length) {
+      where.push(`camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
+      args.push(...opts.cameraIds);
+    }
+    const rows = this.db
+      .prepare(`SELECT camera_id, line, MAX(way IS NOT NULL) AS has_way FROM crossings WHERE ${where.join(' AND ')} GROUP BY camera_id, line ORDER BY line`)
+      .all(...args) as { camera_id: string; line: string; has_way: number }[];
+    return rows.map((row) => ({ cameraId: row.camera_id, line: row.line, hasWay: row.has_way === 1 }));
+  }
+
+  /** Counts are kept longer than the video (a year of a busy door is under a million short rows): older ones go. */
+  public pruneCrossings(beforeMs: number): number {
+    return Number(this.db.prepare('DELETE FROM crossings WHERE at_ms < ?').run(beforeMs).changes);
   }
 
   // --- meta ---

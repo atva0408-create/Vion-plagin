@@ -257,3 +257,13 @@ export interface PluginStorageValues {
   postBufferSeconds: number;
   [key: string]: unknown;
 }
+/** One crossing of a line as the NVR keeps it (ingestCrossings): `way` in or out when the line has a way in. */
+export interface StoredCrossing {
+  cameraId: string;
+  line: string;
+  direction: 'a-to-b' | 'b-to-a';
+  way?: 'in' | 'out';
+  label: string;
+  trackId: number;
+  at: number;
+}

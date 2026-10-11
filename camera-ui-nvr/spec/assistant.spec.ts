@@ -116,6 +116,7 @@ assert.deepEqual(reading.sort(), [
   'attribute_time',
   'event_stats',
   'get_event_image',
+  'line_counts',
   'list_faces',
   'list_plates',
   'query_events',

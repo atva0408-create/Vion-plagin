@@ -1,3 +1,7 @@
+## [0.17.0]
+
+- Die Aufzeichnung behält, wie viele Personen und Fahrzeuge jede auf einer Kamera gezeichnete Linie überqueren, hinein oder hinaus, wenn die Linie eine Eingangsseite hat (ab der ViON-Version, die jede Überquerung einmal meldet): Der Assistent zählt sie über die Zeit für Diagramme – pro Stunde, Tag oder Woche oder die Stunden eines Tages im Schnitt –, zusammen oder getrennt nach Linie, hinein und hinaus (mit der Zahl drinnen: hinein minus hinaus), Richtung, Objekt oder Kamera (line_counts). Die Zählungen bleiben 400 Tage, unabhängig von der Aufbewahrung der Aufnahmen: dieser Monat lässt sich mit demselben Monat des Vorjahres vergleichen
+
 ## [0.16.0]
 
 - Der Assistent zählt Ereignisse über die Zeit für Diagramme: pro Stunde, Tag oder Woche eines Zeitraums bis 92 Tage oder zusammengefasst in die Stunden eines Tages und die Tage einer Woche (als Summe oder im Schnitt pro Tag, mit der Zahl der Tage je Abschnitt), wie viele begannen oder wie viele Minuten sie dauerten, zusammen oder getrennt nach Kamera, Label oder Antwort eines Moduls (event_stats). Die Reihen heißen in der Sprache der Person und haben einen Wert pro Abschnitt: keinen für eine Stunde, die noch kommt, oder für Tage, bis zu denen ein sehr voller Zeitraum nicht gelesen wurde, nie eine Null. Die Stunden des Tages sind die der Uhr, auch an Tagen der Zeitumstellung. Zwischen den Seiten lässt das Lesen der Aufnahme den Vortritt

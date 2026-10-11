@@ -1,3 +1,7 @@
+## [0.17.0]
+
+- The recorder keeps how many people and vehicles cross each line drawn on a camera, in or out when the line has a way in (from ViON's version that reports each crossing once): the assistant counts them over time for charts — per hour, day or week, or the hours of a day on average — together or apart by line, in and out (with how many are inside: in minus out), direction, object or camera (line_counts). The counts are kept 400 days whatever the retention of the recordings: this month can be compared with the same month last year
+
 ## [0.16.0]
 
 - The assistant counts events over time for charts: per hour, day or week of a period up to 92 days, or added up into the hours of a day and the days of a week (as sums, or per day on average with the number of days each holds), how many began or how many minutes they lasted, together or apart by camera, label or a module's answer (event_stats). The series are named in the person's language and have a value per bucket: none for an hour still to come or for days a very busy period was not read to, never a zero. The hours of the day are those of the clock, also on the days it is changed. The read gives way to the recording between its pages

@@ -58,6 +58,7 @@ import type {
   SimilarReason,
   SimilarResult,
   StorageStats,
+  StoredCrossing,
   SystemEvent,
   TraceChain,
   TraceFrameTarget,
@@ -69,6 +70,8 @@ type Role = 'high' | 'mid' | 'low';
 type ExportQuality = 'best' | 'smallest';
 
 const RETENTION_INTERVAL_MS = 5 * 60_000;
+/** The counts of the lines are kept for a year and a month whatever the video's retention: a year is compared with the last. */
+const CROSSINGS_KEEP_MS = 400 * 86_400_000;
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
@@ -752,6 +755,32 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * for the previous call, so updates of one event are chained: an "end" arriving while an earlier
    * update still writes its pictures must not be overwritten by that update's stale merge.
    */
+  /**
+   * The crossings of a camera's lines, each once, from the server's frame worker (camera/decoder/crossings.ts): kept
+   * as they come for line_counts and the counts of the modules. A row that is not a crossing is left out, not stored.
+   */
+  public async ingestCrossings(cameraId: string, crossings: unknown[]): Promise<void> {
+    await this.ready;
+    if (typeof cameraId !== 'string' || !cameraId || !Array.isArray(crossings)) return;
+    const rows: StoredCrossing[] = [];
+    for (const raw of crossings.slice(0, 500)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const c = raw as Partial<Record<keyof StoredCrossing, unknown>>;
+      if (typeof c.line !== 'string' || !c.line || typeof c.label !== 'string' || typeof c.at !== 'number' || !Number.isFinite(c.at)) continue;
+      if (c.direction !== 'a-to-b' && c.direction !== 'b-to-a') continue;
+      rows.push({
+        cameraId,
+        line: c.line.slice(0, 100),
+        direction: c.direction,
+        ...(c.way === 'in' || c.way === 'out' ? { way: c.way } : {}),
+        label: c.label.slice(0, 64),
+        trackId: typeof c.trackId === 'number' ? c.trackId : 0,
+        at: c.at,
+      });
+    }
+    if (rows.length) this.store.addCrossings(rows);
+  }
+
   public ingestDetectionEvent(cameraId: string, type: DetectionEventType, event: RecordedEvent, attachments?: EventAttachments): Promise<void> {
     const previous = this.eventChains.get(event.id) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(() => this.ingestNow(cameraId, type, event, attachments));
@@ -989,6 +1018,36 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (scanned >= maxRows) return { scanned, capped: true, oldestMs };
       before = rows.at(-1)!.start_ms;
       await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
+  /** The crossings of a range, newest first, a page at a time; stops after `maxRows` (counts are small rows). */
+  private scanCrossings(
+    cameraIds: string[] | undefined,
+    startMs: number,
+    endMs: number,
+    maxRows: number,
+    visit: (crossing: StoredCrossing) => void,
+  ): { scanned: number; capped: boolean; oldestMs?: number } {
+    const batch = 5000;
+    let before: number | undefined;
+    let scanned = 0;
+    let oldestMs: number | undefined;
+    for (;;) {
+      const rows = this.store.crossingsPage({ cameraIds, startMs, endMs, before, limit: batch });
+      for (const row of rows) visit(row);
+      scanned += rows.length;
+      if (rows.length) oldestMs = rows.at(-1)!.at;
+      if (rows.length < batch) return { scanned, capped: false, oldestMs };
+      if (scanned >= maxRows) return { scanned, capped: true, oldestMs };
+      // the next page from the moment of the last row: rows of that same millisecond would be lost with a strict `<`
+      // past a full page, so that moment is read again and its rows already taken are skipped
+      const lastAt = rows.at(-1)!.at;
+      const sameMs = rows.filter((row) => row.at === lastAt).length;
+      const again = this.store.crossingsPage({ cameraIds, startMs: lastAt, endMs: lastAt, limit: sameMs + batch });
+      for (const row of again.slice(sameMs)) visit(row);
+      scanned += Math.max(0, again.length - sameMs);
+      before = lastAt;
     }
   }
 
@@ -1647,6 +1706,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private async enforceRetention(): Promise<void> {
     if (!this.store) return;
     try {
+      this.store.pruneCrossings(Date.now() - CROSSINGS_KEEP_MS);
       const s = this.setting;
       const cutoffUs = (Date.now() - s.retentionDays * 86_400_000) * 1000;
       let removed = 0;
@@ -2215,6 +2275,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
+      crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
+      crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
       eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),
       event: (eventId) => {
         const row = this.store.event(eventId);
