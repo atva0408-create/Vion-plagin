@@ -2904,18 +2904,24 @@ function safeDecode(key: string): string {
 }
 
 function mergeEvent(prev: RecordedEvent, next: RecordedEvent): RecordedEvent {
-  const segments = [...(prev.segments ?? [])];
+  // an event the server still sends as going on has no end: one written when it was taken for lost (no update for 10
+  // minutes, a restart in the middle of it) stayed, and the event read as ended back then while it went on. An update
+  // older than an end already written is one sent before it, read late: it does not open the event again
+  const late = next.state === 'active' && prev.state === 'ended' && prev.endTime !== undefined && (next.lastUpdate ?? 0) <= prev.endTime;
+  const base = next.state === 'active' && next.endTime === undefined && !late ? { ...prev, endTime: undefined } : prev;
+  next = late ? { ...next, state: 'ended', endTime: prev.endTime } : next;
+  const segments = [...(base.segments ?? [])];
   if (next.segmentIndex !== undefined && next.segments?.length === 1) {
     segments[next.segmentIndex] = keepPeople(segments[next.segmentIndex], next.segments[0]);
   } else if (next.segments?.length) {
     return {
-      ...prev,
+      ...base,
       ...next,
-      segments: next.segments.map((segment, index) => keepPeople(prev.segments?.[index], segment)),
-      types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])],
+      segments: next.segments.map((segment, index) => keepPeople(base.segments?.[index], segment)),
+      types: [...new Set([...(base.types ?? []), ...(next.types ?? [])])],
     };
   }
-  return { ...prev, ...next, segments, types: [...new Set([...(prev.types ?? []), ...(next.types ?? [])])] };
+  return { ...base, ...next, segments, types: [...new Set([...(base.types ?? []), ...(next.types ?? [])])] };
 }
 
 /**

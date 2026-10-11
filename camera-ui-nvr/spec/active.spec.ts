@@ -58,5 +58,19 @@ assert.deepEqual(
   ['active', 'ended'],
 );
 
-console.log('active.spec: stale events ended OK');
+// ended as lost (or at a restart in the middle of it), the event the server still sends goes on: active, no end
+await ingest(active('p-lost', NOW - 30 * MINUTE, NOW - 2_000), 'update');
+assert.deepEqual(
+  { state: store.event('p-lost')?.state, end: store.event('p-lost')?.end_ms, endTime: JSON.parse(store.event('p-lost')!.data).endTime },
+  { state: 'active', end: null, endTime: undefined },
+  'the end of when it was taken for lost does not stay',
+);
+// and its real end ends it
+await ingest({ ...active('p-lost', NOW - 30 * MINUTE, NOW), state: 'ended', endTime: NOW } as RecordedEvent, 'end');
+assert.deepEqual({ state: store.event('p-lost')?.state, end: store.event('p-lost')?.end_ms }, { state: 'ended', end: NOW });
+// an update sent before that end and read after it does not open the event again
+await ingest(active('p-lost', NOW - 30 * MINUTE, NOW - 1_000), 'update');
+assert.deepEqual({ state: store.event('p-lost')?.state, end: store.event('p-lost')?.end_ms }, { state: 'ended', end: NOW });
+
+console.log('active.spec: stale events ended, an event still sent goes on OK');
 process.exit(0);
