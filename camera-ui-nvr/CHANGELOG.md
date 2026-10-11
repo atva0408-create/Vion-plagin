@@ -1,7 +1,7 @@
 ## [0.16.0]
 
-- The assistant counts events over time for charts: per hour, day or week of a period up to 92 days, or added up into the hours of a day and the days of a week, how many began or how many minutes they lasted, together or apart by camera, label or a module's answer (event_stats). Each series has a value per bucket, none for an hour still to come, and the biggest seven groups stay apart, the rest is «other». An event counts on the day it began; its minutes are cut at the hours and at midnight
-- attribute_time takes a month: «how long did he play this month» per day; over a week it gives each day's sums instead of every stretch
+- The assistant counts events over time for charts: per hour, day or week of a period up to 92 days, or added up into the hours of a day and the days of a week (as sums, or per day on average with the number of days each holds), how many began or how many minutes they lasted, together or apart by camera, label or a module's answer (event_stats). The series are named in the person's language and have a value per bucket: none for an hour still to come or for days a very busy period was not read to, never a zero. The hours of the day are those of the clock, also on the days it is changed. The read gives way to the recording between its pages
+- attribute_time takes a month: «how long did he play this month» per day; over a week it gives each day's sums instead of every stretch, and it reads through any number of events: a day it could not reach is unknown, not a day without play
 
 ## [0.15.0]
 

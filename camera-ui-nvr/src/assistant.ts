@@ -27,8 +27,16 @@ export interface UnknownSighting {
 /** What the tools need from the NVR; kept narrow so they are testable without a running plugin. */
 export interface AssistantHost {
   events(cameraIds: string[] | undefined, opts: GetEventsOptions, limit: number): { events: RecordedEvent[]; hasMore: boolean };
-  /** Every event of a range through the same filters, one at a time and not kept; stops after `maxRows` rows read. */
-  scan(cameraIds: string[] | undefined, opts: GetEventsOptions, visit: (ev: RecordedEvent) => void, maxRows: number): { scanned: number; capped: boolean };
+  /**
+   * Every event of a range through the same filters, newest first, one at a time and not kept; stops after `maxRows`
+   * rows read (`capped`, `oldestMs` the start of the last row read: the events before it were not read).
+   */
+  scan(
+    cameraIds: string[] | undefined,
+    opts: GetEventsOptions,
+    visit: (ev: RecordedEvent) => void,
+    maxRows: number,
+  ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }>;
   /** The event types of a while with the events of each; `attributes`: the attribute types of their segments. */
   eventTypes(cameraIds: string[] | undefined, startMs: number, endMs: number, attributes?: boolean): Map<string, number>;
   event(eventId: string): RecordedEvent | undefined;
@@ -167,10 +175,12 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     name: 'event_stats',
     description:
       'Numbers of events over time, ready for a chart or a comparison: per hour, day or week of a period up to 92 days, or the profile of a day ' +
-      '(hour_of_day) or of a week (weekday) added up over the period. Count events or the minutes they lasted (`measure`), all together or apart ' +
-      "by camera, label or a module's answer (`group_by`); filter by camera, labels and a module's question. Every series has one value per " +
-      'label, null for an hour still to come: pass `labels` and `series` to show_chart as they are. For «when is the yard busiest», «how many ' +
-      'people a day this month», «which camera sees the most», «at what hours does he play».',
+      '(hour_of_day) or of a week (weekday) over the period, as sums or, with `average`, per day (daysPerBucket says how many days each holds: ' +
+      'the period rarely has as many Mondays as Sundays). Count events where they began, or the minutes they lasted added up (events at the same ' +
+      "time on several cameras add up: an hour can hold more than 60). All together or apart by camera, label or a module's answer " +
+      "(`group_by`); filter by camera, labels and a module's question. Every series has one value per label in the person's language, null " +
+      'where nothing is known (an hour to come, days the read did not reach): pass `labels` and `series` to show_chart as they are. For «when is ' +
+      'the yard busiest», «how many people a day this month», «which camera sees the most», «at what hours does he play».',
     inputSchema: {
       type: 'object',
       properties: {
@@ -191,6 +201,7 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         labels: { type: 'array', items: { type: 'string' }, description: `Only events that saw one of these: ${LABELS.join(', ')} or a module's own label` },
         attribute: { type: 'string', description: 'Only events where a module answered this question (attribute_time lists them)' },
         answer: { type: 'string', enum: ['yes', 'no', 'any'], description: 'With attribute and without group_by answer: the answer wanted, default yes' },
+        average: { type: 'boolean', description: 'With hour_of_day or weekday: the mean per day instead of the sum' },
       },
     },
   },
@@ -594,7 +605,7 @@ function stretchesOf(looks: Look[]): { from: number; to: number; event: string }
   return stretches;
 }
 
-function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolContext): AssistantToolResult {
+async function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
   const today = dateIn(Date.now(), ctx.timezone);
   const last = typeof input.date === 'string' && input.date.trim() ? input.date.trim() : today;
   const badDate = dateError(last, today);
@@ -619,20 +630,29 @@ function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolCont
 
   // one read for all the days, a day before and the joining gap after: a stretch over midnight keeps its other part
   // (an event ended just before midnight, one begun just after the day); an event still going on is in any range
-  const { events, hasMore } = host.events(camera.ids, { startMs: first - DAY_MS, endMs: end + ATTRIBUTE_GAP_MS, attributes: [type], limit: SUMMARY_SCAN }, SUMMARY_SCAN);
+  // read through once and only the looks kept: a month of a busy camera is more events than a list holds. Nothing that
+  // began two days before the first day: no event goes on that long
   const byCamera = new Map<string, Look[]>();
-  for (const ev of events) {
-    for (const seg of ev.segments ?? []) {
-      for (const a of seg?.attributes ?? []) {
-        if (a?.type !== type) continue;
-        const answer = answerOf(type, a.label);
-        if (!answer) continue;
-        const looks = byCamera.get(ev.cameraId) ?? [];
-        looks.push({ from: seg.firstSeen, to: Math.max(seg.firstSeen, seg.lastSeen), yes: answer === 'yes', event: ev.id });
-        byCamera.set(ev.cameraId, looks);
+  const read = await host.scan(
+    camera.ids,
+    { startMs: first - DAY_MS, endMs: end + ATTRIBUTE_GAP_MS, startedSinceMs: first - 2 * DAY_MS, attributes: [type] },
+    (ev) => {
+      for (const seg of ev.segments ?? []) {
+        for (const a of seg?.attributes ?? []) {
+          if (a?.type !== type) continue;
+          const answer = answerOf(type, a.label);
+          if (!answer) continue;
+          const looks = byCamera.get(ev.cameraId) ?? [];
+          looks.push({ from: seg.firstSeen, to: Math.max(seg.firstSeen, seg.lastSeen), yes: answer === 'yes', event: ev.id });
+          byCamera.set(ev.cameraId, looks);
+        }
       }
-    }
-  }
+    },
+    STATS_ROWS,
+  );
+  const hasMore = read.capped;
+  // the read stopped in a day: that day and the ones before it are unknown, not days without play
+  const readFrom = hasMore && read.oldestMs !== undefined ? startOfDay(shiftDate(dateIn(read.oldestMs, ctx.timezone), 1), ctx.timezone) : -Infinity;
 
   const clock = (ms: number) => new Intl.DateTimeFormat('en-GB', { timeZone: ctx.timezone, hour: '2-digit', minute: '2-digit' }).format(ms);
   const minutes = (ms: number) => Math.round(ms / 60_000);
@@ -644,6 +664,10 @@ function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolCont
       const date = shiftDate(last, -i);
       const from = startOfDay(date, ctx.timezone);
       const to = startOfDay(shiftDate(date, 1), ctx.timezone) - 1;
+      if (from < readFrom) {
+        days.push({ date, minutes: null, unknown: true });
+        continue;
+      }
       // a lone look is a moment, not nothing: it stays, with 0 minutes
       const inDay = stretches.map((s) => ({ from: Math.max(s.from, from), to: Math.min(s.to, to) })).filter((s) => s.to >= s.from);
       const pauses = inDay
@@ -669,7 +693,12 @@ function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolCont
   };
 
   const names = cameraNames(host);
-  const head = { attribute: type, timezone: ctx.timezone, approximate: true, ...(hasMore ? { capped: true } : {}) };
+  const head = {
+    attribute: type,
+    timezone: ctx.timezone,
+    approximate: true,
+    ...(hasMore ? { capped: true, hint: 'Only the newest events were read: the days marked unknown are not days without an answer. Ask for fewer days.' } : {}),
+  };
   // the cameras that answered on the days asked: the day read before them is for the stretches over midnight alone
   const answered = [...byCamera.entries()].filter(([, looks]) => looks.some((look) => look.to >= first && look.from <= end));
   const named = camera.ids?.length === 1 ? (names.get(camera.ids[0]) ?? camera.ids[0]) : undefined;
@@ -690,12 +719,53 @@ function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolCont
 
 type StatsBucket = 'hour' | 'day' | 'week' | 'hour_of_day' | 'weekday';
 
+/** The names of the series and groups a person reads in the legend of a chart, in their language. */
+const STATS_WORDS: Record<string, Record<string, string>> = {
+  ru: {
+    events: 'события',
+    minutes: 'минуты',
+    other: 'прочее',
+    unlabelled: 'без объекта',
+    yes: 'да',
+    no: 'нет',
+    person: 'человек',
+    vehicle: 'транспорт',
+    animal: 'животное',
+    removed: 'удалённая камера',
+  },
+  de: {
+    events: 'Ereignisse',
+    minutes: 'Minuten',
+    other: 'andere',
+    unlabelled: 'ohne Objekt',
+    yes: 'ja',
+    no: 'nein',
+    person: 'Person',
+    vehicle: 'Fahrzeug',
+    animal: 'Tier',
+    removed: 'entfernte Kamera',
+  },
+  en: {
+    events: 'events',
+    minutes: 'minutes',
+    other: 'other',
+    unlabelled: 'nothing named',
+    yes: 'yes',
+    no: 'no',
+    person: 'person',
+    vehicle: 'vehicle',
+    animal: 'animal',
+    removed: 'removed camera',
+  },
+};
+
 /**
- * event_stats: the events of a period put into buckets of time, counted or summed up in minutes, as series of one
- * value per bucket. The days are the person's local days; an hour bucket is an hour of the clock (a day of a clock
- * change has 23 or 25 of them). Each event is read once (host.scan) and only its numbers are kept.
+ * event_stats: the events of a period put into buckets of time, counted where they began or summed up in the minutes
+ * they lasted, as series of one value per bucket. The numbers are gathered per hour of the clock first (a day of a clock
+ * change has 23 or 25 of them, each with its own local hour) and put into the buckets once the read is over: the read
+ * stops at STATS_ROWS rows, newest first, and what it did not reach is no value (null), never a zero.
  */
-function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext): AssistantToolResult {
+async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
   const today = dateIn(Date.now(), ctx.timezone);
   const last = typeof input.date === 'string' && input.date.trim() ? input.date.trim() : today;
   const badDate = dateError(last, today);
@@ -703,8 +773,11 @@ function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext
   const count = clampInt(input.days, 1, STATS_DAYS, 7);
   const buckets: StatsBucket[] = ['hour', 'day', 'week', 'hour_of_day', 'weekday'];
   const bucket: StatsBucket = buckets.includes(input.bucket as StatsBucket) ? (input.bucket as StatsBucket) : count === 1 ? 'hour' : 'day';
+  const profile = bucket === 'hour_of_day' || bucket === 'weekday';
   const measure = input.measure === 'minutes' ? 'minutes' : 'events';
   const groupBy = ['camera', 'label', 'answer'].includes(input.group_by as string) ? (input.group_by as 'camera' | 'label' | 'answer') : 'none';
+  const average = input.average === true;
+  if (average && !profile) return { error: 'average is for hour_of_day and weekday: the mean of one hour or one weekday over the period' };
   if (bucket === 'hour' && count * 24 > STATS_POINTS) {
     const most = Math.floor(STATS_POINTS / 24);
     return { error: `${count} days by hour are ${count * 24} points, too many to read: at most ${most} days by hour; use day, or hour_of_day for the hours of a day` };
@@ -732,149 +805,203 @@ function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolContext
   }
   if (groupBy === 'answer' && !attribute) return { error: 'group_by answer needs `attribute`: the question whose answers to set apart (attribute_time lists them)' };
   const answer = input.answer === 'no' || input.answer === 'any' ? input.answer : 'yes';
+  const words = STATS_WORDS[(ctx.language || 'en').slice(0, 2)] ?? STATS_WORDS.en;
+  const word = (key: string) => words[key] ?? key;
 
-  // the buckets: [start, next start) in ms, with their labels in the person's language
-  const fmt = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(ctx.language || 'en', { timeZone: safeZone(ctx.timezone), ...options });
+  // the hours of the period: their starts, local hour of the clock and local day
+  const zone = safeZone(ctx.timezone);
+  const hours = Math.ceil((to + 1 - from) / HOUR_MS);
+  const hourStart = (k: number) => from + k * HOUR_MS;
+  const localHour = Array.from({ length: hours }, (_, k) => Math.floor((((hourStart(k) + offsetAt(hourStart(k), zone)) % DAY_MS) + DAY_MS) % DAY_MS / HOUR_MS));
+  const dayOfHour: number[] = [];
+  for (let k = 0, day = 0; k < hours; k++) {
+    while (day < count - 1 && dayStarts[day + 1] <= hourStart(k)) day++;
+    dayOfHour.push(day);
+  }
+  /** Monday 0 … Sunday 6 of a local date, from the calendar alone. */
+  const weekdayOf = (date: string) => (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const weekOfDay: number[] = [];
+  const weekStarts: number[] = [];
+  dates.forEach((date, day) => {
+    if (day === 0 || weekdayOf(date) === 0) weekStarts.push(day);
+    weekOfDay.push(weekStarts.length - 1);
+  });
+
+  // the buckets: their labels in the person's language and the hours they take
+  const fmt = (options: Intl.DateTimeFormatOptions, timeZone = zone) => new Intl.DateTimeFormat(ctx.language || 'en', { timeZone, ...options });
   const dayLabel = fmt({ day: 'numeric', month: 'short' });
   const hourLabel = fmt({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const weekdayLabel = fmt({ weekday: 'short' });
-  /** Monday 0 … Sunday 6 of a local date (its noon is that weekday in any zone). */
-  const weekdayOf = (date: string) => (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7;
-  let edges: number[] = [];
   let names: string[];
-  let keys: string[];
+  let keys: string[] | undefined;
+  let bucketOfHour: (k: number) => number;
   if (bucket === 'hour') {
-    for (let t = from; t <= to; t += HOUR_MS) edges.push(t);
-    names = edges.map((t) => (count === 1 ? hourLabel.format(t) : `${dayLabel.format(t)} ${hourLabel.format(t)}`));
-    keys = edges.map((t) => new Date(t).toISOString());
+    const hourName = (t: number) => (count === 1 ? hourLabel.format(t) : `${dayLabel.format(t)} ${hourLabel.format(t)}`);
+    names = Array.from({ length: hours }, (_, k) => hourName(hourStart(k)));
+    bucketOfHour = (k) => k;
   } else if (bucket === 'day') {
-    edges = dayStarts.slice(0, count);
-    names = edges.map((t) => dayLabel.format(t));
+    names = dayStarts.slice(0, count).map((t) => dayLabel.format(t));
     keys = dates;
+    bucketOfHour = (k) => dayOfHour[k];
   } else if (bucket === 'week') {
-    // a week begins on Monday; the first and the last are cut by the period
-    const starts = dates.map((date, i) => ({ date, i })).filter(({ date, i }) => i === 0 || weekdayOf(date) === 0);
-    edges = starts.map(({ i }) => dayStarts[i]);
-    names = starts.map(({ i }, k) => {
-      const lastDay = (starts[k + 1]?.i ?? count) - 1;
-      return i === lastDay ? dayLabel.format(dayStarts[i]) : `${dayLabel.format(dayStarts[i])} – ${dayLabel.format(dayStarts[lastDay])}`;
+    names = weekStarts.map((day, w) => {
+      const lastDay = (weekStarts[w + 1] ?? count) - 1;
+      return day === lastDay ? dayLabel.format(dayStarts[day]) : `${dayLabel.format(dayStarts[day])} – ${dayLabel.format(dayStarts[lastDay])}`;
     });
-    keys = starts.map(({ date }) => date);
+    keys = weekStarts.map((day) => dates[day]);
+    bucketOfHour = (k) => weekOfDay[dayOfHour[k]];
   } else if (bucket === 'hour_of_day') {
     names = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
     keys = names;
+    bucketOfHour = (k) => localHour[k];
   } else {
-    // the names of Monday … Sunday, from a week known to begin on a Monday (5 October 2026)
-    names = Array.from({ length: 7 }, (_, d) => weekdayLabel.format(Date.parse(`2026-10-${String(5 + d).padStart(2, '0')}T12:00:00Z`)));
+    // the names of Monday … Sunday of a week known to begin on a Monday (5 October 2026), read in UTC: in a zone far
+    // from it (Auckland, +13) the noon of a UTC day is the next day, and Monday was named Tuesday
+    const weekday = fmt({ weekday: 'short' }, 'UTC');
+    names = Array.from({ length: 7 }, (_, d) => weekday.format(Date.UTC(2026, 9, 5 + d, 12)));
     keys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    bucketOfHour = (k) => weekdayOf(dates[dayOfHour[k]]);
   }
   const size = names.length;
-  /** The local day of a moment, as an index into `dates` (-1 outside the period). */
-  const dayIndex = (t: number) => {
-    if (t < from || t > to) return -1;
-    let lo = 0;
-    let hi = count - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (dayStarts[mid] <= t) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
-  };
-  /** The bucket of a moment, -1 outside the period. */
-  const bucketOf = (t: number) => {
-    const day = dayIndex(t);
-    if (day < 0) return -1;
-    if (bucket === 'hour_of_day') return Math.min(23, Math.floor((t - dayStarts[day]) / HOUR_MS));
-    if (bucket === 'weekday') return weekdayOf(dates[day]);
-    if (bucket === 'day') return day;
-    if (bucket === 'hour') return Math.min(size - 1, Math.floor((t - from) / HOUR_MS));
-    let k = edges.length - 1;
-    while (k > 0 && edges[k] > t) k--;
-    return k;
-  };
 
   const cameraLabel = cameraNames(host);
-  const sums = new Map<string, number[]>();
-  const add = (group: string, index: number, amount: number) => {
-    let row = sums.get(group);
-    if (!row) sums.set(group, (row = new Array<number>(size).fill(0)));
-    row[index] += amount;
-  };
-  /** A module's answer in an event: yes when it said yes at least once, no when it said only no. */
-  const answered = (ev: RecordedEvent): 'yes' | 'no' | undefined => {
-    const counts = answersOf(ev)[attribute];
-    return counts?.yes ? 'yes' : counts?.no ? 'no' : undefined;
+  const perHour = new Map<string, Float64Array>();
+  const add = (group: string, k: number, amount: number) => {
+    let row = perHour.get(group);
+    if (!row) perHour.set(group, (row = new Float64Array(hours)));
+    row[k] += amount;
   };
   const now = Date.now();
-  const { scanned, capped } = host.scan(
+  const read = await host.scan(
     camera.ids,
     {
       startMs: from,
       endMs: to,
+      // counted where they began: nothing that began before the period; their minutes: an event of up to a day before
+      startedSinceMs: measure === 'events' ? from : from - DAY_MS,
       types: labels.length ? labels : undefined,
       // labels and a question asked together: both must hold, the store takes either by default
       ...(attribute ? { attributes: [attribute], ...(labels.length ? { filterLogicAttributes: 'and' as const } : {}) } : {}),
     },
     (ev) => {
-      const said = attribute ? answered(ev) : undefined;
+      let said: 'yes' | 'no' | undefined;
       if (attribute) {
-        if (!said) return;
-        if (groupBy !== 'answer' && answer !== 'any' && said !== answer) return;
+        // as query_events: an event where the module said the answer asked at least once
+        const counts = answersOf(ev)[attribute];
+        if (!counts || (!counts.yes && !counts.no)) return;
+        if (groupBy !== 'answer' && answer !== 'any' && !counts[answer]) return;
+        said = counts.yes ? 'yes' : 'no';
         if (labels.length && !labelsOf(ev).some((label) => labels.includes(label))) return;
       }
       let groups: string[];
-      if (groupBy === 'camera') groups = [cameraLabel.get(ev.cameraId) ?? ev.cameraId];
-      else if (groupBy === 'label') groups = labelsOf(ev).length ? labelsOf(ev) : ['unlabelled'];
-      else if (groupBy === 'answer') groups = [said!];
-      else groups = [measure];
+      if (groupBy === 'camera') groups = [cameraLabel.get(ev.cameraId) ?? `${word('removed')} ${ev.cameraId.slice(0, 8)}`];
+      else if (groupBy === 'label') {
+        // with labels asked, only those: a person with a car is not a car asked for
+        const seen = labelsOf(ev).filter((label) => !labels.length || labels.includes(label));
+        groups = seen.length ? seen.map(word) : [word('unlabelled')];
+      } else if (groupBy === 'answer') groups = [word(said!)];
+      else groups = [word(measure)];
       if (measure === 'events') {
-        // counted where it began: an event over midnight is one event, not two
-        const index = bucketOf(ev.startTime);
-        if (index >= 0) for (const group of groups) add(group, index, 1);
+        if (ev.startTime >= from && ev.startTime <= to) for (const group of groups) add(group, Math.floor((ev.startTime - from) / HOUR_MS), 1);
         return;
       }
-      // the minutes it lasted, cut at the edges of the period and of the hours: an hour is never in two buckets
+      // the minutes it lasted, cut at the edges of the period and of the hours; one still going on lasts until its last update
       const end = Math.min(to + 1, ev.endTime ?? Math.min(now, ev.lastUpdate ?? now));
       let t = Math.max(from, ev.startTime);
       while (t < end) {
-        const next = Math.min(end, from + (Math.floor((t - from) / HOUR_MS) + 1) * HOUR_MS);
-        const index = bucketOf(t);
-        if (index >= 0) for (const group of groups) add(group, index, (next - t) / 60_000);
+        const k = Math.floor((t - from) / HOUR_MS);
+        const next = Math.min(end, hourStart(k + 1));
+        for (const group of groups) add(group, k, (next - t) / 60_000);
         t = next;
       }
     },
     STATS_ROWS,
   );
 
+  // what the read reached: all of the period, or from the local day after the oldest event read
+  const readFromDay = read.capped && read.oldestMs !== undefined ? Math.min(count, dayIndexOf(dayStarts, read.oldestMs) + 1) : 0;
+  const firstHour = readFromDay ? Math.ceil((dayStarts[readFromDay] - from) / HOUR_MS) : 0;
+  /** The hours that count: read in full and begun by now. */
+  const counted = (k: number) => k >= firstHour && hourStart(k) <= now;
+  const unknown = new Array<boolean>(size).fill(false);
+  const spans = new Array<number>(size).fill(0);
+  if (!profile) {
+    const firstOf = new Array<number>(size).fill(-1);
+    for (let k = 0; k < hours; k++) {
+      const b = bucketOfHour(k);
+      if (firstOf[b] < 0) firstOf[b] = k;
+      // a day or a week the read stopped in has no value: a part of it is not it
+      if (k < firstHour) unknown[b] = true;
+    }
+    // nor has one still to come
+    for (let b = 0; b < size; b++) if (firstOf[b] < 0 || hourStart(firstOf[b]) > now) unknown[b] = true;
+  } else {
+    // the days each hour of the day or weekday was counted on: the averages divide by them, the sums are read with them
+    const seen = Array.from({ length: size }, () => new Set<number>());
+    for (let k = 0; k < hours; k++) if (counted(k)) seen[bucketOfHour(k)].add(dayOfHour[k]);
+    seen.forEach((days, b) => (spans[b] = days.size));
+  }
+
+  const totals = [...perHour.entries()].map(([name, row]) => {
+    const values = new Array<number>(size).fill(0);
+    for (let k = 0; k < hours; k++) if (counted(k)) values[bucketOfHour(k)] += row[k];
+    return { name, values, total: values.reduce((a, b) => a + b, 0) };
+  });
   // the biggest groups apart, the rest added up: eight colours are what a chart tells apart
-  const ranked = [...sums.entries()].map(([name, values]) => ({ name, values, total: values.reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
+  const ranked = totals.sort((a, b) => b.total - a.total);
   const kept = ranked.slice(0, STATS_GROUPS);
   const rest = ranked.slice(STATS_GROUPS);
   if (rest.length) {
-    kept.push({ name: 'other', values: names.map((_, i) => rest.reduce((sum, row) => sum + row.values[i], 0)), total: rest.reduce((a, b) => a + b.total, 0) });
+    kept.push({ name: word('other'), values: names.map((_, i) => rest.reduce((sum, row) => sum + row.values[i], 0)), total: rest.reduce((a, b) => a + b.total, 0) });
   }
-  // a bucket still to come has no value, not a zero: a chart of today does not fall to nothing at the next hour
-  const future = (index: number) => (bucket === 'hour' || bucket === 'day' || bucket === 'week') && edges[index] > now;
-  const rounded = (v: number) => (measure === 'minutes' ? Math.round(v) : v);
-  const rows = kept.length ? kept : [{ name: measure, values: new Array<number>(size).fill(0), total: 0 }];
+  const rows = kept.length ? kept : [{ name: groupBy === 'none' ? word(measure) : word('other'), values: new Array<number>(size).fill(0), total: 0 }];
+  const shown = (v: number, b: number): number | null => {
+    if (unknown[b]) return null;
+    if (average) return spans[b] ? Math.round((v / spans[b]) * 10) / 10 : null;
+    return measure === 'minutes' ? Math.round(v) : v;
+  };
   return {
     content: {
-      from: dates[0],
+      from: dates[readFromDay] ?? dates[0],
       to: last,
       timezone: ctx.timezone,
       bucket,
       measure,
       group_by: groupBy,
+      ...(average ? { average: true } : {}),
       ...(attribute ? { attribute, ...(groupBy === 'answer' ? {} : { answer }) } : {}),
       labels: names,
-      keys,
-      series: rows.map((row) => ({ name: row.name, values: row.values.map((v, i) => (future(i) ? null : rounded(v))), total: rounded(row.total) })),
-      total: rounded(ranked.reduce((sum, row) => sum + row.total, 0)),
-      ...(groupBy === 'label' ? { note: 'An event with several labels counts in each: the series add up to more than the events.' } : {}),
-      ...(capped ? { capped: true, scanned, hint: 'Only the newest events were read: ask for fewer days.' } : {}),
+      ...(keys ? { keys } : { firstHour: new Date(from).toISOString() }),
+      series: rows.map((row) => ({ name: row.name, values: row.values.map(shown), total: measure === 'minutes' ? Math.round(row.total) : row.total })),
+      ...(profile ? { daysPerBucket: spans } : {}),
+      total: Math.round(ranked.reduce((sum, row) => sum + row.total, 0)),
+      ...(measure === 'minutes'
+        ? {
+            note:
+              'Minutes are the lengths of the events added up: events at the same time on several cameras, or with several labels, add up, ' +
+              'so an hour can hold more than 60.',
+          }
+        : {}),
+      ...(groupBy === 'label' ? { labelNote: 'An event with several labels counts in each: the series add up to more than the events.' } : {}),
+      ...(read.capped
+        ? {
+            capped: true,
+            hint: `Only the newest events were read, from ${dates[readFromDay] ?? last}: earlier buckets have no value (null). Ask for fewer days or one camera.`,
+          }
+        : {}),
     },
   };
+}
+
+/** The local day (index into the starts of the days) a moment falls on; -1 before the first. */
+function dayIndexOf(dayStarts: number[], t: number): number {
+  let lo = -1;
+  let hi = dayStarts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (dayStarts[mid] <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
 }
 
 async function searchByText(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {

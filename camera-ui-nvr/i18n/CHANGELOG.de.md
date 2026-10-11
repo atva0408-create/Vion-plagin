@@ -1,7 +1,7 @@
 ## [0.16.0]
 
-- Der Assistent zählt Ereignisse über die Zeit für Diagramme: pro Stunde, Tag oder Woche eines Zeitraums bis 92 Tage oder zusammengefasst in die Stunden eines Tages und die Tage einer Woche, wie viele begannen oder wie viele Minuten sie dauerten, zusammen oder getrennt nach Kamera, Label oder Antwort eines Moduls (event_stats). Jede Reihe hat einen Wert pro Abschnitt, keinen für eine Stunde, die noch kommt; die sieben größten Gruppen bleiben getrennt, der Rest ist «other». Ein Ereignis zählt am Tag seines Beginns, seine Minuten werden an den Stunden und um Mitternacht geteilt
-- attribute_time nimmt einen Monat: «wie lange hat er diesen Monat gespielt» pro Tag; über eine Woche gibt es die Summen jedes Tages statt jeder Strecke
+- Der Assistent zählt Ereignisse über die Zeit für Diagramme: pro Stunde, Tag oder Woche eines Zeitraums bis 92 Tage oder zusammengefasst in die Stunden eines Tages und die Tage einer Woche (als Summe oder im Schnitt pro Tag, mit der Zahl der Tage je Abschnitt), wie viele begannen oder wie viele Minuten sie dauerten, zusammen oder getrennt nach Kamera, Label oder Antwort eines Moduls (event_stats). Die Reihen heißen in der Sprache der Person und haben einen Wert pro Abschnitt: keinen für eine Stunde, die noch kommt, oder für Tage, bis zu denen ein sehr voller Zeitraum nicht gelesen wurde, nie eine Null. Die Stunden des Tages sind die der Uhr, auch an Tagen der Zeitumstellung. Zwischen den Seiten lässt das Lesen der Aufnahme den Vortritt
+- attribute_time nimmt einen Monat: «wie lange hat er diesen Monat gespielt» pro Tag; über eine Woche gibt es die Summen jedes Tages statt jeder Strecke und liest beliebig viele Ereignisse: ein Tag, den das Lesen nicht erreichte, ist unbekannt, kein Tag ohne Spiel
 
 ## [0.15.0]
 

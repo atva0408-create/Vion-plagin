@@ -955,11 +955,19 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /**
    * Every event of a range that the filters of queryEvents let through, handed to `visit` one at a time and not kept:
    * statistics over months read each event once instead of holding tens of thousands of them. Stops after `maxRows`.
+   * Gives way to the rest of the plugin between pages: months of events take seconds to read, and the recorders take
+   * their streams in this same process.
    */
-  private scanEvents(cameraIds: string[] | undefined, opts: GetEventsOptions, visit: (ev: RecordedEvent) => void, maxRows: number): { scanned: number; capped: boolean } {
+  private async scanEvents(
+    cameraIds: string[] | undefined,
+    opts: GetEventsOptions,
+    visit: (ev: RecordedEvent) => void,
+    maxRows: number,
+  ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }> {
     const batch = 2000;
     let before = opts.before;
     let scanned = 0;
+    let oldestMs: number | undefined;
     for (;;) {
       const rows = this.store.events({
         cameraIds,
@@ -976,9 +984,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         if (matchesEvent(ev, opts)) visit(ev);
       }
       scanned += rows.length;
-      if (rows.length < batch) return { scanned, capped: false };
-      if (scanned >= maxRows) return { scanned, capped: true };
+      if (rows.length) oldestMs = rows.at(-1)!.start_ms;
+      if (rows.length < batch) return { scanned, capped: false, oldestMs };
+      if (scanned >= maxRows) return { scanned, capped: true, oldestMs };
       before = rows.at(-1)!.start_ms;
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 
