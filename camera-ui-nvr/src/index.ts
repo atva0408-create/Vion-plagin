@@ -2156,6 +2156,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private assistantHost(): AssistantHost {
     return {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
+      eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),
       event: (eventId) => {
         const row = this.store.event(eventId);
         return row ? this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1) : undefined;

@@ -326,6 +326,26 @@ export class Store {
     return this.eventPage(columns, opts) as EventDigest[];
   }
 
+  /**
+   * The types of the events of a while (labels, triggers, the questions modules answered) with the events of each, or
+   * with `attributes` the attribute types of their segments alone: read by the database from the JSON, so a month of a
+   * busy recorder is not parsed event by event, and none is left out by a page of the newest.
+   */
+  public eventTypeCounts(opts: { cameraIds?: string[]; startMs: number; endMs: number; attributes?: boolean }): Map<string, number> {
+    const where = ['COALESCE(e.end_ms, e.start_ms) >= ?', 'e.start_ms <= ?'];
+    const args: (string | number)[] = [opts.startMs, opts.endMs];
+    if (opts.cameraIds?.length) {
+      where.push(`e.camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
+      args.push(...opts.cameraIds);
+    }
+    const from = opts.attributes
+      ? "json_extract(a.value, '$.type') AS name, COUNT(DISTINCT e.id) AS n FROM events e, json_each(e.data, '$.segments') s, json_each(s.value, '$.attributes') a"
+      : "t.value AS name, COUNT(*) AS n FROM events e, json_each(e.data, '$.types') t";
+    const sql = `SELECT ${from} WHERE ${where.join(' AND ')} GROUP BY name`;
+    const rows = this.db.prepare(sql).all(...args) as unknown as { name: unknown; n: number }[];
+    return new Map(rows.filter((row) => typeof row.name === 'string' && row.name).map((row) => [row.name as string, Number(row.n)]));
+  }
+
   private eventPage(columns: string, opts: Parameters<Store['events']>[0]): unknown[] {
     const where: string[] = [];
     const args: (string | number)[] = [];

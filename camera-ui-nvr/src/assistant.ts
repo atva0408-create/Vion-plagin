@@ -27,6 +27,8 @@ export interface UnknownSighting {
 /** What the tools need from the NVR; kept narrow so they are testable without a running plugin. */
 export interface AssistantHost {
   events(cameraIds: string[] | undefined, opts: GetEventsOptions, limit: number): { events: RecordedEvent[]; hasMore: boolean };
+  /** The event types of a while with the events of each; `attributes`: the attribute types of their segments. */
+  eventTypes(cameraIds: string[] | undefined, startMs: number, endMs: number, attributes?: boolean): Map<string, number>;
   event(eventId: string): RecordedEvent | undefined;
   cameras(): { id: string; name: string }[];
   search(text: string, limit: number): Promise<ClipSearchResult[]>;
@@ -79,12 +81,13 @@ const NO = new Set(['нет', 'no', 'nein', 'false']);
  */
 const ATTRIBUTE_GAP_MS = 10 * 60_000;
 /**
- * «No» this many times in a row, over this long between two «yes», is a stop: two hours of homework in one event were
- * counted as play.
+ * «No» over this long after a stretch is a stop: two hours of homework in one event were counted as play. Measured over
+ * the «no» answers themselves (one long segment of «no» as much as many): a «no» twice in one moment is a flicker.
  */
-const NO_STOP_LOOKS = 2;
 const NO_STOP_MS = 3 * 60_000;
-/** Days an attribute report covers at most, and the scan that lists the questions the modules answered. */
+/** The while the labels and the questions a person names are looked for: a month, not a page of the newest events. */
+const KNOWN_MS = 30 * DAY_MS;
+/** Days an attribute report covers at most. */
 const ATTRIBUTE_DAYS = 7;
 
 export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
@@ -362,16 +365,17 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
   // a module's own label too (a bicycle of a store module): the store matches event types as they are. A label no
   // event has had is said, not answered with nothing: "people" found 0 events, read as "nobody came"
   const labels = stringList(input.labels).map((l) => l.toLowerCase());
+  const knownFrom = Math.min(range.from, range.to - KNOWN_MS);
   if (labels.some((label) => !LABELS.includes(label))) {
-    const seen = knownLabels(host, camera.ids, range.to);
+    const seen = knownLabels(host, camera.ids, knownFrom, range.to);
     const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.has(label));
-    if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels seen in the last 7 days: ${[...seen].join(', ') || 'none'}` };
+    if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the events of the last 30 days: ${[...seen].join(', ')}` };
   }
   const plate = normalizePlate(input.plate);
   const face = typeof input.face === 'string' ? input.face.trim().toLowerCase() : '';
   let attribute = '';
   if (typeof input.attribute === 'string' && input.attribute.trim()) {
-    const question = questionOf(host, camera.ids, input.attribute, range.to - ATTRIBUTE_DAYS * DAY_MS, range.to);
+    const question = questionOf(host, camera.ids, input.attribute, knownFrom, range.to);
     if ('error' in question) return question;
     attribute = question.type;
   }
@@ -385,7 +389,8 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
       startMs: range.from,
       endMs: range.to,
       types: labels.length ? labels : undefined,
-      ...(attribute ? { attributes: [attribute] } : {}),
+      // labels and a question asked together: both must hold, the store takes either by default
+      ...(attribute ? { attributes: [attribute], ...(labels.length ? { filterLogicAttributes: 'and' as const } : {}) } : {}),
       favoritesOnly: input.favorites === true || undefined,
       limit: narrowed ? SUMMARY_SCAN : limit,
     },
@@ -469,26 +474,27 @@ function summarizeDay(host: AssistantHost, input: Input, ctx: AssistantToolConte
   return { content, references: highlights.slice(-RECAP_REFERENCES).map((ev) => reference(ev, names, ctx)) };
 }
 
-/** The labels the events of the 7 days up to `to` had: a label asked must be one of them or a built-in one. */
-function knownLabels(host: AssistantHost, ids: string[] | undefined, to: number): Set<string> {
-  const { events } = host.events(ids, { startMs: to - ATTRIBUTE_DAYS * DAY_MS, endMs: to, limit: SUMMARY_SCAN }, SUMMARY_SCAN);
+/** The labels of the events of a while (with the built-in ones): a label asked must be one of them. */
+function knownLabels(host: AssistantHost, ids: string[] | undefined, from: number, to: number): Set<string> {
+  // the types of an event hold the questions of its attributes too: they are asked with `attribute`
+  const questions = new Set([...host.eventTypes(ids, from, to, true).keys()].map((type) => type.toLowerCase()));
   const seen = new Set(LABELS);
-  for (const ev of events) for (const label of labelsOf(ev)) seen.add(label);
+  for (const type of host.eventTypes(ids, from, to).keys()) {
+    const label = type.toLowerCase();
+    if (label !== 'motion' && !questions.has(label)) seen.add(label);
+  }
   return seen;
 }
 
 /** The questions the modules answered in a while (`from`-`to`), with the events of each, the most asked first. */
 function knownQuestions(host: AssistantHost, ids: string[] | undefined, from: number, to: number): { attribute: string; events: number }[] {
-  const { events } = host.events(ids, { startMs: from, endMs: to, limit: SUMMARY_SCAN }, SUMMARY_SCAN);
-  const known = new Map<string, number>();
-  for (const ev of events) for (const type of Object.keys(answersOf(ev))) known.set(type, (known.get(type) ?? 0) + 1);
-  return [...known.entries()].sort((a, b) => b[1] - a[1]).map(([attribute, count]) => ({ attribute, events: count }));
+  return [...host.eventTypes(ids, from, to, true).entries()]
+    .filter(([type]) => !NOT_MODULE_ATTRIBUTES.has(type))
+    .sort((a, b) => b[1] - a[1])
+    .map(([attribute, events]) => ({ attribute, events }));
 }
 
-/**
- * The question a person named: the exact type, else the one that has the words, among the questions of a while; an
- * exact name the scan did not reach (a busy week: it reads the newest events) is asked of the store itself.
- */
+/** The question a person named: the exact type, else the one that has the words, among the questions of a while. */
 function questionOf(host: AssistantHost, ids: string[] | undefined, value: unknown, from: number, to: number): { type: string } | { error: string } {
   const wanted = String(value).trim().toLowerCase();
   const known = knownQuestions(host, ids, from, to).map((q) => q.attribute);
@@ -496,10 +502,15 @@ function questionOf(host: AssistantHost, ids: string[] | undefined, value: unkno
   const partial = exact.length ? exact : known.filter((type) => type.toLowerCase().includes(wanted));
   if (partial.length === 1) return { type: partial[0] };
   if (partial.length > 1) return { error: `"${String(value)}" fits several: ${partial.join(', ')}` };
-  const { events } = host.events(ids, { startMs: from, endMs: to, attributes: [String(value).trim()], limit: 1 }, 1);
-  const type = events.flatMap((ev) => Object.keys(answersOf(ev))).find((name) => name.toLowerCase() === wanted);
-  if (type) return { type };
-  return { error: `No module answered "${String(value)}" lately. Known: ${known.join(', ') || 'none'}` };
+  return { error: `No module answered "${String(value)}" in the last 30 days. Known: ${known.join(', ') || 'none'}` };
+}
+
+/** A real local date YYYY-MM-DD, not one to come: "2026-02-31" read as 3 March, a day ahead as "0 minutes". */
+function dateError(value: string, today: string): string | undefined {
+  const time = Date.parse(`${value}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(time) || new Date(time).toISOString().slice(0, 10) !== value) return `date must be YYYY-MM-DD, got "${value}"`;
+  if (value > today) return `date ${value} has not come yet (today is ${today})`;
+  return undefined;
 }
 
 interface Look {
@@ -510,24 +521,30 @@ interface Look {
 }
 
 /**
- * The stretches of «yes» of one camera: joined within an event or 10 minutes, unless «no» came twice or more over at
- * least 3 minutes between them.
+ * The stretches of «yes» of one camera: joined within an event or 10 minutes, unless the «no» answers after a stretch
+ * cover at least 3 minutes before the next «yes».
  */
 function stretchesOf(looks: Look[]): { from: number; to: number; event: string }[] {
   const stretches: { from: number; to: number; event: string }[] = [];
-  let noes = 0;
+  let noFrom: number | undefined;
+  let noTo = 0;
   for (const look of [...looks].sort((a, b) => a.from - b.from)) {
+    const open = stretches[stretches.length - 1];
     if (!look.yes) {
-      noes++;
+      // a «no» inside the stretch already counted (the same moment as a «yes») is not after it
+      if (open && look.to > open.to) {
+        noFrom = Math.min(noFrom ?? look.from, Math.max(look.from, open.to));
+        noTo = Math.max(noTo, look.to);
+      }
       continue;
     }
-    const open = stretches[stretches.length - 1];
-    const stopped = !!open && noes >= NO_STOP_LOOKS && look.from - open.to >= NO_STOP_MS;
+    const stopped = noFrom !== undefined && noTo - noFrom >= NO_STOP_MS;
     if (open && !stopped && (open.event === look.event || look.from - open.to <= ATTRIBUTE_GAP_MS)) {
       open.to = Math.max(open.to, look.to);
       open.event = look.event;
     } else stretches.push({ from: look.from, to: look.to, event: look.event });
-    noes = 0;
+    noFrom = undefined;
+    noTo = 0;
   }
   return stretches;
 }
@@ -535,20 +552,21 @@ function stretchesOf(looks: Look[]): { from: number; to: number; event: string }
 function attributeTime(host: AssistantHost, input: Input, ctx: AssistantToolContext): AssistantToolResult {
   const today = dateIn(Date.now(), ctx.timezone);
   const last = typeof input.date === 'string' && input.date.trim() ? input.date.trim() : today;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(last) || Number.isNaN(Date.parse(`${last}T00:00:00Z`))) return { error: `date must be YYYY-MM-DD, got "${String(input.date)}"` };
+  const badDate = dateError(last, today);
+  if (badDate) return { error: badDate };
   const count = clampInt(input.days, 1, ATTRIBUTE_DAYS, 1);
   const camera = resolveCamera(host, input.camera);
   if ('error' in camera) return camera;
   const first = startOfDay(shiftDate(last, -(count - 1)), ctx.timezone);
   const end = startOfDay(shiftDate(last, 1), ctx.timezone) - 1;
 
-  // the questions the modules answered in the week up to the last day asked and on until today (a day asked about may
+  // the questions the modules answered in the month before the days asked and on until today (a day asked about may
   // have none and still be theirs)
-  const scanFrom = startOfDay(shiftDate(last, -(ATTRIBUTE_DAYS - 1)), ctx.timezone);
+  const scanFrom = first - KNOWN_MS;
   const scanTo = Math.max(end, Date.now());
   if (typeof input.attribute !== 'string' || !input.attribute.trim()) {
     const listed = knownQuestions(host, camera.ids, scanFrom, scanTo);
-    return { content: { attributes: listed, hint: listed.length ? 'Ask again with one attribute.' : 'No module answered a question in the last 7 days.' } };
+    return { content: { attributes: listed, hint: listed.length ? 'Ask again with one attribute.' : 'No module answered a question in the last 30 days.' } };
   }
   const question = questionOf(host, camera.ids, input.attribute, scanFrom, scanTo);
   if ('error' in question) return question;

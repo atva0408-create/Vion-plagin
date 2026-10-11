@@ -121,7 +121,10 @@ assert.deepEqual(day.answers, { yes: 5, no: 2 });
 // the list of questions without one asked
 const listed = content<{ attributes: { attribute: string; events: number }[] }>(await call('attribute_time', { date: '2026-10-10' }));
 assert.deepEqual(listed.attributes, [{ attribute: Q, events: 4 }]);
-assert.match((await call('attribute_time', { attribute: 'спит', date: '2026-10-10' })).error ?? '', /No module answered "спит" lately\. Known: играет в компьютер/);
+assert.match(
+  (await call('attribute_time', { attribute: 'спит', date: '2026-10-10' })).error ?? '',
+  /No module answered "спит" in the last 30 days\. Known: играет в компьютер/,
+);
 // another day: nothing played
 assert.equal(content<Day>(await call('attribute_time', { attribute: Q, date: '2026-10-09' })).minutes, 0);
 
@@ -249,12 +252,83 @@ assert.match((await call('attribute_time', { attribute: 'играет', date: '2
 const sept = { from: new Date(at('2026-09-20T00:00:00')).toISOString(), to: new Date(at('2026-09-20T23:59:00')).toISOString() };
 assert.match(
   (await call('query_events', { ...sept, labels: ['people'] })).error ?? '',
-  /^Unknown label "people"\. Labels seen in the last 7 days: person, vehicle, animal, ноутбук$/,
+  /^Unknown label "people"\. Labels of the events of the last 30 days: person, vehicle, animal, ноутбук$/,
 );
 assert.deepEqual(ids(content(await call('query_events', { ...sept, labels: ['ноутбук'] }))), ['n1']);
 assert.deepEqual(ids(content(await call('query_events', { ...range, attribute: 'компьютер' }))), ['e1', 'e2', 'e3'], 'a part of the question');
 assert.deepEqual(ids(content(await call('query_events', { ...range, attribute: Q, labels: ['animal'] }))), [], 'no animal answered the question');
 assert.deepEqual(ids(content(await call('query_events', { ...range, attribute: Q, labels: ['person'] }))), ['e1', 'e2', 'e3']);
+
+// ---- the second review: «no» by the time it covers, a busy recorder, dates ----
+await nvr.ingestDetectionEvent(
+  'cam-kid',
+  'end' as never,
+  // one long segment of «no» between two «yes»: homework all the same
+  eventAt('l1', 'cam-kid', [
+    ['2026-09-26T10:00:00', '2026-09-26T10:30:00', 'да'],
+    ['2026-09-26T10:31:00', '2026-09-26T12:20:00', 'нет'],
+    ['2026-09-26T12:30:00', '2026-09-26T13:00:00', 'да'],
+  ]) as never,
+);
+await nvr.ingestDetectionEvent(
+  'cam-kid',
+  'end' as never,
+  // «no» twice in one moment of a 4-minute wait for the next «yes»: a flicker
+  eventAt('f1', 'cam-kid', [
+    ['2026-09-27T10:00:00', '2026-09-27T10:20:00', 'да'],
+    ['2026-09-27T10:22:00', '2026-09-27T10:22:10', 'нет', 'нет'],
+    ['2026-09-27T10:24:00', '2026-09-27T10:40:00', 'да'],
+  ]) as never,
+);
+assert.deepEqual(spans(content<Day>(await call('attribute_time', { attribute: Q, camera: 'Детская', date: '2026-09-26' }))), [
+  ['10:00', '10:30'],
+  ['12:30', '13:00'],
+]);
+assert.deepEqual(spans(content<Day>(await call('attribute_time', { attribute: Q, camera: 'Детская', date: '2026-09-27' }))), [['10:00', '10:40']]);
+// a «no» inside a stretch of «yes» is not the start of a stop: 10 s of «no» after it is a flicker
+await nvr.ingestDetectionEvent(
+  'cam-kid',
+  'end' as never,
+  eventAt('i1', 'cam-kid', [
+    ['2026-09-29T10:00:00', '2026-09-29T10:20:00', 'да'],
+    ['2026-09-29T10:05:00', '2026-09-29T10:05:10', 'нет'],
+    ['2026-09-29T10:22:50', '2026-09-29T10:23:00', 'нет'],
+    ['2026-09-29T10:23:30', '2026-09-29T10:40:00', 'да'],
+  ]) as never,
+);
+assert.deepEqual(spans(content<Day>(await call('attribute_time', { attribute: Q, camera: 'Детская', date: '2026-09-29' }))), [['10:00', '10:40']]);
+
+// a busy recorder: more than a page of newer events at the door, people only
+const store = (nvr as unknown as { store: { upsertEvent(ev: RecordedEvent): void } }).store;
+for (let i = 0; i < 5100; i++) {
+  const t = at('2026-09-28T08:00:00') + i * 10_000;
+  store.upsertEvent({
+    id: `busy-${i}`,
+    cameraId: 'cam-door',
+    state: 'ended',
+    startTime: t,
+    endTime: t + 5_000,
+    lastUpdate: t + 5_000,
+    types: ['motion', 'person'],
+    triggers: [],
+    segmentIndex: 0,
+    segments: [{ firstSeen: t, lastSeen: t + 5_000, detections: [{ label: 'person', score: 0.9 }], attributes: [] }],
+  } as unknown as RecordedEvent);
+}
+const month = { from: new Date(at('2026-09-15T00:00:00')).toISOString(), to: new Date(at('2026-10-10T23:59:00')).toISOString() };
+// the label of three weeks ago is known, and the question and a label together reach past the newest page
+assert.deepEqual(ids(content(await call('query_events', { ...month, labels: ['ноутбук'] }))), ['n1']);
+const together = content<{ events: { id: string }[] }>(await call('query_events', { ...month, attribute: Q, labels: ['person'], limit: 50 }));
+assert.ok(
+  ['h1', 'k1', 'e1'].every((id) => together.events.some((ev) => ev.id === id)),
+  together.events.map((ev) => ev.id).join(','),
+);
+assert.equal(content<Day>(await call('attribute_time', { attribute: 'играет в к', camera: 'Детская', date: '2026-09-26' })).minutes, 60);
+
+// a day that does not exist, or has not come
+assert.match((await call('attribute_time', { attribute: Q, date: '2026-02-31' })).error ?? '', /date must be YYYY-MM-DD, got "2026-02-31"/);
+assert.match((await call('attribute_time', { attribute: Q, date: '2999-01-01' })).error ?? '', /has not come yet/);
+assert.match((await call('attribute_time', { attribute: Q, date: '2026-13-45' })).error ?? '', /date must be YYYY-MM-DD/);
 
 console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer OK');
 process.exit(0);

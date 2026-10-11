@@ -65,6 +65,7 @@ function fakeHost(over: Partial<AssistantHost> = {}) {
   ];
   const known: FaceProfile[] = [{ name: 'Папа', imageCount: 4, createdAt: 0, updatedAt: 0, thumbnail: new Uint8Array([1, 2, 3]) }];
   const host: AssistantHost = {
+    eventTypes: () => new Map(),
     events: (ids, opts) => ({
       events: [...events.values()].filter(
         (ev) =>
