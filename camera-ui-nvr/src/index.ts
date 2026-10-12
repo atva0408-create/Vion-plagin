@@ -273,7 +273,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /** what the finder made of each query: in English, and the score from which a box is the thing */
   private findQueries = new Map<string, { english: string; foundScore?: number }>();
   /** the pictures still to look at, in the order asked; one at a time */
-  private findQueue: { query: string; id: string }[] = [];
+  private findQueue: { query: string; language: string; id: string }[] = [];
   private findWorking = false;
   /** a query whose looking failed, until its next call is told */
   private findProblems = new Map<string, string>();
@@ -2420,11 +2420,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     });
   }
 
-  private async textEmbeddings(text: string): Promise<TextEmbedding[]> {
+  /** The query's vectors from each CLIP plugin; `language` is the platform's, the query may be in it. */
+  private async textEmbeddings(text: string, language?: string): Promise<TextEmbedding[]> {
     const out: TextEmbedding[] = [];
     for (const encoder of await this.pluginProxies<ClipEncoder>('ClipDetection')) {
       try {
-        const many = await withTimeout(encoder.getTextEmbeddings!(text));
+        const many = await withTimeout(encoder.getTextEmbeddings!(text, ...(language ? [{ language }] : [])));
         if (Array.isArray(many) && many.length) {
           out.push(...many);
           continue;
@@ -2484,7 +2485,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         return row ? this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1) : undefined;
       },
       cameras: () => [...this.cameras.values()].map((c) => ({ id: c.device.id, name: c.device.name })),
-      search: (text, limit) => this.searchEventsByText(text, limit),
+      search: (text, limit, language) => this.searchEventsByText(text, limit, 0, language),
       picture: async (event) => (await this.getEventThumbnails(event.cameraId, event.startTime, event.id)).event,
       coverage: async (cameraId, startMs, endMs) => (await this.getRecordingCoverage(cameraId, startMs, endMs)).union,
       systemEvents: async (cameraIds, startMs, endMs) => (await this.getSystemEvents(cameraIds, { startMs, endMs, limit: 500 })).events,
@@ -2528,11 +2529,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   // ------------------------------------------------------------ semantic search
 
-  public async searchEventsByText(text: string, limit = 50, threshold = 0): Promise<ClipSearchResult[]> {
+  public async searchEventsByText(text: string, limit = 50, threshold = 0, language?: string): Promise<ClipSearchResult[]> {
     await this.ready;
     const query = text?.trim();
     if (!query) return [];
-    return (await this.rankByText(query, limit * 2, threshold)).slice(0, limit);
+    return (await this.rankByText(query, limit * 2, threshold, typeof language === 'string' ? language : undefined)).slice(0, limit);
   }
 
   /**
@@ -2544,7 +2545,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    */
   public async searchEventsByTextQuery(
     text: string,
-    opts: { limit?: number; offset?: number; threshold?: number; cameraIds?: string[]; filter?: GetEventsOptions } = {},
+    opts: { limit?: number; offset?: number; threshold?: number; cameraIds?: string[]; filter?: GetEventsOptions; language?: string } = {},
   ): Promise<{ matches: ClipSearchResult[]; events: RecordedEvent[]; hasMore: boolean }> {
     await this.ready;
     const query = typeof text === 'string' ? text.trim() : '';
@@ -2558,7 +2559,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const matches: ClipSearchResult[] = [];
     const events: RecordedEvent[] = [];
     let passed = 0;
-    for (const match of await this.rankByText(query, TEXT_SEARCH_POOL, opts.threshold ?? 0)) {
+    const language = typeof opts.language === 'string' ? opts.language : undefined;
+    for (const match of await this.rankByText(query, TEXT_SEARCH_POOL, opts.threshold ?? 0, language)) {
       if (cameras && !cameras.has(match.cameraId)) continue;
       const row = this.store.event(match.eventId);
       if (!row || !inEventRange(row, filter)) continue;
@@ -2582,17 +2584,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * again. The pictures go to the finder one at a time, one search after another; an event without a picture has no
    * boxes. A failure of the finder ends the looking of its query and is said to its next call, once.
    */
-  public async findInEvents(text: string, eventIds: string[]): Promise<FindInEventsResult> {
+  public async findInEvents(text: string, eventIds: string[], language?: string): Promise<FindInEventsResult> {
     await this.ready;
     const query = typeof text === 'string' ? text.trim() : '';
     const ids = [...new Set(Array.isArray(eventIds) ? eventIds.filter((id): id is string => typeof id === 'string' && !!id) : [])].slice(0, FIND_EVENTS_A_CALL);
     if (!query || !ids.length) return { query, results: [] };
-    const problem = this.findProblems.get(query);
+    // the platform's language: a query without Cyrillic is in it, and is put into English from it
+    const lang = typeof language === 'string' && language ? language : '';
+    const asked = `${query}\u0000${lang}`;
+    const problem = this.findProblems.get(asked);
     if (problem !== undefined) {
-      this.findProblems.delete(query);
+      this.findProblems.delete(asked);
       return problem === NO_FINDER ? { query, results: [], reason: 'no-finder' } : { query, results: [], reason: 'failed', error: problem };
     }
-    const key = (id: string) => `${query}\u0000${id}`;
+    const key = (id: string) => `${asked}\u0000${id}`;
     const pending: string[] = [];
     for (const id of ids) {
       if (this.finds.has(key(id))) continue;
@@ -2603,10 +2608,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         continue;
       }
       pending.push(id);
-      if (!this.findQueue.some((item) => item.query === query && item.id === id)) this.findQueue.push({ query, id });
+      if (!this.findQueue.some((item) => item.query === query && item.language === lang && item.id === id)) this.findQueue.push({ query, language: lang, id });
     }
     if (pending.length) void this.findWork();
-    const told = this.findQueries.get(query);
+    const told = this.findQueries.get(asked);
     return {
       query,
       ...(told ? { english: told.english, ...(told.foundScore !== undefined ? { foundScore: told.foundScore } : {}) } : {}),
@@ -2621,12 +2626,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.findWorking = true;
     try {
       while (this.findQueue.length) {
-        const { query, id } = this.findQueue[0];
-        const problem = await this.findOne(query, id);
+        const { query, language, id } = this.findQueue[0];
+        const problem = await this.findOne(query, language, id);
         this.findQueue.shift();
         if (problem !== undefined) {
-          this.findProblems.set(query, problem);
-          this.findQueue = this.findQueue.filter((item) => item.query !== query);
+          this.findProblems.set(`${query}\u0000${language}`, problem);
+          this.findQueue = this.findQueue.filter((item) => item.query !== query || item.language !== language);
         }
       }
     } finally {
@@ -2635,8 +2640,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** One event's picture through the finder, waiting while it loads; what went wrong, or nothing. */
-  private async findOne(query: string, id: string): Promise<string | undefined> {
-    const key = `${query}\u0000${id}`;
+  private async findOne(query: string, language: string, id: string): Promise<string | undefined> {
+    const asked = `${query}\u0000${language}`;
+    const key = `${asked}\u0000${id}`;
     const row = this.store.event(id);
     const picture = row ? this.eventPicture(row.camera_id, id) : undefined;
     if (!picture) {
@@ -2652,7 +2658,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const errors: string[] = [];
       for (const encoder of ordered) {
         try {
-          answer = await withTimeout(encoder.findInPictures!(query, [picture]), FIND_CALL_MS);
+          answer = await withTimeout(encoder.findInPictures!(query, [picture], language ? { language } : undefined), FIND_CALL_MS);
           this.findEncoder = encoder;
           break;
         } catch (e) {
@@ -2671,8 +2677,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
         continue;
       }
-      this.findQueries.delete(query);
-      this.findQueries.set(query, { english: answer.query || query, ...(answer.foundScore !== undefined ? { foundScore: answer.foundScore } : {}) });
+      this.findQueries.delete(asked);
+      this.findQueries.set(asked, { english: answer.query || query, ...(answer.foundScore !== undefined ? { foundScore: answer.foundScore } : {}) });
       while (this.findQueries.size > FIND_QUERIES_KEPT) this.findQueries.delete(this.findQueries.keys().next().value!);
       const found = answer.pictures?.[0];
       const boxes = Array.isArray(found?.boxes) ? found.boxes : [];
@@ -2688,8 +2694,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** Hybrid ranking: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions, best first. */
-  private async rankByText(query: string, pool: number, threshold: number): Promise<ClipSearchResult[]> {
-    const queries = await this.textEmbeddings(query);
+  private async rankByText(query: string, pool: number, threshold: number, language?: string): Promise<ClipSearchResult[]> {
+    const queries = await this.textEmbeddings(query, language);
     const visual = queries.length ? await this.semantic.search(queries, pool, threshold) : [];
     const textual = this.describer.search(query, pool);
     const merged = new Map<string, ClipSearchResult>(visual.map((r) => [r.eventId, r]));

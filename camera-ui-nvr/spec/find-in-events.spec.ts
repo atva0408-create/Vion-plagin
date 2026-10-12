@@ -16,7 +16,7 @@ type Answer = {
   foundScore?: number;
   pictures: { boxes: { x: number; y: number; width: number; height: number; score: number }[]; crop?: Uint8Array }[];
 };
-const calls: { text: string; pictures: number[] }[] = [];
+const calls: { text: string; pictures: number[]; language?: string }[] = [];
 const callTimes: number[] = [];
 let running = 0;
 let overlapped = false;
@@ -28,13 +28,13 @@ let finders = ['openvino', 'onnx'];
  * recorder keeps the crop of a find only); it loads for the first `loading` calls.
  */
 const onnx = {
-  findInPictures: async (text: string, images: Uint8Array[]): Promise<Answer> => {
+  findInPictures: async (text: string, images: Uint8Array[], config?: { language?: string }): Promise<Answer> => {
     running++;
     overlapped ||= running > 1;
     await new Promise((resolve) => setTimeout(resolve, 2));
     running--;
     if (failing) throw new Error(failing);
-    calls.push({ text, pictures: images.map((image) => image[0]) });
+    calls.push({ text, pictures: images.map((image) => image[0]), ...(config?.language ? { language: config.language } : {}) });
     callTimes.push(Date.now());
     if (loading > 0) {
       loading--;
@@ -50,7 +50,9 @@ const onnx = {
   },
 };
 const otherCalls: string[] = [];
-const other = { findInPictures: async (text: string, images: Uint8Array[]) => (otherCalls.push(text), onnx.findInPictures(text, images)) };
+const other = {
+  findInPictures: async (text: string, images: Uint8Array[], config?: { language?: string }) => (otherCalls.push(text), onnx.findInPictures(text, images, config)),
+};
 
 const noop = () => undefined;
 const warned: string[] = [];
@@ -86,9 +88,9 @@ for (let i = 0; i < 30; i++) await event(`more-${i}`, 2);
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 /** Asks until nothing is pending, as the page does. */
-async function settled(text: string, ids: string[]) {
+async function settled(text: string, ids: string[], language?: string) {
   for (let i = 0; i < 2000; i++) {
-    const answer = await nvr.findInEvents(text, ids);
+    const answer = await nvr.findInEvents(text, ids, language);
     if (!answer.pending?.length) return answer;
     await tick();
   }
@@ -139,6 +141,24 @@ async function problem(text: string, ids: string[]) {
   assert.deepEqual([again.english, again.foundScore], ['bag', 0.1], 'what the finder made of the query is said again');
   await settled('собака', ['bag']);
   assert.deepEqual(calls, [{ text: 'собака', pictures: [41] }]);
+}
+
+// ---- the platform's language goes to the finder; the same words in another language are another search
+{
+  calls.length = 0;
+  await settled('Tasche', ['bag'], 'de');
+  assert.deepEqual(calls, [{ text: 'Tasche', pictures: [41], language: 'de' }]);
+  await settled('Tasche', ['bag'], 'de');
+  assert.equal(calls.length, 1, 'kept with its language');
+  await settled('Tasche', ['bag'], 'en');
+  await settled('Tasche', ['bag']);
+  assert.deepEqual(calls.map((c) => c.language), ['de', 'en', undefined]);
+  // pending in two languages at once: each is looked at
+  calls.length = 0;
+  await nvr.findInEvents('Eimer', ['weak'], 'de');
+  await nvr.findInEvents('Eimer', ['weak'], 'en');
+  await Promise.all([settled('Eimer', ['weak'], 'de'), settled('Eimer', ['weak'], 'en')]);
+  assert.deepEqual(calls.map((c) => c.language).sort(), ['de', 'en']);
 }
 
 // ---- asked again while pending: queued once

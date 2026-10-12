@@ -40,7 +40,8 @@ export interface ImageEmbedding {
 /** What the NVR needs from a ClipDetection plugin. */
 export interface ClipEncoder {
   getTextEmbedding(text: string): Promise<TextEmbedding>;
-  getTextEmbeddings?(text: string): Promise<TextEmbedding[]>;
+  /** `config.language`: the platform's language the query is in (ONNX/OpenVINO 1.7.0 put it into English for CLIP) */
+  getTextEmbeddings?(text: string, config?: { language?: string }): Promise<TextEmbedding[]>;
   embedImages?(images: Uint8Array[], config?: Record<string, unknown>): Promise<(ImageEmbedding | undefined)[]>;
   /** Where the words are in each picture (camera-ui-onnx textfind.py, ONNX 1.7.0). */
   findInPictures?(text: string, images: Uint8Array[], config?: Record<string, unknown>): Promise<TextFindAnswer>;

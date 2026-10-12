@@ -57,7 +57,7 @@ export interface AssistantHost {
   attributeAnswers?(cameraIds: string[] | undefined, startMs: number, endMs: number): Map<string, number>;
   event(eventId: string): RecordedEvent | undefined;
   cameras(): { id: string; name: string }[];
-  search(text: string, limit: number): Promise<ClipSearchResult[]>;
+  search(text: string, limit: number, language?: string): Promise<ClipSearchResult[]>;
   picture(event: RecordedEvent): Promise<Uint8Array | undefined>;
   /** Recorded time of a camera, any stream, joined where the gap is under 2 s. */
   coverage(cameraId: string, startMs: number, endMs: number): Promise<RecordingSegment[]>;
@@ -1278,7 +1278,7 @@ async function searchByText(host: AssistantHost, input: Input, ctx: AssistantToo
   const text = typeof input.text === 'string' ? input.text.trim() : '';
   if (!text) return { error: 'text is required' };
   const limit = clampInt(input.limit, 1, 30, 10);
-  const found = await host.search(text, limit);
+  const found = await host.search(text, limit, ctx.language);
   const names = cameraNames(host);
   const events = found.map((r) => ({ hit: r, event: host.event(r.eventId) }));
   return {

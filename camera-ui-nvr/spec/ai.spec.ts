@@ -17,9 +17,12 @@ function vec(concept: number, noise = 0, seed = 1): number[] {
 const CONCEPTS: Record<string, number> = { 'white van': 0, person: 1, dog: 2, 'a photo': 3 };
 
 const clipCalls: string[] = [];
+/** the platform's language each query came with (none: the argument not given) */
+const clipLanguages: (string | undefined)[] = [];
 const clip = {
-  getTextEmbeddings: async (text: string) => {
+  getTextEmbeddings: async (text: string, ...config: { language?: string }[]) => {
     clipCalls.push(text);
+    clipLanguages.push(config.length ? config[0]!.language : undefined);
     return [{ embedding: vec(CONCEPTS[text] ?? 5), embeddingModel: 'clip-test', scoreBand: [0.1, 0.9] as [number, number] }];
   },
   getTextEmbedding: async (text: string) => ({ embedding: vec(CONCEPTS[text] ?? 5), embeddingModel: 'clip-test', scoreBand: [0.1, 0.9] as [number, number] }),
@@ -168,6 +171,19 @@ assert.deepEqual(await nvr.searchEventsByText('   '), []);
   assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { favoritesOnly: true } as never })).matches.map((m) => m.eventId), ['ev-van']);
   await nvr.setEventFavorite('ev-van', false);
   assert.deepEqual(await nvr.searchEventsByTextQuery('  '), { matches: [], events: [], hasMore: false });
+}
+
+// the platform's language goes with the query to the plugin, which puts the query into English; none, no argument
+{
+  clipLanguages.length = 0;
+  await nvr.searchEventsByTextQuery('weißer Transporter', { language: 'de' });
+  await nvr.searchEventsByText('белый фургон', 5, 0, 'ru');
+  await nvr.searchEventsByTextQuery('white van');
+  await nvr.searchEventsByTextQuery('white van', { language: 42 as never });
+  assert.deepEqual(clipLanguages, ['de', 'ru', undefined, undefined]);
+  const tool = await nvr.callAssistantTool('search_events_by_text', { text: 'белый фургон' }, { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' } as never);
+  assert.equal(tool.error, undefined, String(tool.error));
+  assert.equal(clipLanguages.at(-1), 'ru', 'the assistant searches in the language of the conversation');
 }
 
 // re-index embeds the stored picture of the event that had no vector
