@@ -19,6 +19,8 @@ MODULE_BACKENDS: tuple[str, ...] = ("openvino", "onnx")
 _MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.vionvision.tech").rstrip("/")
 MODEL_BASE_URL = f"{_MODELS_HOST}/{model_version}/openvino"
 MODEL_LFS_URL = MODEL_BASE_URL
+# the translators and the text finder (textfind.py) are ONNX graphs, read by OpenVINO as they are
+TEXTFIND_BASE_URL = f"{_MODELS_HOST}/{model_version}/onnx"
 
 OBJECT_MODELS: dict[str, int] = {
     "yolo-v9-t-320": 320,

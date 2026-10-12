@@ -1,7 +1,10 @@
-"""Where the words of a search are in the pictures (src/textfind.py, ONNXPlugin.findInPictures): the query put into
-English when it is Russian, OWL-ViT's boxes read as shares of the picture (the best, overlapping ones once, from a
-floor), the crop of a find, and the models out of memory when nobody asks. The real methods run on fake models; with
-TEXTFIND_MODELS (a folder with owlvit-base-patch32/ and opus-mt-ru-en/ as the mirror has them) the real models too.
+"""The platform's language for English-only models, and the words of a search found in pictures (src/textfind.py, kept
+identical in the ONNX and OpenVINO plugins; ONNXPlugin's CLIP queries and findInPictures): a query is put into English
+from Russian whenever it has Cyrillic, else from the platform's language; the CLIP of English only gets it in English,
+waiting a little for a translator that loads; OWL-ViT's boxes read as shares of the picture (the best, overlapping ones
+once, from a floor), the crop of a find, the finder loaded in the background and out of memory when nobody asks. The
+real methods run on fake models; with TEXTFIND_MODELS (a folder with owlvit-base-patch32/ and opus-mt-ru-en/ as the
+mirror has them) the real models too.
 
     python -m pytest camera-ui-onnx/tests/test_textfind.py
 """
@@ -11,6 +14,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import io
+import json
 import os
 import sys
 import time
@@ -31,20 +35,41 @@ def logit(p: float) -> float:
     return float(np.log(p / (1 - p)))
 
 
-# ------------------------------------------------------------------ the query
+class Logger:
+    def __init__(self) -> None:
+        self.said: list[str] = []
+
+    def log(self, text: str) -> None:
+        self.said.append(text)
+
+    success = log
 
 
-def test_a_russian_query_is_translated_an_english_one_is_not():
-    assert textfind.needs_translation("красная сумка")
-    assert textfind.needs_translation("Ёлка")
-    assert not textfind.needs_translation("red bag")
-    assert not textfind.needs_translation("123")
+# ------------------------------------------------------------------ the language of a query
+
+
+def test_russian_whenever_cyrillic_else_the_platforms_language():
+    assert textfind.language_of("красная сумка", None) == "ru"
+    assert textfind.language_of("Ёлка", "en") == "ru", "Russian whatever the platform speaks"
+    assert textfind.language_of("rote Tasche", "de") == "de"
+    assert textfind.language_of("rote Tasche", "de-DE") == "de"
+    assert textfind.language_of("red bag", "en") is None
+    assert textfind.language_of("red bag", None) is None
+    assert textfind.language_of("sac rouge", "fr") is None, "no translator for it: as it is"
     assert textfind.tidy(" Cat. ") == "cat"
     assert textfind.tidy("Box by the door!") == "box by the door"
 
 
+def test_the_models_have_their_paths_on_the_mirror():
+    assert textfind.model_file("owlvit-base-patch32") == "owlvit-base-patch32/owlvit-base-patch32.onnx"
+    assert textfind.model_file("opus-mt-ru-en-encoder") == "opus-mt-ru-en/encoder.onnx"
+    assert textfind.model_file("opus-mt-de-en-decoder") == "opus-mt-de-en/decoder.onnx"
+    assert textfind.model_file("opus-mt-fr-en-encoder") is None
+    assert textfind.model_file("yolo-v9-s-320") is None
+
+
 class Backend:
-    """A model that answers what `answer` gives for the inputs, by the names of its inputs in their order."""
+    """A model that answers what `answer` gives for the inputs, by the names of its inputs in their order (ONNX's)."""
 
     def __init__(self, names: list[str], answer: Any) -> None:
         self._input_names = names
@@ -59,6 +84,27 @@ class Backend:
 
     def close(self) -> None:
         self.closed = True
+
+
+class Port:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def get_any_name(self) -> str:
+        return self.name
+
+
+def test_the_inputs_go_by_name_in_both_backends():
+    onnx = Backend(["b", "a"], lambda _: [])
+    assert textfind.ordered(onnx, {"a": 1, "b": 2}) == [2, 1]
+    # OpenVINO's backend keeps the compiled model, whose ports have the names
+    openvino = type("Ov", (), {"_compiled": type("C", (), {"inputs": [Port("b"), Port("a")]})()})()
+    assert textfind.input_names(openvino) == ["b", "a"]
+    assert textfind.ordered(openvino, {"a": 1, "b": 2}) == [2, 1]
+    assert textfind.ordered(object(), {"a": 1, "b": 2}) == [1, 2]
+
+
+# ------------------------------------------------------------------ a translator
 
 
 class Tokenizer:
@@ -77,9 +123,9 @@ class Tokenizer:
 CONFIG = {"decoder_start_token_id": 99, "pad_token_id": 99, "eos_token_id": 0}
 
 
-def translator(script: list[int], vocabulary: int = 100) -> textfind.TextFinder:
-    """A finder whose decoder says `script` token by token, the pad token always loudest (it must never be said)."""
-    finder = textfind.TextFinder(None, None, base_url="")  # type: ignore[arg-type]
+def translator(script: list[int], language: str = "ru", vocabulary: int = 100) -> textfind.Translator:
+    """A loaded translator whose decoder says `script` token by token, the pad token always loudest (never said)."""
+    t = textfind.Translator(None, Logger(), base_url="", language=language)  # type: ignore[arg-type]
 
     def decode(named: dict[str, Any]) -> list[Any]:
         step = named["input_ids"].shape[1] - 1
@@ -88,33 +134,119 @@ def translator(script: list[int], vocabulary: int = 100) -> textfind.TextFinder:
         logits[0, -1, script[step] if step < len(script) else 0] = 50
         return [logits]
 
-    finder.encoder = Backend(["input_ids", "attention_mask"], lambda named: [np.ones((1, named["input_ids"].shape[1], 4))])
+    t.encoder = Backend(["input_ids", "attention_mask"], lambda named: [np.ones((1, named["input_ids"].shape[1], 4))])
     # the decoder's inputs are not in the order of the call: they are fed by name
-    finder.decoder = Backend(["encoder_attention_mask", "input_ids", "encoder_hidden_states"], decode)
-    finder.translator_tokenizer = Tokenizer()
-    finder.translator_config = CONFIG
-    return finder
+    t.decoder = Backend(["encoder_attention_mask", "input_ids", "encoder_hidden_states"], decode)
+    t.tokenizer = Tokenizer()
+    t.config = CONFIG
+    t.initialized = True
+    return t
+
+
+def translators(*loaded: textfind.Translator) -> textfind.Translators:
+    many = textfind.Translators(None, Logger(), base_url="")  # type: ignore[arg-type]
+    for t in loaded:
+        many.by_language[t.language] = t
+    return many
 
 
 def test_the_translation_is_greedy_and_ends_at_the_end_token():
-    finder = translator([5, 6, 7, 0])
-    assert asyncio.run(finder.english("красная сумка")) == "red bag"
+    t = translator([5, 6, 7, 0])
+    assert asyncio.run(t.english("красная сумка")) == "red bag"
     # each step the whole output so far, starting with the start token
-    assert [call["input_ids"].tolist() for call in finder.decoder.calls] == [[[99]], [[99, 5]], [[99, 5, 6]], [[99, 5, 6, 7]]]
-    assert finder.decoder.calls[0]["encoder_hidden_states"].shape == (1, 3, 4)
+    assert [call["input_ids"].tolist() for call in t.decoder.calls] == [[[99]], [[99, 5]], [[99, 5, 6]], [[99, 5, 6, 7]]]
+    assert t.decoder.calls[0]["encoder_hidden_states"].shape == (1, 3, 4)
 
 
 def test_a_translation_that_never_ends_is_cut():
-    finder = translator([5] * 100)
-    asyncio.run(finder.english("сумка"))
-    assert len(finder.decoder.calls) == textfind.MAX_TOKENS
+    t = translator([5] * 100)
+    asyncio.run(t.english("сумка"))
+    assert len(t.decoder.calls) == textfind.MAX_TOKENS
 
 
-def test_english_and_known_words_need_no_translator():
-    finder = translator([5, 0])
-    assert asyncio.run(finder.english("  red bag ")) == "red bag"
-    assert asyncio.run(finder.english("Человек")) == "person"
-    assert finder.decoder.calls == []
+def test_each_language_has_its_translator_english_none():
+    ru, de = translator([5, 0], "ru"), translator([6, 0], "de")
+    many = translators(ru, de)
+    assert asyncio.run(many.english("  red bag ", "en")) == "red bag"
+    assert asyncio.run(many.english("сумка", "de")) == "red", "Cyrillic is Russian on a German platform too"
+    assert asyncio.run(many.english("Tasche", "de")) == "bag"
+    assert asyncio.run(many.english("Человек", None)) == "person", "a known word needs no model"
+    assert len(ru.decoder.calls) == 2 and len(de.decoder.calls) == 2
+
+
+class SlowTranslator(textfind.Translator):
+    """Loads in `seconds`, then translates by `script`."""
+
+    def __init__(self, seconds: float, script: list[int]) -> None:
+        super().__init__(None, Logger(), base_url="", language="ru")  # type: ignore[arg-type]
+        self.seconds = seconds
+        self.loads = 0
+        self.script = script
+
+    async def _load(self) -> None:
+        self.loads += 1
+        await asyncio.sleep(self.seconds)
+        ready = translator(self.script)
+        self.encoder, self.decoder, self.tokenizer, self.config = ready.encoder, ready.decoder, ready.tokenizer, ready.config
+        self.initialized = True
+
+
+def test_a_translator_that_loads_is_waited_for_a_while_then_the_query_goes_as_it_is():
+    async def run() -> None:
+        slow = SlowTranslator(0.05, [5, 0])
+        many = translators(slow)
+        many.logger = Logger()
+        assert await many.english("сумка", None, wait=0.01) == "сумка"
+        assert any("still loads" in line for line in many.logger.said)
+        # it loads on: a little later the same query is translated, by the one load
+        await asyncio.sleep(0.06)
+        assert await many.english("сумка", None, wait=0.01) == "red"
+        assert slow.loads == 1
+        # waited for as long as it takes when the caller can
+        slower = SlowTranslator(0.02, [6, 0])
+        assert await translators(slower).english("сумка", None) == "bag"
+
+    asyncio.run(run())
+
+
+def test_a_translator_loads_once_whoever_asks_and_a_failed_load_is_tried_again():
+    async def run() -> None:
+        slow = SlowTranslator(0.02, [5, 0])
+        many = translators(slow)
+        assert many.ready(None) and not many.ready("ru")
+        await asyncio.gather(many.load("ru"), many.load("ru"), slow.initialize())
+        assert slow.loads == 1 and many.ready("ru")
+        assert many.load("ru") is None and many.load(None) is None
+
+        class Failing(SlowTranslator):
+            fail = True
+
+            async def _load(self) -> None:
+                self.loads += 1
+                if Failing.fail:
+                    raise RuntimeError("no mirror")
+                await super()._load()
+
+        failing = Failing(0.0, [5, 0])
+        with pytest.raises(RuntimeError):
+            await failing.initialize()
+        Failing.fail = False
+        await failing.initialize()
+        assert failing.loads == 3 and failing.initialized
+
+    asyncio.run(run())
+
+
+def test_the_translators_leave_the_manager_when_closed():
+    forgotten: list[str] = []
+    ru = translator([5, 0])
+    many = translators(ru)
+    many.manager = type("Manager", (), {"forget": lambda _self, name: forgotten.append(name)})()
+    backends = (ru.encoder, ru.decoder)
+    many.close()
+    assert all(b.closed for b in backends)  # type: ignore[union-attr]
+    assert forgotten == ["opus-mt-ru-en-encoder", "opus-mt-ru-en-decoder"]
+    assert many.by_language == {}
 
 
 # ------------------------------------------------------------------ the boxes
@@ -156,9 +288,9 @@ def test_the_crop_is_the_box_with_some_around_it():
     assert max(Image.open(io.BytesIO(textfind.crop_of(image, {"x": 0, "y": 0, "width": 1, "height": 1}))).size) == textfind.CROP_SIDE
 
 
-def owl_finder(scores: list[float]) -> textfind.TextFinder:
+def owl_finder(scores: list[float], *loaded: textfind.Translator) -> textfind.TextFinder:
     """A finder whose OWL sees one thing a picture, scored in turn, at the left of the picture."""
-    finder = translator([5, 6, 0])
+    finder = textfind.TextFinder(None, Logger(), base_url="", translators=translators(*(loaded or (translator([5, 6, 0]),))))  # type: ignore[arg-type]
     queue = list(scores)
 
     def answer(named: dict[str, Any]) -> list[Any]:
@@ -175,13 +307,14 @@ def owl_finder(scores: list[float]) -> textfind.TextFinder:
         return {"input_ids": np.zeros((1, textfind.OWL_TOKENS), dtype=np.int64), "attention_mask": np.ones((1, textfind.OWL_TOKENS), dtype=np.int64)}
 
     finder.owl_tokenizer = tokens
+    finder.initialized = True
     return finder
 
 
 def test_a_find_has_its_crop_a_weak_one_only_its_boxes():
     finder = owl_finder([0.4, 0.07])
     pictures = [Image.new("RGB", (640, 360), (90, 90, 90)) for _ in range(2)]
-    result = asyncio.run(finder.find("красная сумка", pictures))
+    result = asyncio.run(finder.find("красная сумка", pictures, "en"))
     assert result["query"] == "red bag" and finder.asked == ["a photo of red bag"]
     assert result["foundScore"] == textfind.FOUND_SCORE
     first, second = result["pictures"]
@@ -190,7 +323,13 @@ def test_a_find_has_its_crop_a_weak_one_only_its_boxes():
     assert finder.busy == 0
 
 
-def test_the_models_are_not_idle_while_a_find_is_under_way():
+def test_the_finder_asks_in_the_platforms_language():
+    finder = owl_finder([0.4], translator([6, 0], "de"))
+    result = asyncio.run(finder.find("Tasche", [Image.new("RGB", (64, 64))], "de"))
+    assert result["query"] == "bag"
+
+
+def test_the_model_is_not_idle_while_a_find_is_under_way():
     finder = owl_finder([0.4])
     now = time.monotonic()
     finder.last_used = now - textfind.IDLE_S - 1
@@ -202,42 +341,31 @@ def test_the_models_are_not_idle_while_a_find_is_under_way():
     assert not finder.idle(now)
 
 
-def test_closed_models_leave_the_manager_too():
+def test_a_closed_finder_leaves_the_manager_too_and_the_translators_stay():
     forgotten: list[str] = []
     finder = owl_finder([0.4])
     finder.manager = type("Manager", (), {"forget": lambda _self, name: forgotten.append(name)})()  # type: ignore[assignment]
-    backends = (finder.owl, finder.encoder, finder.decoder)
-    finder.initialized = True
+    owl = finder.owl
     finder.close()
-    assert all(b.closed for b in backends)  # type: ignore[union-attr]
-    assert forgotten == [textfind.OWL_MODEL, textfind.TRANSLATOR_ENCODER, textfind.TRANSLATOR_DECODER]
+    assert owl.closed and forgotten == [textfind.OWL_MODEL]  # type: ignore[union-attr]
     assert finder.owl is None and not finder.initialized
+    assert finder.translators.ready("ru")
 
 
-# ------------------------------------------------------------------ the plugin's method
+# ------------------------------------------------------------------ the plugin's methods
 
 
-def _plugin_class() -> type:
-    path = ROOT / "camera-ui-onnx" / "src" / "main.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ONNXPlugin")
-    cls.bases = []
-    keep = {"findInPictures", "_close_text_finder_when_idle", "get_text_finder", "_load_text_finder"}
-    cls.body = [node for node in cls.body if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in keep]
-    module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls], type_ignores=[])
-    namespace: dict[str, Any] = {
-        "asyncio": asyncio,
-        "time": time,
-        "Any": Any,
-        "Image": Image,
-        "decode_image": lambda data: np.asarray(Image.open(io.BytesIO(data)).convert("RGB")),
-        "TEXT_FINDER_IDLE_S": 0.05,
-        "MODEL_BASE_URL": "https://mirror/v1/onnx",
-        "OWL_MODEL": textfind.OWL_MODEL,
-        "TextFinder": Finder,
-    }
-    exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
-    return namespace["ONNXPlugin"]
+class Encoder:
+    """A CLIP encoder of a family, that says what it was asked to embed."""
+
+    def __init__(self, family: str) -> None:
+        self.embedding_model = family
+        self.initialized = True
+        self.asked: list[str] = []
+
+    async def embed_text(self, text: str) -> list[float]:
+        self.asked.append(text)
+        return [1.0, 0.0]
 
 
 class Finder:
@@ -246,11 +374,12 @@ class Finder:
     fail: str | None = None
     made = 0
 
-    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+    def __init__(self, *_args: Any, **kwargs: Any) -> None:
         Finder.made += 1
+        self.translators = kwargs.get("translators")
         self.initialized = False
         self.closed = False
-        self.asked: list[tuple[str, int]] = []
+        self.asked: list[tuple[str, int, str | None]] = []
         self.last_used = time.monotonic()
 
     async def initialize(self) -> None:
@@ -259,8 +388,8 @@ class Finder:
             raise RuntimeError(Finder.fail)
         self.initialized = True
 
-    async def find(self, text: str, images: list[Any]) -> dict[str, Any]:
-        self.asked.append((text, len(images)))
+    async def find(self, text: str, images: list[Any], platform: str | None = None) -> dict[str, Any]:
+        self.asked.append((text, len(images), platform))
         self.last_used = time.monotonic()
         return {"query": text, "pictures": [{"boxes": []} for _ in images]}
 
@@ -271,20 +400,69 @@ class Finder:
         self.closed = True
 
 
-def plugin() -> Any:
-    cls = _plugin_class()
+PLUGINS = {"onnx": ("camera-ui-onnx", "ONNXPlugin"), "openvino": ("camera-ui-openvino", "OpenVinoPlugin")}
+
+
+def _plugin_class(which: str) -> type:
+    folder, name = PLUGINS[which]
+    path = ROOT / folder / "src" / "main.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == name)
+    cls.bases = []
+    keep = {
+        "findInPictures",
+        "_close_text_finder_when_idle",
+        "get_text_finder",
+        "_load_text_finder",
+        "getTextEmbedding",
+        "getTextEmbeddings",
+        "_clip_query",
+        "_preload_clip",
+    }
+    cls.body = [node for node in cls.body if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in keep]
+    module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls], type_ignores=[])
+    namespace: dict[str, Any] = {
+        "asyncio": asyncio,
+        "time": time,
+        "Any": Any,
+        "Image": Image,
+        "decode_image": lambda data: np.asarray(Image.open(io.BytesIO(data)).convert("RGB")),
+        "TEXT_FINDER_IDLE_S": 0.05,
+        "CLIP_TRANSLATE_WAIT_S": 0.05,
+        "MODEL_BASE_URL": "https://mirror/v1/onnx",
+        "TEXTFIND_BASE_URL": "https://mirror/v1/onnx",
+        "OWL_MODEL": textfind.OWL_MODEL,
+        "TextFinder": Finder,
+        "language_of": textfind.language_of,
+        "clip_score_band": lambda family: [0.1, 0.3],
+    }
+    exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
+    return namespace[name]
+
+
+def plugin(which: str, encoder: Encoder | None = None, *loaded: textfind.Translator) -> Any:
+    cls = _plugin_class(which)
     cls.__init__ = lambda self: None  # type: ignore[method-assign]
     p = cls()
     p.model_manager = None
-    p.logger = type("Logger", (), {"log": lambda *_: None})()
+    p.logger = Logger()
     p.text_finder = None
     p._text_finder_idle = None
     p._text_finder_load = None
     p._text_finder_error = None
+    p.translators = translators(*(loaded or (translator([5, 6, 0]),)))
     p.failed = []
     p.succeeded = []
     p._load_failed = lambda name, error: p.failed.append((name, str(error)))
     p._load_succeeded = lambda name: p.succeeded.append(name)
+    the_encoder = encoder or Encoder("clip-vit-base-patch32")
+    p.clip_model = lambda: "clip-vit-base-patch32-vision"
+
+    async def get_clip_encoder(_name: str) -> Encoder:
+        return the_encoder
+
+    p.get_clip_encoder = get_clip_encoder
+    p.encoder = the_encoder
     return p
 
 
@@ -300,19 +478,81 @@ def picture() -> bytes:
     return out.getvalue()
 
 
-def test_the_first_call_loads_in_the_background_and_says_so_then_the_finds_come():
+@pytest.mark.parametrize("which", PLUGINS)
+def test_a_russian_search_reaches_an_english_clip_in_english(which: str):
     async def run() -> None:
-        p = plugin()
+        p = plugin(which)
+        assert (await p.getTextEmbeddings("красная сумка"))[0]["embedding"] == [1.0, 0.0]
+        await p.getTextEmbedding("красная сумка")
+        await p.getTextEmbeddings("red bag", {"language": "en"})
+        assert p.encoder.asked == ["red bag", "red bag", "red bag"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_the_platforms_language_is_put_into_english_too(which: str):
+    async def run() -> None:
+        p = plugin(which, None, translator([5, 0], "ru"), translator([6, 0], "de"))
+        await p.getTextEmbeddings("Tasche", {"language": "de"})
+        await p.getTextEmbeddings("Tasche", {"language": "en"})
+        assert p.encoder.asked == ["bag", "Tasche"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_a_multilingual_clip_gets_the_query_as_it_is(which: str):
+    async def run() -> None:
+        p = plugin(which, Encoder("siglip-base-patch16-256-multilingual"))
+        await p.getTextEmbeddings("красная сумка", {"language": "ru"})
+        await p.getTextEmbedding("красная сумка")
+        assert p.encoder.asked == ["красная сумка", "красная сумка"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_a_translator_still_loading_lets_the_search_go_on_as_it_is(which: str):
+    async def run() -> None:
+        p = plugin(which, None, SlowTranslator(0.2, [5, 0]))
+        started = time.monotonic()
+        await p.getTextEmbeddings("сумка")
+        assert time.monotonic() - started < 0.15, "waited CLIP_TRANSLATE_WAIT_S, not the whole load"
+        assert p.encoder.asked == ["сумка"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_the_russian_translator_is_ready_with_an_english_clip_only(which: str):
+    async def run() -> None:
+        slow = SlowTranslator(0.01, [5, 0])
+        p = plugin(which, None, slow)
+        await p._preload_clip()
+        assert slow.initialized
+        other = SlowTranslator(0.01, [5, 0])
+        multilingual = plugin(which, Encoder("siglip-base-patch16-256-multilingual"), other)
+        await multilingual._preload_clip()
+        assert other.loads == 0
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_the_first_find_loads_in_the_background_and_says_so_then_the_finds_come(which: str):
+    async def run() -> None:
+        p = plugin(which)
         # a call ends after 30 s, the models take longer: the first answer is that they load
         assert await p.findInPictures("сумка", [picture(), picture()]) == {"query": "сумка", "loading": True, "pictures": []}
         # asked again while they load: still loading, one load
         assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
         await asyncio.sleep(0.03)
         assert Finder.made == 1 and p.succeeded == [textfind.OWL_MODEL]
-        result = await p.findInPictures("сумка", [picture(), picture()])
+        result = await p.findInPictures("сумка", [picture(), picture()], {"language": "ru"})
         assert result["pictures"] == [{"boxes": []}, {"boxes": []}]
         finder = p.text_finder
-        assert finder.asked == [("сумка", 2)]
+        assert finder.asked == [("сумка", 2, "ru")] and finder.translators is p.translators
         # asked again before it is idle: the same finder, still in memory; then idle, out of it
         await p.findInPictures("сумка", [picture()])
         assert Finder.made == 1 and not finder.closed
@@ -322,9 +562,29 @@ def test_the_first_call_loads_in_the_background_and_says_so_then_the_finds_come(
     asyncio.run(run())
 
 
-def test_loaded_and_never_asked_it_leaves_memory_too():
+@pytest.mark.parametrize("which", PLUGINS)
+def test_the_translator_of_the_query_is_loaded_with_the_finder(which: str):
     async def run() -> None:
-        p = plugin()
+        slow = SlowTranslator(0.05, [6, 0])
+        slow.language, slow.family = "de", "opus-mt-de-en"
+        p = plugin(which, None, translator([5, 0]), slow)
+        assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
+        await asyncio.sleep(0.03)
+        assert (await p.findInPictures("сумка", [picture()]))["pictures"] == [{"boxes": []}]
+        # the finder is there, the German translator not yet: the German query waits for it, loading
+        assert (await p.findInPictures("Tasche", [picture()], {"language": "de"}))["loading"] is True
+        assert p.text_finder.asked == [("сумка", 1, None)]
+        await asyncio.sleep(0.08)
+        assert slow.initialized
+        assert (await p.findInPictures("Tasche", [picture()], {"language": "de"}))["pictures"] == [{"boxes": []}]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_loaded_and_never_asked_it_leaves_memory_too(which: str):
+    async def run() -> None:
+        p = plugin(which)
         await p.findInPictures("сумка", [picture()])
         await asyncio.sleep(0.03)
         finder = p.text_finder
@@ -335,9 +595,10 @@ def test_loaded_and_never_asked_it_leaves_memory_too():
     asyncio.run(run())
 
 
-def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once():
+@pytest.mark.parametrize("which", PLUGINS)
+def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once(which: str):
     async def run() -> None:
-        p = plugin()
+        p = plugin(which)
         assert await p.findInPictures("  ", [picture()]) == {"query": "", "pictures": [{"boxes": []}]}
         assert await p.findInPictures("сумка", []) == {"query": "сумка", "pictures": []}
         assert Finder.made == 0
@@ -354,6 +615,53 @@ def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once():
         assert (await p.findInPictures("сумка", [picture()]))["pictures"] == [{"boxes": []}]
 
     asyncio.run(run())
+
+
+
+# ------------------------------------------------------------------ the two plugins: the same module, the same paths
+
+
+def test_both_plugins_carry_the_same_module():
+    assert (ROOT / "camera-ui-onnx" / "src" / "textfind.py").read_bytes() == (ROOT / "camera-ui-openvino" / "src" / "textfind.py").read_bytes()
+
+
+def test_the_onnx_manager_finds_the_models_where_the_mirror_has_them():
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("camera_ui_ml")
+    import model_manager  # type: ignore[import-not-found]
+
+    rel = model_manager.OnnxModelManager._rel_path
+    assert rel("owlvit-base-patch32") == "owlvit-base-patch32/owlvit-base-patch32.onnx"
+    assert rel("opus-mt-de-en-encoder") == "opus-mt-de-en/encoder.onnx"
+    assert rel("yolo-v9-s-320") == "yolo-v9-s-320/yolo-v9-s-320.onnx"
+
+
+def test_the_openvino_manager_reads_the_onnx_graphs_of_the_onnx_folder(monkeypatch: pytest.MonkeyPatch):
+    """Which files the OpenVINO model manager takes for these models; OpenVINO itself is not needed for that."""
+    import importlib.util
+    import types
+
+    pytest.importorskip("aiohttp")
+    pytest.importorskip("camera_ui_ml")
+    if importlib.util.find_spec("openvino") is None:
+        monkeypatch.setitem(sys.modules, "openvino", types.ModuleType("openvino"))
+    # the plugins share module names: import the OpenVINO ones afresh
+    for name in ("model_manager", "defaults", "modules", "trained", "inference"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.syspath_prepend(str(ROOT / "camera-ui-openvino" / "src"))
+    monkeypatch.setitem(sys.modules, "inference", types.SimpleNamespace(OpenVinoBackend=object))
+    import model_manager  # type: ignore[import-not-found]
+
+    manager = object.__new__(model_manager.OpenVinoModelManager)
+    onnx = model_manager.TEXTFIND_BASE_URL
+    assert onnx.endswith("/v1/onnx")
+    assert manager.model_files("owlvit-base-patch32") == {
+        "xml": (f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx", "owlvit-base-patch32/owlvit-base-patch32.onnx"),
+        "bin": (f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx", "owlvit-base-patch32/owlvit-base-patch32.onnx"),
+    }
+    assert manager.model_files("opus-mt-ru-en-decoder")["xml"] == (f"{onnx}/opus-mt-ru-en/decoder.onnx", "opus-mt-ru-en/decoder.onnx")
+    # its own models are still the IR pairs of its folder
+    assert manager.model_files("yolo-v9-s-320")["xml"][1] == "yolo-v9-s-320/yolo-v9-s-320.xml"
 
 
 # ------------------------------------------------------------------ the real models
@@ -378,18 +686,27 @@ def test_the_real_models_find_a_red_square():
         def close(self) -> None:
             pass
 
-    import json
-
-    owl = Path(MODELS) / textfind.OWL_MODEL  # type: ignore[arg-type]
-    opus = Path(MODELS) / textfind.TRANSLATOR  # type: ignore[arg-type]
-    finder = textfind.TextFinder(None, None, base_url="")  # type: ignore[arg-type]
+    folder = Path(MODELS)  # type: ignore[arg-type]
+    loaded: list[textfind.Translator] = []
+    for language, family in textfind.TRANSLATORS.items():
+        if not (folder / family).is_dir():
+            continue
+        t = textfind.Translator(None, Logger(), base_url="", language=language)  # type: ignore[arg-type]
+        t.encoder = Real(str(folder / family / "encoder.onnx"))
+        t.decoder = Real(str(folder / family / "decoder.onnx"))
+        t.tokenizer = AutoTokenizer.from_pretrained(str(folder / family))
+        t.config = json.loads((folder / family / "config.json").read_text(encoding="utf-8"))
+        t.initialized = True
+        loaded.append(t)
+    many = translators(*loaded)
+    assert asyncio.run(many.english("красный квадрат", None)) in {"red square", "the red square"}
+    if "de" in many.by_language:
+        assert asyncio.run(many.english("rotes Quadrat", "de")) in {"red square", "the red square"}
+    owl = folder / textfind.OWL_MODEL
+    finder = textfind.TextFinder(None, Logger(), base_url="", translators=many)  # type: ignore[arg-type]
     finder.owl = Real(str(owl / f"{textfind.OWL_MODEL}.onnx"))
-    finder.encoder = Real(str(opus / "encoder.onnx"))
-    finder.decoder = Real(str(opus / "decoder.onnx"))
     finder.owl_tokenizer = AutoTokenizer.from_pretrained(str(owl))
-    finder.translator_tokenizer = AutoTokenizer.from_pretrained(str(opus))
-    finder.translator_config = json.loads((opus / "config.json").read_text(encoding="utf-8"))
-    assert asyncio.run(finder.english("красный квадрат")) in {"red square", "the red square"}
+    finder.initialized = True
     image = Image.new("RGB", (640, 480), (230, 230, 230))
     ImageDraw.Draw(image).rectangle((400, 80, 559, 239), fill=(220, 20, 20))
     result = asyncio.run(finder.find("красный квадрат", [image]))

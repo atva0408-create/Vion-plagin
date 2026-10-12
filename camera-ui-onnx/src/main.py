@@ -104,8 +104,8 @@ from sensors.object_sensor import ONNXObjectSensor
 from sensors.person_embedder_sensor import ONNXPersonEmbedderSensor
 from sensors.segmenter_sensor import ONNXSegmenterSensor
 from siglip import SiglipEncoder, is_siglip
+from textfind import CLIP_TRANSLATE_WAIT_S, OWL_MODEL, TextFinder, Translators, language_of
 from textfind import IDLE_S as TEXT_FINDER_IDLE_S
-from textfind import OWL_MODEL, TextFinder
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
 
@@ -139,7 +139,9 @@ class ONNXPlugin(
         # the posture of people, asked of the attribute sensor of a camera with «Поза людей» on (pose.py)
         self.pose_estimators: dict[str, PoseEstimator] = {}
         self.attribute_backends: dict[str, Any] = {}
-        # where the words of a search are in the pictures (textfind.py): ≈720 MB, loaded when asked, closed when idle
+        # the platform's language into English for the models that understand English only (textfind.py)
+        self.translators = Translators(self.model_manager, self.logger, base_url=MODEL_BASE_URL)
+        # where the words of a search are in the pictures (textfind.py): ≈600 MB, loaded when asked, closed when idle
         self.text_finder: TextFinder | None = None
         self._text_finder_idle: asyncio.Task[None] | None = None
         # the load of the finder in the background, and why the last one failed until it is said
@@ -820,7 +822,7 @@ class ONNXPlugin(
         if not encoder.initialized:
             return {"embedding": [], "embeddingModel": "", "scoreBand": []}
 
-        embedding = await encoder.embed_text(text)
+        embedding = await encoder.embed_text(await self._clip_query(text, encoder.embedding_model, None))
         return {
             "embedding": embedding,
             "embeddingModel": encoder.embedding_model,
@@ -859,9 +861,12 @@ class ONNXPlugin(
             )
         return results
 
-    async def getTextEmbeddings(self, text: str) -> list[ClipTextEmbeddingResult]:
+    async def getTextEmbeddings(
+        self, text: str, config: dict[str, Any] | None = None
+    ) -> list[ClipTextEmbeddingResult]:
         # the plugin serves exactly one configured space
         names = [self.clip_model()]
+        platform = (config or {}).get("language")
 
         results: list[ClipTextEmbeddingResult] = []
         seen: set[str] = set()
@@ -869,7 +874,9 @@ class ONNXPlugin(
             encoder = await self.get_clip_encoder(name)
             if not encoder.initialized or encoder.embedding_model in seen:
                 continue
-            embedding = await encoder.embed_text(text)
+            embedding = await encoder.embed_text(
+                await self._clip_query(text, encoder.embedding_model, platform)
+            )
             if not embedding:
                 continue
             seen.add(encoder.embedding_model)
@@ -882,10 +889,20 @@ class ONNXPlugin(
             )
         return results
 
+    async def _clip_query(self, text: str, family: str, platform: str | None) -> str:
+        """A query for a CLIP that understands English only, in English: Russian whenever it has Cyrillic, else from
+        the platform's language. A call to the plugin ends after 30 s: a translator still loading is waited for
+        CLIP_TRANSLATE_WAIT_S, then the query goes as it is."""
+        if "multilingual" in family:
+            return text
+        return await self.translators.english(text, platform, wait=CLIP_TRANSLATE_WAIT_S)
+
     async def get_text_finder(self) -> TextFinder:
         finder = self.text_finder
         if finder is None:
-            finder = TextFinder(self.model_manager, self.logger, base_url=MODEL_BASE_URL)
+            finder = TextFinder(
+                self.model_manager, self.logger, base_url=MODEL_BASE_URL, translators=self.translators
+            )
             self.text_finder = finder
         try:
             await finder.initialize()
@@ -907,25 +924,31 @@ class ONNXPlugin(
         query = (text or "").strip()
         if not query or not images:
             return {"query": query, "pictures": [{"boxes": []} for _ in images]}
+        # the language of the platform the search comes from: a query without Cyrillic is in it
+        platform = (config or {}).get("language")
+        language = language_of(query, platform)
         finder = self.text_finder
-        if finder is None or not finder.initialized:
+        if finder is None or not finder.initialized or not self.translators.ready(language):
             if self._text_finder_error is not None:
                 error, self._text_finder_error = self._text_finder_error, None
                 raise RuntimeError(error)
-            self._load_text_finder()
+            self._load_text_finder(language)
             return {"query": query, "loading": True, "pictures": []}
         pictures = [Image.fromarray(decode_image(data)) for data in images]
         try:
-            return await finder.find(query, pictures)
+            return await finder.find(query, pictures, platform)
         finally:
             self._close_text_finder_when_idle()
 
-    def _load_text_finder(self) -> None:
+    def _load_text_finder(self, language: str | None) -> None:
         if self._text_finder_load is not None and not self._text_finder_load.done():
             return
 
         async def load() -> None:
             try:
+                translator = self.translators.load(language)
+                if translator is not None:
+                    await translator
                 await self.get_text_finder()
                 # loaded and perhaps never asked: it leaves memory as after a find
                 self._close_text_finder_when_idle()
@@ -1478,6 +1501,7 @@ class ONNXPlugin(
         if self.text_finder is not None:
             self.text_finder.close()
             self.text_finder = None
+        self.translators.close()
         self.object_detectors.clear()
         self.face_detectors.clear()
         self.face_embedders.clear()
@@ -1494,8 +1518,13 @@ class ONNXPlugin(
 
     async def _preload_clip(self) -> None:
         try:
-            await self.get_clip_encoder(self.clip_model())
+            encoder = await self.get_clip_encoder(self.clip_model())
             self.logger.log("Модели CLIP предзагружены")
+            # Russian is searched in whatever the platform speaks: its translator is ready before the first search
+            if "multilingual" not in encoder.embedding_model:
+                task = self.translators.load("ru")
+                if task is not None:
+                    await task
         except Exception as e:
             self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
 

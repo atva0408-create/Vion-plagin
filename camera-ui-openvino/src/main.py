@@ -51,6 +51,7 @@ from camera_ui_sdk import (
     SegmentationPluginResponse,
     VideoFrameData,
 )
+from PIL import Image
 
 from defaults import (
     CLIP_MODEL_LABELS,
@@ -84,6 +85,7 @@ from defaults import (
     PERSON_EMBEDDER_MODEL,
     PERSON_EMBEDDER_WIDTH,
     SEGMENTATION_MODELS,
+    TEXTFIND_BASE_URL,
     clip_family,
     clip_score_band,
     clip_text_for,
@@ -102,6 +104,8 @@ from sensors.object_sensor import OpenVinoObjectSensor
 from sensors.person_embedder_sensor import OpenVinoPersonEmbedderSensor
 from sensors.segmenter_sensor import OpenVinoSegmenterSensor
 from siglip import SiglipEncoder, is_siglip
+from textfind import CLIP_TRANSLATE_WAIT_S, OWL_MODEL, TextFinder, Translators, language_of
+from textfind import IDLE_S as TEXT_FINDER_IDLE_S
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
 
@@ -143,6 +147,14 @@ class OpenVinoPlugin(
         # the posture of people, asked of the attribute sensor of a camera with «Поза людей» on (pose.py)
         self.pose_estimators: dict[str, PoseEstimator] = {}
         self.attribute_backends: dict[str, Any] = {}
+        # the platform's language into English for the models that understand English only (textfind.py)
+        self.translators = Translators(self.model_manager, self.logger, base_url=TEXTFIND_BASE_URL)
+        # where the words of a search are in the pictures (textfind.py): ≈600 MB, loaded when asked, closed when idle
+        self.text_finder: TextFinder | None = None
+        self._text_finder_idle: asyncio.Task[None] | None = None
+        # the load of the finder in the background, and why the last one failed until it is said
+        self._text_finder_load: asyncio.Task[None] | None = None
+        self._text_finder_error: str | None = None
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         # the files of the module version each pause above is for: only another version lifts it early
@@ -807,7 +819,7 @@ class OpenVinoPlugin(
         if not encoder.initialized:
             return {"embedding": [], "embeddingModel": "", "scoreBand": []}
 
-        embedding = await encoder.embed_text(text)
+        embedding = await encoder.embed_text(await self._clip_query(text, encoder.embedding_model, None))
         return {
             "embedding": embedding,
             "embeddingModel": encoder.embedding_model,
@@ -846,8 +858,11 @@ class OpenVinoPlugin(
             )
         return results
 
-    async def getTextEmbeddings(self, text: str) -> list[ClipTextEmbeddingResult]:
+    async def getTextEmbeddings(
+        self, text: str, config: dict[str, Any] | None = None
+    ) -> list[ClipTextEmbeddingResult]:
         names = [self.clip_model()]
+        platform = (config or {}).get("language")
 
         results: list[ClipTextEmbeddingResult] = []
         seen: set[str] = set()
@@ -855,7 +870,9 @@ class OpenVinoPlugin(
             encoder = await self.get_clip_encoder(name)
             if not encoder.initialized or encoder.embedding_model in seen:
                 continue
-            embedding = await encoder.embed_text(text)
+            embedding = await encoder.embed_text(
+                await self._clip_query(text, encoder.embedding_model, platform)
+            )
             if not embedding:
                 continue
             seen.add(encoder.embedding_model)
@@ -867,6 +884,88 @@ class OpenVinoPlugin(
                 }
             )
         return results
+
+    async def _clip_query(self, text: str, family: str, platform: str | None) -> str:
+        """A query for a CLIP that understands English only, in English: Russian whenever it has Cyrillic, else from
+        the platform's language. A call to the plugin ends after 30 s: a translator still loading is waited for
+        CLIP_TRANSLATE_WAIT_S, then the query goes as it is."""
+        if "multilingual" in family:
+            return text
+        return await self.translators.english(text, platform, wait=CLIP_TRANSLATE_WAIT_S)
+
+    async def get_text_finder(self) -> TextFinder:
+        finder = self.text_finder
+        if finder is None:
+            finder = TextFinder(
+                self.model_manager, self.logger, base_url=TEXTFIND_BASE_URL, translators=self.translators
+            )
+            self.text_finder = finder
+        try:
+            await finder.initialize()
+        except Exception as error:
+            if self.text_finder is finder:
+                self.text_finder = None
+            self._load_failed(OWL_MODEL, error)
+            raise
+        self._load_succeeded(OWL_MODEL)
+        return finder
+
+    async def findInPictures(
+        self, text: str, images: list[bytes], config: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Where the words of a search are in each picture (the recorder asks it of the pictures the search by
+        description found): the query as the finder took it, per picture its boxes and the crop of a find. A call
+        ends after 30 s whatever it does, and the models take longer to load (73 s on the bench): while they load the
+        answer is `loading` and the recorder asks again; a load that failed is said to the next call."""
+        query = (text or "").strip()
+        if not query or not images:
+            return {"query": query, "pictures": [{"boxes": []} for _ in images]}
+        # the language of the platform the search comes from: a query without Cyrillic is in it
+        platform = (config or {}).get("language")
+        language = language_of(query, platform)
+        finder = self.text_finder
+        if finder is None or not finder.initialized or not self.translators.ready(language):
+            if self._text_finder_error is not None:
+                error, self._text_finder_error = self._text_finder_error, None
+                raise RuntimeError(error)
+            self._load_text_finder(language)
+            return {"query": query, "loading": True, "pictures": []}
+        pictures = [Image.fromarray(decode_image(data)) for data in images]
+        try:
+            return await finder.find(query, pictures, platform)
+        finally:
+            self._close_text_finder_when_idle()
+
+    def _load_text_finder(self, language: str | None) -> None:
+        if self._text_finder_load is not None and not self._text_finder_load.done():
+            return
+
+        async def load() -> None:
+            try:
+                translator = self.translators.load(language)
+                if translator is not None:
+                    await translator
+                await self.get_text_finder()
+                # loaded and perhaps never asked: it leaves memory as after a find
+                self._close_text_finder_when_idle()
+            except Exception as error:
+                self._text_finder_error = str(error) or type(error).__name__
+
+        self._text_finder_load = asyncio.create_task(load())
+
+    def _close_text_finder_when_idle(self) -> None:
+        if self._text_finder_idle is not None:
+            self._text_finder_idle.cancel()
+
+        async def close_later() -> None:
+            await asyncio.sleep(TEXT_FINDER_IDLE_S)
+            finder = self.text_finder
+            if finder is not None and finder.idle(time.monotonic()):
+                self.text_finder = None
+                finder.close()
+                self.logger.log("The text finder left memory: nobody asked for a while")
+
+        self._text_finder_idle = asyncio.create_task(close_later())
 
     def face_embedder_space(self) -> str:
         return resolve_model(self.storage.values.get("face_embedder_model"), DEFAULT_FACE_EMBEDDER)
@@ -1364,6 +1463,10 @@ class OpenVinoPlugin(
         for backend in self.attribute_backends.values():
             backend.close()
         self.attribute_backends.clear()
+        if self.text_finder is not None:
+            self.text_finder.close()
+            self.text_finder = None
+        self.translators.close()
         self.object_detectors.clear()
         self.face_detectors.clear()
         self.face_embedders.clear()
@@ -1380,8 +1483,13 @@ class OpenVinoPlugin(
 
     async def _preload_clip(self) -> None:
         try:
-            await self.get_clip_encoder(self.clip_model())
+            encoder = await self.get_clip_encoder(self.clip_model())
             self.logger.log("Модели CLIP предзагружены")
+            # Russian is searched in whatever the platform speaks: its translator is ready before the first search
+            if "multilingual" not in encoder.embedding_model:
+                task = self.translators.load("ru")
+                if task is not None:
+                    await task
         except Exception as e:
             self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
 

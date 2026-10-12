@@ -1,3 +1,8 @@
+## [1.7.0]
+
+- The search by description understands the platform's language: CLIP ViT-B/32, the default model, knows English only, and a query in Russian found nothing. A query is put into English by opus-mt (≈110 MB, 0.2-0.3 s a query) from Russian whenever it has Cyrillic, whatever the platform speaks, else from the language of the platform the search comes from (German); the multilingual SigLIP gets the query as it is. The Russian translator is loaded at start with an English CLIP, another one when first needed (the search goes as typed while it loads, at most 15 s). Needs ViON NVR 0.19.0 for the platform's language
+- Words found in pictures: ViON's recordings ask where the thing searched for by description is in the picture of each event found («красная сумка», «человек с велосипедом»), and show the find. The query is put into English the same way, OWL-ViT B/32 boxes the thing, a find comes with its crop. The model (≈600 MB) downloads and loads in the background when first asked for — meanwhile the answer says it loads, a failed load is said to the next call — and leaves memory after five minutes without a search; a picture takes 1-4 s on a processor. Needs ViON NVR 0.19.0
+
 ## [1.6.0]
 
 - Posture of people: with «Поза людей» on, the attribute sensor («ViON: признаки») tells of every person a camera sees whether they stand, sit or lie, and the event gets it as the attribute «поза» («поза: лежит»). Turn it on in ViON: Extensions → Modules → «Поза людей», or in the settings of the camera's attribute sensor. Its model (RTMPose-t) loads with the first person such a camera sees, never at start. Too little of a person seen, or a person bent over, says nothing.

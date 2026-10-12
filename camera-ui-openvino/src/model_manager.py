@@ -15,10 +15,12 @@ from defaults import (
     MODEL_LFS_URL,
     MODULE_BACKENDS,
     STATIC_INPUT_SHAPES,
+    TEXTFIND_BASE_URL,
     model_version,
 )
 from inference import OpenVinoBackend
 from modules import installed_modules, is_module
+from textfind import model_file
 from trained import is_trained, trained_models
 
 
@@ -54,6 +56,10 @@ class OpenVinoModelManager(BaseModelManager):
             if backend == "openvino":
                 return {"xml": ("", paths[".xml"]), "bin": ("", paths[".bin"])}
             return {"xml": ("", paths[".onnx"]), "bin": ("", paths[".onnx"])}
+        # the translators and the text finder: ONNX graphs from the ONNX folder of the mirror, read as they are
+        own = model_file(model_name)
+        if own is not None:
+            return {"xml": (f"{TEXTFIND_BASE_URL}/{own}", own), "bin": (f"{TEXTFIND_BASE_URL}/{own}", own)}
         xml_rel, bin_rel = self._rel_files(model_name)
         return {
             "xml": (f"{MODEL_BASE_URL}/{xml_rel}", xml_rel),

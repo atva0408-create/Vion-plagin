@@ -1,12 +1,19 @@
-"""Words found in pictures: the search by description finds the events, this shows where in the picture the thing asked
-for is («красная сумка», «человек с велосипедом»). A query in Russian is put into English by opus-mt-ru-en (Marian,
-ONNX encoder and decoder), then OWL-ViT B/32 boxes it in each picture.
+"""Words in the language of the platform for models that understand English only, and words found in pictures. Kept
+identical in camera-ui-onnx and camera-ui-openvino (the legacy plugins copy them).
 
-Chosen on the bench (2026-10-12, public COCO pictures, i5-8300H busy with four cameras): OWL-ViT fp32 takes 2.8-4.3 s a
-picture; its quantized copy is as slow and far less sure of small things (a stop sign 0.06 against 0.40, a TV remote
-0.04 against 0.17); OWLv2 took 23 s a picture and ran out of memory. OWL understands English only, the search is asked
-in Russian: hence the translator (0.2-0.3 s a query). The models (≈720 MB) load when first asked for and leave memory
-when nobody asks for a while (main.py).
+The search by description is asked in the language of the person (Russian above all), and CLIP ViT-B/32, the default
+model of both plugins, understands English only: a query in Russian found nothing. A query is put into English by
+opus-mt (Marian, ONNX encoder and decoder; 0.2-0.3 s a query): from Russian whenever it has Cyrillic, whatever the
+platform speaks, else from the language of the platform the search comes from, when a translator knows it.
+
+The search in pictures shows where in the picture of an event the thing asked for is («красная сумка», «человек с
+велосипедом»): OWL-ViT B/32 boxes the query, put into English the same way. Chosen on the bench (2026-10-12, public
+COCO pictures, i5-8300H busy with four cameras): OWL-ViT fp32 takes 2.8-4.3 s a picture; its quantized copy is as slow
+and far less sure of small things (a stop sign 0.06 against 0.40, a TV remote 0.04 against 0.17); OWLv2 took 23 s a
+picture and ran out of memory. Its model (≈600 MB) loads when first asked for and leaves memory when nobody asks for a
+while (main.py); a translator (≈110 MB) stays.
+
+The models are ONNX, on the mirror under v1/onnx (OpenVINO reads them as they are): model_file names their paths.
 """
 
 from __future__ import annotations
@@ -27,10 +34,9 @@ if TYPE_CHECKING:
     from camera_ui_sdk import LoggerService
 
 OWL_MODEL = "owlvit-base-patch32"
-TRANSLATOR = "opus-mt-ru-en"
-TRANSLATOR_ENCODER = f"{TRANSLATOR}-encoder"
-TRANSLATOR_DECODER = f"{TRANSLATOR}-decoder"
 OWL_FILES = ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.json", "merges.txt")
+# the languages a query is put into English from, and their translators
+TRANSLATORS = {"ru": "opus-mt-ru-en", "de": "opus-mt-de-en"}
 TRANSLATOR_FILES = (
     "source.spm",
     "target.spm",
@@ -54,15 +60,32 @@ SAME_THING = 0.3
 CROP_MARGIN = 0.15
 CROP_SIDE = 320
 MAX_TOKENS = 24
-# the models leave memory when nobody asked for this long
+# the finder's model leaves memory when nobody asked for this long
 IDLE_S = 300
+# a search by description waits this long for a translator still loading (a call to a plugin ends after 30 s)
+CLIP_TRANSLATE_WAIT_S = 15
 CYRILLIC = re.compile("[а-яё]", re.IGNORECASE)
-# single words the translator puts as nobody would ask a picture («человек» → "human beings")
-WORDS = {"человек": "person", "люди": "people"}
+# single words a translator puts as nobody would ask a picture («человек» → "human beings")
+WORDS = {"ru": {"человек": "person", "люди": "people"}}
 
 
-def needs_translation(text: str) -> bool:
-    return bool(CYRILLIC.search(text))
+def language_of(text: str, platform: str | None) -> str | None:
+    """The language a query is put into English from: Russian whenever it has Cyrillic, whatever the platform speaks;
+    else the platform's language (a BCP 47 tag) when a translator knows it; nothing for English."""
+    if CYRILLIC.search(text):
+        return "ru"
+    language = (platform or "").split("-")[0].lower()
+    return language if language in TRANSLATORS else None
+
+
+def model_file(model_name: str) -> str | None:
+    """The path of a model of this module on the mirror and in the models folder, or nothing for another model."""
+    if model_name == OWL_MODEL:
+        return f"{OWL_MODEL}/{OWL_MODEL}.onnx"
+    for family in TRANSLATORS.values():
+        if model_name in (f"{family}-encoder", f"{family}-decoder"):
+            return f"{family}/{model_name.rpartition('-')[2]}.onnx"
+    return None
 
 
 def tidy(english: str) -> str:
@@ -70,9 +93,20 @@ def tidy(english: str) -> str:
     return english.strip().rstrip(".!").strip().lower()
 
 
-def ordered(backend: InferenceBackend, named: dict[str, Any]) -> list[Any]:
-    """The inputs in the order of the model's own (the backend feeds a list by position)."""
-    names = getattr(backend, "_input_names", None) or list(named)
+def input_names(backend: Any) -> list[str] | None:
+    """The names of a model's inputs in its order: ONNX's backend keeps them, OpenVINO's compiled model has them."""
+    names = getattr(backend, "_input_names", None)
+    if names:
+        return list(names)
+    compiled = getattr(backend, "_compiled", None)
+    if compiled is not None:
+        return [port.get_any_name() for port in compiled.inputs]
+    return None
+
+
+def ordered(backend: Any, named: dict[str, Any]) -> list[Any]:
+    """The inputs in the order of the model's own (both backends feed a list by position)."""
+    names = input_names(backend) or list(named)
     return [named[name] for name in names]
 
 
@@ -131,21 +165,11 @@ def crop_of(image: Image.Image, box: dict[str, float]) -> bytes:
     return out.getvalue()
 
 
-class TextFinder:
-    def __init__(self, manager: BaseModelManager, logger: LoggerService, *, base_url: str) -> None:
-        self.manager = manager
-        self.logger = logger
-        self.base_url = base_url
-        self.owl: InferenceBackend | None = None
-        self.encoder: InferenceBackend | None = None
-        self.decoder: InferenceBackend | None = None
-        self.owl_tokenizer: Any = None
-        self.translator_tokenizer: Any = None
-        self.translator_config: dict[str, Any] = {}
+class _Loaded:
+    """Something loaded once, by whoever asks first; a failed load is tried again by the next."""
+
+    def __init__(self) -> None:
         self.initialized = False
-        self.last_used = time.monotonic()
-        # finds under way: the models are not closed under them
-        self.busy = 0
         self._init_task: asyncio.Task[None] | None = None
 
     async def initialize(self) -> None:
@@ -160,43 +184,60 @@ class TextFinder:
             if self._init_task is task and task.done() and task.exception() is not None:
                 self._init_task = None
 
+    @property
+    def loading(self) -> bool:
+        return self._init_task is not None and not self._init_task.done()
+
+    async def _load(self) -> None:
+        raise NotImplementedError
+
+
+class Translator(_Loaded):
+    """One language into English (opus-mt-<language>-en)."""
+
+    def __init__(
+        self, manager: BaseModelManager, logger: LoggerService, *, base_url: str, language: str
+    ) -> None:
+        super().__init__()
+        self.manager = manager
+        self.logger = logger
+        self.base_url = base_url
+        self.language = language
+        self.family = TRANSLATORS[language]
+        self.encoder: InferenceBackend | None = None
+        self.decoder: InferenceBackend | None = None
+        self.tokenizer: Any = None
+        self.config: dict[str, Any] = {}
+
     async def _load(self) -> None:
         from transformers import AutoTokenizer
 
         started = time.monotonic()
-        self.logger.log(f"Loading the text finder: {OWL_MODEL} + {TRANSLATOR}...")
-        for family, files in ((OWL_MODEL, OWL_FILES), (TRANSLATOR, TRANSLATOR_FILES)):
-            for name in files:
-                await self.manager._download(f"{self.base_url}/{family}/{name}", f"{family}/{name}")  # noqa: SLF001
-        self.owl = await self.manager.ensure_backend(OWL_MODEL)
-        self.encoder = await self.manager.ensure_backend(TRANSLATOR_ENCODER)
-        self.decoder = await self.manager.ensure_backend(TRANSLATOR_DECODER)
-        owl_dir = os.path.join(self.manager.model_path, OWL_MODEL)
-        translator_dir = os.path.join(self.manager.model_path, TRANSLATOR)
-        self.owl_tokenizer = await asyncio.to_thread(AutoTokenizer.from_pretrained, owl_dir)
-        self.translator_tokenizer = await asyncio.to_thread(AutoTokenizer.from_pretrained, translator_dir)
-        with open(os.path.join(translator_dir, "config.json"), encoding="utf-8") as handle:
-            self.translator_config = json.load(handle)
+        self.logger.log(f"Loading the translator {self.family}...")
+        for name in TRANSLATOR_FILES:
+            await self.manager._download(f"{self.base_url}/{self.family}/{name}", f"{self.family}/{name}")  # noqa: SLF001
+        self.encoder = await self.manager.ensure_backend(f"{self.family}-encoder")
+        self.decoder = await self.manager.ensure_backend(f"{self.family}-decoder")
+        folder = os.path.join(self.manager.model_path, self.family)
+        self.tokenizer = await asyncio.to_thread(AutoTokenizer.from_pretrained, folder)
+        with open(os.path.join(folder, "config.json"), encoding="utf-8") as handle:
+            self.config = json.load(handle)
         self.initialized = True
-        self.logger.success(f"Loaded the text finder in {time.monotonic() - started:.1f} s")
+        self.logger.success(f"Loaded the translator {self.family} in {time.monotonic() - started:.1f} s")
 
     async def english(self, text: str) -> str:
-        """The query in English: as it is when it has no Cyrillic, else put by the translator (greedy, the decoder given
-        its whole output each step: a query is a few words)."""
-        query = text.strip()
-        if not needs_translation(query):
-            return query
-        known = WORDS.get(query.lower())
+        """Greedy, the decoder given its whole output each step: a query is a few words."""
+        known = WORDS.get(self.language, {}).get(text.lower())
         if known:
             return known
         assert self.encoder is not None and self.decoder is not None
-        encoded = await asyncio.to_thread(self.translator_tokenizer, query, return_tensors="np")
+        encoded = await asyncio.to_thread(self.tokenizer, text, return_tensors="np")
         ids = np.asarray(encoded["input_ids"], dtype=np.int64)
         mask = np.asarray(encoded["attention_mask"], dtype=np.int64)
         hidden = (
             await self.encoder.infer(ordered(self.encoder, {"input_ids": ids, "attention_mask": mask}))
         )[0]
-        config = self.translator_config
+        config = self.config
         out = [int(config["decoder_start_token_id"])]
         for _ in range(MAX_TOKENS):
             named = {
@@ -213,15 +254,103 @@ class TextFinder:
             if token == int(config["eos_token_id"]):
                 break
             out.append(token)
-        return tidy(self.translator_tokenizer.decode(out[1:], skip_special_tokens=True))
+        return tidy(self.tokenizer.decode(out[1:], skip_special_tokens=True))
 
-    async def find(self, text: str, images: list[Image.Image]) -> dict[str, Any]:
+
+class Translators:
+    """The translators of a plugin, one a language, loaded when first needed and kept."""
+
+    def __init__(self, manager: BaseModelManager, logger: LoggerService, *, base_url: str) -> None:
+        self.manager = manager
+        self.logger = logger
+        self.base_url = base_url
+        self.by_language: dict[str, Translator] = {}
+
+    def of(self, language: str) -> Translator:
+        translator = self.by_language.get(language)
+        if translator is None:
+            translator = Translator(self.manager, self.logger, base_url=self.base_url, language=language)
+            self.by_language[language] = translator
+        return translator
+
+    def ready(self, language: str | None) -> bool:
+        return language is None or self.of(language).initialized
+
+    def load(self, language: str | None) -> asyncio.Task[None] | None:
+        """Loads the translator of `language` in the background (nothing to load for English)."""
+        if language is None or self.of(language).initialized:
+            return None
+        return asyncio.ensure_future(self.of(language).initialize())
+
+    async def english(self, text: str, platform: str | None, *, wait: float | None = None) -> str:
+        """`text` in English. A translator not loaded yet is waited for `wait` seconds at most (a call may take only so
+        long; nothing is the whole load): past it the query goes as it is, the translator loading on."""
+        query = text.strip()
+        language = language_of(query, platform)
+        if language is None:
+            return query
+        translator = self.of(language)
+        if not translator.initialized:
+            load = asyncio.ensure_future(translator.initialize())
+            if wait is None:
+                await load
+            else:
+                try:
+                    await asyncio.wait_for(asyncio.shield(load), wait)
+                except TimeoutError:
+                    self.logger.log(
+                        f"The translator {translator.family} still loads: «{query}» searched as it is"
+                    )
+                    return query
+        return await translator.english(query)
+
+    def close(self) -> None:
+        for translator in self.by_language.values():
+            for backend in (translator.encoder, translator.decoder):
+                if backend is not None:
+                    backend.close()
+            forget = getattr(self.manager, "forget", None)
+            if forget is not None:
+                for name in (f"{translator.family}-encoder", f"{translator.family}-decoder"):
+                    forget(name)
+        self.by_language.clear()
+
+
+class TextFinder(_Loaded):
+    def __init__(
+        self, manager: BaseModelManager, logger: LoggerService, *, base_url: str, translators: Translators
+    ) -> None:
+        super().__init__()
+        self.manager = manager
+        self.logger = logger
+        self.base_url = base_url
+        self.translators = translators
+        self.owl: InferenceBackend | None = None
+        self.owl_tokenizer: Any = None
+        self.last_used = time.monotonic()
+        # finds under way: the model is not closed under them
+        self.busy = 0
+
+    async def _load(self) -> None:
+        from transformers import AutoTokenizer
+
+        started = time.monotonic()
+        self.logger.log(f"Loading the text finder: {OWL_MODEL}...")
+        for name in OWL_FILES:
+            await self.manager._download(f"{self.base_url}/{OWL_MODEL}/{name}", f"{OWL_MODEL}/{name}")  # noqa: SLF001
+        self.owl = await self.manager.ensure_backend(OWL_MODEL)
+        folder = os.path.join(self.manager.model_path, OWL_MODEL)
+        self.owl_tokenizer = await asyncio.to_thread(AutoTokenizer.from_pretrained, folder)
+        self.initialized = True
+        self.logger.success(f"Loaded the text finder in {time.monotonic() - started:.1f} s")
+
+    async def find(self, text: str, images: list[Image.Image], platform: str | None = None) -> dict[str, Any]:
         """Where `text` is in each picture: the query as asked of OWL, and per picture its boxes (best first) with the
         crop of the best one when it is taken for the thing."""
         self.last_used = time.monotonic()
         self.busy += 1
         try:
-            return await self._find(text, images)
+            return await self._find(text, images, platform)
         finally:
             self.busy -= 1
             self.last_used = time.monotonic()
@@ -229,9 +358,9 @@ class TextFinder:
     def idle(self, now: float) -> bool:
         return self.busy == 0 and now - self.last_used >= IDLE_S
 
-    async def _find(self, text: str, images: list[Image.Image]) -> dict[str, Any]:
+    async def _find(self, text: str, images: list[Image.Image], platform: str | None) -> dict[str, Any]:
         assert self.owl is not None
-        query = await self.english(text)
+        query = await self.translators.english(text, platform)
         tokens = await asyncio.to_thread(
             self.owl_tokenizer,
             [f"a photo of {query}"],
@@ -260,14 +389,12 @@ class TextFinder:
         return {"query": query, "foundScore": FOUND_SCORE, "pictures": pictures}
 
     def close(self) -> None:
-        """Out of memory: the backends closed, the manager to load them anew when asked again."""
-        for backend in (self.owl, self.encoder, self.decoder):
-            if backend is not None:
-                backend.close()
+        """Out of memory: the model closed, the manager to load it anew when asked again (the translators stay)."""
+        if self.owl is not None:
+            self.owl.close()
         forget = getattr(self.manager, "forget", None)
         if forget is not None:
-            for name in (OWL_MODEL, TRANSLATOR_ENCODER, TRANSLATOR_DECODER):
-                forget(name)
-        self.owl = self.encoder = self.decoder = None
+            forget(OWL_MODEL)
+        self.owl = None
         self.initialized = False
         self._init_task = None
