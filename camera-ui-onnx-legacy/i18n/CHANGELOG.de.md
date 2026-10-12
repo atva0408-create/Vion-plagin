@@ -2,6 +2,7 @@
 
 - Körperhaltung: Mit „Поза людей“ meldet der Merkmalssensor („ViON: признаки“) für jede Person im Bild, ob sie steht, sitzt oder liegt, und das Ereignis erhält es als Merkmal „поза“ („поза: лежит“). Einschalten in ViON: Erweiterungen → Module → „Körperhaltung“ oder in den Einstellungen des Merkmalssensors der Kamera. Das Modell (RTMPose-t) wird mit der ersten Person geladen, die eine solche Kamera sieht, nicht beim Start. Ist zu wenig von einer Person zu sehen oder ist sie vorgebeugt, wird keine Haltung genannt.
 - Ein Haltungsmodell, das lädt, aber an den Ausschnitten scheitert, wird entladen und ViON als nicht funktionierend mit Grund gemeldet, nach zehn Minuten erneut geladen; es sieht nicht mehr aus, als würde es analysieren
+- Benötigt ViON 2.4.2 oder neuer: ältere ViON-Versionen behielten pro Person eine Antwort je Bild und Aufenthalt, die Haltung hätte die Antworten der trainierten Fragen verdrängt und einen Haltungswechsel verloren
 
 ## [1.3.2]
 
