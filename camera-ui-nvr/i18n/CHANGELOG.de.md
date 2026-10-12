@@ -1,6 +1,7 @@
 ## [0.18.0]
 
 - Eine Frage eines Moduls, die es mit eigenen Wörtern beantwortet — die Körperhaltung: стоит, сидит, лежит —, wird mit einem davon gestellt: „поза: лежит“ oder nur „лежит“. Der Assistent findet die Ereignisse, in denen jemand lag (query_events, event_stats), rechnet zusammen, wie lange jemand an einem Tag lag (attribute_time), und zählt die Haltungen in der Tageszusammenfassung; die anderen Wörter der Frage sind ihr „nein“ (steht oder sitzt: liegt nicht). Die Liste der Fragen nennt eine solche Frage mit ihren Wörtern
+- Wie lange ein Modul antwortete, zählt die Zeit jeder Antwort, wenn ViON sie mitgibt (dieselbe Antwort am Stück innerhalb eines Aufenthalts: zehn Minuten gestanden, dann fünfzig gelegen), nicht den ganzen Aufenthalt; frühere Ereignisse zählen weiter ihr ganzes Segment
 
 ## [0.17.0]
 

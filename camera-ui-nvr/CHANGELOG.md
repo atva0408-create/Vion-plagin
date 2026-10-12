@@ -1,6 +1,7 @@
 ## [0.18.0]
 
 - A question of a module answered with words of its own — the posture of people: стоит, сидит, лежит — is asked by one of them: «поза: лежит», or just «лежит». The assistant finds the events in which someone lay (query_events, event_stats), adds up how long someone lay a day (attribute_time) and counts the postures in a day's summary; the other words of the question are its «no» (standing or sitting: not lying). The list of the questions names such a question by its words
+- How long a module answered counts the time of each answer when ViON gives it (a run of the same answer within one stay: stood ten minutes, then lay fifty), not the whole stay; events from before keep counting their whole segment
 
 ## [0.17.0]
 
