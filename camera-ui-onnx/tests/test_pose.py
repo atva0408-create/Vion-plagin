@@ -64,6 +64,8 @@ def test_the_borders_of_the_postures():
     # the thigh from the vertical under an upright torso: past 55 sitting
     assert of(0, 45) == "стоит"
     assert of(0, 65) == "сидит"
+    # the knees above the hips: sitting whatever the thigh's angle (a thigh pointing up at the camera)
+    assert of(0, 160) == "сидит"
 
 
 def test_too_little_seen_says_nothing():

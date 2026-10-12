@@ -111,7 +111,9 @@ def posture(points: list[tuple[float, float, float]]) -> tuple[str, float] | Non
         # bent over, crouching: neither of the three
         return None
     sure = (shoulders[2] + hips[2] + knees[2]) / 3
-    if _from_vertical(hips, knees) >= SITTING_THIGH:
+    # the knees above the hips sit whatever the thigh's angle: measured on the bench, never so in a standing person
+    # (knees 24-38 px below the hips), and a seated child at a computer with the thigh at 55° had them 13 px above
+    if _from_vertical(hips, knees) >= SITTING_THIGH or knees[1] < hips[1]:
         return "сидит", sure
     return "стоит", sure
 
