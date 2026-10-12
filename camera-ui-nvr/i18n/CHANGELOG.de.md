@@ -1,3 +1,7 @@
+## [0.18.0]
+
+- Eine Frage eines Moduls, die es mit eigenen Wörtern beantwortet — die Körperhaltung: стоит, сидит, лежит —, wird mit einem davon gestellt: „поза: лежит“ oder nur „лежит“. Der Assistent findet die Ereignisse, in denen jemand lag (query_events, event_stats), rechnet zusammen, wie lange jemand an einem Tag lag (attribute_time), und zählt die Haltungen in der Tageszusammenfassung; die anderen Wörter der Frage sind ihr „nein“ (steht oder sitzt: liegt nicht). Die Liste der Fragen nennt eine solche Frage mit ihren Wörtern
+
 ## [0.17.0]
 
 - Wohin eine Person ging, Kamera für Kamera: aus einem Moment der Personensuche zeigt die Aufnahmenseite den Weg („Weg“) — die Aufenthalte der Person auf jeder Kamera mit Personen-Wiedererkennung, der Reihe nach, eine halbe Stunde davor und danach, jeweils mit ihrem Moment; der Assistent beantwortet «wohin ging er dann» mit demselben Weg (person_route). Re-ID vergleicht Kleidung und Statur, ein Aufenthalt kann also jemand ähnlich Gekleidetes sein; die Kameras, die niemanden sahen, werden genannt

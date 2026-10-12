@@ -1,3 +1,7 @@
+## [0.18.0]
+
+- A question of a module answered with words of its own — the posture of people: стоит, сидит, лежит — is asked by one of them: «поза: лежит», or just «лежит». The assistant finds the events in which someone lay (query_events, event_stats), adds up how long someone lay a day (attribute_time) and counts the postures in a day's summary; the other words of the question are its «no» (standing or sitting: not lying). The list of the questions names such a question by its words
+
 ## [0.17.0]
 
 - Where a person went, camera after camera: from a moment of the people search the recordings page shows the route (Маршрут) — the stays of the person on each camera with person re-ID, in time order, half an hour before and after, each with its moment; the assistant answers «куда он пошёл потом» with the same route (person_route). Re-ID compares clothes and build, so a stay can be someone dressed alike; the cameras that saw nobody are named

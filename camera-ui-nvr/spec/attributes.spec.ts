@@ -333,5 +333,50 @@ assert.match((await call('attribute_time', { attribute: Q, date: '2026-02-31' })
 assert.match((await call('attribute_time', { attribute: Q, date: '2999-01-01' })).error ?? '', /has not come yet/);
 assert.match((await call('attribute_time', { attribute: Q, date: '2026-13-45' })).error ?? '', /date must be YYYY-MM-DD/);
 
+// ---- a question answered with words of its own: the posture of people (поза: стоит, сидит, лежит) ----
+const P = 'поза';
+const p1 = eventAt(
+  'p1',
+  'cam-door',
+  [
+    ['2026-10-05T09:00:00', '2026-10-05T09:01:00', 'стоит'],
+    ['2026-10-05T09:05:00', '2026-10-05T09:20:00', 'лежит', 'лежит'],
+  ],
+  { question: P },
+);
+const p2 = eventAt('p2', 'cam-door', [['2026-10-05T15:00:00', '2026-10-05T15:02:00', 'сидит']], { question: P });
+for (const ev of [p1, p2]) await nvr.ingestDetectionEvent(ev.cameraId, 'end' as never, ev as never);
+assert.equal(answerOf(P, `${P}: лежит`), undefined, 'a word of its own is no yes or no by itself');
+assert.equal(answerOf(P, `${P}: лежит`, 'лежит'), 'yes');
+assert.equal(answerOf(P, `${P}: стоит`, 'лежит'), 'no', 'another word of the question is its no');
+assert.deepEqual(answersOf(p1), { [`${P}: стоит`]: { yes: 1, no: 0 }, [`${P}: лежит`]: { yes: 2, no: 0 } });
+// listed by its words, not as a question of yes and no
+const postures = content<{ attributes: { attribute: string }[] }>(await call('attribute_time', { date: '2026-10-05', camera: 'Дверь' }));
+assert.deepEqual(
+  postures.attributes
+    .map((q) => q.attribute)
+    .filter((q) => q.startsWith(P))
+    .sort(),
+  [`${P}: лежит`, `${P}: сидит`, `${P}: стоит`],
+);
+// how long someone lay: a word asked by itself finds its question; the other words are its «no»
+const lay = content<Day & { attribute: string }>(await call('attribute_time', { attribute: 'лежит', camera: 'Дверь', date: '2026-10-05' }));
+assert.equal(lay.attribute, `${P}: лежит`);
+assert.deepEqual(spans(lay), [['09:05', '09:20']]);
+assert.equal(lay.minutes, 15);
+assert.deepEqual(lay.answers, { yes: 2, no: 2 });
+assert.match((await call('attribute_time', { attribute: P, date: '2026-10-05' })).error ?? '', /^"поза" fits several: /);
+// query_events and the day's summary
+const oct5 = { from: new Date(at('2026-10-05T00:00:00')).toISOString(), to: new Date(at('2026-10-05T23:59:00')).toISOString() };
+assert.deepEqual(ids(content(await call('query_events', { ...oct5, attribute: `${P}: лежит` }))), ['p1']);
+assert.deepEqual(ids(content(await call('query_events', { ...oct5, attribute: 'сидит' }))), ['p2']);
+assert.deepEqual(ids(content(await call('query_events', { ...oct5, attribute: 'лежит', answer: 'no' }))), ['p1', 'p2'], 'standing or sitting: not lying');
+const p2brief = content<{ events: { id: string; answers?: unknown }[] }>(await call('query_events', { ...oct5, attribute: 'сидит' })).events[0];
+assert.deepEqual(p2brief.answers, { [`${P}: сидит`]: { yes: 1, no: 0 } });
+const oct5summary = content<{ byAnswer: Record<string, { yes: number; no: number }> }>(await call('summarize_day', { date: '2026-10-05' }));
+assert.deepEqual(oct5summary.byAnswer, { [`${P}: стоит`]: { yes: 1, no: 0 }, [`${P}: лежит`]: { yes: 1, no: 0 }, [`${P}: сидит`]: { yes: 1, no: 0 } });
+const lying = content<{ total: number }>(await call('event_stats', { date: '2026-10-05', days: 1, attribute: 'лежит' }));
+assert.equal(lying.total, 1, 'the events in which someone lay');
+
 console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer OK');
 process.exit(0);

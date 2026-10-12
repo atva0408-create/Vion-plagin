@@ -53,6 +53,8 @@ export interface AssistantHost {
   crossingLabels(cameraIds: string[] | undefined, startMs: number, endMs: number): string[];
   /** The event types of a while with the events of each; `attributes`: the attribute types of their segments. */
   eventTypes(cameraIds: string[] | undefined, startMs: number, endMs: number, attributes?: boolean): Map<string, number>;
+  /** The answers of the attributes of a while (their labels, «поза: лежит») with the events of each. */
+  attributeAnswers?(cameraIds: string[] | undefined, startMs: number, endMs: number): Map<string, number>;
   event(eventId: string): RecordedEvent | undefined;
   cameras(): { id: string; name: string }[];
   search(text: string, limit: number): Promise<ClipSearchResult[]>;
@@ -143,7 +145,9 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         },
         attribute: {
           type: 'string',
-          description: 'Only events where a module answered this question (an attribute type or part of it, e.g. "играет в компьютер"; attribute_time lists them)',
+          description:
+            'Only events where a module answered this question (an attribute type or part of it, e.g. "играет в компьютер"; a question answered ' +
+            'with words of its own is asked with one of them, e.g. "поза: лежит" or just "лежит"; attribute_time lists them)',
         },
         answer: { type: 'string', enum: ['yes', 'no', 'any'], description: 'With attribute: the answer wanted, default yes' },
         plate: { type: 'string', description: 'Only events with a license plate containing this text' },
@@ -187,7 +191,8 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
   {
     name: 'attribute_time',
     description:
-      'How long a module answered "yes" to its question (an attribute type such as "играет в компьютер"), per day: the minutes, each stretch from-to, ' +
+      'How long a module answered "yes" to its question (an attribute type such as "играет в компьютер", or one word of a question answered with ' +
+      'words of its own, "поза: лежит": how long someone lay), per day: the minutes, each stretch from-to, ' +
       'and the pauses between stretches (how many, how long) - for "how long did he play", "how many breaks did he take". Approximate: the module ' +
       'answers on the frames the detector looks at; stretches are joined within one event or 10 minutes, and end where it said "no" twice or more ' +
       'for 3 minutes. Several cameras answering are counted apart (`cameras`): say which is whose. When VOICE runs a screen-time scenario for the ' +
@@ -491,12 +496,13 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
   }
   const plate = normalizePlate(input.plate);
   const face = typeof input.face === 'string' ? input.face.trim().toLowerCase() : '';
-  let attribute = '';
+  let question: Question | undefined;
   if (typeof input.attribute === 'string' && input.attribute.trim()) {
-    const question = questionOf(host, camera.ids, input.attribute, knownFrom, range.to);
-    if ('error' in question) return question;
-    attribute = question.type;
+    const found = questionOf(host, camera.ids, input.attribute, knownFrom, range.to);
+    if ('error' in found) return found;
+    question = found;
   }
+  const attribute = question?.type ?? '';
   const answer = input.answer === 'no' || input.answer === 'any' ? input.answer : 'yes';
 
   // plate, face and an answer are matched here: the store filter knows attribute types, not their values
@@ -515,7 +521,7 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
     narrowed ? SUMMARY_SCAN : limit,
   );
   const answered = (ev: RecordedEvent) => {
-    const counts = answersOf(ev)[attribute];
+    const counts = answersTo(ev, question!);
     return !!counts && (answer === 'any' || counts[answer] > 0);
   };
   const matching = events.filter(
@@ -604,23 +610,45 @@ function knownLabels(host: AssistantHost, ids: string[] | undefined, from: numbe
   return seen;
 }
 
-/** The questions the modules answered in a while (`from`-`to`), with the events of each, the most asked first. */
-function knownQuestions(host: AssistantHost, ids: string[] | undefined, from: number, to: number): { attribute: string; events: number }[] {
-  return [...host.eventTypes(ids, from, to, true).entries()]
-    .filter(([type]) => !NOT_MODULE_ATTRIBUTES.has(type))
-    .sort((a, b) => b[1] - a[1])
-    .map(([attribute, events]) => ({ attribute, events }));
+/**
+ * A question of the modules as a person asks it. `type` is the attribute type of the events; `word`, one answer of a
+ * question whose answers are words of its own (the posture: стоит, сидит, лежит), asked as «поза: лежит»: that word
+ * is its «yes», the other words its «no». `attribute` is how it is named back: the type, or «type: word».
+ */
+export interface Question {
+  attribute: string;
+  type: string;
+  word?: string;
 }
 
-/** The question a person named: the exact type, else the one that has the words, among the questions of a while. */
-function questionOf(host: AssistantHost, ids: string[] | undefined, value: unknown, from: number, to: number): { type: string } | { error: string } {
+/**
+ * The questions the modules answered in a while (`from`-`to`), with the events of each, the most asked first. A
+ * question answered with words of its own is listed by them, «поза: лежит», «поза: стоит», and as itself only when
+ * it was answered yes or no as well.
+ */
+function knownQuestions(host: AssistantHost, ids: string[] | undefined, from: number, to: number): (Question & { events: number })[] {
+  const answers = [...(host.attributeAnswers?.(ids, from, to) ?? new Map<string, number>()).entries()];
+  const questions: (Question & { events: number })[] = [];
+  for (const [type, events] of host.eventTypes(ids, from, to, true)) {
+    if (NOT_MODULE_ATTRIBUTES.has(type)) continue;
+    const prefix = `${type.toLowerCase()}:`;
+    const said = answers.filter(([label]) => label.toLowerCase().startsWith(prefix)).map(([label, n]) => [answerWord(type, label) ?? '', n] as const);
+    const words = said.filter(([word]) => word && !YES.has(word) && !NO.has(word));
+    for (const [word, n] of words) questions.push({ attribute: `${type}: ${word}`, type, word, events: n });
+    if (!words.length || said.some(([word]) => YES.has(word) || NO.has(word))) questions.push({ attribute: type, type, events });
+  }
+  return questions.sort((a, b) => b.events - a.events);
+}
+
+/** The question a person named: the exact one, else the one that has the words, among the questions of a while. */
+function questionOf(host: AssistantHost, ids: string[] | undefined, value: unknown, from: number, to: number): Question | { error: string } {
   const wanted = String(value).trim().toLowerCase();
-  const known = knownQuestions(host, ids, from, to).map((q) => q.attribute);
-  const exact = known.filter((type) => type.toLowerCase() === wanted);
-  const partial = exact.length ? exact : known.filter((type) => type.toLowerCase().includes(wanted));
-  if (partial.length === 1) return { type: partial[0] };
-  if (partial.length > 1) return { error: `"${String(value)}" fits several: ${partial.join(', ')}` };
-  return { error: `No module answered "${String(value)}" in the last 30 days. Known: ${known.join(', ') || 'none'}` };
+  const known = knownQuestions(host, ids, from, to);
+  const exact = known.filter((q) => q.attribute.toLowerCase() === wanted);
+  const partial = exact.length ? exact : known.filter((q) => q.attribute.toLowerCase().includes(wanted));
+  if (partial.length === 1) return { attribute: partial[0].attribute, type: partial[0].type, ...(partial[0].word ? { word: partial[0].word } : {}) };
+  if (partial.length > 1) return { error: `"${String(value)}" fits several: ${partial.map((q) => q.attribute).join(', ')}` };
+  return { error: `No module answered "${String(value)}" in the last 30 days. Known: ${known.map((q) => q.attribute).join(', ') || 'none'}` };
 }
 
 /** A real local date YYYY-MM-DD, not one to come: "2026-02-31" read as 3 March, a day ahead as "0 minutes". */
@@ -683,7 +711,7 @@ async function attributeTime(host: AssistantHost, input: Input, ctx: AssistantTo
   const scanFrom = first - KNOWN_MS;
   const scanTo = Math.max(end, Date.now());
   if (typeof input.attribute !== 'string' || !input.attribute.trim()) {
-    const listed = knownQuestions(host, camera.ids, scanFrom, scanTo);
+    const listed = knownQuestions(host, camera.ids, scanFrom, scanTo).map(({ attribute, events }) => ({ attribute, events }));
     return { content: { attributes: listed, hint: listed.length ? 'Ask again with one attribute.' : 'No module answered a question in the last 30 days.' } };
   }
   const question = questionOf(host, camera.ids, input.attribute, scanFrom, scanTo);
@@ -702,7 +730,7 @@ async function attributeTime(host: AssistantHost, input: Input, ctx: AssistantTo
       for (const seg of ev.segments ?? []) {
         for (const a of seg?.attributes ?? []) {
           if (a?.type !== type) continue;
-          const answer = answerOf(type, a.label);
+          const answer = answerOf(type, a.label, question.word);
           if (!answer) continue;
           const looks = byCamera.get(ev.cameraId) ?? [];
           looks.push({ from: seg.firstSeen, to: Math.max(seg.firstSeen, seg.lastSeen), yes: answer === 'yes', event: ev.id });
@@ -756,7 +784,7 @@ async function attributeTime(host: AssistantHost, input: Input, ctx: AssistantTo
 
   const names = cameraNames(host);
   const head = {
-    attribute: type,
+    attribute: question.attribute,
     timezone: ctx.timezone,
     approximate: true,
     ...(hasMore ? { capped: true, hint: 'Only the newest events were read: the days marked unknown are not days without an answer. Ask for fewer days.' } : {}),
@@ -1041,12 +1069,13 @@ async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolC
     const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.has(label));
     if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the events of the last 30 days: ${[...seen].join(', ')}` };
   }
-  let attribute = '';
+  let question: Question | undefined;
   if (typeof input.attribute === 'string' && input.attribute.trim()) {
-    const question = questionOf(host, camera.ids, input.attribute, knownFrom, to);
-    if ('error' in question) return question;
-    attribute = question.type;
+    const found = questionOf(host, camera.ids, input.attribute, knownFrom, to);
+    if ('error' in found) return found;
+    question = found;
   }
+  const attribute = question?.type ?? '';
   if (groupBy === 'answer' && !attribute) return { error: 'group_by answer needs `attribute`: the question whose answers to set apart (attribute_time lists them)' };
   const answer = input.answer === 'no' || input.answer === 'any' ? input.answer : 'yes';
   const word = statsWord(ctx);
@@ -1070,7 +1099,7 @@ async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolC
       let said: 'yes' | 'no' | undefined;
       if (attribute) {
         // as query_events: an event where the module said the answer asked at least once
-        const counts = answersOf(ev)[attribute];
+        const counts = answersTo(ev, question!);
         if (!counts || (!counts.yes && !counts.no)) return;
         if (groupBy !== 'answer' && answer !== 'any' && !counts[answer]) return;
         said = counts.yes ? 'yes' : 'no';
@@ -1742,13 +1771,25 @@ function attributeLabels(ev: RecordedEvent, type: string): string[] {
 }
 
 /** «yes» / «no» of an attribute label ("играет в компьютер: да"), undefined for any other value. */
-export function answerOf(type: string, label: unknown): 'yes' | 'no' | undefined {
+/** What a module answered, lower case: the label after «type:» («поза: лежит» → «лежит»), or the label itself. */
+function answerWord(type: string, label: unknown): string | undefined {
   if (typeof label !== 'string') return undefined;
   const value = (label.toLowerCase().startsWith(`${type.toLowerCase()}:`) ? label.slice(type.length + 1) : label).trim().toLowerCase();
+  return value || undefined;
+}
+
+/** Yes or no of a label; `word` asked (a question answered with words of its own): that word yes, any other no. */
+export function answerOf(type: string, label: unknown, word?: string): 'yes' | 'no' | undefined {
+  const value = answerWord(type, label);
+  if (value === undefined) return undefined;
+  if (word !== undefined) return value === word ? 'yes' : 'no';
   return YES.has(value) ? 'yes' : NO.has(value) ? 'no' : undefined;
 }
 
-/** The questions the modules answered in an event, with how many times yes and no. */
+/**
+ * The questions the modules answered in an event, with how many times yes and no. A word of its own is the «yes» of
+ * «type: word» («поза: лежит»), as knownQuestions names it.
+ */
 export function answersOf(ev: RecordedEvent): Record<string, { yes: number; no: number }> {
   const out: Record<string, { yes: number; no: number }> = {};
   for (const seg of ev.segments ?? []) {
@@ -1756,11 +1797,27 @@ export function answersOf(ev: RecordedEvent): Record<string, { yes: number; no: 
       const type = typeof a?.type === 'string' ? a.type : '';
       if (!type || NOT_MODULE_ATTRIBUTES.has(type)) continue;
       const answer = answerOf(type, a.label);
-      if (!answer) continue;
-      (out[type] ??= { yes: 0, no: 0 })[answer]++;
+      if (answer) (out[type] ??= { yes: 0, no: 0 })[answer]++;
+      else {
+        const word = answerWord(type, a.label);
+        if (word) (out[`${type}: ${word}`] ??= { yes: 0, no: 0 }).yes++;
+      }
     }
   }
   return out;
+}
+
+/** How many times the modules answered one question in an event yes and no; undefined when they did not answer it. */
+export function answersTo(ev: RecordedEvent, question: Question): { yes: number; no: number } | undefined {
+  let counts: { yes: number; no: number } | undefined;
+  for (const seg of ev.segments ?? []) {
+    for (const a of seg?.attributes ?? []) {
+      if (a?.type !== question.type) continue;
+      const answer = answerOf(question.type, a.label, question.word);
+      if (answer) (counts ??= { yes: 0, no: 0 })[answer]++;
+    }
+  }
+  return counts;
 }
 
 function titleOf(ev: RecordedEvent): string {
