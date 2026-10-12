@@ -240,7 +240,14 @@ const TEXT_SEARCH_POOL = 2000;
  */
 const FIND_EVENTS_A_CALL = 12;
 const FIND_KEPT = 400;
-const FIND_TIMEOUT_MS = 300_000;
+const FIND_QUERIES_KEPT = 100;
+/** a call carries one picture: the bus ends a call after 30 s, a picture takes the finder 1-4 s */
+const FIND_CALL_MS = 60_000;
+/** while the finder loads (≈720 MB, downloaded the first time) it is asked again this often, this long at most */
+const FIND_LOAD_POLL_MS = 2_000;
+const FIND_LOAD_WAIT_MS = 15 * 60_000;
+/** a problem of no plugin with a finder, apart from a failure's message */
+const NO_FINDER = '\u0000no-finder';
 
 /** The time, favourite and state conditions of an event query, as the store applies them (store.ts eventPage). */
 export function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
@@ -262,9 +269,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /** one people search at a time: each reads the vectors of its window from the disk */
   private similarChain: Promise<unknown> = Promise.resolve();
   /** finds by query and event, oldest first (findInEvents) */
-  private finds = new Map<string, FoundInEvent & { english: string; foundScore?: number }>();
-  /** one find at a time: the finder runs a picture at a time anyway, and a second page should not starve the first */
-  private findChain: Promise<unknown> = Promise.resolve();
+  private finds = new Map<string, FoundInEvent>();
+  /** what the finder made of each query: in English, and the score from which a box is the thing */
+  private findQueries = new Map<string, { english: string; foundScore?: number }>();
+  /** the pictures still to look at, in the order asked; one at a time */
+  private findQueue: { query: string; id: string }[] = [];
+  private findWorking = false;
+  /** a query whose looking failed, until its next call is told */
+  private findProblems = new Map<string, string>();
+  /** the plugin whose finder answered last */
+  private findEncoder: ClipEncoder | undefined;
   private faces!: FaceStore;
   private describer!: EventDescriber;
   private episodes!: Episodes;
@@ -2563,68 +2577,112 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /**
    * Where the words of a search are in the stored pictures of events: the search by description finds the events, the
    * text finder of a detection plugin (ONNX 1.7.0: OWL-ViT, the query put into English) boxes the thing in each picture
-   * and crops it. At most FIND_EVENTS_A_CALL events a call, in the order given; an event without a picture has no boxes.
+   * and crops it. A call ends after 30 s whatever it does, and the finder takes longer than that to load and seconds a
+   * picture: the answer comes at once with the finds made, the events still looked at are `pending` and are asked
+   * again. The pictures go to the finder one at a time, one search after another; an event without a picture has no
+   * boxes. A failure of the finder ends the looking of its query and is said to its next call, once.
    */
   public async findInEvents(text: string, eventIds: string[]): Promise<FindInEventsResult> {
     await this.ready;
     const query = typeof text === 'string' ? text.trim() : '';
     const ids = [...new Set(Array.isArray(eventIds) ? eventIds.filter((id): id is string => typeof id === 'string' && !!id) : [])].slice(0, FIND_EVENTS_A_CALL);
     if (!query || !ids.length) return { query, results: [] };
-    const run = this.findChain.then(() => this.findNow(query, ids));
-    this.findChain = run.catch(() => undefined);
-    return run;
-  }
-
-  private async findNow(query: string, ids: string[]): Promise<FindInEventsResult> {
-    const key = (id: string) => `${query}\u0000${id}`;
-    const asked = ids.filter((id) => !this.finds.has(key(id)));
-    const pictures = asked.map((id) => {
-      const row = this.store.event(id);
-      return row ? this.eventPicture(row.camera_id, id) : undefined;
-    });
-    const withPicture = asked.filter((_, i) => pictures[i]);
-    let english = query;
-    let foundScore: number | undefined;
-    if (withPicture.length) {
-      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection');
-      let answer: TextFindAnswer | undefined;
-      let error: string | undefined;
-      // a plugin without the finder answers its call with an error: the next one is asked
-      for (const encoder of encoders) {
-        try {
-          answer = await withTimeout(encoder.findInPictures!(query, pictures.filter((p): p is Uint8Array => !!p)), FIND_TIMEOUT_MS);
-          break;
-        } catch (e) {
-          error = (e as Error).message;
-        }
-      }
-      if (!answer) {
-        if (error) this.logger.warn(`Search in pictures failed: ${error}`);
-        return error ? { query, results: [], reason: 'failed', error } : { query, results: [], reason: 'no-finder' };
-      }
-      english = answer.query || query;
-      foundScore = answer.foundScore;
-      withPicture.forEach((id, i) => {
-        const picture = answer.pictures?.[i];
-        const boxes = Array.isArray(picture?.boxes) ? picture.boxes : [];
-        const found = foundScore !== undefined && (boxes[0]?.score ?? 0) >= foundScore;
-        this.keepFind(key(id), { eventId: id, boxes, found, ...(found && picture?.crop ? { crop: new Uint8Array(picture.crop) } : {}), english, foundScore });
-      });
+    const problem = this.findProblems.get(query);
+    if (problem !== undefined) {
+      this.findProblems.delete(query);
+      return problem === NO_FINDER ? { query, results: [], reason: 'no-finder' } : { query, results: [], reason: 'failed', error: problem };
     }
-    // an event with no stored picture (none was saved, or it is gone) has nothing to find in, now or later
-    for (const id of asked) if (!this.finds.has(key(id))) this.keepFind(key(id), { eventId: id, boxes: [], found: false, english, foundScore });
-    const results = ids.map((id) => this.finds.get(key(id))!);
-    // what the finder made of the query: said with every find of it, also those kept from before
-    const told = results.find((r) => r.foundScore !== undefined) ?? results[0];
+    const key = (id: string) => `${query}\u0000${id}`;
+    const pending: string[] = [];
+    for (const id of ids) {
+      if (this.finds.has(key(id))) continue;
+      const row = this.store.event(id);
+      // an event with no stored picture (none was saved, or it is gone) has nothing to find in, now or later
+      if (!row || !this.eventPicture(row.camera_id, id)) {
+        this.keepFind(key(id), { eventId: id, boxes: [], found: false });
+        continue;
+      }
+      pending.push(id);
+      if (!this.findQueue.some((item) => item.query === query && item.id === id)) this.findQueue.push({ query, id });
+    }
+    if (pending.length) void this.findWork();
+    const told = this.findQueries.get(query);
     return {
       query,
-      english: told.english,
-      ...(told.foundScore !== undefined ? { foundScore: told.foundScore } : {}),
-      results: results.map(({ english: _e, foundScore: _f, ...result }) => result),
+      ...(told ? { english: told.english, ...(told.foundScore !== undefined ? { foundScore: told.foundScore } : {}) } : {}),
+      results: ids.filter((id) => this.finds.has(key(id))).map((id) => this.finds.get(key(id))!),
+      ...(pending.length ? { pending } : {}),
     };
   }
 
-  private keepFind(key: string, find: FoundInEvent & { english: string; foundScore?: number }): void {
+  /** Looks at the queued pictures one at a time until none is left. */
+  private async findWork(): Promise<void> {
+    if (this.findWorking) return;
+    this.findWorking = true;
+    try {
+      while (this.findQueue.length) {
+        const { query, id } = this.findQueue[0];
+        const problem = await this.findOne(query, id);
+        this.findQueue.shift();
+        if (problem !== undefined) {
+          this.findProblems.set(query, problem);
+          this.findQueue = this.findQueue.filter((item) => item.query !== query);
+        }
+      }
+    } finally {
+      this.findWorking = false;
+    }
+  }
+
+  /** One event's picture through the finder, waiting while it loads; what went wrong, or nothing. */
+  private async findOne(query: string, id: string): Promise<string | undefined> {
+    const key = `${query}\u0000${id}`;
+    const row = this.store.event(id);
+    const picture = row ? this.eventPicture(row.camera_id, id) : undefined;
+    if (!picture) {
+      this.keepFind(key, { eventId: id, boxes: [], found: false });
+      return undefined;
+    }
+    const started = Date.now();
+    for (;;) {
+      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection');
+      // the one that answered before first: a plugin without the finder answers its call with an error
+      const ordered = this.findEncoder && encoders.includes(this.findEncoder) ? [this.findEncoder, ...encoders.filter((e) => e !== this.findEncoder)] : encoders;
+      let answer: TextFindAnswer | undefined;
+      const errors: string[] = [];
+      for (const encoder of ordered) {
+        try {
+          answer = await withTimeout(encoder.findInPictures!(query, [picture]), FIND_CALL_MS);
+          this.findEncoder = encoder;
+          break;
+        } catch (e) {
+          errors.push((e as Error).message);
+        }
+      }
+      if (!answer) {
+        // none has the method: nothing finds words in pictures here; else the finder's own failure is said
+        const real = errors.find((message) => !/is not a function|unknown method|no such method/i.test(message));
+        if (!real) return NO_FINDER;
+        this.logger.warn(`Search in pictures failed: ${real}`);
+        return real;
+      }
+      if (answer.loading) {
+        if (Date.now() - started > FIND_LOAD_WAIT_MS) return `the text finder did not load in ${FIND_LOAD_WAIT_MS / 60_000} minutes`;
+        await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
+        continue;
+      }
+      this.findQueries.delete(query);
+      this.findQueries.set(query, { english: answer.query || query, ...(answer.foundScore !== undefined ? { foundScore: answer.foundScore } : {}) });
+      while (this.findQueries.size > FIND_QUERIES_KEPT) this.findQueries.delete(this.findQueries.keys().next().value!);
+      const found = answer.pictures?.[0];
+      const boxes = Array.isArray(found?.boxes) ? found.boxes : [];
+      const sure = answer.foundScore !== undefined && (boxes[0]?.score ?? 0) >= answer.foundScore;
+      this.keepFind(key, { eventId: id, boxes, found: sure, ...(sure && found?.crop ? { crop: new Uint8Array(found.crop) } : {}) });
+      return undefined;
+    }
+  }
+
+  private keepFind(key: string, find: FoundInEvent): void {
     this.finds.set(key, find);
     while (this.finds.size > FIND_KEPT) this.finds.delete(this.finds.keys().next().value!);
   }

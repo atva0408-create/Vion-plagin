@@ -1,6 +1,6 @@
 ## [1.7.0]
 
-- Suche im Bild: Die Aufnahmen von ViON fragen, wo im Bild jedes per Beschreibung gefundenen Ereignisses das Gesuchte ist („красная сумка“, „человек с велосипедом“), und zeigen den Fund. Die Anfrage wird von opus-mt-ru-en ins Englische übersetzt (der Sucher versteht nur Englisch), OWL-ViT B/32 rahmt das Ding ein, ein Fund kommt mit seinem Ausschnitt. Die Modelle (≈720 MB) werden bei der ersten Anfrage heruntergeladen und geladen und nach fünf Minuten ohne Suche aus dem Speicher entfernt; ein Bild dauert auf einem Prozessor 1–4 s. Benötigt ViON NVR 0.19.0
+- Suche im Bild: Die Aufnahmen von ViON fragen, wo im Bild jedes per Beschreibung gefundenen Ereignisses das Gesuchte ist („красная сумка“, „человек с велосипедом“), und zeigen den Fund. Die Anfrage wird von opus-mt-ru-en ins Englische übersetzt (der Sucher versteht nur Englisch), OWL-ViT B/32 rahmt das Ding ein, ein Fund kommt mit seinem Ausschnitt. Die Modelle (≈720 MB) werden bei der ersten Anfrage im Hintergrund heruntergeladen und geladen — währenddessen sagt die Antwort, dass sie laden, ein fehlgeschlagenes Laden wird der nächsten Anfrage gemeldet — und nach fünf Minuten ohne Suche aus dem Speicher entfernt; ein Bild dauert auf einem Prozessor 1–4 s. Benötigt ViON NVR 0.19.0
 
 ## [1.6.0]
 

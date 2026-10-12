@@ -142,6 +142,9 @@ class ONNXPlugin(
         # where the words of a search are in the pictures (textfind.py): ≈720 MB, loaded when asked, closed when idle
         self.text_finder: TextFinder | None = None
         self._text_finder_idle: asyncio.Task[None] | None = None
+        # the load of the finder in the background, and why the last one failed until it is said
+        self._text_finder_load: asyncio.Task[None] | None = None
+        self._text_finder_error: str | None = None
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         # the files of the module version each pause above is for: only another version lifts it early
@@ -898,16 +901,38 @@ class ONNXPlugin(
         self, text: str, images: list[bytes], config: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Where the words of a search are in each picture (the recorder asks it of the pictures the search by
-        description found): the query as the finder took it, per picture its boxes and the crop of a find."""
+        description found): the query as the finder took it, per picture its boxes and the crop of a find. A call
+        ends after 30 s whatever it does, and the models take longer to load (73 s on the bench): while they load the
+        answer is `loading` and the recorder asks again; a load that failed is said to the next call."""
         query = (text or "").strip()
         if not query or not images:
             return {"query": query, "pictures": [{"boxes": []} for _ in images]}
-        finder = await self.get_text_finder()
+        finder = self.text_finder
+        if finder is None or not finder.initialized:
+            if self._text_finder_error is not None:
+                error, self._text_finder_error = self._text_finder_error, None
+                raise RuntimeError(error)
+            self._load_text_finder()
+            return {"query": query, "loading": True, "pictures": []}
         pictures = [Image.fromarray(decode_image(data)) for data in images]
         try:
             return await finder.find(query, pictures)
         finally:
             self._close_text_finder_when_idle()
+
+    def _load_text_finder(self) -> None:
+        if self._text_finder_load is not None and not self._text_finder_load.done():
+            return
+
+        async def load() -> None:
+            try:
+                await self.get_text_finder()
+                # loaded and perhaps never asked: it leaves memory as after a find
+                self._close_text_finder_when_idle()
+            except Exception as error:
+                self._text_finder_error = str(error) or type(error).__name__
+
+        self._text_finder_load = asyncio.create_task(load())
 
     def _close_text_finder_when_idle(self) -> None:
         if self._text_finder_idle is not None:

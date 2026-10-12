@@ -1,6 +1,6 @@
 ## [1.7.0]
 
-- Words found in pictures: ViON's recordings ask where the thing searched for by description is in the picture of each event found («красная сумка», «человек с велосипедом»), and show the find. The query is put into English by opus-mt-ru-en (the finder understands English only), OWL-ViT B/32 boxes the thing, a find comes with its crop. The models (≈720 MB) download and load when first asked for and leave memory after five minutes without a search; a picture takes 1-4 s on a processor. Needs ViON NVR 0.19.0
+- Words found in pictures: ViON's recordings ask where the thing searched for by description is in the picture of each event found («красная сумка», «человек с велосипедом»), and show the find. The query is put into English by opus-mt-ru-en (the finder understands English only), OWL-ViT B/32 boxes the thing, a find comes with its crop. The models (≈720 MB) download and load in the background when first asked for — meanwhile the answer says they load, a failed load is said to the next call — and leave memory after five minutes without a search; a picture takes 1-4 s on a processor. Needs ViON NVR 0.19.0
 
 ## [1.6.0]
 

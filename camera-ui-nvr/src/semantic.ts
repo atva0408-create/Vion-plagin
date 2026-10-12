@@ -48,6 +48,8 @@ export interface ClipEncoder {
 
 export interface TextFindAnswer {
   query: string;
+  /** the finder's models load: nothing looked at, ask again */
+  loading?: boolean;
   foundScore?: number;
   pictures: { boxes: { x: number; y: number; width: number; height: number; score: number }[]; crop?: Uint8Array }[];
 }

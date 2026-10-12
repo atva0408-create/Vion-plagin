@@ -181,6 +181,8 @@ export interface FindInEventsResult {
   english?: string;
   foundScore?: number;
   results: FoundInEvent[];
+  /** the events asked for still looked at: ask again for them */
+  pending?: string[];
   /** no plugin finds words in pictures (ONNX 1.7.0 does), or it failed (`error`) */
   reason?: 'no-finder' | 'failed';
   error?: string;

@@ -222,7 +222,7 @@ def _plugin_class() -> type:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ONNXPlugin")
     cls.bases = []
-    keep = {"findInPictures", "_close_text_finder_when_idle", "get_text_finder"}
+    keep = {"findInPictures", "_close_text_finder_when_idle", "get_text_finder", "_load_text_finder"}
     cls.body = [node for node in cls.body if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in keep]
     module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls], type_ignores=[])
     namespace: dict[str, Any] = {
@@ -248,13 +248,16 @@ class Finder:
 
     def __init__(self, *_args: Any, **_kwargs: Any) -> None:
         Finder.made += 1
+        self.initialized = False
         self.closed = False
         self.asked: list[tuple[str, int]] = []
         self.last_used = time.monotonic()
 
     async def initialize(self) -> None:
+        await asyncio.sleep(0.01)
         if Finder.fail:
             raise RuntimeError(Finder.fail)
+        self.initialized = True
 
     async def find(self, text: str, images: list[Any]) -> dict[str, Any]:
         self.asked.append((text, len(images)))
@@ -276,6 +279,8 @@ def plugin() -> Any:
     p.logger = type("Logger", (), {"log": lambda *_: None})()
     p.text_finder = None
     p._text_finder_idle = None
+    p._text_finder_load = None
+    p._text_finder_error = None
     p.failed = []
     p.succeeded = []
     p._load_failed = lambda name, error: p.failed.append((name, str(error)))
@@ -295,14 +300,20 @@ def picture() -> bytes:
     return out.getvalue()
 
 
-def test_the_method_finds_in_every_picture_and_leaves_memory_when_idle():
+def test_the_first_call_loads_in_the_background_and_says_so_then_the_finds_come():
     async def run() -> None:
         p = plugin()
+        # a call ends after 30 s, the models take longer: the first answer is that they load
+        assert await p.findInPictures("сумка", [picture(), picture()]) == {"query": "сумка", "loading": True, "pictures": []}
+        # asked again while they load: still loading, one load
+        assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
+        await asyncio.sleep(0.03)
+        assert Finder.made == 1 and p.succeeded == [textfind.OWL_MODEL]
         result = await p.findInPictures("сумка", [picture(), picture()])
         assert result["pictures"] == [{"boxes": []}, {"boxes": []}]
         finder = p.text_finder
-        assert finder.asked == [("сумка", 2)] and p.succeeded == [textfind.OWL_MODEL]
-        # asked again before it is idle: the same finder, still in memory
+        assert finder.asked == [("сумка", 2)]
+        # asked again before it is idle: the same finder, still in memory; then idle, out of it
         await p.findInPictures("сумка", [picture()])
         assert Finder.made == 1 and not finder.closed
         await asyncio.sleep(0.12)
@@ -311,20 +322,36 @@ def test_the_method_finds_in_every_picture_and_leaves_memory_when_idle():
     asyncio.run(run())
 
 
-def test_nothing_asked_loads_nothing_and_a_failed_load_is_said():
+def test_loaded_and_never_asked_it_leaves_memory_too():
+    async def run() -> None:
+        p = plugin()
+        await p.findInPictures("сумка", [picture()])
+        await asyncio.sleep(0.03)
+        finder = p.text_finder
+        assert finder.initialized and not finder.closed
+        await asyncio.sleep(0.12)
+        assert finder.closed and p.text_finder is None
+
+    asyncio.run(run())
+
+
+def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once():
     async def run() -> None:
         p = plugin()
         assert await p.findInPictures("  ", [picture()]) == {"query": "", "pictures": [{"boxes": []}]}
         assert await p.findInPictures("сумка", []) == {"query": "сумка", "pictures": []}
         assert Finder.made == 0
         Finder.fail = "no mirror"
-        with pytest.raises(RuntimeError):
-            await p.findInPictures("сумка", [picture()])
+        assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
+        await asyncio.sleep(0.03)
         assert p.failed == [(textfind.OWL_MODEL, "no mirror")] and p.text_finder is None
-        # loaded the next time it can be
+        with pytest.raises(RuntimeError, match="no mirror"):
+            await p.findInPictures("сумка", [picture()])
+        # said once: the next call loads again, and can
         Finder.fail = None
-        await p.findInPictures("сумка", [picture()])
-        assert p.text_finder is not None
+        assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
+        await asyncio.sleep(0.03)
+        assert (await p.findInPictures("сумка", [picture()]))["pictures"] == [{"boxes": []}]
 
     asyncio.run(run())
 
