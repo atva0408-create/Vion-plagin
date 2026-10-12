@@ -1,3 +1,7 @@
+## [0.19.0]
+
+- Die Suchen im Archiv — nach Beschreibung und nach Personen — halten ihre Vektoren in einem kompakten Index: bei 400 000 Vektoren belegte die Aufzeichnung 2,3 GB und stand bei der ersten Suche 10 s still; jetzt etwa 170 MB, beim Start im Hintergrund portionsweise gelesen (die Aufzeichnung wird höchstens 0,1 s angehalten). Eine Suche nach Beschreibung dauert etwa 70 ms statt einer halben Sekunde, eine Personensuche über 90 Tage etwa 50 ms statt 3,5–6 s (gemessen auf einem PC, spec/bench-vectors.ts)
+
 ## [0.18.0]
 
 - Eine Frage eines Moduls, die es mit eigenen Wörtern beantwortet — die Körperhaltung: стоит, сидит, лежит —, wird mit einem davon gestellt: „поза: лежит“ oder nur „лежит“. Der Assistent findet die Ereignisse, in denen jemand lag (query_events, event_stats), rechnet zusammen, wie lange jemand an einem Tag lag (attribute_time), und zählt die Haltungen in der Tageszusammenfassung; die anderen Wörter der Frage sind ihr „nein“ (steht oder sitzt: liegt nicht). Die Liste der Fragen nennt eine solche Frage mit ihren Wörtern

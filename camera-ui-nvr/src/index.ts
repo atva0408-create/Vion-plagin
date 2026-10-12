@@ -583,6 +583,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store.setMeta('instance_id', this.instanceId);
     this.semantic = new SemanticIndex(this.store.sql);
     this.people = new PersonIndex(this.store.sql);
+    // read into memory in the background, a portion at a time: the first search waits for it, the recording does not
+    for (const [name, index] of [
+      ['search by description', this.semantic],
+      ['people search', this.people],
+    ] as const) {
+      index.warm().catch((error: Error) => this.logger.warn(`The vectors of the ${name} were not read, the next search tries again: ${error.message}`));
+    }
     this.faces = new FaceStore(this.store.sql, join(this.dataDir, 'faces'));
     this.describer = new EventDescriber(this.store.sql, {
       ask: (request) => this.api.coreManager.assistantAsk(request),
@@ -1878,7 +1885,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!queries.length) return none('no-vectors');
     const event = JSON.parse(row.data) as RecordedEvent;
     const time = event.segments?.[segment]?.firstSeen ?? row.start_ms;
-    const hits = this.people.search(queries, { fromMs: time - windowMs, toMs: time + windowMs, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: 500 });
+    const hits = await this.people.search(queries, {
+      fromMs: time - windowMs,
+      toMs: time + windowMs,
+      exclude: { eventId: query.eventId, seg: segment },
+      minScore,
+      limit: 500,
+    });
     const origin = { eventId: query.eventId, cameraId: event.cameraId, seg: segment, trackId: queries[0].trackId, ts: time, score: 1 };
     const visits = routeOf(origin, hits, PERSON_ROUTE_GAP_MS);
     const events = [...new Set(visits.map((visit) => visit.eventId))].flatMap((id) => {
@@ -1954,7 +1967,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const matches: SimilarMatch[] = [];
     const events = new Map<string, RecordedEvent>();
     // the filter thins the hits after the ranking: twice the limit is asked for, so a full page usually stays full
-    for (const hit of this.people.search(queries, { fromMs, toMs, cameraIds, exclude, minScore, limit: limit * 2 })) {
+    for (const hit of await this.people.search(queries, { fromMs, toMs, cameraIds, exclude, minScore, limit: limit * 2 })) {
       if (matches.length === limit) break;
       let event = events.get(hit.eventId);
       if (!event) {
@@ -2459,7 +2472,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /** Hybrid ranking: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions, best first. */
   private async rankByText(query: string, pool: number, threshold: number): Promise<ClipSearchResult[]> {
     const queries = await this.textEmbeddings(query);
-    const visual = queries.length ? this.semantic.search(queries, pool, threshold) : [];
+    const visual = queries.length ? await this.semantic.search(queries, pool, threshold) : [];
     const textual = this.describer.search(query, pool);
     const merged = new Map<string, ClipSearchResult>(visual.map((r) => [r.eventId, r]));
     for (const t of textual) {

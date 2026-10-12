@@ -1,8 +1,9 @@
 // Semantic search over recorded events: every CLIP image vector the server attaches to an event
 // (one per object crop) lands in a SQLite table; a text query is encoded by a ClipDetection plugin
-// and compared against the vectors of the same model. Brute force over unit vectors kept in memory
-// per model: a few hundred thousand 512-d vectors scan in well under a second.
+// and compared against the vectors of the same model. The vectors of a model are held by a compact
+// index (vector-index.ts, their signs only), which picks the candidates the table then scores exactly.
 
+import { loadIndexes, VectorIndex } from './vector-index.js';
 import { dot, fromBlob, normalize, toBlob } from './vectors.js';
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -43,22 +44,21 @@ export interface ClipEncoder {
   embedImages?(images: Uint8Array[], config?: Record<string, unknown>): Promise<(ImageEmbedding | undefined)[]>;
 }
 
-interface Entry {
-  eventId: string;
-  cameraId: string;
-  ts: number;
-  label: string;
-  vec: Float32Array;
-}
-
 /** Whole-picture vectors from a re-index use this attribute slot. */
 export const SCENE_ATTR = -1;
 /** Raw cosine band used when a plugin reports none (CLIP ViT-B/32 text-image). */
 const DEFAULT_BAND: [number, number] = [0.15, 0.38];
+/**
+ * The vectors scored exactly for one query: every vector up to this many, beyond it those whose signs agree most with
+ * the query's (spec/vector-index.spec.ts: the 50 best of a full scan of clustered vectors are among them).
+ */
+const CANDIDATES = 2000;
 
 export class SemanticIndex {
-  /** model → `${event}/${seg}/${attr}` → entry; filled from the table on the first search of a model */
-  private cache = new Map<string, Map<string, Entry>>();
+  /** model → its vectors' index; read from the table in the background (warm), then kept in step */
+  private indexes = new Map<string, VectorIndex>();
+  private warming?: Promise<void>;
+  private warmed = false;
   private bands = new Map<string, [number, number]>();
 
   constructor(private readonly db: DatabaseSync) {
@@ -91,8 +91,14 @@ export class SemanticIndex {
         const label = parent?.label ?? primary?.label ?? (a.type === 'clip' ? '' : (a.label ?? ''));
         const ts = (segment as { firstSeen?: number }).firstSeen ?? event.startTime;
         const vec = normalize(a.clipEmbedding);
-        insert.run(event.id, seg, attr, event.cameraId, ts, label, a.clipEmbeddingModel, toBlob(vec));
-        this.cache.get(a.clipEmbeddingModel)?.set(`${event.id}/${seg}/${attr}`, { eventId: event.id, cameraId: event.cameraId, ts, label, vec });
+        const index = this.indexFor(a.clipEmbeddingModel, vec.length);
+        // the row replaced gets a new rowid: the old one leaves the index
+        const old = index ? this.rowidOf(event.id, seg, attr) : undefined;
+        const { lastInsertRowid } = insert.run(event.id, seg, attr, event.cameraId, ts, label, a.clipEmbeddingModel, toBlob(vec));
+        if (index) {
+          if (old !== undefined) index.remove(old);
+          index.add(Number(lastInsertRowid), vec, ts, event.cameraId);
+        }
         added++;
       });
     });
@@ -101,10 +107,50 @@ export class SemanticIndex {
 
   public addScene(event: { id: string; cameraId: string; startTime: number; label: string }, model: string, vector: number[]): void {
     const vec = normalize(vector);
-    this.db
+    const index = this.indexFor(model, vec.length);
+    const old = index ? this.rowidOf(event.id, 0, SCENE_ATTR) : undefined;
+    const { lastInsertRowid } = this.db
       .prepare('INSERT OR REPLACE INTO clip_vectors (event_id, seg, attr, camera_id, ts, label, model, vec) VALUES (?, 0, ?, ?, ?, ?, ?, ?)')
       .run(event.id, SCENE_ATTR, event.cameraId, event.startTime, event.label, model, toBlob(vec));
-    this.cache.delete(model);
+    // the motion-only events are indexed by the hundred: the index is kept in step, not read again each time
+    if (index) {
+      if (old !== undefined) index.remove(old);
+      index.add(Number(lastInsertRowid), vec, event.startTime, event.cameraId);
+    }
+  }
+
+  /**
+   * Reads the vectors into their indexes in the background, once; the searches wait for it. A failed read is tried
+   * again by the next search.
+   */
+  public warm(): Promise<void> {
+    this.warming ??= loadIndexes(this.db, 'clip_vectors', this.indexes).then(
+      () => {
+        this.warmed = true;
+      },
+      (error: unknown) => {
+        this.warming = undefined;
+        throw error;
+      },
+    );
+    return this.warming;
+  }
+
+  /** The index a new vector of a model goes to; none while a model's vectors are still to be read (they will be). */
+  private indexFor(model: string, dim: number): VectorIndex | undefined {
+    let index = this.indexes.get(model);
+    if (!index && this.warmed) {
+      index = new VectorIndex(dim);
+      this.indexes.set(model, index);
+    }
+    return index;
+  }
+
+  private rowidOf(eventId: string, seg: number, attr: number): number | undefined {
+    const row = this.db.prepare('SELECT rowid AS id FROM clip_vectors WHERE event_id = ? AND seg = ? AND attr = ?').get(eventId, seg, attr) as
+      | { id: number | bigint }
+      | undefined;
+    return row ? Number(row.id) : undefined;
   }
 
   public hasVectors(eventId: string, model: string): boolean {
@@ -126,9 +172,11 @@ export class SemanticIndex {
   public deleteEvents(ids: string[]): void {
     if (!ids.length) return;
     const del = this.db.prepare('DELETE FROM clip_vectors WHERE event_id = ?');
-    for (const id of ids) del.run(id);
-    const gone = new Set(ids);
-    for (const entries of this.cache.values()) for (const [key, e] of entries) if (gone.has(e.eventId)) entries.delete(key);
+    const rows = this.indexes.size ? this.db.prepare('SELECT rowid AS id, model FROM clip_vectors WHERE event_id = ?') : undefined;
+    for (const id of ids) {
+      for (const row of (rows?.all(id) ?? []) as { id: number | bigint; model: string }[]) this.indexes.get(row.model)?.remove(Number(row.id));
+      del.run(id);
+    }
   }
 
   public count(): number {
@@ -139,14 +187,15 @@ export class SemanticIndex {
    * Ranks events by their best-matching vector for each query embedding (one per model the encoder
    * serves). Scores are mapped onto 0..1 with the model's band so a threshold means the same for all models.
    */
-  public search(queries: TextEmbedding[], limit = 50, threshold = 0): ClipSearchResult[] {
+  public async search(queries: TextEmbedding[], limit = 50, threshold = 0): Promise<ClipSearchResult[]> {
+    await this.warm();
     const best = new Map<string, ClipSearchResult>();
     for (const q of queries) {
       if (!q?.embedding?.length) continue;
       const band = q.scoreBand ?? this.bands.get(q.embeddingModel) ?? DEFAULT_BAND;
       this.bands.set(q.embeddingModel, band);
       const text = normalize(q.embedding);
-      for (const e of this.entries(q.embeddingModel)) {
+      for (const e of this.scored(q.embeddingModel, text)) {
         const raw = dot(text, e.vec);
         const score = Math.max(0, Math.min(1, (raw - band[0]) / (band[1] - band[0] || 1)));
         if (score < threshold) continue;
@@ -158,23 +207,14 @@ export class SemanticIndex {
     return [...best.values()].sort((a, b) => b.score - a.score || b.timestamp - a.timestamp).slice(0, limit);
   }
 
-  private entries(model: string): Iterable<Entry> {
-    let entries = this.cache.get(model);
-    if (!entries) {
-      const rows = this.db.prepare('SELECT event_id, seg, attr, camera_id, ts, label, vec FROM clip_vectors WHERE model = ?').all(model) as {
-        event_id: string;
-        seg: number;
-        attr: number;
-        camera_id: string;
-        ts: number;
-        label: string;
-        vec: Uint8Array;
-      }[];
-      entries = new Map(
-        rows.map((r) => [`${r.event_id}/${r.seg}/${r.attr}`, { eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) }]),
-      );
-      this.cache.set(model, entries);
+  /** The candidates of the model's index for a query, with what the table holds of them. */
+  private *scored(model: string, query: Float32Array): Iterable<{ eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }> {
+    const index = this.indexes.get(model);
+    if (!index) return;
+    const row = this.db.prepare('SELECT event_id, camera_id, ts, label, vec FROM clip_vectors WHERE rowid = ?');
+    for (const id of index.candidates(query, CANDIDATES)) {
+      const r = row.get(id) as { event_id: string; camera_id: string; ts: number; label: string; vec: Uint8Array } | undefined;
+      if (r) yield { eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) };
     }
-    return entries.values();
   }
 }

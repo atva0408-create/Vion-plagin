@@ -1,9 +1,11 @@
 // People who look alike ("похожие люди"): the server's person re-ID vectors (one per person track of a segment,
 // averaged over up to three tight crops) are filed here and never in the event JSON, and compared by cosine within a
 // time window. Re-ID describes clothes and build, not who someone is: it finds the same person the same day.
-// No cache in memory, unlike the CLIP index: a search reads only the rows of its window, which keeps a small box
-// (8 GB on the bench) out of trouble with many cameras and days.
+// The vectors of a model are held by a compact index (vector-index.ts: signs only, 32 bytes a 256-d vector), which
+// picks the candidates of the window and the cameras; the table scores them exactly. Reading every row of the window
+// for each search took 3.5-6 s over 90 days of 400 000 vectors (spec/bench-vectors.ts).
 
+import { loadIndexes, VectorIndex } from './vector-index.js';
 import { dot, fromBlob, normalize, toBlob } from './vectors.js';
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -51,6 +53,9 @@ interface Row {
   vec: Uint8Array;
 }
 
+/** The vectors a search scores exactly for each query vector, at least: every one of its window up to this many. */
+const CANDIDATES = 2000;
+
 /** The vectors of a segment as the server sends them: finite, non-empty, of a named model. */
 export function personEmbeddings(segment: unknown): PersonEmbedding[] {
   const list = (segment as { personEmbeddings?: unknown } | undefined)?.personEmbeddings;
@@ -91,6 +96,11 @@ export function routeOf(origin: PersonHit, hits: PersonHit[], gapMs: number): Pe
 }
 
 export class PersonIndex {
+  /** model → its vectors' index; read from the table in the background (warm), then kept in step */
+  private indexes = new Map<string, VectorIndex>();
+  private warming?: Promise<void>;
+  private warmed = false;
+
   constructor(private readonly db: DatabaseSync) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS person_vectors (
@@ -114,7 +124,15 @@ export class PersonIndex {
     (event.segments ?? []).forEach((segment, seg) => {
       const ts = (segment as { firstSeen?: number }).firstSeen ?? event.startTime;
       for (const p of personEmbeddings(segment)) {
-        insert.run(event.id, seg, p.trackId, event.cameraId, ts, p.embeddingModel, toBlob(normalize(p.embedding)));
+        const vec = normalize(p.embedding);
+        const index = this.indexFor(p.embeddingModel, vec.length);
+        // the row replaced gets a new rowid: the old one leaves the index
+        const old = index ? this.rowidOf(event.id, seg, p.trackId) : undefined;
+        const { lastInsertRowid } = insert.run(event.id, seg, p.trackId, event.cameraId, ts, p.embeddingModel, toBlob(vec));
+        if (index) {
+          if (old !== undefined) index.remove(old);
+          index.add(Number(lastInsertRowid), vec, ts, event.cameraId);
+        }
         added++;
       }
     });
@@ -135,14 +153,21 @@ export class PersonIndex {
    * The moments whose people look most like any query vector, best first; one hit per moment (its best person).
    * Vectors of another model are never compared.
    */
-  public search(queries: { model: string; vec: Float32Array }[], o: PersonSearch): PersonHit[] {
+  public async search(queries: { model: string; vec: Float32Array }[], o: PersonSearch): Promise<PersonHit[]> {
+    await this.warm();
     const best = new Map<string, PersonHit>();
     const byModel = new Map<string, Float32Array[]>();
     for (const q of queries) byModel.set(q.model, [...(byModel.get(q.model) ?? []), normalize(q.vec)]);
-    const select = this.db.prepare('SELECT event_id, seg, track_id, camera_id, ts, vec FROM person_vectors WHERE model = ? AND ts BETWEEN ? AND ?');
+    const select = this.db.prepare('SELECT event_id, seg, track_id, camera_id, ts, vec FROM person_vectors WHERE rowid = ?');
+    const k = Math.max(CANDIDATES, o.limit * 4);
     for (const [model, vecs] of byModel) {
-      for (const row of select.iterate(model, o.fromMs, o.toMs) as Iterable<Row>) {
-        if (o.cameraIds?.has(row.camera_id) === false) continue;
+      const index = this.indexes.get(model);
+      if (!index) continue;
+      const ids = new Set<number>();
+      for (const q of vecs) for (const id of index.candidates(q, k, { fromMs: o.fromMs, toMs: o.toMs, cameraIds: o.cameraIds })) ids.add(id);
+      for (const id of ids) {
+        const row = select.get(id) as Row | undefined;
+        if (!row) continue;
         if (o.exclude?.eventId === row.event_id && o.exclude.seg === row.seg) continue;
         const vec = fromBlob(row.vec);
         let score = -1;
@@ -155,6 +180,40 @@ export class PersonIndex {
       }
     }
     return [...best.values()].sort((a, b) => b.score - a.score || b.ts - a.ts).slice(0, Math.max(0, o.limit));
+  }
+
+  /**
+   * Reads the vectors into their indexes in the background, once; the searches wait for it. A failed read is tried
+   * again by the next search.
+   */
+  public warm(): Promise<void> {
+    this.warming ??= loadIndexes(this.db, 'person_vectors', this.indexes).then(
+      () => {
+        this.warmed = true;
+      },
+      (error: unknown) => {
+        this.warming = undefined;
+        throw error;
+      },
+    );
+    return this.warming;
+  }
+
+  /** The index a new vector of a model goes to; none while a model's vectors are still to be read (they will be). */
+  private indexFor(model: string, dim: number): VectorIndex | undefined {
+    let index = this.indexes.get(model);
+    if (!index && this.warmed) {
+      index = new VectorIndex(dim);
+      this.indexes.set(model, index);
+    }
+    return index;
+  }
+
+  private rowidOf(eventId: string, seg: number, trackId: number): number | undefined {
+    const row = this.db.prepare('SELECT rowid AS id FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').get(eventId, seg, trackId) as
+      | { id: number | bigint }
+      | undefined;
+    return row ? Number(row.id) : undefined;
   }
 
   /** The segments of an event with people to find, in order. */
@@ -186,15 +245,21 @@ export class PersonIndex {
   public deleteEvents(ids: string[]): void {
     if (!ids.length) return;
     const del = this.db.prepare('DELETE FROM person_vectors WHERE event_id = ?');
-    for (const id of ids) del.run(id);
+    const rows = this.indexes.size ? this.db.prepare('SELECT rowid AS id, model FROM person_vectors WHERE event_id = ?') : undefined;
+    for (const id of ids) {
+      for (const row of (rows?.all(id) ?? []) as { id: number | bigint; model: string }[]) this.indexes.get(row.model)?.remove(Number(row.id));
+      del.run(id);
+    }
   }
 
   /** The people of moments older than `ms` (the setting's days, favourites included): the events stay. */
   public deleteBefore(ms: number): number {
+    for (const index of this.indexes.values()) index.removeBefore(ms);
     return Number(this.db.prepare('DELETE FROM person_vectors WHERE ts < ?').run(ms).changes);
   }
 
   public clear(): number {
+    this.indexes.clear();
     return Number(this.db.prepare('DELETE FROM person_vectors').run().changes);
   }
 }

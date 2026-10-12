@@ -1,3 +1,7 @@
+## [0.19.0]
+
+- The searches over the archive — by description and for people — keep their vectors in a compact index: on 400 000 vectors the recorder held 2.3 GB and stopped for 10 s at the first search; now about 170 MB, read in the background at start a portion at a time (the recording is held 0.1 s at most). A search by description takes about 70 ms instead of half a second, a people search over 90 days about 50 ms instead of 3.5-6 s (measured on a PC, spec/bench-vectors.ts)
+
 ## [0.18.0]
 
 - A question of a module answered with words of its own — the posture of people: стоит, сидит, лежит — is asked by one of them: «поза: лежит», or just «лежит». The assistant finds the events in which someone lay (query_events, event_stats), adds up how long someone lay a day (attribute_time) and counts the postures in a day's summary; the other words of the question are its «no» (standing or sitting: not lying). The list of the questions names such a question by its words
