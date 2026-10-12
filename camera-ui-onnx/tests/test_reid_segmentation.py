@@ -181,6 +181,12 @@ class Plugin:
     def prepare_segmenter(self, model_name: str) -> None:
         self.prepared.append(model_name)
 
+    def load_state(self, runtime: Any, *names: str) -> Any:
+        # as ONNXPlugin.load_state with no failed load: a model not loaded yet waits for its first use
+        if runtime.get("models") or not names:
+            return dict(runtime)
+        return {**runtime, "loadModel": names[0], "loadState": "pending"}
+
 
 def frames(n: int) -> list[Any]:
     return [{"id": str(i), "data": bytes(4 * 8 * 3), "width": 4, "height": 8, "format": "rgb"} for i in range(n)]
@@ -222,6 +228,8 @@ def test_a_segmenter_sensor_loads_nothing_at_start_nor_when_its_model_is_changed
     assert asyncio.run(sensor.segmentObjects(frames(1))) == [{}]  # type: ignore[arg-type]
     assert plugin.prepared == ["yolo-v9-t-320-seg"]
     assert sensor.modelSpec["input"]["width"] == 320
+    # the model asked for is said to wait for its first use, not to have failed
+    assert (sensor.modelSpec["loadModel"], sensor.modelSpec["loadState"]) == ("yolo-v9-t-320-seg", "pending")
 
 
 # ------------------------------------------------------------------ the plugin's background load
