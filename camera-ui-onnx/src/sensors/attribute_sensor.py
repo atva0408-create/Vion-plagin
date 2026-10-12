@@ -159,6 +159,7 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
             if POSE_MODEL not in self._failed:
                 self._failed.add(POSE_MODEL)
                 self._logger.error(f"Поза не определилась: {error}")
+            self._plugin.pose_failed(error)
             return None
         if found is None:
             return None

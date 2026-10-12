@@ -205,6 +205,53 @@ def test_the_object_sensor_tells_a_module_that_loads_from_one_that_failed(engine
     assert spec["models"] == [{"name": MODULE}] and "loadState" not in spec
 
 
+def test_a_pose_model_that_fails_on_the_crops_is_dropped_and_said(engine: str) -> None:
+    """Loaded, then failing on every person: the module looked analysing. The model goes, the server is told why,
+    and it is loaded again only after a while."""
+    import time
+
+    cls, path = _class_of(
+        ROOT / f"camera-ui-{engine}" / "src" / "main.py",
+        "Plugin",
+        {"load_state", "_load_failed", "_load_succeeded", "_refresh_model_specs", "pose_failed"},
+    )
+    pose = "rtmpose-t-256x192"
+    plugin = object.__new__(
+        _compile(
+            cls, path, {"POSE_MODEL": pose, "Mapping": dict, "Any": Any, "asyncio": asyncio, "time": time}
+        )
+    )
+
+    class Estimator:
+        closed = False
+
+        async def close(self) -> None:
+            Estimator.closed = True
+
+    forgotten: list[str] = []
+    plugin.model_manager = type("Manager", (), {"forget": lambda _self, name: forgotten.append(name)})()
+    plugin.pose_estimators = {pose: Estimator()}
+    plugin._failed_models = {}
+    plugin._load_errors = {}
+    plugin.sensor = Sensor()
+    plugin._sensors = {"lift": {"attributes": plugin.sensor}}
+
+    async def fail() -> None:
+        plugin.pose_failed(RuntimeError("bad output"))
+        await asyncio.sleep(0)
+
+    asyncio.run(fail())
+    assert plugin.pose_estimators == {} and Estimator.closed
+    assert forgotten == [pose], "loaded again, not the closed backend taken from the cache"
+    assert plugin._failed_models[pose] > time.monotonic() + 500, "tried again in about ten minutes"
+    assert plugin.load_state({}, pose) == {
+        "loadModel": pose,
+        "loadState": "failed",
+        "loadError": "bad output",
+    }
+    assert plugin.sensor.updates == 1
+
+
 GETTERS = [
     "get_face_detector",
     "get_face_embedder",

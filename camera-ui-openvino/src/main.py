@@ -1176,6 +1176,17 @@ class OpenVinoPlugin(
         """Loads the pose model in the background, on the first person a camera with «Поза людей» on sees."""
         self._prepare_in_background(POSE_MODEL, self.get_pose_estimator, "attributes")
 
+    def pose_failed(self, error: BaseException) -> None:
+        """The pose model loaded and fails on the crops: with every person failing the module looked analysing. It
+        goes (the cached backend too: the next load is a new one), the server is told why, and it is loaded again only
+        after a while."""
+        estimator = self.pose_estimators.pop(POSE_MODEL, None)
+        self.model_manager.forget(POSE_MODEL)
+        self._failed_models[POSE_MODEL] = time.monotonic() + 600
+        self._load_failed(POSE_MODEL, error)
+        if estimator is not None:
+            asyncio.create_task(estimator.close())
+
     def prepare_segmenter(self, model_name: str) -> None:
         self._prepare_in_background(model_name, lambda: self.get_segmenter(model_name), "segmenter")
 

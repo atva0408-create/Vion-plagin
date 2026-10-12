@@ -281,9 +281,12 @@ def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
 
     prepared: list[str] = []
     errors: list[str] = []
+    dropped: list[str] = []
     plugin = types.SimpleNamespace(
         pose_estimators={},
         prepare_pose_estimator=lambda: prepared.append("pose"),
+        # as ONNXPlugin.pose_failed: the model goes
+        pose_failed=lambda error: (dropped.append(str(error)), plugin.pose_estimators.clear()),
         # as ONNXPlugin.load_state: nothing loaded, the model waits for the first person
         load_state=lambda runtime, *names: (
             dict(runtime)
@@ -346,11 +349,19 @@ def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
     # too little of the person seen: nothing said
     estimator.answer = None
     assert asyncio.run(on.detectClassifications([person]))[0]["detections"] == []
-    # the model failing: nothing said, the error logged once, not on every person
+    # the model failing: nothing said, the error logged once, the plugin told to drop it (it says why to the server);
+    # the next people wait for it to be loaded again
     estimator.answer = RuntimeError("broken")
     asyncio.run(on.detectClassifications([person, person]))
     asyncio.run(on.detectClassifications([person]))
     assert len(errors) == 1 and "broken" in errors[0]
+    assert dropped == ["broken"]
+    assert prepared[-2:] == ["pose", "pose"]
+    # loaded again after a while and failing again: dropped again, not logged on every reload
+    plugin.pose_estimators["rtmpose-t-256x192"] = estimator
+    asyncio.run(on.detectClassifications([person]))
+    assert dropped == ["broken", "broken"] and len(errors) == 1
+    plugin.pose_estimators["rtmpose-t-256x192"] = estimator
 
     # next to the classifiers of a camera: they keep running, person added to what is cropped
     estimator.answer = ("стоит", 0.7)
