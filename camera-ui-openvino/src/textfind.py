@@ -93,21 +93,31 @@ def tidy(english: str) -> str:
     return english.strip().rstrip(".!").strip().lower()
 
 
-def input_names(backend: Any) -> list[str] | None:
-    """The names of a model's inputs in its order: ONNX's backend keeps them, OpenVINO's compiled model has them."""
+def input_names(backend: Any) -> list[set[str]] | None:
+    """The names of a model's inputs in its order, each with all of its names: ONNX's backend keeps one an input, an
+    input of OpenVINO's compiled model has the ONNX input's name among those of the tensors behind it, and
+    get_any_name gave one of those (OWL-ViT's pixel_values came as /owlvit/vision_model/Cast_output_0)."""
     names = getattr(backend, "_input_names", None)
     if names:
-        return list(names)
+        return [{name} for name in names]
     compiled = getattr(backend, "_compiled", None)
     if compiled is not None:
-        return [port.get_any_name() for port in compiled.inputs]
+        return [set(port.get_names()) for port in compiled.inputs]
     return None
 
 
 def ordered(backend: Any, named: dict[str, Any]) -> list[Any]:
     """The inputs in the order of the model's own (both backends feed a list by position)."""
-    names = input_names(backend) or list(named)
-    return [named[name] for name in names]
+    inputs = input_names(backend)
+    if not inputs:
+        return list(named.values())
+    values = []
+    for names in inputs:
+        name = next((n for n in names if n in named), None)
+        if name is None:
+            raise KeyError(f"no value for the input {sorted(names)} of the model")
+        values.append(named[name])
+    return values
 
 
 def pixels(image: Image.Image) -> np.ndarray:

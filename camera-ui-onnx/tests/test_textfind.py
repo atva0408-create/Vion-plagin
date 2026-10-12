@@ -87,21 +87,30 @@ class Backend:
 
 
 class Port:
-    def __init__(self, name: str) -> None:
-        self.name = name
+    """An input of OpenVINO's compiled model: the ONNX input's name among the names of the tensors behind it, any one of
+    which get_any_name may give (OWL-ViT's pixel_values came as /owlvit/vision_model/Cast_output_0)."""
+
+    def __init__(self, name: str, *inner: str) -> None:
+        self.names = {name, *inner}
+        self.inner = inner
 
     def get_any_name(self) -> str:
-        return self.name
+        return self.inner[0] if self.inner else next(iter(self.names))
+
+    def get_names(self) -> set[str]:
+        return set(self.names)
 
 
 def test_the_inputs_go_by_name_in_both_backends():
     onnx = Backend(["b", "a"], lambda _: [])
     assert textfind.ordered(onnx, {"a": 1, "b": 2}) == [2, 1]
     # OpenVINO's backend keeps the compiled model, whose ports have the names
-    openvino = type("Ov", (), {"_compiled": type("C", (), {"inputs": [Port("b"), Port("a")]})()})()
-    assert textfind.input_names(openvino) == ["b", "a"]
+    openvino = type("Ov", (), {"_compiled": type("C", (), {"inputs": [Port("b", "/m/Cast_output_0"), Port("a")]})()})()
     assert textfind.ordered(openvino, {"a": 1, "b": 2}) == [2, 1]
     assert textfind.ordered(object(), {"a": 1, "b": 2}) == [1, 2]
+    # an input none of whose names is given is said, not fed a wrong value
+    with pytest.raises(KeyError, match="c"):
+        textfind.ordered(type("Ov", (), {"_compiled": type("C", (), {"inputs": [Port("c")]})()})(), {"a": 1})
 
 
 # ------------------------------------------------------------------ a translator
