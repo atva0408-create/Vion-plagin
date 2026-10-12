@@ -340,6 +340,8 @@ def test_an_updated_module_is_loaded_again_without_a_restart(tmp_path: Path, mon
     plugin.object_detectors = {}
     plugin._sensors = {}
     plugin._failed_models = {}
+    # why a model failed, until it loads (load_state, 1.5.2): the plugin tells it to the sensors
+    plugin._load_errors = {}
     plugin._module_files = {}
     plugin._module_reloading = set()
     plugin._models_generation = 0
@@ -388,6 +390,8 @@ def test_an_invalid_updated_graph_keeps_the_loaded_cpu_model(tmp_path: Path, mon
     plugin.object_detectors = {}
     plugin._sensors = {}
     plugin._failed_models = {}
+    # why a model failed, until it loads (load_state, 1.5.2): the plugin tells it to the sensors
+    plugin._load_errors = {}
     plugin._module_files = {}
     plugin._module_reloading = set()
     plugin._models_generation = 0
