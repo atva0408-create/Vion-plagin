@@ -1,6 +1,7 @@
 ## [0.19.0]
 
 - The searches over the archive — by description and for people — keep their vectors in a compact index: on 400 000 vectors the recorder held 2.3 GB and stopped for 10 s at the first search; now about 170 MB, read in the background at start a portion at a time (the recording is held 0.1 s at most). A search by description takes about 70 ms instead of half a second, a people search over 90 days about 50 ms instead of 3.5-6 s (measured on a PC, spec/bench-vectors.ts)
+- The route of a person goes on camera to camera: from the end of a stay to the best moment of another camera within three minutes, even when re-ID alone is not sure (from 0.35 instead of 0.525), and from there on with how the person looks on that camera. Across cameras re-ID is weak — another light, another angle — but who appears in the next camera a minute later is one of a few. On the bench (door and lift, 73 passes) the route now finds 56 % of the passes instead of 23 %, and links someone else in 3 % of the windows that hold other people (9 of 296). A chain stops after six hops; the recordings page draws such stays dashed and the assistant says them (`hop`)
 
 ## [0.18.0]
 

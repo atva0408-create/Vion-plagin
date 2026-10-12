@@ -128,9 +128,11 @@ export interface PersonRouteVisit {
   eventId: string;
   segment: number;
   trackId: number;
-  /** raw cosine with the person asked about; 1 for the moment asked from */
+  /** raw cosine with the person asked about; 1 for the moment asked from; for a hop the least cosine of its links */
   score: number;
   origin?: true;
+  /** reached by hops (camera to camera within minutes, `hopScore`), not alike to the person asked about over the window */
+  hop?: true;
 }
 
 /** Where a person went, camera after camera, around a moment (personRoute). */
@@ -144,6 +146,8 @@ export interface PersonRouteResult {
   /** before and after the moment */
   windowMs: number;
   minScore: number;
+  /** the least cosine of a hop: the next camera within minutes of a stay */
+  hopScore: number;
   scoreBand: [number, number];
   /** the cameras that filed people in the window: one not listed has no person re-ID and cannot be on the route */
   camerasWithPeople: string[];

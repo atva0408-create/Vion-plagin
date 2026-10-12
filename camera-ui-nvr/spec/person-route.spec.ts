@@ -146,6 +146,121 @@ const stays = (route: Awaited<ReturnType<typeof nvr.personRoute>>) =>
   assert.deepEqual(route.origin, { eventId: 'ev-late-seg', segment: 1, cameraId: 'yard', time: at(45), people: 1 });
 }
 
+// ---- hops: across cameras re-ID is weak, but the next camera a few minutes after a stay narrows it to a few people.
+// Looks of their own (other models, never compared with the ones above), hours before them.
+const hopStays = (route: Awaited<ReturnType<typeof nvr.personRoute>>, base: number) =>
+  route.visits.map((v) => `${v.cameraId} ${(v.from - at(base)) / MIN}-${(v.to - at(base)) / MIN} ${v.eventId}${v.origin ? ' *' : ''}${v.hop ? ` hop ${v.score}` : ''}`);
+{
+  const B = -400;
+  const hopper = (embedding: number[]) => [{ trackId: 1, embedding, embeddingModel: 'reid-hop' }];
+  const GREEN = look(0, 1, 1);
+  // the same person at the end of their stay at the door, turned away: 0.6 with GREEN
+  const DOOR2 = look(0, 7, 0.6);
+  // someone else at the door a minute later: 0.5 with DOOR2, 0.4 with GREEN; a hop never stays on the camera
+  const DOOR3 = [0.4, 0, 0, 0, 0, Math.sqrt(1 - 0.16 - 0.325 ** 2), 0, 0.325];
+  // the lift: 0.45 with DOOR2, 0.3 with GREEN; reached from the vectors seen at the end of the stay
+  const FAR = [0.3, Math.sqrt(1 - 0.09 - 0.3375 ** 2), 0, 0, 0, 0, 0, 0.3375];
+  // 0.5 with FAR, 0 with GREEN: reached through the lift only, as sure as the weaker link (0.45)
+  const YARD = look(1, 2, 0.5 / FAR[1]);
+  const OTHER = look(0, 3, 0.2); // someone else: 0.2
+  const BACK = look(0, 4, 0.36); // where they came from
+  const LATE = look(0, 3, 0.4); // 0.4 with GREEN, nine minutes after the last stay
+  // alike to the yard (0.41) and to the garage (0.47), but four minutes from them: a hop is three
+  const SLOW = look(2, 5, 0.5);
+  const EARLY = look(4, 6, 0.5);
+  await moment('hop-early', 'yard', B - 6, hopper(EARLY));
+  await moment('hop-back', 'garage', B - 2, hopper(BACK));
+  await moment('hop-door-1', 'door', B, hopper(GREEN));
+  await moment('hop-door-2', 'door', B + 2, hopper(DOOR2));
+  await moment('hop-door-3', 'door', B + 3, hopper(DOOR3));
+  await moment('hop-garage', 'garage', B + 3, hopper(OTHER));
+  // four minutes after the moment asked, two after the end of its stay
+  await moment('hop-lift', 'lift', B + 4, hopper(FAR));
+  await moment('hop-yard', 'yard', B + 6, hopper(YARD));
+  await moment('hop-slow', 'attic', B + 10, hopper(SLOW));
+  await moment('hop-attic', 'attic', B + 15, hopper(LATE));
+  const route = await nvr.personRoute({ eventId: 'hop-door-1' });
+  assert.deepEqual(hopStays(route, B), ['garage -2--2 hop-back hop 0.36', 'door 0-2 hop-door-1 *', 'lift 4-4 hop-lift hop 0.45', 'yard 6-6 hop-yard hop 0.45']);
+  assert.equal(route.hopScore, 0.35);
+  assert.equal(route.minScore, 0.525, 'the window keeps its floor');
+  // the strangers at the door and in the garage between the stays, and the ones four and nine minutes later, stay out
+  assert.deepEqual(route.events.map((ev) => ev.id).sort(), ['hop-back', 'hop-door-1', 'hop-lift', 'hop-yard']);
+  // the assistant says which stays are hops, and how sure a hop is
+  const told = await nvr.callAssistantTool('person_route', { event: 'hop-door-1' }, { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' });
+  const content = told.content as { route: { event: string; hop?: true }[]; note: string };
+  assert.deepEqual(content.route.map((stay) => `${stay.event}${stay.hop ? ' hop' : ''}`), ['hop-back hop', 'hop-door-1', 'hop-lift hop', 'hop-yard hop']);
+  assert.match(content.note, /`hop`.*from 0\.35/);
+  // from the lift: the door is where they came from (its stay as the door saw them), the yard where they went
+  assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-lift' }), B), [
+    'garage -2--2 hop-back hop 0.36',
+    'door 0-2 hop-door-1 hop 0.45',
+    'lift 4-4 hop-lift *',
+    'yard 6-6 hop-yard hop 0.5',
+  ]);
+  // never out of the window asked
+  assert.deepEqual(
+    hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }, { minutes: 5 }), B).map((stay) => stay.split(' ')[0]),
+    ['garage', 'door', 'lift'],
+  );
+  assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }, { minutes: 1 }), B), ['door 0-0 hop-door-1 *']);
+}
+
+// ---- a hop to a moment alike to the asked one: the chain on from it is as sure as that likeness, not the hop before
+{
+  const D = -800;
+  const through = (embedding: number[]) => [{ trackId: 1, embedding, embeddingModel: 'reid-through' }];
+  const YARD = [0.6, 0.3, Math.sqrt(1 - 0.36 - 0.09), 0, 0, 0, 0, 0]; // 0.6 with the door, 0.538 with the lift
+  await moment('through-door', 'door', D, through(look(0, 1, 1)));
+  await moment('through-lift', 'lift', D + 2, through(look(0, 1, 0.45)));
+  await moment('through-yard', 'yard', D + 4, through(YARD));
+  await moment('through-attic', 'attic', D + 6, through(look(2, 3, 0.5 / YARD[2]))); // 0.5 with the yard, 0 with the rest
+  assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'through-door' }), D), [
+    'door 0-0 through-door *',
+    'lift 2-2 through-lift hop 0.45',
+    'yard 4-4 through-yard',
+    'attic 6-6 through-attic hop 0.5',
+  ]);
+}
+
+// ---- a moment of two: each followed alone, a moment both reach as sure as the surer of them
+{
+  const E = -900;
+  const two = (embedding: number[], trackId = 1) => ({ trackId, embedding, embeddingModel: 'reid-two' });
+  await moment('two-attic', 'attic', E - 2, [two(look(1, 4, 0.42))]); // the second one's (0.42), nothing like the first
+  await moment('two-garage', 'garage', E - 1, [two(look(0, 3, 0.45))]); // the first one's (0.45), nothing like the second
+  await moment('two-0', 'door', E, [two(look(0, 1, 1), 1), two(look(1, 0, 1), 2)]);
+  await moment('two-lift', 'lift', E + 1, [two([0.4, 0.5, Math.sqrt(1 - 0.16 - 0.25), 0, 0, 0, 0, 0])]); // 0.4 with the first, 0.5 with the second
+  assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'two-0' }), E), [
+    'attic -2--2 two-attic hop 0.42',
+    'garage -1--1 two-garage hop 0.45',
+    'door 0-0 two-0 *',
+    'lift 1-1 two-lift hop 0.5',
+  ]);
+}
+
+// ---- a chain stops after six hops: each look like the one before (0.48), nothing like the ones further
+{
+  const C = -600;
+  const chained = (k: number) => {
+    const v = Array.from({ length: 12 }, () => 0);
+    v[k] = 0.6;
+    v[k + 1] = 0.8;
+    return [{ trackId: 1, embedding: v, embeddingModel: 'reid-chain' }];
+  };
+  for (let k = 0; k <= 8; k++) await moment(`chain-${k}`, k % 2 ? 'lift' : 'door', C + 2 * k, chained(k));
+  const route = await nvr.personRoute({ eventId: 'chain-0' });
+  assert.deepEqual(
+    route.visits.map((v) => v.eventId),
+    ['chain-0', 'chain-1', 'chain-2', 'chain-3', 'chain-4', 'chain-5', 'chain-6'],
+  );
+  assert.ok(route.visits.slice(1).every((v) => v.hop && v.score === 0.48), JSON.stringify(route.visits));
+  // backwards the same
+  assert.deepEqual(
+    (await nvr.personRoute({ eventId: 'chain-8' })).visits.map((v) => v.eventId),
+    ['chain-2', 'chain-3', 'chain-4', 'chain-5', 'chain-6', 'chain-7', 'chain-8'],
+  );
+}
+
 // ---- nothing to follow
 {
   assert.equal((await nvr.personRoute({ eventId: 'ev-car' })).reason, 'no-vectors');
@@ -163,6 +278,14 @@ const stays = (route: Awaited<ReturnType<typeof nvr.personRoute>>) =>
     // 2.5 → 6 is more than three minutes apart; 6 → 8.5 one stay, shown by its better moment
     ['door 0-0 a', 'lift 2-2 b', 'door 2.5-2.5 c', 'door 6-8.5 e'],
   );
+  // a stay shows a moment alike to the asked one before any hop, whatever the hop's score: they are of different things
+  const shown = routeOf(origin, [{ ...hit('f', 'lift', 2, 0.9), hop: true }, hit('g', 'lift', 3, 0.6), { ...hit('h', 'yard', 6, 0.5), hop: true }], 3 * MIN);
+  assert.deepEqual(
+    shown.map((v) => `${v.cameraId} ${v.eventId} ${v.score}${v.hop ? ' hop' : ''}`),
+    ['door a 1', 'lift g 0.6', 'yard h 0.5 hop'],
+  );
+  const later = routeOf(origin, [hit('g', 'lift', 2, 0.6), { ...hit('f', 'lift', 3, 0.9), hop: true }], 3 * MIN);
+  assert.deepEqual(later.map((v) => `${v.eventId}${v.hop ? ' hop' : ''}`), ['a', 'g']);
 }
 
 // ---- the assistant: the stays in the person's clock, a button each, the cameras that saw nobody

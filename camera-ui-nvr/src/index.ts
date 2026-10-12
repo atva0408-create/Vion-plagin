@@ -35,6 +35,7 @@ import type { EventDescription } from './describer.js';
 import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
 import type { ExternalEventInput, ExternalEventResult } from './external.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
+import type { PersonHit, PersonVector } from './people.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type {
@@ -210,6 +211,15 @@ const PERSON_ROUTE_WINDOW_MS = 30 * 60_000;
 const PERSON_ROUTE_MAX_MS = 3 * 3_600_000;
 /** Moments on one camera closer than this are one stay (the server files a person per segment of an event). */
 const PERSON_ROUTE_GAP_MS = 3 * 60_000;
+/**
+ * A hop of a route: the best moment of another camera within three minutes of a stay, if its cosine is over 0.35. Measured
+ * on the bench (2026-10-12, door and lift, 175 filed people): it is the same person in 41 of 73 passes (56 %) and links
+ * someone else in 9 of 296 windows that hold other people (3 %); the window-wide floor (0.525) keeps 17 of the 73. Every
+ * hop compounds that 3 %: a chain stops after six.
+ */
+const PERSON_HOP_MS = 3 * 60_000;
+const PERSON_HOP_SCORE = 0.35;
+const PERSON_ROUTE_HOPS = 6;
 const PERSON_SEARCH_DAYS = 7;
 /** a picture is embedded by a plugin that may load its model first */
 const PERSON_EMBED_TIMEOUT_MS = 60_000;
@@ -1870,6 +1880,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events: [],
       windowMs,
       minScore,
+      hopScore: PERSON_HOP_SCORE,
       scoreBand: PERSON_SCORE_BAND,
       camerasWithPeople: [],
       indexedSince: this.people.oldest(),
@@ -1885,15 +1896,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!queries.length) return none('no-vectors');
     const event = JSON.parse(row.data) as RecordedEvent;
     const time = event.segments?.[segment]?.firstSeen ?? row.start_ms;
-    const hits = await this.people.search(queries, {
-      fromMs: time - windowMs,
-      toMs: time + windowMs,
-      exclude: { eventId: query.eventId, seg: segment },
-      minScore,
-      limit: 500,
-    });
+    const window = { fromMs: time - windowMs, toMs: time + windowMs };
+    const hits = await this.people.search(queries, { ...window, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: 500 });
     const origin = { eventId: query.eventId, cameraId: event.cameraId, seg: segment, trackId: queries[0].trackId, ts: time, score: 1 };
-    const visits = routeOf(origin, hits, PERSON_ROUTE_GAP_MS);
+    const hops = await this.routeHops(origin, queries, hits, window, minScore);
+    const visits = routeOf(origin, [...hits, ...hops], PERSON_ROUTE_GAP_MS);
     const events = [...new Set(visits.map((visit) => visit.eventId))].flatMap((id) => {
       const stored = this.store.event(id);
       return stored ? [this.decorate(JSON.parse(stored.data) as RecordedEvent, stored.favorite === 1, true)] : [];
@@ -1905,10 +1912,80 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events,
       windowMs,
       minScore,
+      hopScore: PERSON_HOP_SCORE,
       scoreBand: PERSON_SCORE_BAND,
       camerasWithPeople: this.people.camerasBetween(time - windowMs, time + windowMs),
       indexedSince: this.people.oldest(),
     };
+  }
+
+  /**
+   * The moments a route reaches by hops, beyond those alike to the asked person over the whole window: from the last
+   * moment of a stay the best moment of another camera within minutes after it (PERSON_HOP_SCORE), from the first one
+   * the best before it; then that moment's stay on its camera, and on from its edge with the vectors seen there, where
+   * the light and the angle are the next camera's. Across cameras re-ID is weak, but who appears in the next camera a
+   * minute later narrows it to a few people. Each person of the moment asked is followed alone; a moment alike to the
+   * asked one is walked through, a moment walked already by a chain as sure ends the chain.
+   */
+  private async routeHops(
+    origin: PersonHit,
+    queries: PersonVector[],
+    matches: PersonHit[],
+    window: { fromMs: number; toMs: number },
+    minScore: number,
+  ): Promise<PersonHit[]> {
+    const key = (moment: { eventId: string; seg: number }) => `${moment.eventId}/${moment.seg}`;
+    const matched = new Map([[key(origin), 1], ...matches.map((moment) => [key(moment), moment.score] as const)]);
+    const reached = new Map<string, PersonHit>();
+    // the moments stepped on, by the surest chain to them: another person's chain may come surer and go on from there
+    const walked = new Map([[key(origin), 1]]);
+    const reach = (moment: PersonHit, score: number) => {
+      const k = key(moment);
+      const seen = reached.get(k);
+      if (!matched.has(k) && (!seen || seen.score < score)) reached.set(k, { ...moment, score, hop: true });
+    };
+    for (const trackId of new Set(queries.map((q) => q.trackId))) {
+      for (const forward of [true, false]) {
+        let at: PersonHit = { ...origin, trackId };
+        let vectors = queries.filter((q) => q.trackId === trackId);
+        // the least cosine of the links so far
+        let chain = 1;
+        for (let hop = 0; ; hop++) {
+          const stay = await this.stayOf(at, vectors, window, minScore);
+          for (const moment of stay) reach(moment, moment === at ? chain : Math.min(chain, moment.score));
+          if (hop === PERSON_ROUTE_HOPS) break;
+          const edge = forward ? stay[stay.length - 1] : stay[0];
+          const edgeVectors = edge === at ? vectors : this.people.vectors(edge.eventId, edge.seg, edge.trackId);
+          const [next] = await this.people.search(edgeVectors, {
+            fromMs: forward ? edge.ts : Math.max(window.fromMs, edge.ts - PERSON_HOP_MS),
+            toMs: forward ? Math.min(window.toMs, edge.ts + PERSON_HOP_MS) : edge.ts,
+            cameraIds: new Set([...this.cameras.keys()].filter((id) => id !== edge.cameraId)),
+            minScore: PERSON_HOP_SCORE,
+            limit: 1,
+          });
+          if (!next) break;
+          // a moment alike to the asked one is as sure as that, whatever the links to it
+          chain = Math.max(matched.get(key(next)) ?? 0, Math.min(chain, next.score));
+          if ((walked.get(key(next)) ?? -1) >= chain) break;
+          walked.set(key(next), chain);
+          vectors = this.people.vectors(next.eventId, next.seg, next.trackId);
+          if (!vectors.length) break;
+          at = next;
+        }
+      }
+    }
+    return [...reached.values()];
+  }
+
+  /** The stay of a moment on its camera: the moments alike to it there, in time order, each within the gap of the next. */
+  private async stayOf(at: PersonHit, vectors: PersonVector[], window: { fromMs: number; toMs: number }, minScore: number): Promise<PersonHit[]> {
+    const same = await this.people.search(vectors, { ...window, cameraIds: new Set([at.cameraId]), exclude: at, minScore, limit: 500 });
+    const moments = [...same, at].sort((a, b) => a.ts - b.ts);
+    let first = moments.indexOf(at);
+    let last = first;
+    while (first > 0 && moments[first].ts - moments[first - 1].ts <= PERSON_ROUTE_GAP_MS) first--;
+    while (last < moments.length - 1 && moments[last + 1].ts - moments[last].ts <= PERSON_ROUTE_GAP_MS) last++;
+    return moments.slice(first, last + 1);
   }
 
   public async searchSimilarQuery(query: SimilarQuery, opts: SimilarOptions = {}): Promise<SimilarResult> {

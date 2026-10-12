@@ -1,6 +1,7 @@
 ## [0.19.0]
 
 - Die Suchen im Archiv — nach Beschreibung und nach Personen — halten ihre Vektoren in einem kompakten Index: bei 400 000 Vektoren belegte die Aufzeichnung 2,3 GB und stand bei der ersten Suche 10 s still; jetzt etwa 170 MB, beim Start im Hintergrund portionsweise gelesen (die Aufzeichnung wird höchstens 0,1 s angehalten). Eine Suche nach Beschreibung dauert etwa 70 ms statt einer halben Sekunde, eine Personensuche über 90 Tage etwa 50 ms statt 3,5–6 s (gemessen auf einem PC, spec/bench-vectors.ts)
+- Der Weg einer Person geht von Kamera zu Kamera: vom Ende eines Aufenthalts zum besten Moment einer anderen Kamera innerhalb von drei Minuten, auch wenn Re-ID allein nicht sicher ist (ab 0,35 statt 0,525), und von dort weiter danach, wie die Person auf dieser Kamera aussieht. Zwischen Kameras ist Re-ID schwach — anderes Licht, anderer Winkel —, aber wer eine Minute später in der nächsten Kamera erscheint, ist einer von wenigen. Auf dem Prüfstand (Tür und Aufzug, 73 Durchgänge) findet der Weg jetzt 56 % der Durchgänge statt 23 % und verbindet in 3 % der Fenster mit anderen Leuten eine fremde Person (9 von 296). Eine Kette endet nach sechs Sprüngen; die Aufnahmeseite zeichnet solche Aufenthalte gestrichelt, der Assistent nennt sie (`hop`)
 
 ## [0.18.0]
 

@@ -1873,11 +1873,14 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
         score: visit.score,
         event: visit.eventId,
         ...(visit.origin ? { asked: true } : {}),
+        ...(visit.hop ? { hop: true } : {}),
       })),
       ...(blind.length ? { camerasWithoutPeople: blind } : {}),
       note:
         `Re-ID compares clothes and build: a score from ${route.scoreBand[1]} is about sure, from ${route.minScore} to ${route.scoreBand[1]} ` +
-        'maybe someone dressed alike. The cameras without people in the window have no person re-ID on, or nobody passed them.',
+        'maybe someone dressed alike. A stay marked `hop` was joined camera to camera within three minutes of the stay before ' +
+        `or after it, at a score from ${route.hopScore}: likely the same person by the time, less sure by the look. ` +
+        'The cameras without people in the window have no person re-ID on, or nobody passed them.',
       ...(route.origin.people > 1 && trackId === undefined
         ? { hint: `The moment has ${route.origin.people} people: the route follows all of them; name one with \`person\` (a track id of the event).` }
         : {}),

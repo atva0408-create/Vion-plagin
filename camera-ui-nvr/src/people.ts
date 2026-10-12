@@ -32,6 +32,8 @@ export interface PersonHit {
   ts: number;
   /** raw cosine of the best query vector */
   score: number;
+  /** reached by a route's hops: `score` is the least cosine of its links (index.ts routeHops) */
+  hop?: true;
 }
 
 export interface PersonSearch {
@@ -76,21 +78,30 @@ export function personEmbeddings(segment: unknown): PersonEmbedding[] {
 /**
  * The route of a person: the moments that look like them in time order, one stay on a camera while its moments are less
  * than `gapMs` apart and no other camera saw them in between. The stay of the moment asked from shows that moment; the
- * others their best match. Re-ID describes clothes and build: two people dressed alike on one camera read as one stay.
+ * others their best match, a moment alike to the asked one before a hop. Re-ID describes clothes and build: two people
+ * dressed alike on one camera read as one stay.
  */
 export function routeOf(origin: PersonHit, hits: PersonHit[], gapMs: number): PersonRouteVisit[] {
   const moments = [{ ...origin, origin: true }, ...hits.map((hit) => ({ ...hit, origin: false }))].sort((a, b) => a.ts - b.ts);
   const visits: PersonRouteVisit[] = [];
+  const show = (visit: PersonRouteVisit, moment: (typeof moments)[number]) => {
+    Object.assign(visit, { eventId: moment.eventId, segment: moment.seg, trackId: moment.trackId, score: moment.score });
+    if (moment.origin) visit.origin = true;
+    if (moment.hop && !moment.origin) visit.hop = true;
+    else delete visit.hop;
+  };
   for (const moment of moments) {
     const last = visits.at(-1);
-    const best = { eventId: moment.eventId, segment: moment.seg, trackId: moment.trackId, score: moment.score };
     if (last?.cameraId === moment.cameraId && moment.ts - last.to <= gapMs) {
       last.to = Math.max(last.to, moment.ts);
-      if (moment.origin) Object.assign(last, best, { origin: true });
-      else if (!last.origin && moment.score > last.score) Object.assign(last, best);
+      // the scores of hops and of matches are of different things: a match is shown before any hop
+      const better = !!last.hop === !!moment.hop ? moment.score > last.score : !moment.hop;
+      if (moment.origin || (!last.origin && better)) show(last, moment);
       continue;
     }
-    visits.push({ cameraId: moment.cameraId, from: moment.ts, to: moment.ts, ...best, ...(moment.origin ? { origin: true as const } : {}) });
+    const visit = { cameraId: moment.cameraId, from: moment.ts, to: moment.ts } as PersonRouteVisit;
+    show(visit, moment);
+    visits.push(visit);
   }
   return visits;
 }
