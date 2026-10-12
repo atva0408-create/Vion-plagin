@@ -105,7 +105,9 @@ def test_the_inputs_go_by_name_in_both_backends():
     onnx = Backend(["b", "a"], lambda _: [])
     assert textfind.ordered(onnx, {"a": 1, "b": 2}) == [2, 1]
     # OpenVINO's backend keeps the compiled model, whose ports have the names
-    openvino = type("Ov", (), {"_compiled": type("C", (), {"inputs": [Port("b", "/m/Cast_output_0"), Port("a")]})()})()
+    openvino = type(
+        "Ov", (), {"_compiled": type("C", (), {"inputs": [Port("b", "/m/Cast_output_0"), Port("a")]})()}
+    )()
     assert textfind.ordered(openvino, {"a": 1, "b": 2}) == [2, 1]
     assert textfind.ordered(object(), {"a": 1, "b": 2}) == [1, 2]
     # an input none of whose names is given is said, not fed a wrong value
@@ -123,7 +125,10 @@ class Tokenizer:
 
     def __call__(self, text: str, return_tensors: str = "np") -> dict[str, Any]:
         n = len(text.split())
-        return {"input_ids": np.array([[10 + i for i in range(n)] + [0]]), "attention_mask": np.ones((1, n + 1), dtype=np.int64)}
+        return {
+            "input_ids": np.array([[10 + i for i in range(n)] + [0]]),
+            "attention_mask": np.ones((1, n + 1), dtype=np.int64),
+        }
 
     def decode(self, ids: list[int], skip_special_tokens: bool = True) -> str:
         return " ".join(self.words.get(i, "?") for i in ids).replace(" .", ".")
@@ -143,7 +148,9 @@ def translator(script: list[int], language: str = "ru", vocabulary: int = 100) -
         logits[0, -1, script[step] if step < len(script) else 0] = 50
         return [logits]
 
-    t.encoder = Backend(["input_ids", "attention_mask"], lambda named: [np.ones((1, named["input_ids"].shape[1], 4))])
+    t.encoder = Backend(
+        ["input_ids", "attention_mask"], lambda named: [np.ones((1, named["input_ids"].shape[1], 4))]
+    )
     # the decoder's inputs are not in the order of the call: they are fed by name
     t.decoder = Backend(["encoder_attention_mask", "input_ids", "encoder_hidden_states"], decode)
     t.tokenizer = Tokenizer()
@@ -163,7 +170,12 @@ def test_the_translation_is_greedy_and_ends_at_the_end_token():
     t = translator([5, 6, 7, 0])
     assert asyncio.run(t.english("красная сумка")) == "red bag"
     # each step the whole output so far, starting with the start token
-    assert [call["input_ids"].tolist() for call in t.decoder.calls] == [[[99]], [[99, 5]], [[99, 5, 6]], [[99, 5, 6, 7]]]
+    assert [call["input_ids"].tolist() for call in t.decoder.calls] == [
+        [[99]],
+        [[99, 5]],
+        [[99, 5, 6]],
+        [[99, 5, 6, 7]],
+    ]
     assert t.decoder.calls[0]["encoder_hidden_states"].shape == (1, 3, 4)
 
 
@@ -196,7 +208,12 @@ class SlowTranslator(textfind.Translator):
         self.loads += 1
         await asyncio.sleep(self.seconds)
         ready = translator(self.script)
-        self.encoder, self.decoder, self.tokenizer, self.config = ready.encoder, ready.decoder, ready.tokenizer, ready.config
+        self.encoder, self.decoder, self.tokenizer, self.config = (
+            ready.encoder,
+            ready.decoder,
+            ready.tokenizer,
+            ready.config,
+        )
         self.initialized = True
 
 
@@ -262,7 +279,9 @@ def test_the_translators_leave_the_manager_when_closed():
 
 
 def test_boxes_are_the_best_ones_from_the_floor_overlapping_ones_once():
-    logits = np.array([logit(0.02), logit(0.6), logit(0.55), logit(0.3), logit(0.2), logit(0.12), logit(0.049)])
+    logits = np.array(
+        [logit(0.02), logit(0.6), logit(0.55), logit(0.3), logit(0.2), logit(0.12), logit(0.049)]
+    )
     boxes = np.array(
         [
             [0.5, 0.5, 0.2, 0.2],
@@ -294,12 +313,17 @@ def test_the_crop_is_the_box_with_some_around_it():
     assert crop.size == (260, 260)
     assert crop.getpixel((130, 130))[0] > 200 and crop.getpixel((5, 5))[0] < 50
     # a big find is made smaller
-    assert max(Image.open(io.BytesIO(textfind.crop_of(image, {"x": 0, "y": 0, "width": 1, "height": 1}))).size) == textfind.CROP_SIDE
+    assert (
+        max(Image.open(io.BytesIO(textfind.crop_of(image, {"x": 0, "y": 0, "width": 1, "height": 1}))).size)
+        == textfind.CROP_SIDE
+    )
 
 
 def owl_finder(scores: list[float], *loaded: textfind.Translator) -> textfind.TextFinder:
     """A finder whose OWL sees one thing a picture, scored in turn, at the left of the picture."""
-    finder = textfind.TextFinder(None, Logger(), base_url="", translators=translators(*(loaded or (translator([5, 6, 0]),))))  # type: ignore[arg-type]
+    finder = textfind.TextFinder(
+        None, Logger(), base_url="", translators=translators(*(loaded or (translator([5, 6, 0]),)))
+    )  # type: ignore[arg-type]
     queue = list(scores)
 
     def answer(named: dict[str, Any]) -> list[Any]:
@@ -313,7 +337,10 @@ def owl_finder(scores: list[float], *loaded: textfind.Translator) -> textfind.Te
 
     def tokens(texts: list[str], **_: Any) -> dict[str, Any]:
         finder.asked = texts  # type: ignore[attr-defined]
-        return {"input_ids": np.zeros((1, textfind.OWL_TOKENS), dtype=np.int64), "attention_mask": np.ones((1, textfind.OWL_TOKENS), dtype=np.int64)}
+        return {
+            "input_ids": np.zeros((1, textfind.OWL_TOKENS), dtype=np.int64),
+            "attention_mask": np.ones((1, textfind.OWL_TOKENS), dtype=np.int64),
+        }
 
     finder.owl_tokenizer = tokens
     finder.initialized = True
@@ -428,8 +455,15 @@ def _plugin_class(which: str) -> type:
         "_clip_query",
         "_preload_clip",
     }
-    cls.body = [node for node in cls.body if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in keep]
-    module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls], type_ignores=[])
+    cls.body = [
+        node
+        for node in cls.body
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef) and node.name in keep
+    ]
+    module = ast.Module(
+        body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls],
+        type_ignores=[],
+    )
     namespace: dict[str, Any] = {
         "asyncio": asyncio,
         "time": time,
@@ -553,7 +587,11 @@ def test_the_first_find_loads_in_the_background_and_says_so_then_the_finds_come(
     async def run() -> None:
         p = plugin(which)
         # a call ends after 30 s, the models take longer: the first answer is that they load
-        assert await p.findInPictures("сумка", [picture(), picture()]) == {"query": "сумка", "loading": True, "pictures": []}
+        assert await p.findInPictures("сумка", [picture(), picture()]) == {
+            "query": "сумка",
+            "loading": True,
+            "pictures": [],
+        }
         # asked again while they load: still loading, one load
         assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
         await asyncio.sleep(0.03)
@@ -585,7 +623,9 @@ def test_the_translator_of_the_query_is_loaded_with_the_finder(which: str):
         assert p.text_finder.asked == [("сумка", 1, None)]
         await asyncio.sleep(0.08)
         assert slow.initialized
-        assert (await p.findInPictures("Tasche", [picture()], {"language": "de"}))["pictures"] == [{"boxes": []}]
+        assert (await p.findInPictures("Tasche", [picture()], {"language": "de"}))["pictures"] == [
+            {"boxes": []}
+        ]
 
     asyncio.run(run())
 
@@ -626,12 +666,13 @@ def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once(which: str):
     asyncio.run(run())
 
 
-
 # ------------------------------------------------------------------ the two plugins: the same module, the same paths
 
 
 def test_both_plugins_carry_the_same_module():
-    assert (ROOT / "camera-ui-onnx" / "src" / "textfind.py").read_bytes() == (ROOT / "camera-ui-openvino" / "src" / "textfind.py").read_bytes()
+    assert (ROOT / "camera-ui-onnx" / "src" / "textfind.py").read_bytes() == (
+        ROOT / "camera-ui-openvino" / "src" / "textfind.py"
+    ).read_bytes()
 
 
 def test_the_onnx_manager_finds_the_models_where_the_mirror_has_them():
@@ -665,10 +706,19 @@ def test_the_openvino_manager_reads_the_onnx_graphs_of_the_onnx_folder(monkeypat
     onnx = model_manager.TEXTFIND_BASE_URL
     assert onnx.endswith("/v1/onnx")
     assert manager.model_files("owlvit-base-patch32") == {
-        "xml": (f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx", "owlvit-base-patch32/owlvit-base-patch32.onnx"),
-        "bin": (f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx", "owlvit-base-patch32/owlvit-base-patch32.onnx"),
+        "xml": (
+            f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx",
+            "owlvit-base-patch32/owlvit-base-patch32.onnx",
+        ),
+        "bin": (
+            f"{onnx}/owlvit-base-patch32/owlvit-base-patch32.onnx",
+            "owlvit-base-patch32/owlvit-base-patch32.onnx",
+        ),
     }
-    assert manager.model_files("opus-mt-ru-en-decoder")["xml"] == (f"{onnx}/opus-mt-ru-en/decoder.onnx", "opus-mt-ru-en/decoder.onnx")
+    assert manager.model_files("opus-mt-ru-en-decoder")["xml"] == (
+        f"{onnx}/opus-mt-ru-en/decoder.onnx",
+        "opus-mt-ru-en/decoder.onnx",
+    )
     # its own models are still the IR pairs of its folder
     assert manager.model_files("yolo-v9-s-320")["xml"][1] == "yolo-v9-s-320/yolo-v9-s-320.xml"
 
