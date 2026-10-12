@@ -135,6 +135,7 @@ def plugin(request: pytest.FixtureRequest) -> Any:
     instance._models_generation = 0
     instance._modules_version = models.version
     instance._sensors = {}
+    instance.text_finder = None
     for key in [
         "face_detectors",
         "plate_detectors",

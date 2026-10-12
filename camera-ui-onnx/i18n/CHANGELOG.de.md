@@ -1,3 +1,7 @@
+## [1.7.0]
+
+- Suche im Bild: Die Aufnahmen von ViON fragen, wo im Bild jedes per Beschreibung gefundenen Ereignisses das Gesuchte ist („красная сумка“, „человек с велосипедом“), und zeigen den Fund. Die Anfrage wird von opus-mt-ru-en ins Englische übersetzt (der Sucher versteht nur Englisch), OWL-ViT B/32 rahmt das Ding ein, ein Fund kommt mit seinem Ausschnitt. Die Modelle (≈720 MB) werden bei der ersten Anfrage heruntergeladen und geladen und nach fünf Minuten ohne Suche aus dem Speicher entfernt; ein Bild dauert auf einem Prozessor 1–4 s. Benötigt ViON NVR 0.19.0
+
 ## [1.6.0]
 
 - Körperhaltung: Mit „Поза людей“ meldet der Merkmalssensor („ViON: признаки“) für jede Person im Bild, ob sie steht, sitzt oder liegt, und das Ereignis erhält es als Merkmal „поза“ („поза: лежит“). Einschalten in ViON: Erweiterungen → Module → „Körperhaltung“ oder in den Einstellungen des Merkmalssensors der Kamera. Das Modell (RTMPose-t) wird mit der ersten Person geladen, die eine solche Kamera sieht, nicht beim Start. Ist zu wenig von einer Person zu sehen oder ist sie vorgebeugt, wird keine Haltung genannt.

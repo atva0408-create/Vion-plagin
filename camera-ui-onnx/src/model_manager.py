@@ -162,4 +162,8 @@ class OnnxModelManager(BaseModelManager):
         if model_name.startswith(("clip-", "siglip-")) and model_name.endswith(("-vision", "-text")):
             family, _, tower = model_name.rpartition("-")
             return f"{family}/{tower}.onnx"
+        # the translator of the text finder (textfind.py): two parts and its tokenizer in one folder
+        if model_name.startswith("opus-mt-") and model_name.endswith(("-encoder", "-decoder")):
+            family, _, part = model_name.rpartition("-")
+            return f"{family}/{part}.onnx"
         return f"{model_name}/{model_name}.onnx"

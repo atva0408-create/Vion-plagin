@@ -53,6 +53,7 @@ from camera_ui_sdk import (
     SegmentationPluginResponse,
     VideoFrameData,
 )
+from PIL import Image
 
 from defaults import (
     CLIP_MODEL_LABELS,
@@ -103,6 +104,8 @@ from sensors.object_sensor import ONNXObjectSensor
 from sensors.person_embedder_sensor import ONNXPersonEmbedderSensor
 from sensors.segmenter_sensor import ONNXSegmenterSensor
 from siglip import SiglipEncoder, is_siglip
+from textfind import IDLE_S as TEXT_FINDER_IDLE_S
+from textfind import OWL_MODEL, TextFinder
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
 
@@ -136,6 +139,9 @@ class ONNXPlugin(
         # the posture of people, asked of the attribute sensor of a camera with «Поза людей» on (pose.py)
         self.pose_estimators: dict[str, PoseEstimator] = {}
         self.attribute_backends: dict[str, Any] = {}
+        # where the words of a search are in the pictures (textfind.py): ≈720 MB, loaded when asked, closed when idle
+        self.text_finder: TextFinder | None = None
+        self._text_finder_idle: asyncio.Task[None] | None = None
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         # the files of the module version each pause above is for: only another version lifts it early
@@ -873,6 +879,50 @@ class ONNXPlugin(
             )
         return results
 
+    async def get_text_finder(self) -> TextFinder:
+        finder = self.text_finder
+        if finder is None:
+            finder = TextFinder(self.model_manager, self.logger, base_url=MODEL_BASE_URL)
+            self.text_finder = finder
+        try:
+            await finder.initialize()
+        except Exception as error:
+            if self.text_finder is finder:
+                self.text_finder = None
+            self._load_failed(OWL_MODEL, error)
+            raise
+        self._load_succeeded(OWL_MODEL)
+        return finder
+
+    async def findInPictures(
+        self, text: str, images: list[bytes], config: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Where the words of a search are in each picture (the recorder asks it of the pictures the search by
+        description found): the query as the finder took it, per picture its boxes and the crop of a find."""
+        query = (text or "").strip()
+        if not query or not images:
+            return {"query": query, "pictures": [{"boxes": []} for _ in images]}
+        finder = await self.get_text_finder()
+        pictures = [Image.fromarray(decode_image(data)) for data in images]
+        try:
+            return await finder.find(query, pictures)
+        finally:
+            self._close_text_finder_when_idle()
+
+    def _close_text_finder_when_idle(self) -> None:
+        if self._text_finder_idle is not None:
+            self._text_finder_idle.cancel()
+
+        async def close_later() -> None:
+            await asyncio.sleep(TEXT_FINDER_IDLE_S)
+            finder = self.text_finder
+            if finder is not None and finder.idle(time.monotonic()):
+                self.text_finder = None
+                finder.close()
+                self.logger.log("The text finder left memory: nobody asked for a while")
+
+        self._text_finder_idle = asyncio.create_task(close_later())
+
     def face_embedder_space(self) -> str:
         return resolve_model(self.storage.values.get("face_embedder_model"), DEFAULT_FACE_EMBEDDER)
 
@@ -1400,6 +1450,9 @@ class ONNXPlugin(
         for backend in self.attribute_backends.values():
             backend.close()
         self.attribute_backends.clear()
+        if self.text_finder is not None:
+            self.text_finder.close()
+            self.text_finder = None
         self.object_detectors.clear()
         self.face_detectors.clear()
         self.face_embedders.clear()
