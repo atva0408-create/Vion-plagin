@@ -1,3 +1,7 @@
+## [1.6.0]
+
+- Posture of people: with «Поза людей» on, the attribute sensor («ViON: признаки») tells of every person a camera sees whether they stand, sit or lie, and the event gets it as the attribute «поза» («поза: лежит»). Turn it on in ViON: Extensions → Modules → «Поза людей», or in the settings of the camera's attribute sensor. Its model (RTMPose-t) loads with the first person such a camera sees, never at start. Too little of a person seen, or a person bent over, says nothing.
+
 ## [1.5.2]
 
 - A model a sensor has not loaded yet is reported to ViON as waiting to be loaded when first needed (Re-ID with the first person a camera sees) or as failed, with the reason: ViON shows the first as connected and only the second as not working.

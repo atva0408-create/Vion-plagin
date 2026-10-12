@@ -143,6 +143,7 @@ def plugin(request: pytest.FixtureRequest) -> Any:
         "ocr_models",
         "person_embedders",
         "segmenters",
+        "pose_estimators",
         "attribute_backends",
     ]:
         setattr(instance, key, {})

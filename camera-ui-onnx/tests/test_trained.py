@@ -56,7 +56,7 @@ def fresh(models: Any) -> Any:
 
 
 def test_the_plugins_carry_the_same_files():
-    for name in ("trained.py", "sensors/attribute_sensor.py"):
+    for name in ("trained.py", "pose.py", "sensors/attribute_sensor.py"):
         assert (ONNX_SRC / name).read_text(encoding="utf-8") == (OPENVINO_SRC / name).read_text(
             encoding="utf-8"
         ), name
@@ -245,3 +245,140 @@ def test_the_attribute_sensor_runs_the_classifiers_of_its_camera(
     # the server crops only the classes a camera's classifiers ask about
     assert sensor_for("cam-1").modelSpec["triggerLabels"] == ["person"]
     assert sensor_for("cam-2").modelSpec["triggerLabels"] == ["person", "vehicle"]
+
+
+def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.syspath_prepend(str(ONNX_SRC))
+    monkeypatch.syspath_prepend(str(SDK))
+    monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    for name in ("trained", "pose", "sensors.attribute_sensor"):
+        sys.modules.pop(name, None)
+    attribute_sensor = importlib.import_module("sensors.attribute_sensor")
+    trained_module = sys.modules["trained"]
+    write_manifest(
+        tmp_path,
+        {
+            "detector": None,
+            "attributes": [model(tmp_path, "taxi", label="vehicle", attribute="такси", cameras=["cam-2"])],
+        },
+    )
+    trained_module.trained_models.dir = str(tmp_path)
+    fresh(trained_module.trained_models)
+
+    class Estimator:
+        initialized = True
+        answer: Any = ("лежит", 0.8)
+
+        async def estimate(self, rgb: Any) -> Any:
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+        def loaded_model(self, role: str | None = None) -> dict[str, str]:
+            return {"name": "rtmpose-t-256x192", "role": role or ""}
+
+    prepared: list[str] = []
+    errors: list[str] = []
+    plugin = types.SimpleNamespace(
+        pose_estimators={},
+        prepare_pose_estimator=lambda: prepared.append("pose"),
+        # as ONNXPlugin.load_state: nothing loaded, the model waits for the first person
+        load_state=lambda runtime, *names: (
+            dict(runtime)
+            if runtime.get("models")
+            else {**runtime, "loadModel": names[0], "loadState": "pending"}
+        ),
+    )
+
+    def sensor_for(camera_id: str, pose: bool | None) -> Any:
+        sensor = attribute_sensor.ViONAttributeSensor(
+            plugin, types.SimpleNamespace(id=camera_id), types.SimpleNamespace(log=print, error=errors.append)
+        )
+        if pose is not None:
+            sensor._storage = types.SimpleNamespace(values={"pose": pose})
+
+        async def classify(entry: dict[str, Any], rgb: Any) -> float:
+            return 0.9
+
+        sensor._classify = classify
+        return sensor
+
+    person = {"data": b"\0" * (8 * 8 * 3), "width": 8, "height": 8, "format": "rgb", "label": "person"}
+    car = {**person, "label": "vehicle"}
+
+    # off, and before the sensor has its settings: people are not even cropped
+    for pose in (False, None):
+        off = sensor_for("cam-1", pose)
+        assert off.modelSpec["triggerLabels"] == []
+        assert asyncio.run(off.detectClassifications([person]))[0]["detections"] == []
+    assert prepared == []
+
+    on = sensor_for("cam-1", True)
+    spec = on.modelSpec
+    assert spec["triggerLabels"] == ["person"]
+    # big enough a crop for the limbs, the model said waiting for the first person
+    assert spec["input"]["width"] == spec["input"]["height"] == 256
+    assert (spec["loadModel"], spec["loadState"]) == ("rtmpose-t-256x192", "pending")
+    # the model not loaded: the first person starts its load and goes without a posture
+    assert asyncio.run(on.detectClassifications([person]))[0]["detections"] == []
+    assert prepared == ["pose"]
+
+    estimator = Estimator()
+    plugin.pose_estimators["rtmpose-t-256x192"] = estimator
+    assert on.modelSpec["models"] == [{"name": "rtmpose-t-256x192", "role": "pose"}]
+    assert "loadState" not in on.modelSpec
+    found = asyncio.run(on.detectClassifications([person, car]))
+    assert found[0]["detections"] == [
+        {
+            "label": "person",
+            "confidence": 0.8,
+            "box": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 1.0},
+            "attribute": "поза",
+            "subAttribute": "поза: лежит",
+        }
+    ]
+    assert found[0]["detected"] is True
+    # a car has no posture
+    assert found[1]["detections"] == []
+
+    # too little of the person seen: nothing said
+    estimator.answer = None
+    assert asyncio.run(on.detectClassifications([person]))[0]["detections"] == []
+    # the model failing: nothing said, the error logged once, not on every person
+    estimator.answer = RuntimeError("broken")
+    asyncio.run(on.detectClassifications([person, person]))
+    asyncio.run(on.detectClassifications([person]))
+    assert len(errors) == 1 and "broken" in errors[0]
+
+    # next to the classifiers of a camera: they keep running, person added to what is cropped
+    estimator.answer = ("стоит", 0.7)
+    both = sensor_for("cam-2", True)
+    assert both.modelSpec["triggerLabels"] == ["vehicle", "person"]
+    answers = asyncio.run(both.detectClassifications([person, car]))
+    assert [d["subAttribute"] for d in answers[0]["detections"]] == ["поза: стоит"]
+    assert [d["subAttribute"] for d in answers[1]["detections"]] == ["такси: да"]
+
+
+def test_turning_the_pose_on_tells_the_server_and_loads_the_model(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.syspath_prepend(str(ONNX_SRC))
+    monkeypatch.syspath_prepend(str(SDK))
+    monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    for name in ("trained", "pose", "sensors.attribute_sensor"):
+        sys.modules.pop(name, None)
+    attribute_sensor = importlib.import_module("sensors.attribute_sensor")
+    prepared: list[str] = []
+    plugin = types.SimpleNamespace(prepare_pose_estimator=lambda: prepared.append("pose"))
+    sensor = attribute_sensor.ViONAttributeSensor(
+        plugin, types.SimpleNamespace(id="cam-1"), types.SimpleNamespace(log=print, error=print)
+    )
+    announced: list[int] = []
+    sensor.updateModelSpec = lambda: announced.append(1)
+    asyncio.run(sensor._on_change_pose(True, False))
+    assert (announced, prepared) == ([1], ["pose"])
+    asyncio.run(sensor._on_change_pose(False, True))
+    assert (announced, prepared) == ([1, 1], ["pose"])
+    # the same value stored again changes nothing
+    asyncio.run(sensor._on_change_pose(False, False))
+    assert announced == [1, 1]

@@ -210,6 +210,7 @@ GETTERS = [
     "get_face_embedder",
     "get_face_landmarker",
     "get_person_embedder",
+    "get_pose_estimator",
     "get_segmenter",
     "get_plate_detector",
     "get_ocr",
@@ -224,6 +225,7 @@ SENSORS = [
     "person_embedder_sensor.py",
     "segmenter_sensor.py",
     "object_sensor.py",
+    "attribute_sensor.py",
 ]
 
 

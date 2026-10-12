@@ -1,7 +1,7 @@
 {
   "displayName": "ONNX",
   "name": "@vionvision/camera-ui-onnx",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Детектор ONNX Runtime для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
@@ -54,7 +54,8 @@
     "alpr",
     "onnx",
     "detection",
-    "vion-module-onnx"
+    "vion-module-onnx",
+    "vion-pose"
   ],
   "license": "MIT",
   "repository": {

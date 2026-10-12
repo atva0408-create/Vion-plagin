@@ -91,6 +91,7 @@ from defaults import (
 )
 from model_manager import OpenVinoModelManager
 from modules import installed_modules, is_module, usable_choice
+from pose import POSE_MODEL, PoseEstimator
 from reid import PersonEmbedder, Segmenter, embed_people_in_pictures, embed_person_images, segment_images
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import OpenVinoClipSensor
@@ -139,6 +140,8 @@ class OpenVinoPlugin(
         # ML plugin process gets these sensors, and a model each in every process once hung the 8 GB bench
         self.person_embedders: dict[str, PersonEmbedder] = {}
         self.segmenters: dict[str, Segmenter] = {}
+        # the posture of people, asked of the attribute sensor of a camera with «Поза людей» on (pose.py)
+        self.pose_estimators: dict[str, PoseEstimator] = {}
         self.attribute_backends: dict[str, Any] = {}
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
@@ -404,6 +407,22 @@ class OpenVinoPlugin(
             await embedder.initialize(PERSON_EMBEDDER_MODEL)
         self._load_succeeded(PERSON_EMBEDDER_MODEL)
         return embedder
+
+    async def get_pose_estimator(self) -> PoseEstimator:
+        estimator = self.pose_estimators.get(POSE_MODEL)
+        if not estimator:
+            estimator = PoseEstimator(self.model_manager, self.logger)
+            self.pose_estimators[POSE_MODEL] = estimator
+            try:
+                await estimator.initialize(POSE_MODEL)
+            except Exception as error:
+                self.pose_estimators.pop(POSE_MODEL, None)
+                self._load_failed(POSE_MODEL, error)
+                raise
+        else:
+            await estimator.initialize(POSE_MODEL)
+        self._load_succeeded(POSE_MODEL)
+        return estimator
 
     async def get_segmenter(self, model_name: str) -> Segmenter:
         segmenter = self.segmenters.get(model_name)
@@ -1015,6 +1034,7 @@ class OpenVinoPlugin(
                 *self.ocr_models.values(),
                 *self.person_embedders.values(),
                 *self.segmenters.values(),
+                *self.pose_estimators.values(),
             )
             if detector.backend is not None
         ]
@@ -1074,6 +1094,7 @@ class OpenVinoPlugin(
         clip = list(self.clip_encoders)
         person = list(self.person_embedders)
         seg = list(self.segmenters)
+        pose = list(self.pose_estimators)
 
         signatures = {n: self._module_signature(n) for n in obj if is_module(n)}
         await self._close_all()
@@ -1088,6 +1109,7 @@ class OpenVinoPlugin(
             *(self.get_clip_encoder(n) for n in clip),
             *(self.get_person_embedder() for _ in person),
             *(self.get_segmenter(n) for n in seg),
+            *(self.get_pose_estimator() for _ in pose),
             return_exceptions=True,
         )
         # its cameras go on with the standard model at once, without one more failed load on their next frame
@@ -1149,6 +1171,10 @@ class OpenVinoPlugin(
     def prepare_person_embedder(self) -> None:
         """Loads the re-ID model in the background, on the first person a camera with Person Re-ID sees."""
         self._prepare_in_background(PERSON_EMBEDDER_MODEL, self.get_person_embedder, "personEmbedder")
+
+    def prepare_pose_estimator(self) -> None:
+        """Loads the pose model in the background, on the first person a camera with «Поза людей» on sees."""
+        self._prepare_in_background(POSE_MODEL, self.get_pose_estimator, "attributes")
 
     def prepare_segmenter(self, model_name: str) -> None:
         self._prepare_in_background(model_name, lambda: self.get_segmenter(model_name), "segmenter")
@@ -1322,6 +1348,7 @@ class OpenVinoPlugin(
             *(o.close() for o in self.ocr_models.values()),
             *(e.close() for e in self.person_embedders.values()),
             *(s.close() for s in self.segmenters.values()),
+            *(p.close() for p in self.pose_estimators.values()),
         )
         for backend in self.attribute_backends.values():
             backend.close()
@@ -1334,6 +1361,7 @@ class OpenVinoPlugin(
         self.clip_encoders.clear()
         self.person_embedders.clear()
         self.segmenters.clear()
+        self.pose_estimators.clear()
 
     async def _on_start(self) -> None:
         asyncio.create_task(self._preload_clip())
