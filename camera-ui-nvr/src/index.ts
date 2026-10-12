@@ -36,12 +36,14 @@ import type { EpisodeTrace, RecordedEpisode } from './episodes.js';
 import type { ExternalEventInput, ExternalEventResult } from './external.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { PersonHit, PersonVector } from './people.js';
-import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding } from './semantic.js';
+import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding, TextFindAnswer } from './semantic.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
   EventTrace,
+  FindInEventsResult,
+  FoundInEvent,
   GetEventsOptions,
   ManualRecording,
   NvrFeatures,
@@ -231,6 +233,14 @@ interface PersonEmbedder {
 
 /** How many ranked matches a page of the search by description is taken from: the page's filters thin them. */
 const TEXT_SEARCH_POOL = 2000;
+/**
+ * The words of a search found in pictures: a few events a call (a picture takes the finder 1-4 s on a processor), the
+ * finds of the latest queries kept (a crop is ≈20 KB) so that paging back asks nothing again. The first call may download
+ * and load the models (≈720 MB).
+ */
+const FIND_EVENTS_A_CALL = 12;
+const FIND_KEPT = 400;
+const FIND_TIMEOUT_MS = 300_000;
 
 /** The time, favourite and state conditions of an event query, as the store applies them (store.ts eventPage). */
 export function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
@@ -251,6 +261,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private people!: PersonIndex;
   /** one people search at a time: each reads the vectors of its window from the disk */
   private similarChain: Promise<unknown> = Promise.resolve();
+  /** finds by query and event, oldest first (findInEvents) */
+  private finds = new Map<string, FoundInEvent & { english: string; foundScore?: number }>();
+  /** one find at a time: the finder runs a picture at a time anyway, and a second page should not starve the first */
+  private findChain: Promise<unknown> = Promise.resolve();
   private faces!: FaceStore;
   private describer!: EventDescriber;
   private episodes!: Episodes;
@@ -2544,6 +2558,75 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events.push(ev);
     }
     return { matches, events, hasMore: false };
+  }
+
+  /**
+   * Where the words of a search are in the stored pictures of events: the search by description finds the events, the
+   * text finder of a detection plugin (ONNX 1.7.0: OWL-ViT, the query put into English) boxes the thing in each picture
+   * and crops it. At most FIND_EVENTS_A_CALL events a call, in the order given; an event without a picture has no boxes.
+   */
+  public async findInEvents(text: string, eventIds: string[]): Promise<FindInEventsResult> {
+    await this.ready;
+    const query = typeof text === 'string' ? text.trim() : '';
+    const ids = [...new Set(Array.isArray(eventIds) ? eventIds.filter((id): id is string => typeof id === 'string' && !!id) : [])].slice(0, FIND_EVENTS_A_CALL);
+    if (!query || !ids.length) return { query, results: [] };
+    const run = this.findChain.then(() => this.findNow(query, ids));
+    this.findChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async findNow(query: string, ids: string[]): Promise<FindInEventsResult> {
+    const key = (id: string) => `${query}\u0000${id}`;
+    const asked = ids.filter((id) => !this.finds.has(key(id)));
+    const pictures = asked.map((id) => {
+      const row = this.store.event(id);
+      return row ? this.eventPicture(row.camera_id, id) : undefined;
+    });
+    const withPicture = asked.filter((_, i) => pictures[i]);
+    let english = query;
+    let foundScore: number | undefined;
+    if (withPicture.length) {
+      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection');
+      let answer: TextFindAnswer | undefined;
+      let error: string | undefined;
+      // a plugin without the finder answers its call with an error: the next one is asked
+      for (const encoder of encoders) {
+        try {
+          answer = await withTimeout(encoder.findInPictures!(query, pictures.filter((p): p is Uint8Array => !!p)), FIND_TIMEOUT_MS);
+          break;
+        } catch (e) {
+          error = (e as Error).message;
+        }
+      }
+      if (!answer) {
+        if (error) this.logger.warn(`Search in pictures failed: ${error}`);
+        return error ? { query, results: [], reason: 'failed', error } : { query, results: [], reason: 'no-finder' };
+      }
+      english = answer.query || query;
+      foundScore = answer.foundScore;
+      withPicture.forEach((id, i) => {
+        const picture = answer.pictures?.[i];
+        const boxes = Array.isArray(picture?.boxes) ? picture.boxes : [];
+        const found = foundScore !== undefined && (boxes[0]?.score ?? 0) >= foundScore;
+        this.keepFind(key(id), { eventId: id, boxes, found, ...(found && picture?.crop ? { crop: new Uint8Array(picture.crop) } : {}), english, foundScore });
+      });
+    }
+    // an event with no stored picture (none was saved, or it is gone) has nothing to find in, now or later
+    for (const id of asked) if (!this.finds.has(key(id))) this.keepFind(key(id), { eventId: id, boxes: [], found: false, english, foundScore });
+    const results = ids.map((id) => this.finds.get(key(id))!);
+    // what the finder made of the query: said with every find of it, also those kept from before
+    const told = results.find((r) => r.foundScore !== undefined) ?? results[0];
+    return {
+      query,
+      english: told.english,
+      ...(told.foundScore !== undefined ? { foundScore: told.foundScore } : {}),
+      results: results.map(({ english: _e, foundScore: _f, ...result }) => result),
+    };
+  }
+
+  private keepFind(key: string, find: FoundInEvent & { english: string; foundScore?: number }): void {
+    this.finds.set(key, find);
+    while (this.finds.size > FIND_KEPT) this.finds.delete(this.finds.keys().next().value!);
   }
 
   /** Hybrid ranking: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions, best first. */

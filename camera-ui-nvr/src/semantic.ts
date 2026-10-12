@@ -42,6 +42,14 @@ export interface ClipEncoder {
   getTextEmbedding(text: string): Promise<TextEmbedding>;
   getTextEmbeddings?(text: string): Promise<TextEmbedding[]>;
   embedImages?(images: Uint8Array[], config?: Record<string, unknown>): Promise<(ImageEmbedding | undefined)[]>;
+  /** Where the words are in each picture (camera-ui-onnx textfind.py, ONNX 1.7.0). */
+  findInPictures?(text: string, images: Uint8Array[], config?: Record<string, unknown>): Promise<TextFindAnswer>;
+}
+
+export interface TextFindAnswer {
+  query: string;
+  foundScore?: number;
+  pictures: { boxes: { x: number; y: number; width: number; height: number; score: number }[]; crop?: Uint8Array }[];
 }
 
 /** Whole-picture vectors from a re-index use this attribute slot. */

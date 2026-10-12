@@ -154,6 +154,38 @@ export interface PersonRouteResult {
   indexedSince?: number;
 }
 
+/** A box of a thing found by its words in a picture, as shares of the picture, with how sure the finder is (0..1). */
+export interface FoundBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  score: number;
+}
+
+/** What the words of a search are in one event's picture (findInEvents). */
+export interface FoundInEvent {
+  eventId: string;
+  /** the best boxes, best first; none when nothing like it is there or the event has no picture */
+  boxes: FoundBox[];
+  /** the best box is taken for the thing (from `foundScore`) */
+  found: boolean;
+  /** the found thing with some of what is around it, JPEG */
+  crop?: Uint8Array;
+}
+
+/** Where the words of a search are in the pictures of events (findInEvents). */
+export interface FindInEventsResult {
+  query: string;
+  /** the query as the finder took it: in English, which it understands */
+  english?: string;
+  foundScore?: number;
+  results: FoundInEvent[];
+  /** no plugin finds words in pictures (ONNX 1.7.0 does), or it failed (`error`) */
+  reason?: 'no-finder' | 'failed';
+  error?: string;
+}
+
 export interface SimilarResult {
   mode: 'person' | 'none';
   label?: string;
