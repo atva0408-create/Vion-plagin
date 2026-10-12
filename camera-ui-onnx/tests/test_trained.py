@@ -346,6 +346,19 @@ def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
     # a car has no posture
     assert found[1]["detections"] == []
 
+    # a person the picture cuts (the server says so): lying or sitting is not told by the part seen, standing is
+    cut = {**person, "cut": True}
+    assert asyncio.run(on.detectClassifications([cut]))[0]["detections"] == []
+    estimator.answer = ("сидит", 0.8)
+    assert asyncio.run(on.detectClassifications([cut]))[0]["detections"] == []
+    assert [d["subAttribute"] for d in asyncio.run(on.detectClassifications([person]))[0]["detections"]] == [
+        "поза: сидит"
+    ]
+    estimator.answer = ("стоит", 0.8)
+    assert [d["subAttribute"] for d in asyncio.run(on.detectClassifications([cut]))[0]["detections"]] == [
+        "поза: стоит"
+    ]
+
     # too little of the person seen: nothing said
     estimator.answer = None
     assert asyncio.run(on.detectClassifications([person]))[0]["detections"] == []

@@ -13,7 +13,7 @@ Kept identical in camera-ui-onnx and camera-ui-openvino (only the plugin type di
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from camera_ui_ml import InputSpec, frame_to_rgb, model_runtime
 from camera_ui_sdk import (
@@ -123,7 +123,8 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
             if wanted or posed:
                 rgb = frame_to_rgb(frame["data"], frame["width"], frame["height"], frame["format"])
                 if posed:
-                    detection = await self._posture(rgb)
+                    # `cut`: the server says the picture cuts the person (ViON 2.4.2)
+                    detection = await self._posture(rgb, cut=cast(dict[str, Any], frame).get("cut") is True)
                     if detection is not None:
                         detections.append(detection)
                 for entry in wanted:
@@ -146,7 +147,7 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
             results.append({"detected": bool(detections), "detections": detections})
         return results
 
-    async def _posture(self, rgb: Any) -> ClassifierDetection | None:
+    async def _posture(self, rgb: Any, cut: bool = False) -> ClassifierDetection | None:
         """«поза: стоит/сидит/лежит» of one person crop; None while the model loads or when too little is seen."""
         estimator = self._plugin.pose_estimators.get(POSE_MODEL)
         if estimator is None or not estimator.initialized:
@@ -164,6 +165,10 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
         if found is None:
             return None
         posture, sure = found
+        # a person the picture cuts: the part seen tells standing, not sitting or lying — the model makes the legs up
+        # (the first morning on the bench: 5 of the 6 wrong «сидит»/«лежит» were people cut by the picture's edge)
+        if cut and posture != "стоит":
+            return None
         detection: ClassifierDetection = {
             "label": POSE_LABEL,  # type: ignore[typeddict-item]
             "confidence": sure,
