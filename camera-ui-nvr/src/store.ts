@@ -442,22 +442,40 @@ export class Store {
    * busy recorder is not parsed event by event, and none is left out by a page of the newest.
    */
   /** `attributes`: the attribute types of the segments instead; `answers`: their labels («поза: лежит», «Анна»). */
-  public eventTypeCounts(opts: { cameraIds?: string[]; startMs: number; endMs: number; attributes?: boolean; answers?: boolean }): Map<string, number> {
+  public eventTypeCounts(opts: { cameraIds?: string[]; startMs: number; endMs: number }): Map<string, number> {
+    const { where, args } = this.typesWhere(opts);
+    const sql = `SELECT t.value AS name, COUNT(*) AS n FROM events e, json_each(e.data, '$.types') t WHERE ${where} GROUP BY name`;
+    const rows = this.db.prepare(sql).all(...args) as unknown as { name: unknown; n: number }[];
+    return new Map(rows.filter((row) => typeof row.name === 'string' && row.name).map((row) => [row.name as string, Number(row.n)]));
+  }
+
+  /**
+   * The attribute types (the questions of modules, faces, plates) of the events of a while and their labels (the
+   * answers), each with how many events have it. One pass over the JSON of the segments for both: two took 2 s each of
+   * the plugin's thread for a month of a busy recorder, on every question the assistant was asked.
+   */
+  public attributeCounts(opts: { cameraIds?: string[]; startMs: number; endMs: number }): { types: Map<string, number>; answers: Map<string, number> } {
+    const { where, args } = this.typesWhere(opts);
+    const sql =
+      "WITH a AS MATERIALIZED (SELECT DISTINCT e.id AS id, json_extract(a.value, '$.type') AS type, json_extract(a.value, '$.label') AS label " +
+      `FROM events e, json_each(e.data, '$.segments') s, json_each(s.value, '$.attributes') a WHERE ${where}) ` +
+      "SELECT 'type' AS kind, type AS name, COUNT(DISTINCT id) AS n FROM a GROUP BY type " +
+      "UNION ALL SELECT 'answer', label, COUNT(DISTINCT id) FROM a GROUP BY label";
+    const rows = this.db.prepare(sql).all(...args) as unknown as { kind: string; name: unknown; n: number }[];
+    const types = new Map<string, number>();
+    const answers = new Map<string, number>();
+    for (const row of rows) if (typeof row.name === 'string' && row.name) (row.kind === 'type' ? types : answers).set(row.name, Number(row.n));
+    return { types, answers };
+  }
+
+  private typesWhere(opts: { cameraIds?: string[]; startMs: number; endMs: number }): { where: string; args: (string | number)[] } {
     const where = [`(${stillOn('e.')} OR COALESCE(e.end_ms, e.start_ms) >= ?)`, 'e.start_ms <= ?'];
     const args: (string | number)[] = [opts.startMs, opts.endMs];
     if (opts.cameraIds?.length) {
       where.push(`e.camera_id IN (${opts.cameraIds.map(() => '?').join(',')})`);
       args.push(...opts.cameraIds);
     }
-    const attribute = opts.answers ? 'label' : 'type';
-    const from =
-      opts.attributes || opts.answers
-        ? `json_extract(a.value, '$.${attribute}') AS name, COUNT(DISTINCT e.id) AS n ` +
-        "FROM events e, json_each(e.data, '$.segments') s, json_each(s.value, '$.attributes') a"
-        : "t.value AS name, COUNT(*) AS n FROM events e, json_each(e.data, '$.types') t";
-    const sql = `SELECT ${from} WHERE ${where.join(' AND ')} GROUP BY name`;
-    const rows = this.db.prepare(sql).all(...args) as unknown as { name: unknown; n: number }[];
-    return new Map(rows.filter((row) => typeof row.name === 'string' && row.name).map((row) => [row.name as string, Number(row.n)]));
+    return { where: where.join(' AND '), args };
   }
 
   private eventPage(columns: string, opts: Parameters<Store['events']>[0]): unknown[] {

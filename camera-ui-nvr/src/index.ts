@@ -2483,6 +2483,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   private assistantHost(): AssistantHost {
+    // a tool asks for the questions and their answers over the same while: one pass over the attributes gives both
+    let attributes: { key: string; counts: ReturnType<Store['attributeCounts']> } | undefined;
+    const attributeCounts = (cameraIds: string[] | undefined, startMs: number, endMs: number) => {
+      const key = JSON.stringify([cameraIds ?? null, startMs, endMs]);
+      if (attributes?.key !== key) attributes = { key, counts: this.store.attributeCounts({ cameraIds, startMs, endMs }) };
+      return attributes.counts;
+    };
     return {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
@@ -2490,8 +2497,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
       crossingLabels: (cameraIds, startMs, endMs) => this.store.crossingLabels({ cameraIds, startMs, endMs }),
-      eventTypes: (cameraIds, startMs, endMs, attributes) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, attributes }),
-      attributeAnswers: (cameraIds, startMs, endMs) => this.store.eventTypeCounts({ cameraIds, startMs, endMs, answers: true }),
+      eventTypes: (cameraIds, startMs, endMs, ofAttributes) =>
+        ofAttributes ? attributeCounts(cameraIds, startMs, endMs).types : this.store.eventTypeCounts({ cameraIds, startMs, endMs }),
+      attributeAnswers: (cameraIds, startMs, endMs) => attributeCounts(cameraIds, startMs, endMs).answers,
       event: (eventId) => {
         const row = this.store.event(eventId);
         return row ? this.decorate(JSON.parse(row.data) as RecordedEvent, row.favorite === 1) : undefined;

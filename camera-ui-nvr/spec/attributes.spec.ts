@@ -423,5 +423,23 @@ for (const [id, day, runs] of [
   assert.deepEqual([lay.minutes, lay.pauses.count], [50, 0], `${day}: ${JSON.stringify(lay)}`);
 }
 
-console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer, several people OK');
+// the questions of a month and their answers in one pass over the attributes of its events: two took 2 s each of the
+// plugin's thread on a busy recorder (60 000 events), seconds in which the cameras' events wait
+{
+  const sql = (nvr as unknown as { store: { sql: { prepare: (text: string) => unknown } } }).store.sql;
+  const prepare = sql.prepare.bind(sql);
+  const passes: string[] = [];
+  sql.prepare = (text: string) => {
+    if (text.includes('$.attributes') && text.includes('GROUP BY')) passes.push(text);
+    return prepare(text);
+  };
+  try {
+    assert.equal(content<Day>(await call('attribute_time', { attribute: 'лежит', camera: 'Детская', date: '2026-10-07' })).minutes, 60);
+  } finally {
+    sql.prepare = prepare;
+  }
+  assert.equal(passes.length, 1, passes.join('\n'));
+}
+
+console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer, several people, one pass OK');
 process.exit(0);
