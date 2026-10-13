@@ -679,14 +679,16 @@ function stretchesOf(looks: Look[]): { from: number; to: number; event: string }
   for (const look of [...looks].sort((a, b) => a.from - b.from)) {
     const open = stretches[stretches.length - 1];
     if (!look.yes) {
-      // a «no» inside the stretch already counted (the same moment as a «yes») is not after it
+      // a «no» inside the stretch already counted (the same moment as a «yes», another person) counts from its end
       if (open && look.to > open.to) {
-        noFrom = Math.min(noFrom ?? look.from, Math.max(look.from, open.to));
+        noFrom = Math.min(noFrom ?? Infinity, Math.max(look.from, open.to));
         noTo = Math.max(noTo, look.to);
       }
       continue;
     }
-    const stopped = noFrom !== undefined && noTo - noFrom >= NO_STOP_MS;
+    // only the «no» before this «yes» stops the stretch: someone else standing on through the lying went past it, and a
+    // «yes» begun inside the stretch opened a second one over it (two lying, one standing by: 100 minutes for 60)
+    const stopped = noFrom !== undefined && Math.min(noTo, look.from) - noFrom >= NO_STOP_MS;
     if (open && !stopped && (open.event === look.event || look.from - open.to <= ATTRIBUTE_GAP_MS)) {
       open.to = Math.max(open.to, look.to);
       open.event = look.event;

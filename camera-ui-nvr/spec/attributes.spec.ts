@@ -391,5 +391,37 @@ assert.equal(lay6.minutes, 50);
 const stood6 = content<Day>(await call('attribute_time', { attribute: 'стоит', camera: 'Детская', date: '2026-10-06' }));
 assert.equal(stood6.minutes, 10);
 
-console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer OK');
+// several people in one stay, each with the times of their own answers: one lies 20:00-21:00, another 20:10-20:50,
+// a grown-up stands by 20:05-21:10. Someone lay an hour, not 100 minutes: the standing one's «no», begun inside the
+// stretch, was taken from its start and opened a second stretch over the first
+const people = (id: string, day: string, runs: [string, string, string][]) => {
+  const ev = eventAt(id, 'cam-kid', [[`${day}T${runs[0][0]}`, `${day}T${runs[runs.length - 1][1]}`]], { question: P });
+  ev.segments[0].attributes = runs.map(([from, to, word]) => ({ type: P, label: `${P}: ${word}`, confidence: 0.8, firstSeen: at(`${day}T${from}`), lastSeen: at(`${day}T${to}`) }));
+  ev.types = ['motion', 'person', P];
+  return ev;
+};
+await nvr.ingestDetectionEvent(
+  'cam-kid',
+  'end' as never,
+  people('m1', '2026-10-07', [
+    ['20:00:00', '21:00:00', 'лежит'],
+    ['20:05:00', '21:10:00', 'стоит'],
+    ['20:10:00', '20:50:00', 'лежит'],
+  ]) as never,
+);
+const lay7 = content<Day>(await call('attribute_time', { attribute: 'лежит', camera: 'Детская', date: '2026-10-07' }));
+assert.deepEqual(spans(lay7), [['20:00', '21:00']]);
+assert.equal(lay7.minutes, 60);
+// one lies 10:00-10:20 and, a new track, 10:22-10:50; another stands all along. Two minutes of someone else standing
+// are no stop, whichever answer the segment lists first
+for (const [id, day, runs] of [
+  ['m2', '2026-10-08', [['10:00:00', '10:20:00', 'лежит'], ['10:00:00', '11:00:00', 'стоит'], ['10:22:00', '10:50:00', 'лежит']]],
+  ['m3', '2026-10-03', [['10:00:00', '11:00:00', 'стоит'], ['10:00:00', '10:20:00', 'лежит'], ['10:22:00', '10:50:00', 'лежит']]],
+] as [string, string, [string, string, string][]][]) {
+  await nvr.ingestDetectionEvent('cam-kid', 'end' as never, people(id, day, runs) as never);
+  const lay = content<Day>(await call('attribute_time', { attribute: 'лежит', camera: 'Детская', date: day }));
+  assert.deepEqual([lay.minutes, lay.pauses.count], [50, 0], `${day}: ${JSON.stringify(lay)}`);
+}
+
+console.log('attributes.spec: answers, attribute_time, query_events by answer, summarize_day byAnswer, several people OK');
 process.exit(0);
