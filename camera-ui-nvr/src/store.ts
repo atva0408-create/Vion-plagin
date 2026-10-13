@@ -359,7 +359,12 @@ export class Store {
   }
 
   public segmentsBefore(cutoffUs: number, limit: number): SegmentRow[] {
-    return this.db.prepare('SELECT * FROM segments WHERE end_us < ? ORDER BY start_us LIMIT ?').all(cutoffUs, limit) as unknown as SegmentRow[];
+    // a segment that ended before the cutoff started before it: `start_us <` reads only the old end of segments_time.
+    // With `end_us <` alone every row was read, on each retention pass: at a start on a cold HDD it held the recorder's
+    // loop ~50 s, and every call to it timed out meanwhile
+    return this.db
+      .prepare('SELECT * FROM segments WHERE start_us < ? AND end_us < ? ORDER BY start_us LIMIT ?')
+      .all(cutoffUs, cutoffUs, limit) as unknown as SegmentRow[];
   }
 
   public deleteSegment(id: number): void {

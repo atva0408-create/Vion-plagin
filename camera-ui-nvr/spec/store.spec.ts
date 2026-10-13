@@ -107,6 +107,17 @@ function planOf(store: Store, run: () => unknown): string {
   const plan = planOf(store, () => store.oldestSegments(1));
   assert.match(plan, /USING INDEX segments_time/, `the oldest segment is read from an index, not found by sorting every row: ${plan}`);
   assert.doesNotMatch(plan, /TEMP B-TREE/, plan);
+  // the retention's segments past the days kept: those that ended before the cutoff, not one going over it; read from the
+  // old end of the index — a scan of every row stopped the recorder ~50 s at each start on a cold disk (the bench's HDD)
+  const cutoffUs = 20 * 60_000_000;
+  assert.deepEqual(
+    store.segmentsBefore(cutoffUs, 200).map((row) => row.start_us),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map((m) => m * 60_000_000),
+    'ended before the cutoff, oldest first; the one from 19 to 20 min ends at it and stays',
+  );
+  assert.deepEqual(store.segmentsBefore(cutoffUs, 3).length, 3);
+  const before = planOf(store, () => store.segmentsBefore(cutoffUs, 200));
+  assert.match(before, /SEARCH segments USING INDEX segments_time \(start_us<\?\)/, `only the old rows are read: ${before}`);
   store.close();
 }
 {
