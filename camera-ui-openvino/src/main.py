@@ -946,7 +946,9 @@ class OpenVinoPlugin(
         found = iter(answer.get("pictures") or [])
         return {
             **answer,
-            "pictures": [next(found, {"boxes": []}) if image is not None else {"boxes": []} for image in pictures],
+            "pictures": [
+                next(found, {"boxes": []}) if image is not None else {"boxes": []} for image in pictures
+            ],
         }
 
     def _load_text_finder(self, language: str | None) -> None:
