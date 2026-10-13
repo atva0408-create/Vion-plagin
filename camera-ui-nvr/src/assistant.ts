@@ -164,6 +164,8 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       'from query_events or summarize_day) on each camera with person re-ID, in time order, `minutes` before and after (default 30). For ' +
       '«куда он пошёл потом», «откуда пришёл курьер», «проследи за ним по камерам». Re-ID compares clothes and build, not who someone is: a ' +
       'stay with a lower score may be someone dressed alike. The cameras without person re-ID cannot be on the route and are named.',
+    // where someone went on every camera: an admin's, as the people search the page gives admins only
+    adminOnly: true,
     inputSchema: {
       type: 'object',
       properties: {
