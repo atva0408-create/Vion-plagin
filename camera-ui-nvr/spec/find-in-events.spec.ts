@@ -2,7 +2,8 @@
 // the events still `pending` (the bus ends a call after 30 s, the finder takes longer to load); the pictures go to the
 // text finder of a detection plugin one at a time, in the order asked, a plugin without a finder passed over, the loading
 // finder asked again; a find carries its crop, an event without a picture is not sent; the finds are kept by query, a
-// few events a call; a failure ends the looking of its query and is said once. Run: npx tsx spec/find-in-events.spec.ts
+// few events a call; a failure ends the looking of its query and is said once; the query asked last goes first, one
+// nobody asks for any more is left. Run: npx tsx spec/find-in-events.spec.ts
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,8 @@ let running = 0;
 let overlapped = false;
 let failing: string | undefined;
 let loading = 0;
+/** how long the finder takes a picture, ms */
+let slow = 2;
 let finders = ['openvino', 'onnx'];
 /** The bus not answering the question of which plugins find (a call cut after 30 s, NATS reconnecting). */
 let pluginsFail: string | undefined;
@@ -36,7 +39,7 @@ const onnx = {
   findInPictures: async (text: string, images: Uint8Array[], config?: { language?: string }): Promise<Answer> => {
     running++;
     overlapped ||= running > 1;
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    await new Promise((resolve) => setTimeout(resolve, slow));
     running--;
     if (failing) throw new Error(failing);
     calls.push({ text, pictures: images.map((image) => image[0]), ...(config?.language ? { language: config.language } : {}) });
@@ -264,6 +267,70 @@ async function problem(text: string, ids: string[]) {
   assert.equal(again.results[0]?.found, true, JSON.stringify(again));
 }
 
+// ---- the page asks every 2 s while it looks. The query asked last goes first: the pictures of one typed before it (the
+// page gone on to another) hold up none of it. A query nobody asked for in 30 s is left: its pictures are not looked
+// at, its failure is not told to a search of the same words another day.
+{
+  const realNow = Date.now;
+  let later = 0;
+  Date.now = () => realNow() + later;
+  const stool = () => calls.filter((c) => c.text === 'табуретка').length;
+  try {
+    calls.length = 0;
+    slow = 30;
+    const twelve = Array.from({ length: 12 }, (_, i) => `more-${i}`);
+    await nvr.findInEvents('табуретка', twelve);
+    await tick();
+    later += 20_000;
+    const next = await settled('ящик', ['bag']);
+    assert.equal(next.results[0]?.found, true);
+    const first = calls.findIndex((c) => c.text === 'ящик');
+    assert.ok(first <= 1, `the pictures of the query typed before went first: ${first}`);
+
+    // left: what is looked at stops after the picture in hand
+    later += 30_001;
+    const was = stool();
+    for (let i = 0; i < 30; i++) await tick();
+    assert.ok(stool() - was <= 1, `a left query looked at on: ${stool() - was} more`);
+    assert.ok(stool() < 12);
+    // asked again, it is looked at again from where it was left
+    slow = 2;
+    const back = await settled('табуретка', twelve);
+    assert.equal(back.results.length, 12);
+    assert.equal(stool(), 12, 'each picture looked at once');
+
+    // the finder loading (minutes: ≈720 MB downloaded): a left query is not waited for, the finder not asked for it again
+    loading = 1000;
+    const loads = calls.length;
+    await nvr.findInEvents('гвоздь', ['bag']);
+    for (let i = 0; i < 100 && calls.length === loads; i++) await tick();
+    later += 30_001;
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    assert.equal(calls.filter((c) => c.text === 'гвоздь').length, 1, 'asked once, while asked for');
+    loading = 0;
+    assert.equal((await settled('гвоздь', ['bag'])).results[0]?.found, true, 'asked again, looked at');
+
+    // a failure nobody was told of is not told to a search another day
+    failing = 'model download failed';
+    const warnings = warned.length;
+    await nvr.findInEvents('табурет', ['bag', 'weak']);
+    for (let i = 0; i < 100 && warned.length === warnings; i++) await tick();
+    assert.ok(warned.slice(warnings).some((text) => text.includes('model download failed')), 'it failed');
+    failing = undefined;
+    later += 86_400_000;
+    calls.length = 0;
+    const again = await settled('табурет', ['bag', 'weak']);
+    assert.equal(again.reason, undefined, JSON.stringify(again));
+    assert.deepEqual(again.results.map((r) => r.found), [true, false]);
+    assert.equal(calls.length, 2, 'looked at anew');
+  } finally {
+    Date.now = realNow;
+    slow = 2;
+    loading = 0;
+    failing = undefined;
+  }
+}
+
 assert.deepEqual(unhandled, []);
-console.log('find-in-events.spec: answered at once, pending asked again, a picture at a time, the loading finder waited for, kept by query, failures said once OK');
+console.log('find-in-events.spec: answered at once, pending asked again, a picture at a time, the loading finder waited for, kept by query, failures said once, the newest query first, a left one dropped OK');
 process.exit(0);

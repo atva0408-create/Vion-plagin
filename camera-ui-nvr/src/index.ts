@@ -250,6 +250,11 @@ const FIND_LOAD_POLL_MS = 2_000;
 const FIND_LOAD_WAIT_MS = 15 * 60_000;
 /** a problem of no plugin with a finder, apart from a failure's message */
 const NO_FINDER = '\u0000no-finder';
+/**
+ * a query not asked for this long is left (another typed, the page closed): the page asks every 2 s while it looks, a
+ * call lasts 30 s at most. Its pictures are not looked at, its failure is not told to a search of the same words later.
+ */
+const FIND_LEFT_MS = 30_000;
 
 /** The time, favourite and state conditions of an event query, as the store applies them (store.ts eventPage). */
 export function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
@@ -279,6 +284,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private findWorking = false;
   /** a query whose looking failed, until its next call is told */
   private findProblems = new Map<string, string>();
+  /** when each query was asked for last, the oldest first */
+  private findAsked = new Map<string, number>();
   /** the plugin whose finder answered last */
   private findEncoder: ClipEncoder | undefined;
   private faces!: FaceStore;
@@ -2593,7 +2600,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * and crops it. A call ends after 30 s whatever it does, and the finder takes longer than that to load and seconds a
    * picture: the answer comes at once with the finds made, the events still looked at are `pending` and are asked
    * again. The pictures go to the finder one at a time, one search after another; an event without a picture has no
-   * boxes. A failure of the finder ends the looking of its query and is said to its next call, once.
+   * boxes. A failure of the finder ends the looking of its query and is said to its next call, once. The query asked
+   * last goes first; one nobody asks for any more is left (FIND_LEFT_MS).
    */
   public async findInEvents(text: string, eventIds: string[], language?: string): Promise<FindInEventsResult> {
     await this.ready;
@@ -2603,10 +2611,22 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     // the platform's language: a query without Cyrillic is in it, and is put into English from it
     const lang = typeof language === 'string' && language ? language : '';
     const asked = `${query}\u0000${lang}`;
+    const now = Date.now();
+    const before = this.findAsked.get(asked);
+    this.findAsked.delete(asked);
+    this.findAsked.set(asked, now);
+    for (const [left, at] of this.findAsked) {
+      if (now - at <= FIND_LEFT_MS) break;
+      this.findAsked.delete(left);
+      this.findProblems.delete(left);
+    }
     const problem = this.findProblems.get(asked);
     if (problem !== undefined) {
       this.findProblems.delete(asked);
-      return problem === NO_FINDER ? { query, results: [], reason: 'no-finder' } : { query, results: [], reason: 'failed', error: problem };
+      // told to the search that waited for it; the same words asked after a pause are a new search, tried anew (an old
+      // failure told instead, the page stopped at once and the words could not be searched again)
+      if (before !== undefined && now - before <= FIND_LEFT_MS)
+        return problem === NO_FINDER ? { query, results: [], reason: 'no-finder' } : { query, results: [], reason: 'failed', error: problem };
     }
     const key = (id: string) => `${asked}\u0000${id}`;
     const pending: string[] = [];
@@ -2637,7 +2657,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.findWorking = true;
     try {
       while (this.findQueue.length) {
-        const { query, language, id } = this.findQueue[0];
+        // the pictures of a query typed before another (asked no more) held up all of the new one: the query asked last
+        // goes first, one left is dropped
+        const askedAt = (item: { query: string; language: string }) => this.findAsked.get(`${item.query}\u0000${item.language}`) ?? 0;
+        this.findQueue = this.findQueue.filter((item) => !this.findLeft(askedAt(item)));
+        if (!this.findQueue.length) break;
+        const item = this.findQueue.reduce((newest, other) => (askedAt(other) > askedAt(newest) ? other : newest));
+        const { query, language, id } = item;
         // nobody awaits this loop: a throw (the bus not answering which plugins find, the store closed at a stop) left
         // unhandled ended the recorder's process, the recording with it
         const problem = await this.findOne(query, language, id).catch((error: unknown) => {
@@ -2645,15 +2671,22 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           this.logger.warn(`Search in pictures failed: ${message}`);
           return message;
         });
-        this.findQueue.shift();
+        // kept queued while looked at: asked again meanwhile, it is not queued twice
+        this.findQueue = this.findQueue.filter((other) => other !== item);
         if (problem !== undefined) {
-          this.findProblems.set(`${query}\u0000${language}`, problem);
-          this.findQueue = this.findQueue.filter((item) => item.query !== query || item.language !== language);
+          // nobody asking any more is told nothing (its query is not swept from the problems once it is not asked)
+          if (!this.findLeft(askedAt(item))) this.findProblems.set(`${query}\u0000${language}`, problem);
+          this.findQueue = this.findQueue.filter((other) => other.query !== query || other.language !== language);
         }
       }
     } finally {
       this.findWorking = false;
     }
+  }
+
+  /** Whether a query asked for at `at` is left: nobody has asked for it since FIND_LEFT_MS. */
+  private findLeft(at: number): boolean {
+    return Date.now() - at > FIND_LEFT_MS;
   }
 
   /** One event's picture through the finder, waiting while it loads; what went wrong, or nothing. */
@@ -2692,6 +2725,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (answer.loading) {
         if (Date.now() - started > FIND_LOAD_WAIT_MS) return `the text finder did not load in ${FIND_LOAD_WAIT_MS / 60_000} minutes`;
         await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
+        // nobody waits for it any more (the load goes on in the plugin): asked again, it is queued again
+        if (this.findLeft(this.findAsked.get(asked) ?? 0)) return undefined;
         continue;
       }
       this.findQueries.delete(asked);
