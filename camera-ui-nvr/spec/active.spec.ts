@@ -30,6 +30,19 @@ const active = (id: string, startTime: number, lastUpdate: number, cameraId = 'c
   // at the start of the plugin no event is live yet: all of them
   assert.equal(store.closeStaleActive(), 1);
   assert.equal(store.event('live')?.state, 'ended');
+  // asked every minute: the few active rows are found by an index, not by reading every event (big JSON rows, and a
+  // cold HDD under a full swap: seconds each time)
+  const db = store.sql;
+  const prepare = db.prepare.bind(db);
+  let sql = '';
+  db.prepare = (text: string) => prepare((sql = text));
+  try {
+    store.closeStaleActive(NOW);
+  } finally {
+    db.prepare = prepare;
+  }
+  const plan = (prepare(`EXPLAIN QUERY PLAN ${sql}`).all(NOW) as { detail: string }[]).map((row) => row.detail).join(' | ');
+  assert.match(plan, /USING INDEX events_active/, plan);
   store.close();
 }
 

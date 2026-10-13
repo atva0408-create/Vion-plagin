@@ -116,6 +116,8 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS events_time ON events (start_ms);
       CREATE INDEX IF NOT EXISTS events_camera_time ON events (camera_id, start_ms);
+      -- the events still going on, looked for every minute (closeStaleActive): a few rows, not a read of every event
+      CREATE INDEX IF NOT EXISTS events_active ON events (state) WHERE state = 'active';
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS event_trace (event_id TEXT NOT NULL, t_ms INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS event_trace_event ON event_trace (event_id, t_ms);
