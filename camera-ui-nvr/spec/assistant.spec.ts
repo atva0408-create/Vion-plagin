@@ -254,6 +254,13 @@ assert.match((await call('manual_recording', { camera: 'Въезд', action: 'st
 assert.equal(startOfDay('2026-09-29', MSK), Date.parse('2026-09-28T21:00:00Z'));
 assert.equal(startOfDay('2026-03-29', 'Europe/Berlin'), Date.parse('2026-03-28T23:00:00Z'), 'the DST day starts at its local midnight');
 assert.equal(startOfDay('2026-03-30', 'Europe/Berlin'), Date.parse('2026-03-29T22:00:00Z'), 'after the switch the offset is +2');
+// a midnight the clock skips (Chile, Cuba: 00:00 is 01:00): the day starts at 01:00 of it, not at 23:00 of the day
+// before, whose last hour went to it in every count by day
+assert.equal(startOfDay('2026-09-06', 'America/Santiago'), Date.parse('2026-09-06T04:00:00Z'));
+assert.equal(startOfDay('2026-03-08', 'America/Havana'), Date.parse('2026-03-08T05:00:00Z'));
+assert.equal(startOfDay('2026-09-07', 'America/Santiago'), Date.parse('2026-09-07T03:00:00Z'), 'the day after, at -3');
+// a midnight after the clock went back an hour (24:00 is 23:00 again): the one there is
+assert.equal(startOfDay('2026-04-05', 'America/Santiago'), Date.parse('2026-04-05T04:00:00Z'));
 assert.equal(dateIn(Date.parse('2026-09-28T21:30:00Z'), MSK), '2026-09-29');
 assert.equal(startOfDay('2026-09-29', 'Not/AZone'), Date.parse('2026-09-29T00:00:00Z'), 'an unknown zone falls back to UTC');
 assert.equal(normalizePlate(' a-123 bc '), 'A123BC');

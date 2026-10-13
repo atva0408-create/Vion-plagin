@@ -2085,10 +2085,13 @@ export function dateIn(ms: number, timezone: string): string {
 export function startOfDay(date: string, timezone: string): number {
   const zone = safeZone(timezone);
   const utcMidnight = Date.parse(`${date}T00:00:00Z`);
-  // two rounds: the offset at the guess can differ from the offset at the answer across a DST change
-  let guess = utcMidnight - offsetAt(utcMidnight, zone);
-  guess = utcMidnight - offsetAt(guess, zone);
-  return guess;
+  // two rounds: the offset at the guess can differ from the offset at the answer across a DST change. Of the two, the
+  // earlier one that lies in the day: a midnight the clock skips (Chile, Cuba) gave 23:00 of the day before
+  const first = utcMidnight - offsetAt(utcMidnight, zone);
+  const second = utcMidnight - offsetAt(first, zone);
+  const inDay = (ms: number) => ms + offsetAt(ms, zone) >= utcMidnight;
+  const [early, late] = first <= second ? [first, second] : [second, first];
+  return inDay(early) ? early : late;
 }
 
 function offsetAt(ms: number, zone: string): number {
