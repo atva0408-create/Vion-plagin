@@ -283,5 +283,37 @@ await nvr.ingestCrossings('cam-gate', [
   assert.equal((await counts({ date: '2026-10-04', days: 1, labels: ['самокат'] })).total, 1);
 }
 
-console.log('line-counts.spec: crossings kept once, counted by line, way, direction, label and camera, read in pages, a label in capitals OK');
+// ---- how many are inside, with two lines of a way in: a person through the gate and then the door went in twice, a car
+// through the gate once more, and one sum of them all was told as how many are inside (3 for one person and one car)
+{
+  await nvr.ingestCrossings('cam-door', [
+    crossing('Калитка', 'a-to-b', 'in', 'person', '2026-10-03T10:00:00', 70),
+    crossing('Дверь', 'a-to-b', 'in', 'person', '2026-10-03T10:01:00', 70),
+    crossing('Дверь', 'a-to-b', 'in', 'bicycle', '2026-10-03T10:02:00', 72),
+  ]);
+  await nvr.ingestCrossings('cam-gate', [crossing('Въезд', 'a-to-b', 'in', 'vehicle', '2026-10-03T11:00:00', 71)]);
+  type Nets = Counts & { netBy?: { camera: string; line: string; label: string; net: number }[]; netNote?: string };
+  const all = (await counts({ date: '2026-10-03', days: 1, group_by: 'way' })) as Nets;
+  assert.equal(all.net, undefined, 'no one sum of them');
+  assert.deepEqual(all.netBy?.map((w) => [w.camera, w.line, w.label, w.net]).sort(), [
+    ['Ворота', 'Въезд', 'транспорт', 1],
+    ['Подъезд', 'Дверь', 'bicycle', 1],
+    ['Подъезд', 'Дверь', 'человек', 1],
+    ['Подъезд', 'Калитка', 'человек', 1],
+  ]);
+  assert.match(all.netNote ?? '', /no one sum/);
+  // one line and one class: one number
+  assert.equal((await counts({ date: '2026-10-03', days: 1, group_by: 'way', line: 'Калитка' })).net, 1);
+  const door = (await counts({ date: '2026-10-03', days: 1, group_by: 'way', line: 'Дверь' })) as Nets;
+  assert.equal(door.net, undefined, 'a person and a bicycle are apart');
+  assert.equal((await counts({ date: '2026-10-03', days: 1, group_by: 'way', line: 'Дверь', labels: ['person'] })).net, 1);
+  // nothing in or out: none inside
+  assert.equal((await counts({ date: '2026-09-20', days: 1, group_by: 'way' })).net, 0);
+  // a line of the same name on another camera is another line
+  await nvr.ingestCrossings('cam-door', [crossing('Въезд', 'a-to-b', 'in', 'vehicle', '2026-10-03T12:00:00', 73)]);
+  const entries = (await counts({ date: '2026-10-03', days: 1, group_by: 'way', line: 'Въезд' })) as Nets;
+  assert.deepEqual(entries.netBy?.map((w) => [w.camera, w.net]).sort(), [['Ворота', 1], ['Подъезд', 1]]);
+}
+
+console.log('line-counts.spec: crossings kept once, counted by line, way, direction, label and camera, read in pages, a label in capitals, inside by line OK');
 process.exit(0);

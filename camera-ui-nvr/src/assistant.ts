@@ -1223,9 +1223,18 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   const buckets = timeBuckets(period, ctx);
   const { sums, add } = perHourSums(buckets.hours);
   const cameraLabel = cameraNames(host);
+  // in minus out by camera, line and class: a person through the gate and then the door went in twice, a car through
+  // the gate once more, and one sum of them all was told as how many are inside
+  const nets = new Map<string, { cameraId: string; line: string; label: string; net: number }>();
   const read = await host.crossings(camera.ids, from, to, STATS_ROWS, (crossing) => {
     if (line && crossing.line !== line) return;
     if (labels.length && !labels.includes(crossing.label.toLowerCase())) return;
+    if (groupBy === 'way' && (crossing.way === 'in' || crossing.way === 'out')) {
+      const key = `${crossing.cameraId}\u0000${crossing.line}\u0000${crossing.label.toLowerCase()}`;
+      const net = nets.get(key) ?? { cameraId: crossing.cameraId, line: crossing.line, label: crossing.label, net: 0 };
+      net.net += crossing.way === 'in' ? 1 : -1;
+      nets.set(key, net);
+    }
     let group: string;
     if (groupBy === 'line') group = crossing.line;
     else if (groupBy === 'way') group = word(crossing.way ?? 'noSide');
@@ -1237,7 +1246,7 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   });
 
   const result = seriesOf(period, buckets, sums, read, { round: false, emptyName: groupBy === 'none' ? word('crossings') : word('other'), other: word('other') });
-  const inside = groupBy === 'way' ? (result.totals.get(word('in')) ?? 0) - (result.totals.get(word('out')) ?? 0) : undefined;
+  const inside = [...nets.values()];
   return {
     content: {
       from: result.readFrom ?? period.dates[0],
@@ -1252,9 +1261,19 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
       series: result.series,
       ...(result.daysPerBucket ? { daysPerBucket: result.daysPerBucket } : {}),
       total: result.total,
-      ...(inside !== undefined
-        ? { net: inside, netNote: 'In minus out over the period: for a day from midnight, how many are inside now when nobody was at midnight.' }
-        : {}),
+      ...(groupBy !== 'way'
+        ? {}
+        : inside.length > 1
+          ? {
+              netBy: inside.map((net) => ({ camera: cameraLabel.get(net.cameraId) ?? net.cameraId, line: net.line, label: word(net.label), net: net.net })),
+              netNote:
+                'In minus out over the period by camera, line and class: one person through two lines counts at each, people and vehicles ' +
+                'apart, so there is no one sum of how many are inside. Name a line (and a label) for one number.',
+            }
+          : {
+              net: inside[0]?.net ?? 0,
+              netNote: 'In minus out over the period: for a day from midnight, how many are inside now when nobody was at midnight.',
+            }),
       lines: known.map((entry) => ({ camera: cameraLabel.get(entry.cameraId) ?? entry.cameraId, line: entry.line, hasWayIn: entry.hasWay })),
       ...(known.length
         ? {}
