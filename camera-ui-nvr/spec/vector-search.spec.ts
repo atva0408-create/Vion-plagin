@@ -190,6 +190,22 @@ function fill(sql: DatabaseSync, table: 'clip_vectors' | 'person_vectors', n: nu
   assert.equal(reidIndex.count, 0, 'the re-ID row of another model went from its index');
 }
 
+// ---- the people's data cleared while the index is still read at start: what is filed after it is found. The read went
+// on from its last row into the map cleared under it, and the rows filed after (rowid from 1 again, under where it was)
+// were never read, nor indexed (the index of a model is made once the read has ended): unfound until a restart.
+{
+  const sql = db();
+  const people = new PersonIndex(sql);
+  fill(sql, 'person_vectors', 12_000, 256);
+  const reading = people.warm();
+  people.clear();
+  const query = randomUnit(256);
+  people.ingest(personEvent('after-clear', near(query, 0.05), T0, 'door'));
+  await reading.catch(() => undefined);
+  const hits = await people.search([{ model: 'reid', vec: Float32Array.from(query) }], { fromMs: 0, toMs: Number.MAX_SAFE_INTEGER, minScore: 0.4, limit: 5 });
+  assert.deepEqual(hits.map((h) => h.eventId), ['after-clear']);
+}
+
 // ---- a short window (a route's stays and hops: minutes) is read from the table by its time index, every row of it
 // scored exactly; the index, which scores every vector it holds, is asked only when the window holds more rows than the
 // candidates. A route asks ~80 such windows: over the index they held the recorder half a second on 400 000 vectors.

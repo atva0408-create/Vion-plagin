@@ -278,7 +278,12 @@ export class PersonIndex {
   }
 
   public clear(): number {
-    this.indexes.clear();
-    return Number(this.db.prepare('DELETE FROM person_vectors').run().changes);
+    const removed = Number(this.db.prepare('DELETE FROM person_vectors').run().changes);
+    // a read going on (the start's) goes on into the map it was given: a new one, read again by the next search. Cleared
+    // under it, it read on from its last row while the rows filed after began at rowid 1, and they were never indexed
+    this.indexes = new Map();
+    this.warming = undefined;
+    this.warmed = false;
+    return removed;
   }
 }
