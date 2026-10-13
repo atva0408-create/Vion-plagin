@@ -934,11 +934,24 @@ class ONNXPlugin(
                 raise RuntimeError(error)
             self._load_text_finder(language)
             return {"query": query, "loading": True, "pictures": []}
-        pictures = [Image.fromarray(decode_image(data)) for data in images]
+        # a picture that cannot be read (a card cut short: the disk full, the recorder stopped while writing it) has no
+        # boxes; raised, it failed the call, and the recorder took that for the finder failing and ended the search
+        pictures: list[Image.Image | None] = []
+        for data in images:
+            try:
+                pictures.append(Image.fromarray(decode_image(data)))
+            except Exception as error:
+                self.logger.warn(f"A picture to find words in cannot be read: {error}")
+                pictures.append(None)
         try:
-            return await finder.find(query, pictures, platform)
+            answer = await finder.find(query, [image for image in pictures if image is not None], platform)
         finally:
             self._close_text_finder_when_idle()
+        found = iter(answer.get("pictures") or [])
+        return {
+            **answer,
+            "pictures": [next(found, {"boxes": []}) if image is not None else {"boxes": []} for image in pictures],
+        }
 
     def _load_text_finder(self, language: str | None) -> None:
         if self._text_finder_load is not None and not self._text_finder_load.done():

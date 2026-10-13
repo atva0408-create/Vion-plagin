@@ -2977,7 +2977,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const dir = this.thumbDir(cameraId, eventId);
     for (const name of ['card-0.jpg', 'strip-0.jpg', 'event.jpg']) {
       try {
-        return new Uint8Array(readFileSync(join(dir, name)));
+        // an empty file (an empty attachment, a write cut short) is no picture: sent to the finder, it failed the call
+        const data = readFileSync(join(dir, name));
+        if (data.length) return new Uint8Array(data);
       } catch {
         // next candidate
       }

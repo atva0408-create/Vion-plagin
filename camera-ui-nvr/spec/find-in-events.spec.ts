@@ -267,6 +267,18 @@ async function problem(text: string, ids: string[]) {
   assert.equal(again.results[0]?.found, true, JSON.stringify(again));
 }
 
+// ---- an empty picture file (an empty attachment, a write cut short at a stop or on a full disk) is no picture: the
+// next picture of the event is looked at, else it has none. Sent to the finder, it failed the call, and the whole search.
+{
+  calls.length = 0;
+  const ev = (id: string) => ({ id, cameraId: 'hall', state: 'ended', startTime: T0, endTime: T0 + 5000, lastUpdate: T0 + 5000, types: ['object'], triggers: [], segmentIndex: 0, segments: [] });
+  await nvr.ingestDetectionEvent('hall', 'end' as never, ev('hollow') as never, { card: new Uint8Array(0), scene: new Uint8Array([41, 0xff, 0xd8]) } as never);
+  await nvr.ingestDetectionEvent('hall', 'end' as never, ev('void') as never, { scene: new Uint8Array(0) } as never);
+  const answer = await settled('чемодан', ['hollow', 'void']);
+  assert.deepEqual(answer.results.map((r) => [r.eventId, r.found]), [['hollow', true], ['void', false]]);
+  assert.deepEqual(calls.map((c) => c.pictures), [[41]], 'the scene of the first, nothing of the second');
+}
+
 // ---- the page asks every 2 s while it looks. The query asked last goes first: the pictures of one typed before it (the
 // page gone on to another) hold up none of it. A query nobody asked for in 30 s is left: its pictures are not looked
 // at, its failure is not told to a search of the same words another day.

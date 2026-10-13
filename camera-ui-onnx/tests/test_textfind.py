@@ -43,6 +43,7 @@ class Logger:
         self.said.append(text)
 
     success = log
+    warn = log
 
 
 # ------------------------------------------------------------------ the language of a query
@@ -662,6 +663,25 @@ def test_nothing_asked_loads_nothing_and_a_failed_load_is_said_once(which: str):
         assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
         await asyncio.sleep(0.03)
         assert (await p.findInPictures("сумка", [picture()]))["pictures"] == [{"boxes": []}]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("which", PLUGINS)
+def test_a_picture_that_cannot_be_read_has_no_boxes_the_others_are_looked_at(which: str):
+    """A card cut short (the disk full, the recorder stopped while writing it) failed the whole call: the recorder took
+    that for the finder failing and ended the search of all the other pictures."""
+
+    async def run() -> None:
+        p = plugin(which)
+        assert (await p.findInPictures("сумка", [picture()]))["loading"] is True
+        await asyncio.sleep(0.03)
+        result = await p.findInPictures("сумка", [b"", picture(), picture()[:200], b"not a picture"])
+        assert result == {"query": "сумка", "pictures": [{"boxes": []}] * 4}
+        assert p.text_finder.asked == [("сумка", 1, None)], "the one readable looked at"
+        assert sum("cannot be read" in said for said in p.logger.said) == 3
+        # none readable: no boxes, the query still put as the finder takes it
+        assert await p.findInPictures("сумка", [b""]) == {"query": "сумка", "pictures": [{"boxes": []}]}
 
     asyncio.run(run())
 
