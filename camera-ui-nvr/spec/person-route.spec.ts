@@ -293,14 +293,16 @@ const hopStays = (route: Awaited<ReturnType<typeof nvr.personRoute>>, base: numb
   const ctx: AssistantToolContext = { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' };
   const result = await nvr.callAssistantTool('person_route', { event: 'ev-door-1' }, ctx);
   assert.equal(result.error, undefined, String(result.error));
-  const content = result.content as { route: { camera: string; from: string; to: string; event: string; asked?: true }[]; camerasWithoutPeople?: string[]; people: number };
+  const content = result.content as { route: { camera: string; from: string; to: string; event: string; asked?: true }[]; camerasWithoutPeople?: { camera: string }[]; people: number };
   const clock = (minutes: number) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(at(minutes));
   assert.deepEqual(content.route.map((stay) => [stay.camera, stay.from, stay.to, stay.asked ?? false]), [
     ['Входная дверь', clock(0), clock(1.5), true],
     ['Лифт', clock(3), clock(5), false],
     ['Двор', clock(25), clock(25), false],
   ]);
-  assert.deepEqual(content.camerasWithoutPeople, ['Гараж', 'Чердак']);
+  // items with a `camera`: the server takes out of a plugin's answer the items of cameras a limited person may not see
+  // (plugin-camera-limit.ts), and leaves bare names as they are
+  assert.deepEqual(content.camerasWithoutPeople, [{ camera: 'Гараж' }, { camera: 'Чердак' }]);
   assert.equal(result.references?.length, 3);
   const two = await nvr.callAssistantTool('person_route', { event: 'ev-two' }, ctx);
   assert.match((two.content as { hint?: string }).hint ?? '', /2 people/);

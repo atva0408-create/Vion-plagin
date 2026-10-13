@@ -1853,10 +1853,12 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
   }
   const clock = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const withPeople = new Set(route.camerasWithPeople);
+  // items with a `camera`, as the stays: the server takes the items of another's cameras out of the answer of a person
+  // limited to some (plugin-camera-limit.ts); bare names it leaves, and they named every camera
   const blind = host
     .cameras()
     .filter((camera) => !withPeople.has(camera.id))
-    .map((camera) => camera.name);
+    .map((camera) => ({ camera: camera.name }));
   const references = route.visits
     .map((visit) => host.event(visit.eventId))
     .filter((ev): ev is RecordedEvent => !!ev)
