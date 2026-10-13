@@ -2414,13 +2414,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** RPC proxies of the plugins implementing an interface (CLIP, face embedding), cached per plugin. */
-  private async pluginProxies<T>(iface: string): Promise<T[]> {
+  private async pluginProxies<T>(iface: string, anew = false): Promise<T[]> {
     const rpc = (this.api as unknown as { proxy?: { createProxy<P>(namespace: string): P } }).proxy;
     if (!rpc) return [];
     const infos = await this.api.coreManager.getPluginsByInterface(iface as never);
     return infos.map((info) => {
       const key = `${iface}:${info.id}`;
-      let proxy = this.proxies.get(key) as T | undefined;
+      let proxy = anew ? undefined : (this.proxies.get(key) as T | undefined);
       if (!proxy) {
         proxy = rpc.createProxy<T>(`plugin.${info.id}.child.rpc`);
         this.proxies.set(key, proxy);
@@ -2700,8 +2700,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       return undefined;
     }
     const started = Date.now();
+    let anew = false;
+    let madeAnew = false;
     for (;;) {
-      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection');
+      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection', anew);
+      anew = false;
       // the one that answered before first: a plugin without the finder answers its call with an error
       const ordered = this.findEncoder && encoders.includes(this.findEncoder) ? [this.findEncoder, ...encoders.filter((e) => e !== this.findEncoder)] : encoders;
       let answer: TextFindAnswer | undefined;
@@ -2716,9 +2719,18 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         }
       }
       if (!answer) {
-        // none has the method: nothing finds words in pictures here; else the finder's own failure is said
-        const real = errors.find((message) => !/is not a function|unknown method|no such method/i.test(message));
-        if (!real) return NO_FINDER;
+        // none has the method: nothing finds words in pictures here; else the finder's own failure is said. A plugin
+        // without it answers no call ('no responders': a subject a method)
+        const real = errors.find((message) => !/is not a function|unknown method|no such method|no responders/i.test(message));
+        if (!real) {
+          // a proxy knows the methods its plugin had when it first answered: an engine updated since (ONNX 1.7.0 brought
+          // the finder) had none until the recorder restarted. Once more through proxies made anew, which ask the plugin
+          if (!madeAnew) {
+            madeAnew = anew = true;
+            continue;
+          }
+          return NO_FINDER;
+        }
         this.logger.warn(`Search in pictures failed: ${real}`);
         return real;
       }

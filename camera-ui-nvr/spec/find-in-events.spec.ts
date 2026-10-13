@@ -62,6 +62,13 @@ const other = {
   findInPictures: async (text: string, images: Uint8Array[], config?: { language?: string }) => (otherCalls.push(text), onnx.findInPictures(text, images, config)),
 };
 
+const silent = {
+  findInPictures: async () => {
+    throw new Error('No responders available');
+  },
+};
+const made: Record<string, number> = {};
+
 const noop = () => undefined;
 const warned: string[] = [];
 const logger = { log: noop, warn: (text: string) => void warned.push(text), error: console.error, debug: noop, attention: noop, trace: noop };
@@ -79,8 +86,17 @@ const api = {
       return iface === 'ClipDetection' ? finders.map((id) => ({ id })) : [];
     },
   },
-  // OpenVINO has no finder: the call is not even a function there
-  proxy: { createProxy: (ns: string) => (ns === 'plugin.onnx.child.rpc' ? onnx : ns === 'plugin.other.child.rpc' ? other : {}) },
+  // OpenVINO has no finder: the call is not even a function there. A proxy knows the methods its plugin had when it
+  // first answered: the first made for `updated` is of the plugin before an update that brought the finder; `silent`
+  // has no finder and was never asked before: the call goes out, nobody answers it.
+  proxy: {
+    createProxy: (ns: string) => {
+      made[ns] = (made[ns] ?? 0) + 1;
+      if (ns === 'plugin.updated.child.rpc') return made[ns] === 1 ? {} : onnx;
+      if (ns === 'plugin.silent.child.rpc') return silent;
+      return ns === 'plugin.onnx.child.rpc' ? onnx : ns === 'plugin.other.child.rpc' ? other : {};
+    },
+  },
 };
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr(logger as never, api as never, storage as never);
@@ -252,6 +268,22 @@ async function problem(text: string, ids: string[]) {
   assert.equal((await problem('лестница3', ['bag'])).reason, 'no-finder');
   // events without pictures need no finder at all
   assert.deepEqual((await nvr.findInEvents('лестница4', ['blind'])).results.map((r) => r.found), [false]);
+}
+
+// ---- an engine updated while the recorder ran (ONNX 1.7.0 brought the finder): its proxy, made before, knew no finder,
+// and the search said there was none until the recorder restarted. A plugin without the method answers no call.
+{
+  finders = ['updated'];
+  const found = await settled('гиря', ['bag']);
+  assert.equal(found.reason, undefined, JSON.stringify(found));
+  assert.equal(found.results[0]?.found, true);
+  assert.equal(made['plugin.updated.child.rpc'], 2, 'made anew once');
+  await settled('гиря', ['weak']);
+  assert.equal(made['plugin.updated.child.rpc'], 2, 'the new one kept');
+  finders = ['silent'];
+  const none = await problem('гиря2', ['bag']);
+  assert.equal(none.reason, 'no-finder', JSON.stringify(none));
+  finders = ['openvino', 'onnx'];
 }
 
 // ---- the bus failing while a picture waits: said to the next call, the recorder goes on, asked again it is found
