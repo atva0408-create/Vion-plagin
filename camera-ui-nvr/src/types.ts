@@ -325,6 +325,10 @@ export interface PluginStorageValues {
   minFreePercent: number;
   segmentSeconds: number;
   postBufferSeconds: number;
+  /** a person's route: the least cosine of a hop between cameras at the middle precision, its minutes, how many in a row */
+  routeHopScore?: number;
+  routeHopMinutes?: number;
+  routeHops?: number;
   [key: string]: unknown;
 }
 /** One crossing of a line as the NVR keeps it (ingestCrossings): `way` in or out when the line has a way in. */

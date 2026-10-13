@@ -29,5 +29,11 @@
   "Удалить данные поиска людей": "Daten der Personensuche löschen",
   "Удаляет всё, по чему ищутся похожие люди. События и записи остаются.": "Löscht alles, wonach ähnlich aussehende Personen gesucht werden. Ereignisse und Aufnahmen bleiben.",
   "Модель": "Modell",
-  "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "Das Assistenzmodell, das der NVR nutzt. Es wird unter Einstellungen → Assistent gewählt."
+  "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "Das Assistenzmodell, das der NVR nutzt. Es wird unter Einstellungen → Assistent gewählt.",
+  "Переход между камерами: сходство от": "Wechsel zwischen Kameras: Ähnlichkeit ab",
+  "Маршрут человека идёт от камеры к камере: от конца остановки — к самому похожему человеку на другой камере за несколько минут. Между камерами Re-ID слабее, поэтому порог ниже, чем для остановок. Выше — меньше чужих людей в маршруте, но и переходов меньше. Это порог при средней точности: ползунок «Точнее» на странице записей сдвигает его вместе с порогом остановок. На стенде при 0,35 найдено 56 % проходов, чужой человек — в 3 % окон.": "Der Weg einer Person geht von Kamera zu Kamera: vom Ende eines Aufenthalts zur ähnlichsten Person auf einer anderen Kamera innerhalb weniger Minuten. Zwischen Kameras ist Re-ID schwächer, daher liegt die Schwelle unter der der Aufenthalte. Höher: weniger Fremde auf dem Weg, aber auch weniger Wechsel. Das ist die Schwelle bei mittlerer Genauigkeit: der Regler «Genauer» der Aufnahmeseite verschiebt sie zusammen mit der Schwelle der Aufenthalte. Auf dem Prüfstand fand der Weg bei 0,35 56 % der Durchgänge, eine fremde Person in 3 % der Fenster.",
+  "Переход между камерами: за сколько минут": "Wechsel zwischen Kameras: innerhalb von Minuten",
+  "Сколько минут после конца остановки (и до её начала) ищется человек на другой камере.": "Wie viele Minuten nach dem Ende eines Aufenthalts (und vor seinem Beginn) die Person auf einer anderen Kamera gesucht wird.",
+  "Переходов подряд, не больше": "Wechsel hintereinander, höchstens",
+  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Jeder Wechsel vergrößert den Fehler: eine Kette endet nach so vielen. 0: der Weg nur nach Ähnlichkeit, ohne Wechsel."
 }

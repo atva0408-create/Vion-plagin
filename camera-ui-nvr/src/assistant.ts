@@ -46,7 +46,7 @@ export interface AssistantHost {
     visit: (crossing: StoredCrossing) => void,
   ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }>;
   /** Where a person went, camera after camera, around a recorded moment (people.ts routeOf). */
-  personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number }): Promise<PersonRouteResult>;
+  personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number; precision?: number }): Promise<PersonRouteResult>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
   crossingLines(cameraIds: string[] | undefined, startMs: number, endMs: number): { cameraId: string; line: string; hasWay: boolean }[];
   /** The labels the lines counted in a range, each once. */
@@ -172,6 +172,12 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         event: { type: 'string', description: 'Event id' },
         person: { type: 'integer', description: 'Track id of one person, when the moment has several (`people` > 1); all of them otherwise' },
         minutes: { type: 'integer', minimum: 1, maximum: 180, description: 'Minutes before and after the moment, default 30' },
+        precision: {
+          type: 'number',
+          minimum: 0,
+          maximum: 1,
+          description: 'As the «точнее» slider of the recordings page: 0 broader (more stays, more strangers), 1 more precise; default 0.5',
+        },
       },
       required: ['event'],
     },
@@ -1864,7 +1870,11 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
   if (!eventId) return { error: 'event is required: an event id from query_events or summarize_day' };
   if (!host.event(eventId)) return { error: `No event "${eventId}"` };
   const trackId = Number.isInteger(input.person) ? (input.person as number) : undefined;
-  const route = await host.personRoute({ eventId, ...(trackId !== undefined ? { trackId } : {}) }, { minutes: clampInt(input.minutes, 1, 180, 30) });
+  const precision = typeof input.precision === 'number' && Number.isFinite(input.precision) ? Math.min(1, Math.max(0, input.precision)) : undefined;
+  const route = await host.personRoute(
+    { eventId, ...(trackId !== undefined ? { trackId } : {}) },
+    { minutes: clampInt(input.minutes, 1, 180, 30), ...(precision !== undefined ? { precision } : {}) },
+  );
   const names = cameraNames(host);
   if (route.mode === 'none' || !route.origin) {
     return {

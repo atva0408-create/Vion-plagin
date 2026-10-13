@@ -203,6 +203,62 @@ const hopStays = (route: Awaited<ReturnType<typeof nvr.personRoute>>, base: numb
     ['garage', 'door', 'lift'],
   );
   assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }, { minutes: 1 }), B), ['door 0-0 hop-door-1 *']);
+
+  // «точнее» on the page made only the stays stricter: the hops stayed at 0.35. They move with it as much as the
+  // window's floor: at the top of the band (0.65) a hop needs 0.475, the lift (0.45) and the garage (0.36) are left
+  const strict = await nvr.personRoute({ eventId: 'hop-door-1' }, { minScore: 0.65 });
+  assert.deepEqual(hopStays(strict, B), ['door 0-0 hop-door-1 *']);
+  assert.equal(strict.hopScore, 0.475);
+  // broader: 0.45 for the window, 0.275 for a hop
+  assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { minScore: 0.45 })).hopScore, 0.275);
+  // the precision as the page's slider gives it (0 broader … 1 more precise), for the assistant
+  assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { precision: 1 })).hopScore, 0.475);
+  assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { precision: 0.5 })).minScore, 0.525);
+  const precise = await nvr.callAssistantTool('person_route', { event: 'hop-door-1', precision: 1 }, { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' });
+  assert.deepEqual((precise.content as { route: { event: string }[] }).route.map((stay) => stay.event), ['hop-door-1']);
+  assert.match((precise.content as { note: string }).note, /from 0\.475/);
+
+  // the hops are set in the NVR's settings (People): how sure, how many minutes apart, how many in a row
+  const schema = nvr.storageSchema.filter((field) => ['routeHopScore', 'routeHopMinutes', 'routeHops'].includes(field.key ?? ''));
+  assert.deepEqual(
+    schema.map((field) => [field.key, (field as { defaultValue?: unknown }).defaultValue, field.group]),
+    [
+      ['routeHopScore', 0.35, 'People'],
+      ['routeHopMinutes', 3, 'People'],
+      ['routeHops', 6, 'People'],
+    ],
+  );
+  const values = (storage as { values: Record<string, unknown> }).values;
+  try {
+    values.routeHopScore = 0.5;
+    const surer = await nvr.personRoute({ eventId: 'hop-door-1' });
+    assert.deepEqual(hopStays(surer, B), ['door 0-2 hop-door-1 *'], 'a hop of 0.45 is under 0.5');
+    assert.equal(surer.hopScore, 0.5);
+    delete values.routeHopScore;
+    values.routeHopMinutes = 1;
+    assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }), B), ['door 0-2 hop-door-1 *'], 'the lift is two minutes after the stay');
+    values.routeHopMinutes = 5;
+    assert.ok(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }), B).some((stay) => stay.startsWith('lift')));
+    delete values.routeHopMinutes;
+    values.routeHops = 0;
+    assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }), B), ['door 0-2 hop-door-1 *'], 'no hops: the route by the look alone');
+    values.routeHops = 1;
+    assert.deepEqual(
+      hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }), B).map((stay) => stay.split(' ')[0]),
+      ['garage', 'door', 'lift'],
+      'one hop: the yard behind the lift is a second',
+    );
+    // nonsense stored is the default
+    values.routeHops = 'many';
+    values.routeHopScore = 'sure';
+    const fallback = await nvr.personRoute({ eventId: 'hop-door-1' });
+    assert.equal(fallback.hopScore, 0.35);
+    assert.equal(fallback.visits.length, 4);
+  } finally {
+    delete values.routeHopScore;
+    delete values.routeHopMinutes;
+    delete values.routeHops;
+  }
 }
 
 // ---- a hop to a moment alike to the asked one: the chain on from it is as sure as that likeness, not the hop before

@@ -29,5 +29,11 @@
   "Удалить данные поиска людей": "Delete the people search data",
   "Удаляет всё, по чему ищутся похожие люди. События и записи остаются.": "Deletes everything people who look alike are searched by. Events and recordings stay.",
   "Модель": "Model",
-  "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "The assistant model the NVR uses. It is chosen in Settings → Assistant."
+  "Модель ассистента, которой пользуется NVR. Выбирается в Настройки → Ассистент.": "The assistant model the NVR uses. It is chosen in Settings → Assistant.",
+  "Переход между камерами: сходство от": "Hop between cameras: likeness from",
+  "Маршрут человека идёт от камеры к камере: от конца остановки — к самому похожему человеку на другой камере за несколько минут. Между камерами Re-ID слабее, поэтому порог ниже, чем для остановок. Выше — меньше чужих людей в маршруте, но и переходов меньше. Это порог при средней точности: ползунок «Точнее» на странице записей сдвигает его вместе с порогом остановок. На стенде при 0,35 найдено 56 % проходов, чужой человек — в 3 % окон.": "A person's route goes camera to camera: from the end of a stay to the most alike person on another camera within a few minutes. Across cameras re-ID is weaker, so the threshold is lower than for the stays. Higher: fewer strangers on the route, but fewer hops too. This is the threshold at the middle precision: the «More precise» slider of the recordings page moves it together with the threshold of the stays. On the bench at 0.35 the route found 56 % of the passes, someone else in 3 % of the windows.",
+  "Переход между камерами: за сколько минут": "Hop between cameras: within minutes",
+  "Сколько минут после конца остановки (и до её начала) ищется человек на другой камере.": "How many minutes after the end of a stay (and before its start) the person is looked for on another camera.",
+  "Переходов подряд, не больше": "Hops in a row, at most",
+  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Every hop adds to the error: a chain stops after this many. 0: the route by likeness alone, without hops."
 }

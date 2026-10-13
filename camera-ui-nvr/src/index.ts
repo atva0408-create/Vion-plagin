@@ -496,6 +496,46 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         store: true,
       },
       {
+        type: 'number',
+        key: 'routeHopScore',
+        title: 'Переход между камерами: сходство от',
+        description:
+          'Маршрут человека идёт от камеры к камере: от конца остановки — к самому похожему человеку на другой камере за ' +
+          'несколько минут. Между камерами Re-ID слабее, поэтому порог ниже, чем для остановок. Выше — меньше чужих людей ' +
+          'в маршруте, но и переходов меньше. Это порог при средней точности: ползунок «Точнее» на странице записей ' +
+          'сдвигает его вместе с порогом остановок. На стенде при 0,35 найдено 56 % проходов, чужой человек — в 3 % окон.',
+        group: 'People',
+        defaultValue: PERSON_HOP_SCORE,
+        minimum: 0.2,
+        maximum: 0.65,
+        step: 0.01,
+        store: true,
+      },
+      {
+        type: 'number',
+        key: 'routeHopMinutes',
+        title: 'Переход между камерами: за сколько минут',
+        description: 'Сколько минут после конца остановки (и до её начала) ищется человек на другой камере.',
+        group: 'People',
+        defaultValue: PERSON_HOP_MS / 60_000,
+        minimum: 1,
+        maximum: 15,
+        step: 1,
+        store: true,
+      },
+      {
+        type: 'number',
+        key: 'routeHops',
+        title: 'Переходов подряд, не больше',
+        description: 'Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.',
+        group: 'People',
+        defaultValue: PERSON_ROUTE_HOPS,
+        minimum: 0,
+        maximum: 20,
+        step: 1,
+        store: true,
+      },
+      {
         type: 'button',
         key: 'personSearchClear',
         title: 'Удалить данные поиска людей',
@@ -547,6 +587,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       minFreePercent: Number(v.minFreePercent) || 5,
       segmentSeconds: Number(v.segmentSeconds) || 60,
       postBufferSeconds: Number(v.postBufferSeconds ?? 10),
+    };
+  }
+
+  /** The hops of a person's route as set (People); what is stored that is no number is the default. */
+  private get routeSetting(): { hopScore: number; hopMs: number; hops: number } {
+    const v = this.storage.values;
+    const num = (value: unknown, fallback: number, min: number, max: number) => {
+      const n = typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : Number.NaN;
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+    };
+    return {
+      hopScore: num(v.routeHopScore, PERSON_HOP_SCORE, 0.2, 0.65),
+      hopMs: num(v.routeHopMinutes, PERSON_HOP_MS / 60_000, 1, 15) * 60_000,
+      hops: Math.round(num(v.routeHops, PERSON_ROUTE_HOPS, 0, 20)),
     };
   }
 
@@ -1905,13 +1959,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    */
   public async personRoute(
     query: { eventId: string; segment?: number; trackId?: number },
-    opts: { minutes?: number; minScore?: number } = {},
+    opts: { minutes?: number; minScore?: number; precision?: number } = {},
   ): Promise<PersonRouteResult> {
     await this.ready;
     const minutes = Math.round(Number(opts.minutes) || PERSON_ROUTE_WINDOW_MS / 60_000);
     const windowMs = Math.min(Math.max(minutes, 1) * 60_000, PERSON_ROUTE_MAX_MS);
-    const middle = (PERSON_SCORE_BAND[0] + PERSON_SCORE_BAND[1]) / 2;
-    const minScore = Math.max(PERSON_SCORE_BAND[0], Number.isFinite(opts.minScore) ? Number(opts.minScore) : middle);
+    const [low, high] = PERSON_SCORE_BAND;
+    const middle = (low + high) / 2;
+    // the precision as the page's slider gives it (0 broader … 1 more precise), for those that do not know the band
+    const precise = Number.isFinite(opts.precision) ? low + Math.min(1, Math.max(0, Number(opts.precision))) * (high - low) : middle;
+    const minScore = Math.max(low, Number.isFinite(opts.minScore) ? Number(opts.minScore) : precise);
+    // the hops move with the precision asked as much as the stays' floor: «точнее» made only the stays stricter
+    const setting = this.routeSetting;
+    const hopScore = Math.round(Math.min(0.95, Math.max(0.1, setting.hopScore + minScore - middle)) * 1000) / 1000;
+    const hop = { score: hopScore, ms: setting.hopMs, count: setting.hops };
     const none = (reason: SimilarReason): PersonRouteResult => ({
       mode: 'none',
       reason,
@@ -1919,7 +1980,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events: [],
       windowMs,
       minScore,
-      hopScore: PERSON_HOP_SCORE,
+      hopScore,
       scoreBand: PERSON_SCORE_BAND,
       camerasWithPeople: [],
       indexedSince: this.people.oldest(),
@@ -1938,7 +1999,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const window = { fromMs: time - windowMs, toMs: time + windowMs };
     const hits = await this.people.search(queries, { ...window, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: PERSON_ROUTE_HITS });
     const origin = { eventId: query.eventId, cameraId: event.cameraId, seg: segment, trackId: queries[0].trackId, ts: time, score: 1 };
-    const hops = await this.routeHops(origin, queries, hits, window, minScore);
+    const hops = await this.routeHops(origin, queries, hits, window, minScore, hop);
     const visits = routeOf(origin, [...hits, ...hops], PERSON_ROUTE_GAP_MS);
     const events = [...new Set(visits.map((visit) => visit.eventId))].flatMap((id) => {
       const stored = this.store.event(id);
@@ -1951,7 +2012,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events,
       windowMs,
       minScore,
-      hopScore: PERSON_HOP_SCORE,
+      hopScore,
       scoreBand: PERSON_SCORE_BAND,
       camerasWithPeople: this.people.camerasBetween(time - windowMs, time + windowMs),
       indexedSince: this.people.oldest(),
@@ -1961,7 +2022,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /**
    * The moments a route reaches by hops, beyond those alike to the asked person over the whole window: from the last
-   * moment of a stay the best moment of another camera within minutes after it (PERSON_HOP_SCORE), from the first one
+   * moment of a stay the best moment of another camera within minutes after it (`hop`: as set, moved by the precision), from the first one
    * the best before it; then that moment's stay on its camera, and on from its edge with the vectors seen there, where
    * the light and the angle are the next camera's. Across cameras re-ID is weak, but who appears in the next camera a
    * minute later narrows it to a few people. Each person of the moment asked is followed alone; a moment alike to the
@@ -1973,6 +2034,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     matches: PersonHit[],
     window: { fromMs: number; toMs: number },
     minScore: number,
+    hop: { score: number; ms: number; count: number },
   ): Promise<PersonHit[]> {
     const key = (moment: { eventId: string; seg: number }) => `${moment.eventId}/${moment.seg}`;
     const matched = new Map([[key(origin), 1], ...matches.map((moment) => [key(moment), moment.score] as const)]);
@@ -1990,17 +2052,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         let vectors = queries.filter((q) => q.trackId === trackId);
         // the least cosine of the links so far
         let chain = 1;
-        for (let hop = 0; ; hop++) {
+        for (let hops = 0; ; hops++) {
           const stay = await this.stayOf(at, vectors, window, minScore);
           for (const moment of stay) reach(moment, moment === at ? chain : Math.min(chain, moment.score));
-          if (hop === PERSON_ROUTE_HOPS) break;
+          if (hops >= hop.count) break;
           const edge = forward ? stay[stay.length - 1] : stay[0];
           const edgeVectors = edge === at ? vectors : this.people.vectors(edge.eventId, edge.seg, edge.trackId);
           const [next] = await this.people.search(edgeVectors, {
-            fromMs: forward ? edge.ts : Math.max(window.fromMs, edge.ts - PERSON_HOP_MS),
-            toMs: forward ? Math.min(window.toMs, edge.ts + PERSON_HOP_MS) : edge.ts,
+            fromMs: forward ? edge.ts : Math.max(window.fromMs, edge.ts - hop.ms),
+            toMs: forward ? Math.min(window.toMs, edge.ts + hop.ms) : edge.ts,
             cameraIds: new Set([...this.cameras.keys()].filter((id) => id !== edge.cameraId)),
-            minScore: PERSON_HOP_SCORE,
+            minScore: hop.score,
             limit: 1,
           });
           if (!next) break;
