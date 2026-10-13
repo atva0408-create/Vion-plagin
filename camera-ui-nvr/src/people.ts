@@ -150,11 +150,13 @@ export class PersonIndex {
 
   /** The vectors of one moment: one person (`trackId`) or everyone in it. */
   public vectors(eventId: string, seg: number, trackId?: number): PersonVector[] {
-    const rows = (
-      trackId === undefined
-        ? this.db.prepare('SELECT track_id, model, vec FROM person_vectors WHERE event_id = ? AND seg = ?').all(eventId, seg)
-        : this.db.prepare('SELECT track_id, model, vec FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').all(eventId, seg, trackId)
-    ) as unknown as { track_id: number; model: string; vec: Uint8Array }[];
+    const rows = (trackId === undefined
+      ? this.db.prepare('SELECT track_id, model, vec FROM person_vectors WHERE event_id = ? AND seg = ?').all(eventId, seg)
+      : this.db.prepare('SELECT track_id, model, vec FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').all(eventId, seg, trackId)) as unknown as {
+      track_id: number;
+      model: string;
+      vec: Uint8Array;
+    }[];
     return rows.map((r) => ({ trackId: r.track_id, model: r.model, vec: fromBlob(r.vec) }));
   }
 
@@ -230,8 +232,7 @@ export class PersonIndex {
   /** The row of a person's vector in a segment, and the model it is of. */
   private rowidOf(eventId: string, seg: number, trackId: number): { id: number; model: string } | undefined {
     const row = this.db.prepare('SELECT rowid AS id, model FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').get(eventId, seg, trackId) as
-      | { id: number | bigint; model: string }
-      | undefined;
+      { id: number | bigint; model: string } | undefined;
     return row ? { id: Number(row.id), model: row.model } : undefined;
   }
 

@@ -250,7 +250,7 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       'days, or the profile of a day (hour_of_day) or a week (weekday), as sums or per day on average. Apart by line, by way (in or out, for ' +
       'a line with a way in), by direction along the line (A → B, B → A), by label or by camera; filter by camera, line and labels. With ' +
       'group_by way, `net` is in minus out (from midnight of one day: how many are inside now). Every crossing counts once. Series in the ' +
-      'person\'s language, null where nothing is known: pass `labels` and `series` to show_chart. `lines` names the lines that counted. ' +
+      "person's language, null where nothing is known: pass `labels` and `series` to show_chart. `lines` names the lines that counted. " +
       'For «how many people came in today», «how many cars drove through the gate this week», «when is the entrance busiest».',
     inputSchema: {
       type: 'object',
@@ -265,7 +265,7 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         group_by: { type: 'string', enum: ['none', 'line', 'way', 'direction', 'label', 'camera'], description: 'Default none' },
         camera: { type: 'string', description: 'Camera name, all cameras when omitted' },
         line: { type: 'string', description: 'Line name or part of it, all lines when omitted' },
-        labels: { type: 'array', items: { type: 'string' }, description: 'Only these: person, vehicle, animal or a module\'s label' },
+        labels: { type: 'array', items: { type: 'string' }, description: "Only these: person, vehicle, animal or a module's label" },
         average: { type: 'boolean', description: 'With hour_of_day or weekday: the mean per day instead of the sum' },
       },
     },
@@ -928,7 +928,7 @@ function timeBuckets(period: StatsPeriod, ctx: AssistantToolContext): TimeBucket
   const zone = safeZone(ctx.timezone);
   const hours = Math.ceil((to + 1 - from) / HOUR_MS);
   const hourStart = (k: number) => from + k * HOUR_MS;
-  const localHour = Array.from({ length: hours }, (_, k) => Math.floor((((hourStart(k) + offsetAt(hourStart(k), zone)) % DAY_MS) + DAY_MS) % DAY_MS / HOUR_MS));
+  const localHour = Array.from({ length: hours }, (_, k) => Math.floor(((((hourStart(k) + offsetAt(hourStart(k), zone)) % DAY_MS) + DAY_MS) % DAY_MS) / HOUR_MS));
   const dayOfHour: number[] = [];
   for (let k = 0, day = 0; k < hours; k++) {
     while (day < count - 1 && dayStarts[day + 1] <= hourStart(k)) day++;

@@ -158,8 +158,7 @@ export class SemanticIndex {
   /** The row a vector of the event's segment and attribute is in, and the model it is of. */
   private rowidOf(eventId: string, seg: number, attr: number): { id: number; model: string } | undefined {
     const row = this.db.prepare('SELECT rowid AS id, model FROM clip_vectors WHERE event_id = ? AND seg = ? AND attr = ?').get(eventId, seg, attr) as
-      | { id: number | bigint; model: string }
-      | undefined;
+      { id: number | bigint; model: string } | undefined;
     return row ? { id: Number(row.id), model: row.model } : undefined;
   }
 

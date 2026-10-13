@@ -66,7 +66,10 @@ export class VectorIndex {
   private readonly cameraIndex = new Map<string, number>();
   private readonly cameraNames: string[] = [];
 
-  constructor(public readonly dim: number, capacity = 1024) {
+  constructor(
+    public readonly dim: number,
+    capacity = 1024,
+  ) {
     this.values = new Int8Array(capacity * dim);
     this.scales = new Float32Array(capacity);
     this.rowids = new Float64Array(capacity);
