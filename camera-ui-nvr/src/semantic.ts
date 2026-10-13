@@ -1,7 +1,7 @@
 // Semantic search over recorded events: every CLIP image vector the server attaches to an event
 // (one per object crop) lands in a SQLite table; a text query is encoded by a ClipDetection plugin
 // and compared against the vectors of the same model. The vectors of a model are held by a compact
-// index (vector-index.ts, their signs only), which picks the candidates the table then scores exactly.
+// index (vector-index.ts, as int8), which picks the candidates the table then scores exactly.
 
 import { loadIndexes, VectorIndex } from './vector-index.js';
 import { dot, fromBlob, normalize, toBlob } from './vectors.js';
@@ -60,8 +60,8 @@ export const SCENE_ATTR = -1;
 /** Raw cosine band used when a plugin reports none (CLIP ViT-B/32 text-image). */
 const DEFAULT_BAND: [number, number] = [0.15, 0.38];
 /**
- * The vectors scored exactly for one query: every vector up to this many, beyond it those whose signs agree most with
- * the query's (spec/vector-index.spec.ts: the 50 best of a full scan of clustered vectors are among them).
+ * The vectors scored exactly for one query: every vector up to this many, beyond it the nearest by their int8 copies
+ * (spec/vector-index.spec.ts: the 50 best of a full scan are among them, CLIP's text-to-picture cosines too).
  */
 const CANDIDATES = 2000;
 
@@ -206,7 +206,7 @@ export class SemanticIndex {
       const band = q.scoreBand ?? this.bands.get(q.embeddingModel) ?? DEFAULT_BAND;
       this.bands.set(q.embeddingModel, band);
       const text = normalize(q.embedding);
-      for (const e of this.scored(q.embeddingModel, text)) {
+      for (const e of await this.scored(q.embeddingModel, text)) {
         const raw = dot(text, e.vec);
         const score = Math.max(0, Math.min(1, (raw - band[0]) / (band[1] - band[0] || 1)));
         if (score < threshold) continue;
@@ -219,13 +219,16 @@ export class SemanticIndex {
   }
 
   /** The candidates of the model's index for a query, with what the table holds of them. */
-  private *scored(model: string, query: Float32Array): Iterable<{ eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }> {
+  private async scored(model: string, query: Float32Array): Promise<{ eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }[]> {
     const index = this.indexes.get(model);
-    if (!index) return;
+    if (!index) return [];
+    const ids = await index.candidates(query, CANDIDATES);
     const row = this.db.prepare('SELECT event_id, camera_id, ts, label, vec FROM clip_vectors WHERE rowid = ?');
-    for (const id of index.candidates(query, CANDIDATES)) {
+    const out: { eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }[] = [];
+    for (const id of ids) {
       const r = row.get(id) as { event_id: string; camera_id: string; ts: number; label: string; vec: Uint8Array } | undefined;
-      if (r) yield { eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) };
+      if (r) out.push({ eventId: r.event_id, cameraId: r.camera_id, ts: r.ts, label: r.label, vec: fromBlob(r.vec) });
     }
+    return out;
   }
 }

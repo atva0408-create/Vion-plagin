@@ -175,7 +175,7 @@ export class PersonIndex {
       const index = this.indexes.get(model);
       if (!index) continue;
       const ids = new Set<number>();
-      for (const q of vecs) for (const id of index.candidates(q, k, { fromMs: o.fromMs, toMs: o.toMs, cameraIds: o.cameraIds })) ids.add(id);
+      for (const q of vecs) for (const id of await index.candidates(q, k, { fromMs: o.fromMs, toMs: o.toMs, cameraIds: o.cameraIds })) ids.add(id);
       for (const id of ids) {
         const row = select.get(id) as Row | undefined;
         if (!row) continue;
