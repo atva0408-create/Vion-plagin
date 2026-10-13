@@ -23,6 +23,11 @@ let overlapped = false;
 let failing: string | undefined;
 let loading = 0;
 let finders = ['openvino', 'onnx'];
+/** The bus not answering the question of which plugins find (a call cut after 30 s, NATS reconnecting). */
+let pluginsFail: string | undefined;
+// a promise of the recorder nobody awaits that fails ends the recorder's process: the plugin runtime has no handler
+const unhandled: unknown[] = [];
+process.on('unhandledRejection', (reason) => void unhandled.push(reason));
 /**
  * The finder sees a bag in a picture whose first byte is odd, scored by the byte, and crops it even when unsure (the
  * recorder keeps the crop of a find only); it loads for the first `loading` calls.
@@ -66,7 +71,10 @@ const api = {
   coreManager: {
     assistantAccess: async () => ({ allowed: false }),
     getFFmpegPath: () => new Promise<string>(noop),
-    getPluginsByInterface: async (iface: string) => (iface === 'ClipDetection' ? finders.map((id) => ({ id })) : []),
+    getPluginsByInterface: async (iface: string) => {
+      if (pluginsFail) throw new Error(pluginsFail);
+      return iface === 'ClipDetection' ? finders.map((id) => ({ id })) : [];
+    },
   },
   // OpenVINO has no finder: the call is not even a function there
   proxy: { createProxy: (ns: string) => (ns === 'plugin.onnx.child.rpc' ? onnx : ns === 'plugin.other.child.rpc' ? other : {}) },
@@ -243,5 +251,19 @@ async function problem(text: string, ids: string[]) {
   assert.deepEqual((await nvr.findInEvents('лестница4', ['blind'])).results.map((r) => r.found), [false]);
 }
 
+// ---- the bus failing while a picture waits: said to the next call, the recorder goes on, asked again it is found
+{
+  finders = ['openvino', 'onnx'];
+  pluginsFail = 'RPC call to "rpc.coreManager.rpc.getPluginsByInterface" timed out after 30000ms';
+  const failed = await problem('стремянка', ['bag']);
+  assert.deepEqual([failed.reason, failed.error], ['failed', pluginsFail]);
+  await tick();
+  assert.deepEqual(unhandled, [], 'nothing left failing unawaited');
+  pluginsFail = undefined;
+  const again = await settled('стремянка', ['bag']);
+  assert.equal(again.results[0]?.found, true, JSON.stringify(again));
+}
+
+assert.deepEqual(unhandled, []);
 console.log('find-in-events.spec: answered at once, pending asked again, a picture at a time, the loading finder waited for, kept by query, failures said once OK');
 process.exit(0);

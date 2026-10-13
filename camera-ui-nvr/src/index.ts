@@ -2627,7 +2627,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     try {
       while (this.findQueue.length) {
         const { query, language, id } = this.findQueue[0];
-        const problem = await this.findOne(query, language, id);
+        // nobody awaits this loop: a throw (the bus not answering which plugins find, the store closed at a stop) left
+        // unhandled ended the recorder's process, the recording with it
+        const problem = await this.findOne(query, language, id).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`Search in pictures failed: ${message}`);
+          return message;
+        });
         this.findQueue.shift();
         if (problem !== undefined) {
           this.findProblems.set(`${query}\u0000${language}`, problem);
