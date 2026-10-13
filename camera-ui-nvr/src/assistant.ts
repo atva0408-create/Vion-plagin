@@ -1859,7 +1859,23 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
     .cameras()
     .filter((camera) => !withPeople.has(camera.id))
     .map((camera) => ({ camera: camera.name }));
-  const references = route.visits
+  // the stays nearest the moment asked, in time order: a crowd dressed alike (a uniform) made hundreds, 40 KB of them
+  // into the model's context
+  const away = (visit: (typeof route.visits)[number]) => Math.max(0, visit.from - route.origin!.time, route.origin!.time - visit.to);
+  const shown =
+    route.visits.length > MAX_EVENTS
+      ? route.visits
+          .map((visit, i) => ({ visit, i }))
+          .sort((a, b) => away(a.visit) - away(b.visit) || a.i - b.i)
+          .slice(0, MAX_EVENTS)
+          .sort((a, b) => a.i - b.i)
+          .map(({ visit }) => visit)
+      : route.visits;
+  const cut = [
+    ...(shown.length < route.visits.length ? [`The route has ${route.visits.length} stays: the ${shown.length} nearest the moment are listed.`] : []),
+    ...(route.capped ? ['More moments looked alike than a route takes: the most alike are taken, stays of people less alike may be missing.'] : []),
+  ];
+  const references = shown
     .map((visit) => host.event(visit.eventId))
     .filter((ev): ev is RecordedEvent => !!ev)
     .slice(0, MAX_REFERENCES)
@@ -1870,7 +1886,7 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
       timezone: ctx.timezone,
       minutes: route.windowMs / 60_000,
       people: route.origin.people,
-      route: route.visits.map((visit) => ({
+      route: shown.map((visit) => ({
         camera: names.get(visit.cameraId) ?? visit.cameraId,
         from: clock.format(visit.from),
         to: clock.format(visit.to),
@@ -1879,6 +1895,8 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
         ...(visit.origin ? { asked: true } : {}),
         ...(visit.hop ? { hop: true } : {}),
       })),
+      ...(shown.length < route.visits.length ? { count: route.visits.length } : {}),
+      ...(cut.length ? { cut: `${cut.join(' ')} Fewer \`minutes\` narrows it.` } : {}),
       ...(blind.length ? { camerasWithoutPeople: blind } : {}),
       note:
         `Re-ID compares clothes and build: a score from ${route.scoreBand[1]} is about sure, from ${route.minScore} to ${route.scoreBand[1]} ` +

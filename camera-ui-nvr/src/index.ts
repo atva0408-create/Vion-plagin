@@ -223,6 +223,8 @@ const PERSON_ROUTE_GAP_MS = 3 * 60_000;
 const PERSON_HOP_MS = 3 * 60_000;
 const PERSON_HOP_SCORE = 0.35;
 const PERSON_ROUTE_HOPS = 6;
+/** the moments alike a route takes, the most alike: more is a crowd dressed alike (a uniform), and is said (capped) */
+const PERSON_ROUTE_HITS = 500;
 const PERSON_SEARCH_DAYS = 7;
 /** a picture is embedded by a plugin that may load its model first */
 const PERSON_EMBED_TIMEOUT_MS = 60_000;
@@ -1934,7 +1936,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const event = JSON.parse(row.data) as RecordedEvent;
     const time = event.segments?.[segment]?.firstSeen ?? row.start_ms;
     const window = { fromMs: time - windowMs, toMs: time + windowMs };
-    const hits = await this.people.search(queries, { ...window, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: 500 });
+    const hits = await this.people.search(queries, { ...window, exclude: { eventId: query.eventId, seg: segment }, minScore, limit: PERSON_ROUTE_HITS });
     const origin = { eventId: query.eventId, cameraId: event.cameraId, seg: segment, trackId: queries[0].trackId, ts: time, score: 1 };
     const hops = await this.routeHops(origin, queries, hits, window, minScore);
     const visits = routeOf(origin, [...hits, ...hops], PERSON_ROUTE_GAP_MS);
@@ -1953,6 +1955,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       scoreBand: PERSON_SCORE_BAND,
       camerasWithPeople: this.people.camerasBetween(time - windowMs, time + windowMs),
       indexedSince: this.people.oldest(),
+      ...(hits.length >= PERSON_ROUTE_HITS ? { capped: true } : {}),
     };
   }
 

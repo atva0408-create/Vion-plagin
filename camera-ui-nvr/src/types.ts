@@ -152,6 +152,8 @@ export interface PersonRouteResult {
   /** the cameras that filed people in the window: one not listed has no person re-ID and cannot be on the route */
   camerasWithPeople: string[];
   indexedSince?: number;
+  /** more moments looked alike than a route takes (the most alike are): stays of people less alike may be missing */
+  capped?: boolean;
 }
 
 /** A box of a thing found by its words in a picture, as shares of the picture, with how sure the finder is (0..1). */

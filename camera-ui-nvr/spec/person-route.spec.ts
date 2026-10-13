@@ -311,5 +311,32 @@ const hopStays = (route: Awaited<ReturnType<typeof nvr.personRoute>>, base: numb
   assert.match((await nvr.callAssistantTool('person_route', { event: 'nope' }, ctx)).error ?? '', /No event/);
 }
 
-console.log('person-route.spec: stays in time order, joined per camera, window, two people, nothing to follow, the assistant OK');
+// ---- a crowd dressed alike (a uniform): more moments alike than a route takes (the 500 most alike) is said, and the
+// assistant gets the stays nearest the moment with how many there are — not 500 stays, 40 KB, into the model's context
+{
+  const GREEN = look(4, 5, 1);
+  // five hours before 10:00, one every six seconds, door and lift by turns: each a stay of its own
+  for (let i = 0; i < 520; i++) await moment(`crowd-${i}`, i % 2 ? 'lift' : 'door', -300 + i / 10, [person(1, GREEN)]);
+  const route = await nvr.personRoute({ eventId: 'crowd-260' });
+  assert.equal(route.capped, true, 'more alike than taken: said');
+  assert.ok(route.visits.length > 400);
+  assert.equal((await nvr.personRoute({ eventId: 'ev-door-1' })).capped, undefined, 'a route of a few');
+  const ctx: AssistantToolContext = { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' };
+  const told = await nvr.callAssistantTool('person_route', { event: 'crowd-260' }, ctx);
+  const content = told.content as { route: { event: string; asked?: true }[]; count?: number; cut?: string };
+  assert.equal(content.route.length, 50);
+  assert.equal(content.count, route.visits.length, 'how many there are');
+  assert.ok(content.route.some((stay) => stay.asked), 'the moment asked among them');
+  // the nearest the moment, in time order
+  const index = content.route.map((stay) => Number(stay.event.split('-')[1]));
+  assert.deepEqual(index, [...index].sort((a, b) => a - b));
+  assert.ok(index.every((i) => Math.abs(i - 260) <= 40), JSON.stringify(index));
+  assert.match(content.cut ?? '', /nearest/);
+  assert.match(content.cut ?? '', /most alike/);
+  assert.ok(JSON.stringify(told.content).length < 12_000, `${JSON.stringify(told.content).length} characters`);
+  const few = (await nvr.callAssistantTool('person_route', { event: 'ev-door-1' }, ctx)).content as { count?: number; cut?: string };
+  assert.deepEqual([few.count, few.cut], [undefined, undefined]);
+}
+
+console.log('person-route.spec: stays in time order, joined per camera, window, two people, nothing to follow, the assistant, a crowd OK');
 process.exit(0);
