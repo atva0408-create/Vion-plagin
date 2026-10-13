@@ -163,6 +163,33 @@ function fill(sql: DatabaseSync, table: 'clip_vectors' | 'person_vectors', n: nu
   assert.equal(today.length, 30, 'every match of today, the time narrowed among all');
 }
 
+// ---- a row replaced by a vector of another model (re-indexed after CLIP gave way to SigLIP) leaves the index of the
+// model it was of: kept there, it took a candidate's place, and over a rowid used again it answered a CLIP query with an
+// event that has no CLIP vector, scored by a SigLIP vector cut to 512
+{
+  const sql = db();
+  const semantic = new SemanticIndex(sql);
+  const people = new PersonIndex(sql);
+  await semantic.warm();
+  await people.warm();
+  const clip = randomUnit(512);
+  semantic.addScene({ id: 'e', cameraId: 'door', startTime: T0, label: 'person' }, 'clip', clip);
+  semantic.addScene({ id: 'e', cameraId: 'door', startTime: T0, label: 'person' }, 'siglip', randomUnit(768));
+  const clipIndex = (semantic as unknown as { indexes: Map<string, { count: number }> }).indexes.get('clip')!;
+  assert.equal(clipIndex.count, 0, 'the CLIP row was replaced by a SigLIP one');
+  assert.deepEqual(await semantic.search([{ embedding: clip, embeddingModel: 'clip' }], 10), [], 'a CLIP query finds no SigLIP row');
+  // the same through the segments of an event
+  semantic.ingest(clipEvent('f', clip, 'clip'));
+  semantic.ingest(clipEvent('f', randomUnit(768), 'siglip'));
+  assert.equal(clipIndex.count, 0);
+  // and the people
+  const reid = randomUnit(256);
+  people.ingest(personEvent('g', reid, T0, 'door'));
+  people.ingest({ ...personEvent('g', randomUnit(512), T0, 'door'), segments: [{ firstSeen: T0, lastSeen: T0, detections: [], attributes: [], personEmbeddings: [{ trackId: 1, embedding: randomUnit(512), embeddingModel: 'osnet' }] }] } as unknown as RecordedEvent);
+  const reidIndex = (people as unknown as { indexes: Map<string, { count: number }> }).indexes.get('reid')!;
+  assert.equal(reidIndex.count, 0, 'the re-ID row of another model went from its index');
+}
+
 // ---- a short window (a route's stays and hops: minutes) is read from the table by its time index, every row of it
 // scored exactly; the index, which scores every vector it holds, is asked only when the window holds more rows than the
 // candidates. A route asks ~80 such windows: over the index they held the recorder half a second on 400 000 vectors.

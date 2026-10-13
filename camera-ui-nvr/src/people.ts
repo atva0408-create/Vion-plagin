@@ -137,13 +137,11 @@ export class PersonIndex {
       for (const p of personEmbeddings(segment)) {
         const vec = normalize(p.embedding);
         const index = this.indexFor(p.embeddingModel, vec.length);
-        // the row replaced gets a new rowid: the old one leaves the index
-        const old = index ? this.rowidOf(event.id, seg, p.trackId) : undefined;
+        // the row replaced gets a new rowid: the old one leaves the index of its own model (filed again by another)
+        const old = this.rowidOf(event.id, seg, p.trackId);
         const { lastInsertRowid } = insert.run(event.id, seg, p.trackId, event.cameraId, ts, p.embeddingModel, toBlob(vec));
-        if (index) {
-          if (old !== undefined) index.remove(old);
-          index.add(Number(lastInsertRowid), vec, ts, event.cameraId);
-        }
+        if (old) this.indexes.get(old.model)?.remove(old.id);
+        index?.add(Number(lastInsertRowid), vec, ts, event.cameraId);
         added++;
       }
     });
@@ -229,11 +227,12 @@ export class PersonIndex {
     return index;
   }
 
-  private rowidOf(eventId: string, seg: number, trackId: number): number | undefined {
-    const row = this.db.prepare('SELECT rowid AS id FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').get(eventId, seg, trackId) as
-      | { id: number | bigint }
+  /** The row of a person's vector in a segment, and the model it is of. */
+  private rowidOf(eventId: string, seg: number, trackId: number): { id: number; model: string } | undefined {
+    const row = this.db.prepare('SELECT rowid AS id, model FROM person_vectors WHERE event_id = ? AND seg = ? AND track_id = ?').get(eventId, seg, trackId) as
+      | { id: number | bigint; model: string }
       | undefined;
-    return row ? Number(row.id) : undefined;
+    return row ? { id: Number(row.id), model: row.model } : undefined;
   }
 
   /** The segments of an event with people to find, in order. */

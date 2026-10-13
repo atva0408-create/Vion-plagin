@@ -105,13 +105,11 @@ export class SemanticIndex {
         const ts = (segment as { firstSeen?: number }).firstSeen ?? event.startTime;
         const vec = normalize(a.clipEmbedding);
         const index = this.indexFor(a.clipEmbeddingModel, vec.length);
-        // the row replaced gets a new rowid: the old one leaves the index
-        const old = index ? this.rowidOf(event.id, seg, attr) : undefined;
+        // the row replaced gets a new rowid: the old one leaves the index of its own model (re-indexed by another)
+        const old = this.rowidOf(event.id, seg, attr);
         const { lastInsertRowid } = insert.run(event.id, seg, attr, event.cameraId, ts, label, a.clipEmbeddingModel, toBlob(vec));
-        if (index) {
-          if (old !== undefined) index.remove(old);
-          index.add(Number(lastInsertRowid), vec, ts, event.cameraId);
-        }
+        if (old) this.indexes.get(old.model)?.remove(old.id);
+        index?.add(Number(lastInsertRowid), vec, ts, event.cameraId);
         added++;
       });
     });
@@ -121,15 +119,13 @@ export class SemanticIndex {
   public addScene(event: { id: string; cameraId: string; startTime: number; label: string }, model: string, vector: number[]): void {
     const vec = normalize(vector);
     const index = this.indexFor(model, vec.length);
-    const old = index ? this.rowidOf(event.id, 0, SCENE_ATTR) : undefined;
+    const old = this.rowidOf(event.id, 0, SCENE_ATTR);
     const { lastInsertRowid } = this.db
       .prepare('INSERT OR REPLACE INTO clip_vectors (event_id, seg, attr, camera_id, ts, label, model, vec) VALUES (?, 0, ?, ?, ?, ?, ?, ?)')
       .run(event.id, SCENE_ATTR, event.cameraId, event.startTime, event.label, model, toBlob(vec));
     // the motion-only events are indexed by the hundred: the index is kept in step, not read again each time
-    if (index) {
-      if (old !== undefined) index.remove(old);
-      index.add(Number(lastInsertRowid), vec, event.startTime, event.cameraId);
-    }
+    if (old) this.indexes.get(old.model)?.remove(old.id);
+    index?.add(Number(lastInsertRowid), vec, event.startTime, event.cameraId);
   }
 
   /**
@@ -159,11 +155,12 @@ export class SemanticIndex {
     return index;
   }
 
-  private rowidOf(eventId: string, seg: number, attr: number): number | undefined {
-    const row = this.db.prepare('SELECT rowid AS id FROM clip_vectors WHERE event_id = ? AND seg = ? AND attr = ?').get(eventId, seg, attr) as
-      | { id: number | bigint }
+  /** The row a vector of the event's segment and attribute is in, and the model it is of. */
+  private rowidOf(eventId: string, seg: number, attr: number): { id: number; model: string } | undefined {
+    const row = this.db.prepare('SELECT rowid AS id, model FROM clip_vectors WHERE event_id = ? AND seg = ? AND attr = ?').get(eventId, seg, attr) as
+      | { id: number | bigint; model: string }
       | undefined;
-    return row ? Number(row.id) : undefined;
+    return row ? { id: Number(row.id), model: row.model } : undefined;
   }
 
   public hasVectors(eventId: string, model: string): boolean {
