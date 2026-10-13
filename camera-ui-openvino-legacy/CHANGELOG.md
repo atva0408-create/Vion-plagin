@@ -1,3 +1,7 @@
+## [1.5.1]
+
+- Search in the picture: a picture that cannot be read (a card cut short on a full disk or at a stop, an empty file) has no boxes and the others are looked at; it failed the whole call, and ViON NVR ended the search of all the events found
+
 ## [1.5.0]
 
 - The search by description understands the platform's language: CLIP ViT-B/32, the default model, knows English only, and a query in Russian found nothing. A query is put into English by opus-mt (≈110 MB, 0.2-0.3 s a query) from Russian whenever it has Cyrillic, whatever the platform speaks, else from the language of the platform the search comes from (German); the multilingual SigLIP gets the query as it is. The Russian translator is loaded at start with an English CLIP, another one when first needed (the search goes as typed while it loads, at most 15 s). Needs ViON NVR 0.19.0 for the platform's language

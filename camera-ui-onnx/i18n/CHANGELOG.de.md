@@ -1,3 +1,7 @@
+## [1.7.1]
+
+- Suche im Bild: ein Bild, das sich nicht lesen lässt (eine bei voller Platte oder beim Stopp abgeschnittene Karte, eine leere Datei), hat keine Rahmen, die anderen werden angesehen; es ließ den ganzen Aufruf scheitern, und ViON NVR beendete die Suche in allen gefundenen Ereignissen
+
 ## [1.7.0]
 
 - Die Suche nach Beschreibung versteht die Sprache der Plattform: CLIP ViT-B/32, das Standardmodell, kennt nur Englisch, und eine russische Anfrage fand nichts. Eine Anfrage wird von opus-mt (≈110 MB, 0,2–0,3 s pro Anfrage) ins Englische übersetzt: aus dem Russischen immer, wenn sie Kyrillisch enthält, gleich welche Sprache die Plattform spricht, sonst aus der Sprache der Plattform, von der die Suche kommt (Deutsch); das mehrsprachige SigLIP erhält die Anfrage unverändert. Der russische Übersetzer wird bei englischem CLIP beim Start geladen, ein anderer beim ersten Bedarf (solange er lädt, wird nach dem Eingegebenen gesucht, höchstens 15 s gewartet). Für die Sprache der Plattform wird ViON NVR 0.19.0 benötigt
