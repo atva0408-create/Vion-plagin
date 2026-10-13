@@ -4,6 +4,8 @@
 // index (vector-index.ts, as int8), which picks the candidates the table then scores exactly.
 
 import { loadIndexes, VectorIndex } from './vector-index.js';
+
+import type { IndexFilter } from './vector-index.js';
 import { dot, fromBlob, normalize, toBlob } from './vectors.js';
 
 import type { DatabaseSync } from 'node:sqlite';
@@ -197,8 +199,10 @@ export class SemanticIndex {
   /**
    * Ranks events by their best-matching vector for each query embedding (one per model the encoder
    * serves). Scores are mapped onto 0..1 with the model's band so a threshold means the same for all models.
+   * `filter` narrows the vectors (their time and camera) before the best are taken: a page of one camera or of one
+   * day gets its own matches, not those left of the best of all.
    */
-  public async search(queries: TextEmbedding[], limit = 50, threshold = 0): Promise<ClipSearchResult[]> {
+  public async search(queries: TextEmbedding[], limit = 50, threshold = 0, filter: IndexFilter = {}): Promise<ClipSearchResult[]> {
     await this.warm();
     const best = new Map<string, ClipSearchResult>();
     for (const q of queries) {
@@ -206,7 +210,7 @@ export class SemanticIndex {
       const band = q.scoreBand ?? this.bands.get(q.embeddingModel) ?? DEFAULT_BAND;
       this.bands.set(q.embeddingModel, band);
       const text = normalize(q.embedding);
-      for (const e of await this.scored(q.embeddingModel, text)) {
+      for (const e of await this.scored(q.embeddingModel, text, filter)) {
         const raw = dot(text, e.vec);
         const score = Math.max(0, Math.min(1, (raw - band[0]) / (band[1] - band[0] || 1)));
         if (score < threshold) continue;
@@ -219,10 +223,14 @@ export class SemanticIndex {
   }
 
   /** The candidates of the model's index for a query, with what the table holds of them. */
-  private async scored(model: string, query: Float32Array): Promise<{ eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }[]> {
+  private async scored(
+    model: string,
+    query: Float32Array,
+    filter: IndexFilter,
+  ): Promise<{ eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }[]> {
     const index = this.indexes.get(model);
     if (!index) return [];
-    const ids = await index.candidates(query, CANDIDATES);
+    const ids = await index.candidates(query, CANDIDATES, filter);
     const row = this.db.prepare('SELECT event_id, camera_id, ts, label, vec FROM clip_vectors WHERE rowid = ?');
     const out: { eventId: string; cameraId: string; ts: number; label: string; vec: Float32Array }[] = [];
     for (const id of ids) {

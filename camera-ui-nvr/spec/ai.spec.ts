@@ -165,6 +165,22 @@ assert.deepEqual(await nvr.searchEventsByText('   '), []);
   assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { startMs: 6_500 } as never })).matches.map((m) => m.eventId), ['ev-person']);
   assert.deepEqual((await nvr.searchEventsByTextQuery('white van', { filter: { types: ['person'] } as never })).matches.map((m) => m.eventId), ['ev-person']);
   assert.deepEqual((await nvr.searchEventsByTextQuery('person', { threshold: 0.5 })).matches.map((m) => m.eventId), ['ev-person']);
+  // the cameras and the time narrow the vectors in the index, before the best are taken (a day either side of the range)
+  {
+    const semantic = (nvr as unknown as { semantic: { search: (...args: unknown[]) => Promise<unknown[]> } }).semantic;
+    const search = semantic.search.bind(semantic);
+    const narrowed: unknown[] = [];
+    semantic.search = (...args: unknown[]) => (narrowed.push(args[3]), search(...args));
+    await nvr.searchEventsByTextQuery('white van', { cameraIds: ['cam2'], filter: { startMs: 100_000_000, endMs: 200_000_000 } as never });
+    await nvr.searchEventsByTextQuery('white van', { filter: { startedSinceMs: 100_000_000 } as never });
+    await nvr.searchEventsByTextQuery('white van');
+    semantic.search = search;
+    assert.deepEqual(narrowed, [
+      { cameraIds: new Set(['cam2']), fromMs: 100_000_000 - 86_400_000, toMs: 200_000_000 + 86_400_000 },
+      { fromMs: 100_000_000 - 86_400_000 },
+      {},
+    ]);
+  }
   // the events are as the list gives them: a favourite says so, and "favourites only" keeps it alone
   await nvr.setEventFavorite('ev-van', true);
   assert.equal((await nvr.searchEventsByTextQuery('white van', { limit: 1 })).events[0]?.favorite, true);

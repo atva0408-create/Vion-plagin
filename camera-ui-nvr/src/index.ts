@@ -38,6 +38,7 @@ import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, Fa
 import type { PersonHit, PersonVector } from './people.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding, TextFindAnswer } from './semantic.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
+import type { IndexFilter } from './vector-index.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
@@ -233,6 +234,7 @@ interface PersonEmbedder {
 
 /** How many ranked matches a page of the search by description is taken from: the page's filters thin them. */
 const TEXT_SEARCH_POOL = 2000;
+const DAY_MS = 86_400_000;
 /**
  * The words of a search found in pictures: a few events a call (a picture takes the finder 1-4 s on a processor), the
  * finds of the latest queries kept (a crop is ≈20 KB) so that paging back asks nothing again. The first call may download
@@ -2560,7 +2562,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const events: RecordedEvent[] = [];
     let passed = 0;
     const language = typeof opts.language === 'string' ? opts.language : undefined;
-    for (const match of await this.rankByText(query, TEXT_SEARCH_POOL, opts.threshold ?? 0, language)) {
+    // the cameras and the time narrow the vectors before the best are taken (a vector is of its segment's time, inside
+    // its event: a day either side keeps the events that overlap the range, but for those longer than a day)
+    const from = filter.startMs ?? filter.startedSinceMs;
+    const to = filter.endMs ?? filter.before;
+    const narrow: IndexFilter = {
+      ...(cameras ? { cameraIds: cameras } : {}),
+      ...(from !== undefined ? { fromMs: from - DAY_MS } : {}),
+      ...(to !== undefined ? { toMs: to + DAY_MS } : {}),
+    };
+    for (const match of await this.rankByText(query, TEXT_SEARCH_POOL, opts.threshold ?? 0, language, narrow)) {
       if (cameras && !cameras.has(match.cameraId)) continue;
       const row = this.store.event(match.eventId);
       if (!row || !inEventRange(row, filter)) continue;
@@ -2700,9 +2711,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** Hybrid ranking: CLIP/SigLIP vectors of the pictures + full text of the AI descriptions, best first. */
-  private async rankByText(query: string, pool: number, threshold: number, language?: string): Promise<ClipSearchResult[]> {
+  private async rankByText(query: string, pool: number, threshold: number, language?: string, narrow: IndexFilter = {}): Promise<ClipSearchResult[]> {
     const queries = await this.textEmbeddings(query, language);
-    const visual = queries.length ? await this.semantic.search(queries, pool, threshold) : [];
+    const visual = queries.length ? await this.semantic.search(queries, pool, threshold, narrow) : [];
     const textual = this.describer.search(query, pool);
     const merged = new Map<string, ClipSearchResult>(visual.map((r) => [r.eventId, r]));
     for (const t of textual) {

@@ -141,6 +141,28 @@ function fill(sql: DatabaseSync, table: 'clip_vectors' | 'person_vectors', n: nu
   assert.deepEqual((await search({})).map((h) => h.eventId), ['after-clear'], 'filed again after everything was cleared');
 }
 
+// ---- a search by description narrowed to a camera or a time finds that camera's or that time's matches, though more
+// than the candidates match better elsewhere: the narrowing is done among all vectors, not among the best of all
+{
+  const sql = db();
+  const semantic = new SemanticIndex(sql);
+  const text = randomUnit(512);
+  await semantic.warm();
+  const query = [{ embedding: text, embeddingModel: 'clip', scoreBand: [0.15, 0.38] as [number, number] }];
+  // 3000 on the lift yesterday, alike; 30 on the door today, alike too but less
+  const at = (event: RecordedEvent, ms: number) =>
+    ({ ...event, startTime: ms, segments: event.segments.map((segment) => ({ ...segment, firstSeen: ms, lastSeen: ms })) }) as RecordedEvent;
+  for (let i = 0; i < 3000; i++) semantic.ingest(at(clipEvent(`lift-${i}`, near(text, 0.02), 'clip', 'lift'), T0));
+  for (let i = 0; i < 30; i++) semantic.ingest(at(clipEvent(`door-${i}`, near(text, 0.06), 'clip', 'door'), T0 + 86_400_000));
+  const all = await semantic.search(query, 5000);
+  assert.ok(all.slice(0, 2000).every((r) => r.cameraId === 'lift'), 'the lift matches better');
+  const door = await semantic.search(query, 5000, 0, { cameraIds: new Set(['door']) });
+  assert.equal(door.length, 30, 'every door match, the camera narrowed among all');
+  assert.ok(door.every((r) => r.cameraId === 'door'));
+  const today = await semantic.search(query, 5000, 0, { fromMs: T0 + 86_400_000 - 1000 });
+  assert.equal(today.length, 30, 'every match of today, the time narrowed among all');
+}
+
 // ---- a short window (a route's stays and hops: minutes) is read from the table by its time index, every row of it
 // scored exactly; the index, which scores every vector it holds, is asked only when the window holds more rows than the
 // candidates. A route asks ~80 such windows: over the index they held the recorder half a second on 400 000 vectors.
