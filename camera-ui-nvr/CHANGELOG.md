@@ -1,3 +1,8 @@
+## [0.20.0]
+
+- A person's route follows the precision asked: the «More precise» slider of the recordings page made only the stays stricter, the hops between cameras stayed at 0.35 whatever it said. The hop threshold now moves with the slider as much as the stays' threshold (0.475 at the top, 0.275 near the bottom); the assistant's person_route takes the same `precision`
+- The hops are set in the NVR's settings (People): the likeness a hop needs at the middle precision (0.35), how many minutes after or before a stay the person is looked for on another camera (3), how many hops in a row at most (6; 0 for a route by likeness alone)
+
 ## [0.19.1]
 
 - The recorder no longer ends its process when the search in the picture fails (the bus not answering in 30 s, NATS reconnecting, a stop): the failure is the query's and is said to the page; the recording goes on

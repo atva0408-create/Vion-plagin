@@ -1,3 +1,8 @@
+## [0.20.0]
+
+- Der Weg einer Person folgt der gewählten Genauigkeit: der Regler «Genauer» der Aufnahmeseite machte nur die Aufenthalte strenger, die Wechsel zwischen Kameras blieben bei 0,35, was er auch zeigte. Die Schwelle eines Wechsels verschiebt sich jetzt mit dem Regler um so viel wie die der Aufenthalte (0,475 ganz oben, 0,275 nahe unten); person_route des Assistenten nimmt dieselbe Genauigkeit (`precision`)
+- Die Wechsel werden in den Einstellungen des NVR eingestellt (Personen): welche Ähnlichkeit ein Wechsel bei mittlerer Genauigkeit braucht (0,35), wie viele Minuten nach oder vor einem Aufenthalt die Person auf einer anderen Kamera gesucht wird (3), wie viele Wechsel hintereinander höchstens (6; 0 für einen Weg nur nach Ähnlichkeit)
+
 ## [0.19.1]
 
 - Die Aufzeichnung beendet ihren Prozess nicht mehr, wenn die Suche im Bild scheitert (der Bus antwortet nicht in 30 s, NATS verbindet neu, ein Stopp): der Fehler gehört der Anfrage und wird der Seite gesagt; die Aufzeichnung läuft weiter
