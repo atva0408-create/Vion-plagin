@@ -1,3 +1,7 @@
+## [0.20.1]
+
+- The assistant finds the recorder's settings: person_route names the hop settings and that the assistant can change them; with ViON 2.4.4 it sets a value only as its field takes it and shows each setting by its title, from what to what, before it is confirmed
+
 ## [0.20.0]
 
 - A person's route follows the precision asked: the «More precise» slider of the recordings page made only the stays stricter, the hops between cameras stayed at 0.35 whatever it said. The hop threshold now moves with the slider as much as the stays' threshold (0.475 at the top, 0.275 near the bottom); the assistant's person_route takes the same `precision`

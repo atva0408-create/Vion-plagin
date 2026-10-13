@@ -1,3 +1,7 @@
+## [0.20.1]
+
+- Der Assistent findet die Einstellungen der Aufzeichnung: person_route nennt die Einstellungen der Wechsel und dass der Assistent sie ändern kann; mit ViON 2.4.4 setzt er einen Wert nur so, wie sein Feld ihn nimmt, und zeigt jede Einstellung vor der Bestätigung mit ihrem Titel, von was zu was
+
 ## [0.20.0]
 
 - Der Weg einer Person folgt der gewählten Genauigkeit: der Regler «Genauer» der Aufnahmeseite machte nur die Aufenthalte strenger, die Wechsel zwischen Kameras blieben bei 0,35, was er auch zeigte. Die Schwelle eines Wechsels verschiebt sich jetzt mit dem Regler um so viel wie die der Aufenthalte (0,475 ganz oben, 0,275 nahe unten); person_route des Assistenten nimmt dieselbe Genauigkeit (`precision`)
