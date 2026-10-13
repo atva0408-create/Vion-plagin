@@ -170,15 +170,24 @@ export class PersonIndex {
     const byModel = new Map<string, Float32Array[]>();
     for (const q of queries) byModel.set(q.model, [...(byModel.get(q.model) ?? []), normalize(q.vec)]);
     const select = this.db.prepare('SELECT event_id, seg, track_id, camera_id, ts, vec FROM person_vectors WHERE rowid = ?');
+    const inWindow = this.db.prepare('SELECT COUNT(*) AS n FROM person_vectors WHERE model = ? AND ts BETWEEN ? AND ?');
+    const windowRows = this.db.prepare('SELECT event_id, seg, track_id, camera_id, ts, vec FROM person_vectors WHERE model = ? AND ts BETWEEN ? AND ?');
     const k = Math.max(CANDIDATES, o.limit * 4);
     for (const [model, vecs] of byModel) {
       const index = this.indexes.get(model);
       if (!index) continue;
-      const ids = new Set<number>();
-      for (const q of vecs) for (const id of await index.candidates(q, k, { fromMs: o.fromMs, toMs: o.toMs, cameraIds: o.cameraIds })) ids.add(id);
-      for (const id of ids) {
-        const row = select.get(id) as Row | undefined;
-        if (!row) continue;
+      // a window of no more rows than the candidates (a route's stays and hops: minutes) is read whole by the time index
+      // and scored exactly; the index scores every vector it holds, and a route asks ~80 windows: over the index they
+      // held the recorder half a second on 400 000 vectors
+      let rows: Iterable<Row>;
+      if (Number((inWindow.get(model, o.fromMs, o.toMs) as { n: number }).n) <= k) {
+        rows = (windowRows.all(model, o.fromMs, o.toMs) as unknown as Row[]).filter((row) => !o.cameraIds || o.cameraIds.has(row.camera_id));
+      } else {
+        const ids = new Set<number>();
+        for (const q of vecs) for (const id of await index.candidates(q, k, { fromMs: o.fromMs, toMs: o.toMs, cameraIds: o.cameraIds })) ids.add(id);
+        rows = [...ids].map((id) => select.get(id) as Row | undefined).filter((row): row is Row => row !== undefined);
+      }
+      for (const row of rows) {
         if (o.exclude?.eventId === row.event_id && o.exclude.seg === row.seg) continue;
         const vec = fromBlob(row.vec);
         let score = -1;

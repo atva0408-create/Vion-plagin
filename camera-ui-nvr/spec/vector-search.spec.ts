@@ -141,4 +141,34 @@ function fill(sql: DatabaseSync, table: 'clip_vectors' | 'person_vectors', n: nu
   assert.deepEqual((await search({})).map((h) => h.eventId), ['after-clear'], 'filed again after everything was cleared');
 }
 
-console.log('vector-search.spec: best of many with its exact score, written/replaced/deleted in step, written while read, new model, window and cameras — ok');
+// ---- a short window (a route's stays and hops: minutes) is read from the table by its time index, every row of it
+// scored exactly; the index, which scores every vector it holds, is asked only when the window holds more rows than the
+// candidates. A route asks ~80 such windows: over the index they held the recorder half a second on 400 000 vectors.
+{
+  const sql = db();
+  const people = new PersonIndex(sql);
+  fill(sql, 'person_vectors', 8000, 256);
+  const query = randomUnit(256);
+  await people.warm();
+  people.ingest(personEvent('door-in', near(query, 0.05), T0 + 5000 * 1000 + 500, 'door'));
+  people.ingest(personEvent('lift-in', near(query, 0.05), T0 + 5100 * 1000 + 500, 'lift'));
+  const index = (people as unknown as { indexes: Map<string, { candidates: (...args: unknown[]) => Promise<number[]> }> }).indexes.get('reid')!;
+  const candidates = index.candidates.bind(index);
+  let asked = 0;
+  index.candidates = (...args: unknown[]) => {
+    asked++;
+    return candidates(...args);
+  };
+  const search = (fromMs: number, toMs: number, o: Partial<Parameters<PersonIndex['search']>[1]> = {}) =>
+    people.search([{ model: 'reid', vec: Float32Array.from(query) }], { fromMs, toMs, minScore: 0.4, limit: 50, ...o });
+  // three minutes: 180 rows of the table
+  assert.deepEqual((await search(T0 + 4990 * 1000, T0 + 5170 * 1000)).map((h) => h.eventId).sort(), ['door-in', 'lift-in']);
+  assert.deepEqual((await search(T0 + 4990 * 1000, T0 + 5170 * 1000, { cameraIds: new Set(['lift']) })).map((h) => h.eventId), ['lift-in']);
+  assert.deepEqual((await search(T0 + 4990 * 1000, T0 + 5170 * 1000, { exclude: { eventId: 'door-in', seg: 0 } })).map((h) => h.eventId), ['lift-in']);
+  assert.equal(asked, 0, 'a short window is not scored over the whole index');
+  // every row: more than the candidates, the index is asked
+  assert.deepEqual((await search(0, Number.MAX_SAFE_INTEGER)).map((h) => h.eventId).sort(), ['door-in', 'lift-in']);
+  assert.equal(asked, 1);
+}
+
+console.log('vector-search.spec: best of many with its exact score, written/replaced/deleted in step, written while read, new model, window and cameras, short windows from the table — ok');
