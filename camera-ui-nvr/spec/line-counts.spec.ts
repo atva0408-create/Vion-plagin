@@ -274,5 +274,14 @@ await nvr.ingestCrossings('cam-gate', [
   assert.ok(asked > 0, 'the old recordings are still looked for');
 }
 
-console.log('line-counts.spec: crossings kept once, counted by line, way, direction, label and camera, read in pages OK');
+// ---- a class of one's own detector model with a capital letter («Самокат»): known whatever the case it is asked in.
+// The labels asked were lowered and compared with the stored ones as they are: refused for ever, the assistant asking
+// again lowered them again
+{
+  await nvr.ingestCrossings('cam-gate', [crossing('Въезд', 'a-to-b', 'in', 'Самокат', '2026-10-04T12:00:00', 60)]);
+  assert.equal((await counts({ date: '2026-10-04', days: 1, labels: ['Самокат'] })).total, 1);
+  assert.equal((await counts({ date: '2026-10-04', days: 1, labels: ['самокат'] })).total, 1);
+}
+
+console.log('line-counts.spec: crossings kept once, counted by line, way, direction, label and camera, read in pages, a label in capitals OK');
 process.exit(0);

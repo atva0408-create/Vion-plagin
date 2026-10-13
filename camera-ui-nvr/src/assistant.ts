@@ -1196,7 +1196,9 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   // a label no crossing had is said, not counted as nobody: «car» found 0 where the lines count «vehicle»
   if (labels.some((label) => !LABELS.includes(label))) {
     const seen = host.crossingLabels(camera.ids, Math.min(from, to - KNOWN_MS), to);
-    const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.includes(label));
+    // the labels asked are lowered, the stored ones are as the detector names them («Самокат» of one's own model)
+    const lowered = new Set(seen.map((label) => label.toLowerCase()));
+    const unknown = labels.filter((label) => !LABELS.includes(label) && !lowered.has(label));
     if (unknown.length) {
       return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the crossings of the last 30 days: ${seen.join(', ') || 'none'}` };
     }
