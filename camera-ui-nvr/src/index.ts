@@ -2917,6 +2917,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return answer;
   }
 
+  /** A region of the recording's picture at a time, as JPEG (privacy zones black). */
+  private async recordedPicture(cameraId: string, role: string, atMs: number, region: Place, maxWidth: number | undefined, mask: string | undefined) {
+    const ffmpeg = this.ffmpegPath;
+    const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
+    const frame = segment && segment.start_us <= atMs * 1000 + 2_000_000 ? await frameAt(ffmpeg, this.store.located(segment), atMs * 1000, mask) : undefined;
+    return frame ? cropOfPicture(ffmpeg, frame, region, maxWidth) : undefined;
+  }
+
   /** The camera's privacy zones over what is read out of its recording (privacy.ts), as they are now. */
   private privacyMask(cameraId: string): string | undefined {
     return privacyFilter(this.cameras.get(cameraId)?.device.zones?.privacy);
@@ -2968,12 +2976,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     );
     if (unreadable) this.logger.warn(`Place history of ${cameraId}: ${unreadable} keyframe(s) could not be read: ${problem}`);
 
-    // the pictures of the changes one after another (each an ffmpeg): the place's own first, then the turns
-    const pictureAt = async (atMs: number, region: Place, maxWidth?: number) => {
-      const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
-      const frame = segment && segment.start_us <= atMs * 1000 + 2_000_000 ? await frameAt(ffmpeg, this.store.located(segment), atMs * 1000, mask) : undefined;
-      return frame ? cropOfPicture(ffmpeg, frame, region, maxWidth) : undefined;
-    };
+    // the pictures of the changes one after another (each an ffmpeg): the place's own first, then the turns. One that
+    // cannot be made (its file deleted by the retention since the looks) is left out: it lost the whole answer of a
+    // search of minutes
+    let unpictured = 0;
+    const pictureAt = (atMs: number, region: Place, maxWidth?: number) =>
+      this.recordedPicture(cameraId, role, atMs, region, maxWidth, mask).catch((error: Error) => {
+        unpictured++;
+        problem ??= error.message;
+        return undefined;
+      });
     const around = widened(place, 2.5);
     const whole = { x: 0, y: 0, width: 1, height: 1 };
     const pictures: PlaceHistoryAnswer['pictures'] = [];
@@ -2992,6 +3004,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }
     const stillMs = query.mode === 'gone' && !shown.length ? answer.lastSameMs : query.mode === 'appeared' && !shown.length ? answer.firstSameMs : undefined;
     const still = stillMs === undefined ? undefined : await pictureAt(stillMs, around, 640);
+    if (unpictured) this.logger.warn(`Place history of ${cameraId}: ${unpictured} picture(s) could not be made: ${problem}`);
     return { ...answer, place, pictures, ...(still ? { still } : {}), ...(unreadable ? { unreadable, problem } : {}) };
   }
 

@@ -269,6 +269,26 @@ const call = async (input: Record<string, unknown>) => nvr.callAssistantTool('pl
   assert.ok(change.before <= clock(T + 10_000) && change.after >= clock(T + 20_000), `across the night: ${change.before}-${change.after}`);
   assert.match(change.light ?? '', /light changed/);
   assert.equal(change.roughly, undefined, 'not «up to N min apart»: it is the light, not the step');
+  // a step under a minute is said in seconds, not «up to 0 min»
+  const light = told.changes.find((c) => /light changed/.test(c.what));
+  assert.ok(light?.roughly, JSON.stringify(told.changes));
+  assert.match(light.roughly, /up to \d+ s apart/);
+}
+
+// ---- a picture that cannot be made (its file deleted by the retention meanwhile) loses that picture, not the answer
+{
+  const internals = nvr as unknown as { recordedPicture: (...args: unknown[]) => Promise<Uint8Array | undefined> };
+  const own = internals.recordedPicture.bind(nvr);
+  let failed = 0;
+  internals.recordedPicture = async (...args: unknown[]) => {
+    if (failed++ === 0) throw new Error('No such file or directory');
+    return own(...args);
+  };
+  const answer = await nvr.placeHistory({ cameraId: 'desk', place: BOX, atMs: T + 3000, fromMs: T, toMs: T + 20_000, mode: 'gone' });
+  internals.recordedPicture = own;
+  assert.equal(answer.changes.filter((c) => c.kind === 'changed').length, 1, 'the change is told');
+  assert.equal(answer.pictures[0].before, undefined, 'the picture that failed is missing');
+  assert.ok(answer.pictures[0].after, 'the other is there');
 }
 
 // ---- still so, the coming, the history

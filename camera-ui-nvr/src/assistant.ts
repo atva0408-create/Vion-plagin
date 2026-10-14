@@ -2113,6 +2113,11 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
 }
 
 /** A turned camera, said to the model: the thing was looked for only before it. */
+/** A while as the model reads it: seconds under a minute (a short time asked looked every few seconds, «0 min» said nothing). */
+function apart(ms: number): string {
+  return ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60_000)} min`;
+}
+
 function turned(answer: GoneAnswer, clock: (ms: number) => string): { turned?: string } {
   if (!answer.turn) return {};
   return {
@@ -2225,7 +2230,7 @@ async function placeHistory(host: AssistantHost, input: Input, ctx: AssistantToo
           }
         : change.exact
           ? {}
-          : { roughly: `the two are looks of the first pass, up to ${Math.round((answer.stepMs ?? 0) / 60_000)} min apart` }),
+          : { roughly: `the two are looks of the first pass, up to ${apart(answer.stepMs ?? 0)} apart` }),
       ...(change.asMarked ? { asMarked: 'after it the place looks as at the marked moment again' } : {}),
       ...(images.length >= first ? { pictures: `${first}-${images.length}` } : {}),
     };
