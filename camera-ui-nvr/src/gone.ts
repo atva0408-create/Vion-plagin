@@ -260,6 +260,11 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     }
     const turn = { beforeMs: at(lo), afterMs: at(hi) };
     const before = await whenGone(sources, fromMs, turn.beforeMs);
+    // turned within a minute of its first look: no time before the turn to look in (that search finds nothing
+    // recorded, or does not see it again), and it lay there at that look — still there as far as the camera saw
+    if (before.state === 'no-recording' || before.state === 'never-seen') {
+      return { state: 'still-there', ...(english ? { english } : {}), place, seenMs: first.atMs, lastSeenMs: first.atMs, turn, looks: looks + before.looks };
+    }
     return { ...before, turn, looks: looks + before.looks };
   }
 

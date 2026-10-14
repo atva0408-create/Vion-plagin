@@ -210,6 +210,18 @@ const clock = (ms: number | undefined) => (ms === undefined ? '-' : new Date(ms)
   // someone close to the lens at the very end (one look unlike the view) is no turn
   const close = await whenGone(sources({ turnedAt: T0 + 12 * 60 * MIN - 20_000 }), T0, T0 + 12 * 60 * MIN);
   assert.equal(close.turn, undefined, 'one look at the end is not a turn');
+  // turned within the first minute after it was first seen: no time before the turn to look in, and the thing was
+  // there at its first look — still there until the turn, not «nothing recorded»
+  const early = await whenGone(sources({ turnedAt: T0 + 30_000 }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(early.state, 'still-there', JSON.stringify({ ...early, before: undefined, after: undefined }));
+  assert.ok(early.turn && early.turn.afterMs >= T0 + 30_000, `turn ${clock(early.turn?.beforeMs)} → ${clock(early.turn?.afterMs)}`);
+  assert.equal(early.seenMs, T0);
+  assert.equal(early.lastSeenMs, T0);
+  // put down a minute before the turn, first seen at the look of 01:30: the looks before the turn do not see it again
+  const late = await whenGone(sources({ lyingFrom: T0 + 89 * MIN, turnedAt: T0 + 90 * MIN + 30_000 }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(late.state, 'still-there', JSON.stringify({ ...late, before: undefined, after: undefined }));
+  assert.equal(late.seenMs, T0 + 90 * MIN);
+  assert.ok(late.turn);
 }
 
 // ---- nothing recorded, no finder
