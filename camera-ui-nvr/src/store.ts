@@ -116,6 +116,8 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS events_time ON events (start_ms);
       CREATE INDEX IF NOT EXISTS events_camera_time ON events (camera_id, start_ms);
+      -- the events of a camera by when they ended, for the traces cleared behind the oldest video (pruneTracesBefore)
+      CREATE INDEX IF NOT EXISTS events_camera_end ON events (camera_id, COALESCE(end_ms, start_ms));
       -- the events still going on, looked for every minute (closeStaleActive): a few rows, not a read of every event
       CREATE INDEX IF NOT EXISTS events_active ON events (state) WHERE state = 'active';
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -535,18 +537,18 @@ export class Store {
     return new Map(rows.map((row) => [row.camera_id, Math.floor(Number(row.start_us) / 1000)]));
   }
 
+  /** The events of a camera that ended from one time to another with a trace (cameraId, sinceMs, beforeMs, limit). */
+  public readonly pruneTracesSql =
+    'SELECT id FROM events e WHERE camera_id = ? AND COALESCE(end_ms, start_ms) >= ? AND COALESCE(end_ms, start_ms) < ? ' +
+    'AND EXISTS (SELECT 1 FROM event_trace t WHERE t.event_id = e.id) LIMIT ?';
+
   /**
-   * Deletes the detection trace of a camera's events that ended before a time, at most `limit` events a call (a trace is
-   * a few hundred rows: one big delete held the database for seconds). The events stay. Answers the events cleared.
+   * Deletes the detection trace of a camera's events that ended before a time (and from `sinceMs`, where a pass before
+   * left off: every pass read every old event of the camera), at most `limit` events a call (a trace is a few hundred
+   * rows: one big delete held the database for seconds). The events stay. Answers the events cleared.
    */
-  public pruneTracesBefore(cameraId: string, beforeMs: number, limit: number): number {
-    const ids = (
-      this.db
-        .prepare(
-          'SELECT id FROM events e WHERE camera_id = ? AND COALESCE(end_ms, start_ms) < ? AND EXISTS (SELECT 1 FROM event_trace t WHERE t.event_id = e.id) LIMIT ?',
-        )
-        .all(cameraId, beforeMs, limit) as { id: string }[]
-    ).map((row) => row.id);
+  public pruneTracesBefore(cameraId: string, beforeMs: number, limit: number, sinceMs = 0): number {
+    const ids = (this.db.prepare(this.pruneTracesSql).all(cameraId, sinceMs, beforeMs, limit) as { id: string }[]).map((row) => row.id);
     if (!ids.length) return 0;
     this.db.prepare(`DELETE FROM event_trace WHERE event_id IN (${ids.map(() => '?').join(',')})`).run(...ids);
     return ids.length;

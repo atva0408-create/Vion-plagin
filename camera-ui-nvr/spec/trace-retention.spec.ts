@@ -98,5 +98,19 @@ assert.equal(store.traceCount(noVideo), 3, 'a camera with no video at all keeps 
 await internals.enforceRetention();
 assert.equal(store.traceCount(afterA) + store.traceCount(onB) + store.traceCount(noVideo), 9);
 
+// every pass read every old event of a camera (COALESCE(end_ms, start_ms) used no index: 280k events, 120 ms a camera
+// every 5 min on the bench's database): the events between what was cleared and the oldest video, by an index
+const db = (store as unknown as { db: { prepare(sql: string): { all(...args: unknown[]): { detail: string }[] } } }).db;
+const plan = db
+  .prepare(`EXPLAIN QUERY PLAN ${store.pruneTracesSql}`)
+  .all('a', T, T + HOUR, 100)
+  .map((row) => row.detail)
+  .join(' | ');
+assert.match(plan, /USING INDEX events_camera_end \(camera_id=\? AND <expr>>\? AND <expr><\?\)/, plan);
+// a camera cleared up to its oldest video is read from there on: an old trace left behind it is not looked at again
+const late = traced('late-a', 'a', T + 2 * HOUR);
+await internals.enforceRetention();
+assert.equal(store.traceCount(late), 3, 'what was cleared is not read again');
+
 console.log('trace-retention.spec: a trace older than the oldest video of its camera deleted, its event kept, the rest kept OK');
 process.exit(0);

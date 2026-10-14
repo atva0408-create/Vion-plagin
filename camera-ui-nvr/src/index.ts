@@ -292,6 +292,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private similarChain: Promise<unknown> = Promise.resolve();
   /** one search for a thing's going at a time (objectGone) */
   private goneChain: Promise<unknown> = Promise.resolve();
+  /** Up to when the traces of each camera were cleared behind its oldest video: a pass reads the events from there on. */
+  private tracesClearedTo = new Map<string, number>();
   /** finds by query and event, oldest first (findInEvents) */
   private finds = new Map<string, FoundInEvent>();
   /** what the finder made of each query: in English, and the score from which a box is the thing */
@@ -1907,7 +1909,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       // has nothing to be drawn on (the guard and the quota delete video long before events go by their days: 969 MB of
       // traces a week older than the video on the bench, 2026-10-14). A camera with no video at all keeps them
       for (const [cameraId, oldestMs] of this.store.oldestVideo()) {
-        for (let n = 0; n < TRACE_PRUNE_ROUNDS && this.store.pruneTracesBefore(cameraId, oldestMs, TRACE_PRUNE_EVENTS); n++);
+        const since = this.tracesClearedTo.get(cameraId) ?? 0;
+        for (let n = 0; n < TRACE_PRUNE_ROUNDS; n++) {
+          // fewer than a portion: the camera is cleared up to its oldest video, the next pass reads from there on
+          if (this.store.pruneTracesBefore(cameraId, oldestMs, TRACE_PRUNE_EVENTS, since) < TRACE_PRUNE_EVENTS) {
+            this.tracesClearedTo.set(cameraId, oldestMs);
+            break;
+          }
+        }
       }
 
       // the people of a moment are kept a shorter time, favourite events too: the event itself stays
