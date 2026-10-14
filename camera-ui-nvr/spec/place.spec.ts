@@ -254,6 +254,18 @@ const near = (ms: number | undefined, want: number, slack: number, what: string)
   console.log(`ok taken as the light changed: gone ${clock(g.beforeMs)}-${clock(g.afterMs)}, appeared ${clock(a.beforeMs)}-${clock(a.afterMs)}, history ${clock(h.beforeMs)}-${clock(h.afterMs)}`);
 }
 
+// ---- taken right after the moment marked, before the next keyframe: the marked keyframe lies before the time asked
+// from (gone asks from the moment); the recording runs through, no pause is said
+{
+  const a = await ask({ lying: [[at('0:00'), at('10:00:01.5')]] }, 'gone', at('10:00:01'), at('10:00:01'), at('12:00'));
+  const [c] = changed(a);
+  assert.ok(c, 'the change found');
+  assert.equal(c.beforeMs, at('10:00:00'));
+  assert.equal(c.afterMs, at('10:00:02'));
+  assert.ok(!c.gap, 'no pause in a recording that runs through');
+  console.log('ok taken before the next keyframe: no pause said');
+}
+
 // ---- a pause in the recording 10:00-10:30, taken during it
 {
   const recorded = [

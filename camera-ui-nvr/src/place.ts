@@ -126,8 +126,8 @@ export function insidePicture(place: Place): Place {
 
 export async function placeHistory(sources: PlaceSources, query: { place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceAnswer> {
   const { place, mode } = query;
-  const stretches = sources
-    .recorded(query.fromMs, query.toMs)
+  const recorded = sources.recorded(query.fromMs, query.toMs);
+  const stretches = recorded
     .map((s) => ({ startMs: Math.max(s.startMs, query.fromMs), endMs: Math.min(s.endMs, query.toMs) }))
     .filter((s) => s.endMs > s.startMs);
   if (!stretches.length) return { state: 'no-recording', changes: [], passes: [], looks: 0 };
@@ -165,9 +165,11 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
   const backward = mode === 'gone' ? [] : [...times].filter((t) => offsetOf(t) < markedOffset).sort((a, b) => b - a);
   const changes: PlaceChange[] = [];
 
+  // by the recording as it is, not cut to the time asked: the marked look is the keyframe before the moment, and gone
+  // asks from the moment (a change before the next keyframe was said to have a pause in the recording)
   const gapOf = (a: PlaceLook, b: PlaceLook) => {
     const [from, to] = [Math.min(a.atMs, b.atMs), Math.max(a.atMs, b.atMs)];
-    return stretches.some((s) => s.startMs <= from && s.endMs >= to) ? {} : { gap: true as const };
+    return recorded.some((s) => s.startMs <= from && s.endMs >= to) ? {} : { gap: true as const };
   };
   const edges = (a: PlaceLook, b: PlaceLook) => ({ beforeMs: Math.min(a.atMs, b.atMs), afterMs: Math.max(a.atMs, b.atMs), ...gapOf(a, b) });
 
