@@ -1,3 +1,7 @@
+## [1.5.2]
+
+- Search in pictures in Russian and German: the translator of the query needs sentencepiece and protobuf, which this plugin did not install (only ONNX did): every start logged «Не удалось предзагрузить модели CLIP» with an empty reason and a search through ONNX Legacy failed with «MarianTokenizer requires the SentencePiece library»
+
 ## [1.5.1]
 
 - Search in the picture: a picture that cannot be read (a card cut short on a full disk or at a stop, an empty file) has no boxes and the others are looked at; it failed the whole call, and ViON NVR ended the search of all the events found

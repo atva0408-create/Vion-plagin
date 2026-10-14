@@ -44,6 +44,21 @@ if (!contract.includes("name: 'ONNX',")) {
 }
 writeFileSync(resolve(legacyDir, 'contract.ts'), contract.replace("name: 'ONNX',", "name: 'ONNX Legacy',"));
 
+// the requirements are the legacy plugin's own (an older onnxruntime for older GPUs) and are not copied: every other
+// package the base needs must be here too. sentencepiece and protobuf were missing, and the translator of the search in
+// pictures failed at every start of ONNX Legacy (2026-10-14)
+const packages = (file) =>
+  readFileSync(file, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.split(/[=<>~!;\s[]/)[0].trim().toLowerCase())
+    .filter((name) => name && !name.startsWith('#'));
+const legacyPackages = new Set(packages(resolve(legacyDir, 'requirements.txt')));
+const missing = packages(resolve(baseDir, 'requirements.txt')).filter((name) => !name.startsWith('onnxruntime') && !legacyPackages.has(name));
+if (missing.length) {
+  console.error(`requirements.txt lacks what the base needs: ${[...new Set(missing)].join(', ')}`);
+  process.exit(1);
+}
+
 const baseVersion = JSON.parse(readFileSync(resolve(baseDir, 'package.json'), 'utf8')).version;
 const legacyVersion = JSON.parse(readFileSync(resolve(legacyDir, 'package.json'), 'utf8')).version;
 if (baseVersion !== legacyVersion) {
