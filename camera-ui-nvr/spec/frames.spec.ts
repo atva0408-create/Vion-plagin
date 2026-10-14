@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { capture, frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
+import { capture, colourOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
 import { privacyFilter } from '../src/privacy.js';
 import { FINE_MS, PATCH, patchDiff, SAME_LOOK, whenGone, widened } from '../src/gone.js';
 import { NIGHT_COLOUR, OVERVIEW_H, OVERVIEW_W, placeHistory } from '../src/place.js';
@@ -180,6 +180,7 @@ for (const fps of [50, 60]) {
         return { english: 'black box', foundScore: 0.1, boxes: mean < 60 ? [{ ...BOX, score: 0.5 }] : [] };
       },
       patchOf: (picture, place: Place) => patchOfPicture(FFMPEG, picture, place),
+      colourOf: (picture) => colourOfPicture(FFMPEG, picture),
       patches: (fromMs, toMs, place, stepMs) => patchesOf(FFMPEG, segments, fromMs * 1000, toMs * 1000, place, stepMs),
     },
     T / 1000,
@@ -191,6 +192,13 @@ for (const fps of [50, 60]) {
   assert.ok(goneS >= 12 && goneS <= 12.6, `gone at ${goneS} s`);
   assert.ok(lastS >= 11.4 && lastS < 12, `last seen at ${lastS} s`);
   assert.ok(answer.before?.[0] === 0xff && answer.after?.[0] === 0xff, 'the pictures of the two moments');
+}
+
+// ---- how coloured a whole picture is: gray (a night picture) under NIGHT_COLOUR, coloured above
+{
+  const gray = (await colourOfPicture(FFMPEG, (await frameAt(FFMPEG, first, T + 5e6))!))!;
+  const coloured = (await colourOfPicture(FFMPEG, (await frameAt(FFMPEG, { path: file('colour.ts', 2, undefined, true), start_us: T, end_us: T + 2e6 }, T + 1e6))!))!;
+  assert.ok(gray < NIGHT_COLOUR && coloured > NIGHT_COLOUR * 2, `gray ${gray}, coloured ${coloured}`);
 }
 
 // ---- a look at one keyframe (place.ts): the patch as the stream's, the whole picture small, how coloured it is

@@ -6,7 +6,7 @@
 // without colour is the night one (compared with night pictures only). A change seen once and gone at the next look
 // is someone passing in front. Reading the recording is given (index.ts), so this is tested on its own.
 
-import { awayMask, patchDiff, SAME_LOOK, timeline, TURN_LOOK } from './gone.js';
+import { awayMask, NIGHT_COLOUR, patchDiff, SAME_LOOK, timeline, TURN_LOOK } from './gone.js';
 
 import type { Place, Stretch } from './gone.js';
 
@@ -89,8 +89,7 @@ export interface PlaceHistoryAnswer extends PlaceAnswer {
   problem?: string;
 }
 
-/** Below this colour a picture is the night one: infrared pictures are gray (chroma at 128). */
-export const NIGHT_COLOUR = 3;
+export { NIGHT_COLOUR } from './gone.js';
 /** The first pass: the time asked in about this many looks, but not closer than MIN_STEP_MS. */
 const FIRST_PASS_LOOKS = 160;
 const MIN_STEP_MS = 10_000;

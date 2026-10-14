@@ -29,6 +29,8 @@ export interface GoneSources {
   find(picture: Uint8Array): Promise<FinderAnswer>;
   /** the patch of a region of a picture: PATCH × PATCH gray pixels */
   patchOf(picture: Uint8Array, region: Place): Promise<Uint8Array | undefined>;
+  /** how coloured a picture is (NIGHT_COLOUR tells the night one) */
+  colourOf(picture: Uint8Array): Promise<number | undefined>;
   /** the patches of a region in the recording from one time to another, one every `stepMs` of recorded time */
   patches(fromMs: number, toMs: number, region: Place, stepMs: number): Promise<{ atMs: number; pixels: Uint8Array }[]>;
 }
@@ -117,6 +119,9 @@ function overlap(a: Place, b: Place): number {
  * 0.16-0.43 between hours of the same view and 0.8-1.25 across the turn.
  */
 export const TURN_LOOK = 0.65;
+
+/** Below this colour a picture is the night one: infrared pictures are gray (chroma at 128). */
+export const NIGHT_COLOUR = 3;
 
 /** The whole picture, as a place. */
 export const WHOLE: Place = { x: 0, y: 0, width: 1, height: 1 };
@@ -234,21 +239,52 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
   // the camera turned since (a PTZ camera: the place is elsewhere in the picture, the finder does not see the thing
   // where it lay): the whole picture without the place is another at the end and a little before it. The turn is
   // halved to a minute, and the thing looked for only before it
+  // A view is compared with the first one by the same light: a night picture and a day one of the same room differ as
+  // much as a turned camera's (0.74-1.05 apart on the bench's Xiaomi, 48 of 48 pairs), and every search of a day
+  // crossed the dusk as a turn. The first view by the other light is the first look by it (halved for).
   const mask = awayMask(place, PATCH, PATCH);
   const firstView = mask ? await sources.patchOf(first.picture, WHOLE) : undefined;
-  const turnedAt = async (offset: number): Promise<boolean | undefined> => {
+  const nightOf = async (picture: Uint8Array) => ((await sources.colourOf(picture)) ?? NIGHT_COLOUR) < NIGHT_COLOUR;
+  const views = new Map<boolean, Uint8Array>();
+  if (firstView) views.set(await nightOf(first.picture), firstView);
+  const viewAt = async (offset: number): Promise<{ view: Uint8Array; night: boolean } | undefined> => {
     for (const shift of UNREADABLE_SHIFTS_MS) {
       const picture = await sources.frame(at(Math.max(0, Math.min(total, offset + shift))));
       const view = picture ? await sources.patchOf(picture, WHOLE) : undefined;
-      if (view)
-        return (
-          patchDiff(
-            Uint8Array.from(mask!, (i) => view[i]),
-            Uint8Array.from(mask!, (i) => firstView![i]),
-          ) > TURN_LOOK
-        );
+      if (picture && view) return { view, night: await nightOf(picture) };
     }
     return undefined;
+  };
+  const firstBy = async (night: boolean, offset: number): Promise<Uint8Array | undefined> => {
+    let lo = first.offset;
+    let hi = offset;
+    let found: Uint8Array | undefined;
+    while (hi - lo > COARSE_MS) {
+      const mid = (lo + hi) / 2;
+      const seen = await viewAt(mid);
+      if (!seen) break;
+      if (seen.night === night) {
+        hi = mid;
+        found = seen.view;
+      } else lo = mid;
+    }
+    return found;
+  };
+  const turnedAt = async (offset: number): Promise<boolean | undefined> => {
+    const seen = await viewAt(offset);
+    if (!seen) return undefined;
+    let reference = views.get(seen.night);
+    if (!reference) {
+      reference = (await firstBy(seen.night, offset)) ?? seen.view;
+      views.set(seen.night, reference);
+    }
+    const against = reference;
+    return (
+      patchDiff(
+        Uint8Array.from(mask!, (i) => seen.view[i]),
+        Uint8Array.from(mask!, (i) => against[i]),
+      ) > TURN_LOOK
+    );
   };
   if (firstView && total - first.offset > 2 * COARSE_MS && (await turnedAt(total)) && (await turnedAt(total - COARSE_MS))) {
     let lo = first.offset;

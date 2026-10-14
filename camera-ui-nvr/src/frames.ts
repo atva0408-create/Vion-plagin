@@ -139,6 +139,35 @@ export async function cropOfPicture(ffmpegPath: string, picture: Uint8Array, reg
   return jpeg.length ? new Uint8Array(jpeg) : undefined;
 }
 
+/** How coloured a picture (JPEG) is: the mean distance of its chroma from gray (NIGHT_COLOUR tells the night one). */
+export async function colourOfPicture(ffmpegPath: string, picture: Uint8Array): Promise<number | undefined> {
+  const raw = await capture(
+    ffmpegPath,
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'image2pipe',
+      '-i',
+      'pipe:0',
+      '-frames:v',
+      '1',
+      '-vf',
+      `scale=${OVERVIEW_W}:${OVERVIEW_H}:flags=area,format=yuv444p`,
+      '-f',
+      'rawvideo',
+      'pipe:1',
+    ],
+    picture,
+  );
+  const plane = OVERVIEW_W * OVERVIEW_H;
+  if (raw.length < 3 * plane) return undefined;
+  let chroma = 0;
+  for (let i = 0; i < plane; i++) chroma += Math.abs(raw[plane + i] - 128) + Math.abs(raw[2 * plane + i] - 128);
+  return chroma / plane;
+}
+
 /** The gray patch of a region of a picture (JPEG). */
 export async function patchOfPicture(ffmpegPath: string, picture: Uint8Array, region: Place): Promise<Uint8Array | undefined> {
   const raw = await capture(

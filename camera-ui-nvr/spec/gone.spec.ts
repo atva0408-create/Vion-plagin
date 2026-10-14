@@ -42,6 +42,8 @@ interface World {
   restless?: boolean;
   /** the camera looks elsewhere from this on (a PTZ camera turned): the whole picture is another, the place too */
   turnedAt?: number;
+  /** the night picture (gray): the whole picture another than by day (0.74-1.05 apart on the bench's Xiaomi) */
+  night?: [number, number][];
 }
 
 function sources(world: World): GoneSources & { asked: number[] } {
@@ -52,8 +54,9 @@ function sources(world: World): GoneSources & { asked: number[] } {
   const turned = (t: number) => world.turnedAt !== undefined && t >= world.turnedAt;
   const look = (t: number) =>
     turned(t) ? pattern(50, t) : covered(t) ? pattern(3, t) : lying(t) ? pattern(world.restless ? 1000 + Math.floor(t / 1000) : 1, t) : pattern(2, t, true);
-  // the whole picture: the room as the camera sees it, another one once it turned
-  const view = (t: number) => pattern(turned(t) ? 60 : 40, t);
+  // the whole picture: the room as the camera sees it, another one once it turned, another by night
+  const dark = (t: number) => (world.night ?? []).some(([a, b]) => t >= a && t < b);
+  const view = (t: number) => pattern((turned(t) ? 60 : 40) + (dark(t) ? 1 : 0), t);
   // the picture's path: the same look, other pixels (here reversed: as unlike as two looks can be)
   const viaPicture = (pixels: Uint8Array) => (world.twoPaths ? pixels.slice().reverse() : pixels);
   const decode = (picture: Uint8Array) => Number(new TextDecoder().decode(picture));
@@ -73,6 +76,7 @@ function sources(world: World): GoneSources & { asked: number[] } {
       assert.deepEqual(region, widened(PHONE), 'the place with what is around it');
       return viaPicture(look(decode(picture)));
     },
+    colourOf: async (picture) => (dark(decode(picture)) ? 0.4 : 18),
     patches: async (from, to, region, stepMs) => {
       assert.deepEqual(region, widened(PHONE));
       const out: { atMs: number; pixels: Uint8Array }[] = [];
@@ -222,6 +226,18 @@ const clock = (ms: number | undefined) => (ms === undefined ? '-' : new Date(ms)
   assert.equal(late.state, 'still-there', JSON.stringify({ ...late, before: undefined, after: undefined }));
   assert.equal(late.seenMs, T0 + 90 * MIN);
   assert.ok(late.turn);
+}
+
+// ---- the night coming is no turn (a day view and a night one differ as much as a turned camera's); a turn by night is
+{
+  const night: [number, number][] = [[T0 + 8 * 60 * MIN, T0 + 20 * 60 * MIN]];
+  const dusk = await whenGone(sources({ night }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(dusk.state, 'still-there', JSON.stringify({ ...dusk, before: undefined, after: undefined }));
+  assert.equal(dusk.turn, undefined, `the night is no turn: ${clock(dusk.turn?.beforeMs)} → ${clock(dusk.turn?.afterMs)}`);
+  const turnAt = T0 + 10 * 60 * MIN;
+  const byNight = await whenGone(sources({ night, turnedAt: turnAt }), T0, T0 + 12 * 60 * MIN);
+  assert.ok(byNight.turn && byNight.turn.afterMs >= turnAt && byNight.turn.beforeMs < turnAt, `turned by night: ${clock(byNight.turn?.beforeMs)} → ${clock(byNight.turn?.afterMs)}`);
+  assert.ok(byNight.turn.afterMs - byNight.turn.beforeMs <= 2 * MIN);
 }
 
 // ---- nothing recorded, no finder

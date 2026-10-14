@@ -11,7 +11,7 @@ import { Episodes } from './episodes.js';
 import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
-import { cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from './frames.js';
+import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from './frames.js';
 import { NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
@@ -2893,6 +2893,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           return { english: found.query || words, foundScore: found.foundScore ?? 0.1, boxes: found.pictures?.[0]?.boxes ?? [] };
         },
         patchOf: (picture, region) => patchOfPicture(ffmpeg, picture, region),
+        colourOf: (picture) => colourOfPicture(ffmpeg, picture),
         patches: (from, to, region, stepMs) =>
           patchesOf(
             ffmpeg,
