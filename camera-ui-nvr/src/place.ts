@@ -126,9 +126,7 @@ export function insidePicture(place: Place): Place {
 export async function placeHistory(sources: PlaceSources, query: { place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceAnswer> {
   const { place, mode } = query;
   const recorded = sources.recorded(query.fromMs, query.toMs);
-  const stretches = recorded
-    .map((s) => ({ startMs: Math.max(s.startMs, query.fromMs), endMs: Math.min(s.endMs, query.toMs) }))
-    .filter((s) => s.endMs > s.startMs);
+  const stretches = recorded.map((s) => ({ startMs: Math.max(s.startMs, query.fromMs), endMs: Math.min(s.endMs, query.toMs) })).filter((s) => s.endMs > s.startMs);
   if (!stretches.length) return { state: 'no-recording', changes: [], passes: [], looks: 0 };
   const { total, at, offsetOf } = timeline(stretches);
   const mask = awayMask(place, OVERVIEW_W, OVERVIEW_H);
@@ -320,8 +318,7 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
     const passes = passesOf(line.slice(0, firstSame + 1));
     if (firstSame === line.length - 1) return done({ firstSameMs: line[firstSame].look.atMs, passes });
     const change =
-      throughLight(line, firstSame, firstSame + 1) ??
-      (await changeAt(line[firstSame].look, line[firstSame + 1].look, (line[firstSame + 2] ?? line[firstSame + 1]).look));
+      throughLight(line, firstSame, firstSame + 1) ?? (await changeAt(line[firstSame].look, line[firstSame + 1].look, (line[firstSame + 2] ?? line[firstSame + 1]).look));
     return done({ firstSameMs: change.afterMs, passes }, [change]);
   }
 

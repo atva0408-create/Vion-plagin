@@ -23,13 +23,7 @@ const FRAME_MAX_WIDTH = 1280;
 const FFMPEG_TIMEOUT_MS = 120_000;
 
 /** Runs ffmpeg and gives what it wrote; `input` is written to it first. Killed past `timeoutMs`. */
-export function capture(
-  bin: string,
-  args: string[],
-  input?: Uint8Array,
-  timeoutMs = FFMPEG_TIMEOUT_MS,
-  started?: (child: ChildProcess) => void,
-): Promise<Buffer> {
+export function capture(bin: string, args: string[], input?: Uint8Array, timeoutMs = FFMPEG_TIMEOUT_MS, started?: (child: ChildProcess) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const proc = spawn(bin, args, { stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
     started?.(proc);
