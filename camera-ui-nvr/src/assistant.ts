@@ -2217,7 +2217,15 @@ async function placeHistory(host: AssistantHost, input: Input, ctx: AssistantToo
       after: clock(change.afterMs),
       ...(change.busy ? { someoneInFront: { from: clock(change.busy.fromMs), to: clock(change.busy.toMs) } } : {}),
       ...(change.gap ? { pause: 'nothing was recorded somewhere between the two' } : {}),
-      ...(change.exact ? {} : { roughly: `the two are looks of the first pass, up to ${Math.round((answer.stepMs ?? 0) / 60_000)} min apart` }),
+      ...(change.throughLight
+        ? {
+            light:
+              'the light changed between the two (night gray pictures and day ones cannot be compared): the place changed as the ' +
+              'light changed or while the other light lasted; the two pictures are by the same light',
+          }
+        : change.exact
+          ? {}
+          : { roughly: `the two are looks of the first pass, up to ${Math.round((answer.stepMs ?? 0) / 60_000)} min apart` }),
       ...(change.asMarked ? { asMarked: 'after it the place looks as at the marked moment again' } : {}),
       ...(images.length >= first ? { pictures: `${first}-${images.length}` } : {}),
     };

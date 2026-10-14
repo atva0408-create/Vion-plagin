@@ -49,6 +49,11 @@ export interface PlaceChange {
   gap?: boolean;
   /** after it the place looks as at the moment marked (history) */
   asMarked?: boolean;
+  /**
+   * the two ends are by the same light with the other light between (night pictures among day ones): by it the place
+   * could not be compared, it changed as the light changed or while the other light lasted
+   */
+  throughLight?: true;
 }
 
 export interface PlaceAnswer {
@@ -241,6 +246,22 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
     return { kind: 'changed', ...edges(near.yes, far.yes), exact: near.exact && far.exact, busy };
   };
 
+  /**
+   * A change found between looks by different light compares the first look by a light with a look by the other: the
+   * first look by a new light stands for the place as before it, unseen, and a thing taken as the night came was said
+   * gone at the morning's light, hours off, as exact. Said instead between the look before (`line[from]`) and the
+   * nearest look toward the moment marked by the light of the look after it (`line[to]`): the two pictures by one
+   * light. `line` runs from the moment marked outward (in time or back); none such: as found.
+   */
+  const throughLight = (line: Seen[], from: number, to: number): PlaceChange | undefined => {
+    if (line[from].night === line[to].night) return undefined;
+    for (let j = from; j >= 0; j--) {
+      if (line[j].night !== line[to].night || !line[j].asMarked) continue;
+      return { kind: 'changed', ...edges(line[j].look, line[to].look), exact: false, throughLight: true };
+    }
+    return undefined;
+  };
+
   /** Runs of looks unlike the marked one with looks like it on both sides: someone passing. */
   const passesOf = (line: Seen[]) => {
     const out: { fromMs: number; toMs: number }[] = [];
@@ -281,7 +302,7 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
     });
     const passes = passesOf(line.slice(0, last + 1));
     if (last === line.length - 1) return done({ lastSameMs: line[last].look.atMs, passes });
-    const change = await changeAt(line[last].look, line[last + 1].look, (line[last + 2] ?? line[last + 1]).look);
+    const change = throughLight(line, last, last + 1) ?? (await changeAt(line[last].look, line[last + 1].look, (line[last + 2] ?? line[last + 1]).look));
     return done({ lastSameMs: change.beforeMs, passes }, [change]);
   }
 
@@ -297,21 +318,38 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
     }
     const passes = passesOf(line.slice(0, firstSame + 1));
     if (firstSame === line.length - 1) return done({ firstSameMs: line[firstSame].look.atMs, passes });
-    const change = await changeAt(line[firstSame].look, line[firstSame + 1].look, (line[firstSame + 2] ?? line[firstSame + 1]).look);
+    const change =
+      throughLight(line, firstSame, firstSame + 1) ??
+      (await changeAt(line[firstSame].look, line[firstSame + 1].look, (line[firstSame + 2] ?? line[firstSame + 1]).look));
     return done({ firstSameMs: change.afterMs, passes }, [change]);
   }
 
   // the history, look by look in time order: a look unlike the state before it that the next look agrees with is a
-  // change, one the next does not agree with is someone passing; a change of light starts a state of its own
+  // change, one the next does not agree with is someone passing; a change of light starts a state of its own, and a
+  // light come back is compared with the place as it last was by that light (a change as the light changed is said
+  // across the other light, when nothing changed while it lasted)
   const line = [...before.reverse(), marked, ...after];
   const passes: { fromMs: number; toMs: number }[] = [];
-  const found: { was: PlaceLook; became: PlaceLook; settled: PlaceLook; asMarked: boolean }[] = [];
+  const found: { was: PlaceLook; became: PlaceLook; settled: PlaceLook; asMarked: boolean; throughLight?: true }[] = [];
+  const byLight = new Map<boolean, { seen: Seen; found: number }>();
   let state = line[0];
   let lastLike = line[0];
   for (let i = 1; i < line.length; i++) {
     const seen = line[i];
-    if (seen.night !== state.night || same(seen.look.patch, state.look.patch)) {
-      if (seen.night !== state.night) state = seen;
+    if (seen.night !== state.night) {
+      byLight.set(state.night, { seen: lastLike, found: found.length });
+      const back = byLight.get(seen.night);
+      const next = line[i + 1];
+      const settles = next?.night !== seen.night || same(next.look.patch, seen.look.patch);
+      // a change found while the other light lasted is that very going: not said twice
+      if (back?.found === found.length && settles && !same(seen.look.patch, back.seen.look.patch)) {
+        found.push({ was: back.seen.look, became: seen.look, settled: seen.look, asMarked: seen.asMarked, throughLight: true });
+      }
+      state = seen;
+      lastLike = seen;
+      continue;
+    }
+    if (same(seen.look.patch, state.look.patch)) {
       lastLike = seen;
       continue;
     }
@@ -328,7 +366,11 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
   }
   const narrowed: PlaceChange[] = [];
   for (const [k, f] of found.entries()) {
-    const change = k < NARROWED_MAX ? await changeAt(f.was, f.became, f.settled) : { kind: 'changed' as const, ...edges(f.was, f.became), exact: false };
+    const change: PlaceChange = f.throughLight
+      ? { kind: 'changed', ...edges(f.was, f.became), exact: false, throughLight: true }
+      : k < NARROWED_MAX
+        ? await changeAt(f.was, f.became, f.settled)
+        : { kind: 'changed', ...edges(f.was, f.became), exact: false };
     narrowed.push(f.asMarked ? { ...change, asMarked: true } : change);
   }
   return done({ passes }, narrowed);

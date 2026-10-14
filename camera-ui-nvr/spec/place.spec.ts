@@ -227,6 +227,33 @@ const near = (ms: number | undefined, want: number, slack: number, what: string)
   console.log(`ok taken by night: ${clock(c.afterMs)}`);
 }
 
+// ---- the thing taken (or brought) as the light changed: the night pictures cannot tell, the change is said across the
+// night between two pictures by the same light (it was said at the next change of light, hours off, as exact)
+{
+  const contains = (c: { beforeMs: number; afterMs: number } | undefined, t: number, what: string) =>
+    assert.ok(c && c.beforeMs <= t && c.afterMs >= t, `${what}: ${clock(c?.beforeMs)}-${clock(c?.afterMs)} holds ${clock(t)}`);
+  const night: Span[] = [[at('23:10'), at('31:30')]];
+  const gone = await ask({ lying: [[at('0:00'), at('23:10')]], night }, 'gone', at('20:00'), at('20:00'), at('33:00'));
+  const [g] = changed(gone);
+  contains(g, at('23:10'), 'taken as the night came');
+  assert.ok(g.throughLight && !g.exact, 'said across the light, not exact');
+  assert.ok(gone.lastSameMs! <= at('23:10'), `last as marked ${clock(gone.lastSameMs)}`);
+  const appeared = await ask({ lying: [[at('31:30'), at('40:00')]], night }, 'appeared', at('32:00'), at('20:00'), at('32:00'));
+  const [a] = changed(appeared);
+  contains(a, at('31:30'), 'brought as the day came');
+  assert.ok(a.throughLight && !a.exact);
+  const history = await ask({ lying: [[at('0:00'), at('23:10')]], night }, 'history', at('20:00'), at('20:00'), at('33:00'));
+  const [h] = changed(history);
+  contains(h, at('23:10'), 'the history has it');
+  assert.ok(h.throughLight);
+  // taken in the middle of the night: found by the night pictures, exactly, no talk of the light
+  const midnight = await ask({ lying: [[at('0:00'), at('27:00:01')]], night }, 'history', at('20:00'), at('20:00'), at('33:00'));
+  const inNight = changed(midnight);
+  assert.equal(inNight.length, 1, JSON.stringify(inNight));
+  assert.ok(!inNight[0].throughLight && inNight[0].exact);
+  console.log(`ok taken as the light changed: gone ${clock(g.beforeMs)}-${clock(g.afterMs)}, appeared ${clock(a.beforeMs)}-${clock(a.afterMs)}, history ${clock(h.beforeMs)}-${clock(h.afterMs)}`);
+}
+
 // ---- a pause in the recording 10:00-10:30, taken during it
 {
   const recorded = [

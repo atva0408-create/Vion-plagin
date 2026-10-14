@@ -214,6 +214,63 @@ const call = async (input: Record<string, unknown>) => nvr.callAssistantTool('pl
   assert.equal(((await call({ time: local, mode: 'gone', to: iso(T + 20_000) })).content as Told).marked, clock(T + 3000));
 }
 
+// ---- taken as the night picture came: said across the night between two day pictures, as the light changing
+{
+  const shelf = (name: string, box: boolean, gray: boolean) => {
+    const path = join(dir, name);
+    const made = spawnSync(FFMPEG, [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      `nullsrc=s=320x240:r=10,format=yuv420p,geq=lum='128+60*sin(X/7)*cos(Y/5)':cb='${gray ? 128 : '128+40*sin(X/9)'}':cr=128${box ? ',drawbox=x=150:y=150:w=30:h=20:color=black:t=fill' : ''}`,
+      '-t',
+      '10',
+      '-c:v',
+      'libx264',
+      '-g',
+      '10',
+      '-pix_fmt',
+      'yuv420p',
+      '-f',
+      'mpegts',
+      path,
+    ]);
+    assert.equal(made.status, 0, made.stderr?.toString());
+    return path;
+  };
+  cameras.set('shelf', { device: { id: 'shelf', name: 'Полка' }, recorders: new Map(), subscriptions: [] } as never);
+  for (const [i, path] of [shelf('day.ts', true, false), shelf('night.ts', false, true), shelf('morning.ts', false, false)].entries()) {
+    const start = (T + i * 10_000) * 1000;
+    store.addSegment({
+      camera_id: 'shelf',
+      role: 'high',
+      start_us: start,
+      end_us: start + 10e6,
+      path,
+      bytes: 1,
+      codec: 'h264',
+      codec_string: 'avc1.64000d',
+      width: 320,
+      height: 240,
+      video_pid: 256,
+      audio_pid: -1,
+      keyframes: JSON.stringify(Array.from({ length: 10 }, (_, k) => [k * 1000, start + k * 1e6])),
+    });
+  }
+  const result = await nvr.callAssistantTool('place_history', { camera: 'Полка', area: BOX, time: iso(T + 3000), mode: 'gone', to: iso(T + 30_000) }, ctx);
+  assert.equal(result.error, undefined, String(result.error));
+  const told = result.content as Told & { changes: { what: string; light?: string; roughly?: string; before: string; after: string }[] };
+  const [change] = told.changes.filter((c) => c.what === 'the place changed');
+  assert.ok(change, JSON.stringify(told.changes));
+  assert.ok(change.before <= clock(T + 10_000) && change.after >= clock(T + 20_000), `across the night: ${change.before}-${change.after}`);
+  assert.match(change.light ?? '', /light changed/);
+  assert.equal(change.roughly, undefined, 'not «up to N min apart»: it is the light, not the step');
+}
+
 // ---- still so, the coming, the history
 {
   const still = (await call({ time: iso(T + 3000), mode: 'gone', to: iso(T + 9000) })) as { content: Told; images?: { caption?: string }[] };
