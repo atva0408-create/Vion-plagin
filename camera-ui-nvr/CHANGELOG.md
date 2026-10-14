@@ -1,3 +1,12 @@
+## [0.22.2]
+
+- The privacy zones of a camera are black in every picture of its recording that «what became of a place» and «when a thing went» read and show the assistant: the recording is the camera's raw video, and those pictures went to the model with what the zones hide
+- What became of a place: a thing taken (or brought) as the light changed between day and night is said between the two nearest pictures by one light, around the night, instead of hours off at the next change of light as exact; the history says it too
+- When a thing went: the night coming is no longer taken for a turned camera (a night picture and a day one of the same room differ as much as a turned camera's), which looked for the thing only before the dusk; a camera turned within a minute of the thing's first look is said with the thing there until the turn, not «nothing recorded»
+- A look at a keyframe of a 50 or 60 fps camera reads that keyframe, not the next one (changes were dated a keyframe early, the last keyframe of each file read nothing)
+- No pause in the recording is said for a change right after the marked moment; a picture that cannot be made (its file deleted meanwhile) no longer loses the whole answer; a short search says its step in seconds
+- A decode that hangs is stopped after two minutes: it held every later search behind it
+
 ## [0.22.1]
 
 - A detection trace goes with the video it is drawn on: the disk guard and the quota delete the oldest video long before events go by their days, and the trace of each event stayed until the event went (969 MB of a 1.4 GB database on the bench, a week older than its video). Retention clears the trace of a camera's events older than its oldest video left, a little at a time; the events stay

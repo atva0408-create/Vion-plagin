@@ -1,3 +1,12 @@
+## [0.22.2]
+
+- Die Privatzonen einer Kamera sind in jedem Bild ihrer Aufnahme schwarz, das «was aus einer Stelle wurde» und «wann ein Gegenstand verschwand» lesen und dem Assistenten zeigen: die Aufnahme ist das Rohvideo der Kamera, und diese Bilder gingen mit dem, was die Zonen verbergen, an das Modell
+- Was aus einer Stelle wurde: ein Gegenstand, der beim Wechsel zwischen Tag und Nacht weggenommen (oder gebracht) wurde, wird zwischen den zwei nächsten Bildern bei gleichem Licht um die Nacht genannt, statt Stunden später beim nächsten Lichtwechsel als genau; der Verlauf nennt ihn auch
+- Wann ein Gegenstand verschwand: die einbrechende Nacht gilt nicht mehr als gedrehte Kamera (ein Nacht- und ein Tagbild desselben Raums unterscheiden sich wie bei einer Drehung), wodurch nur vor der Dämmerung gesucht wurde; eine Kamera, die in der ersten Minute nach dem ersten Sehen gedreht wurde, ergibt «bis zur Drehung da», nicht «nichts aufgenommen»
+- Ein Blick auf ein Schlüsselbild einer Kamera mit 50 oder 60 Bildern/s liest dieses Bild, nicht das nächste (Änderungen wurden ein Schlüsselbild zu früh datiert, das letzte Schlüsselbild jeder Datei las nichts)
+- Für eine Änderung direkt nach dem markierten Moment wird keine Aufnahmepause genannt; ein Bild, das nicht erstellt werden kann (Datei inzwischen gelöscht), kostet nicht mehr die ganze Antwort; eine kurze Suche nennt ihren Schritt in Sekunden
+- Ein hängendes Dekodieren wird nach zwei Minuten beendet: es hielt alle späteren Suchen auf
+
 ## [0.22.1]
 
 - Die Spur der Erkennungen geht mit dem Video, auf das sie gezeichnet wird: der Speicherschutz und das Kontingent löschen das älteste Video lange bevor Ereignisse nach ihren Tagen gehen, und die Spur jedes Ereignisses blieb bis dahin (969 MB einer 1,4-GB-Datenbank auf dem Prüfstand, eine Woche älter als ihr Video). Die Aufbewahrung löscht nach und nach die Spuren von Ereignissen einer Kamera, die älter sind als ihr ältestes verbliebenes Video; die Ereignisse bleiben
