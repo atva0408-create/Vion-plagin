@@ -3019,23 +3019,23 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /** Up to three pictures of the event: the card of each segment, else the scene. */
   private describePictures(event: RecordedEvent): Uint8Array[] {
     const dir = this.thumbDir(event.cameraId, event.id);
+    // an empty file (an empty attachment, a write cut short) is no picture: it went to the model as an empty image
+    const picture = (name: string): Uint8Array | undefined => {
+      try {
+        const data = readFileSync(join(dir, name));
+        return data.length ? new Uint8Array(data) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
     const out: Uint8Array[] = [];
     for (let seg = 0; seg < Math.max(1, event.segments?.length ?? 0) && out.length < 3; seg++) {
-      for (const name of [`card-${seg}.jpg`, `strip-${seg}.jpg`]) {
-        try {
-          out.push(new Uint8Array(readFileSync(join(dir, name))));
-          break;
-        } catch {
-          // next candidate
-        }
-      }
+      const found = picture(`card-${seg}.jpg`) ?? picture(`strip-${seg}.jpg`);
+      if (found) out.push(found);
     }
     if (!out.length) {
-      try {
-        out.push(new Uint8Array(readFileSync(join(dir, 'event.jpg'))));
-      } catch {
-        // no picture: nothing to describe
-      }
+      const scene = picture('event.jpg');
+      if (scene) out.push(scene);
     }
     return out;
   }
