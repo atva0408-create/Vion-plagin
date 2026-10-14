@@ -14,6 +14,7 @@ import { matchesEvent } from './filter.js';
 import { cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from './frames.js';
 import { NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
+import { privacyFilter } from './privacy.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
@@ -2877,12 +2878,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const language = typeof query.language === 'string' ? query.language : '';
     const role = this.primaryRole(cameraId);
     const ffmpeg = this.ffmpegPath;
+    const mask = this.privacyMask(cameraId);
     const answer = await whenGone(
       {
         recorded: (from, to) => this.merged(cameraId, role, from, to).map((run) => ({ startMs: run.startTime, endMs: run.endTime })),
         frame: async (atMs) => {
           const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
-          return segment && segment.start_us <= atMs * 1000 + 2_000_000 ? frameAt(ffmpeg, this.store.located(segment), atMs * 1000) : undefined;
+          return segment && segment.start_us <= atMs * 1000 + 2_000_000 ? frameAt(ffmpeg, this.store.located(segment), atMs * 1000, mask) : undefined;
         },
         find: async (picture) => {
           const found = await this.askFinder(words, language, picture);
@@ -2899,6 +2901,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
             to * 1000,
             region,
             stepMs,
+            mask,
           ),
       },
       fromMs,
@@ -2912,6 +2915,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       return { ...answer, ...(before ? { before } : {}), ...(after ? { after } : {}) };
     }
     return answer;
+  }
+
+  /** The camera's privacy zones over what is read out of its recording (privacy.ts), as they are now. */
+  private privacyMask(cameraId: string): string | undefined {
+    return privacyFilter(this.cameras.get(cameraId)?.device.zones?.privacy);
   }
 
   /**
@@ -2931,6 +2939,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const { cameraId } = query;
     const role = this.primaryRole(cameraId);
     const ffmpeg = this.ffmpegPath;
+    const mask = this.privacyMask(cameraId);
     const place = insidePicture(query.place);
     const read = new Map<number, PlaceLook | undefined>();
     let unreadable = 0;
@@ -2945,7 +2954,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           if (!keyframe) return undefined;
           // halving asks the same keyframe by many times between it and the next: decoded once
           if (read.has(keyframe.tsUs)) return read.get(keyframe.tsUs);
-          const look = await lookOf(ffmpeg, this.store.located(segment), keyframe.tsUs, place).catch((error: Error) => {
+          const look = await lookOf(ffmpeg, this.store.located(segment), keyframe.tsUs, place, mask).catch((error: Error) => {
             unreadable++;
             problem ??= error.message;
             return undefined;
@@ -2962,7 +2971,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     // the pictures of the changes one after another (each an ffmpeg): the place's own first, then the turns
     const pictureAt = async (atMs: number, region: Place, maxWidth?: number) => {
       const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
-      const frame = segment && segment.start_us <= atMs * 1000 + 2_000_000 ? await frameAt(ffmpeg, this.store.located(segment), atMs * 1000) : undefined;
+      const frame = segment && segment.start_us <= atMs * 1000 + 2_000_000 ? await frameAt(ffmpeg, this.store.located(segment), atMs * 1000, mask) : undefined;
       return frame ? cropOfPicture(ffmpeg, frame, region, maxWidth) : undefined;
     };
     const around = widened(place, 2.5);

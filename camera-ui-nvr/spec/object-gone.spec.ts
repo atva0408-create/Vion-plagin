@@ -145,6 +145,23 @@ function jpegWidth(jpeg: Uint8Array): number {
   }
 }
 
+// ---- a privacy zone of the camera right of the box: the pictures around the place come black where it lies
+{
+  const device = (cameras.get('desk') as { device: { zones?: unknown } }).device;
+  device.zones = { privacy: [{ name: 'стена', points: [[58, 0], [100, 0], [100, 100], [58, 100]], dropDetections: true }] };
+  const answer = await nvr.objectGone({ cameraId: 'desk', words: 'телефон', language: 'ru', fromMs: T, toMs: T + 20_000 });
+  device.zones = undefined;
+  assert.equal(answer.state, 'gone');
+  for (const picture of [answer.before!, answer.after!]) {
+    const gray = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-vf', 'scale=40:30,format=gray', '-f', 'rawvideo', 'pipe:1'], {
+      input: Buffer.from(picture),
+    }).stdout;
+    const column = (x: number) => Array.from({ length: 30 }, (_, y) => gray[y * 40 + x]);
+    assert.ok(Math.max(...column(39)) < 30, `the crop's right edge under the zone is black: ${column(39).join(' ')}`);
+    assert.ok(Math.max(...column(2)) - Math.min(...column(2)) > 40, 'its left edge, outside it, is the table');
+  }
+}
+
 const ctx: AssistantToolContext = { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' };
 const iso = (ms: number) => new Date(ms).toISOString();
 const clock = (ms: number) =>

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
+import { privacyFilter } from '../src/privacy.js';
 import { FINE_MS, PATCH, patchDiff, SAME_LOOK, whenGone, widened } from '../src/gone.js';
 import { NIGHT_COLOUR, OVERVIEW_H, OVERVIEW_W, placeHistory } from '../src/place.js';
 
@@ -56,6 +57,34 @@ const second = { path: file('b.ts', 10, 2), start_us: T + 10e6, end_us: T + 20e6
 const segments = [first, second];
 const segmentAt = (us: number) => segments.find((s) => us >= s.start_us && us < s.end_us) ?? segments[segments.length - 1];
 const region = widened(BOX);
+
+// ---- a privacy zone of the camera (the left third, in percent) over everything read out of the recording: black there,
+// the rest as it is (the recording itself is raw video: the pictures went to the model with what the zone hides)
+{
+  const mask = privacyFilter([{ points: [[0, 0], [33, 0], [33, 100], [0, 100]] }]);
+  const hidden = { x: 0.05, y: 0.3, width: 0.2, height: 0.4 };
+  const open = { x: 0.6, y: 0.3, width: 0.2, height: 0.4 };
+  const mean = (pixels: Uint8Array) => pixels.reduce((sum, v) => sum + v, 0) / pixels.length;
+  const spread = (pixels: Uint8Array) => Math.max(...pixels) - Math.min(...pixels);
+  const masked = (await frameAt(FFMPEG, first, T + 5e6, mask))!;
+  const plain = (await frameAt(FFMPEG, first, T + 5e6))!;
+  const [inMasked, inPlain, outMasked, outPlain] = await Promise.all(
+    [
+      [masked, hidden],
+      [plain, hidden],
+      [masked, open],
+      [plain, open],
+    ].map(([picture, place]) => patchOfPicture(FFMPEG, picture as Uint8Array, place as Place)),
+  );
+  assert.ok(mean(inMasked!) < 25 && spread(inMasked!) < 12, `the zone black in the frame: ${mean(inMasked!)} ±${spread(inMasked!)}`);
+  assert.ok(spread(inPlain!) > 40, 'the pattern there without the zone');
+  assert.ok(patchDiff(outMasked!, outPlain!) < SAME_LOOK / 3, 'the rest of the frame as it is');
+  const look = (await lookOf(FFMPEG, first, T + 5e6, hidden, mask))!;
+  assert.ok(mean(look.patch) < 25 && spread(look.patch) < 12, `the zone black in a look: ${mean(look.patch)}`);
+  assert.ok(mean(look.overview.subarray(0, 10)) < 25, 'and in its whole picture small');
+  const [patch] = await patchesOf(FFMPEG, segments, T + 5e6, T + 5.5e6, hidden, FINE_MS, mask);
+  assert.ok(mean(patch.pixels) < 25 && spread(patch.pixels) < 12, `the zone black in the patches: ${mean(patch.pixels)}`);
+}
 
 // ---- a whole frame at a time; the patch of the box: the same while it lies, other after
 {

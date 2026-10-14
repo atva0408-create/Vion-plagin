@@ -41,11 +41,22 @@ function cropOf(region: Place): string {
 
 const PATCH_FILTER = (region: Place) => `${cropOf(region)},scale=${PATCH}:${PATCH}:flags=area,format=gray`;
 
+/** The privacy zones of the camera (privacy.ts) first, before anything of the picture is cut or made smaller. */
+const masked = (mask: string | undefined, filter: string) => (mask ? `${mask},${filter}` : filter);
+
 /** The last half second of a file is not asked for: its last frames may be cut, ffmpeg then writes nothing. */
 const FILE_END_US = 500_000;
 
-/** The whole picture of a file of the recording at a time in it (µs), as JPEG; undefined when there is none. */
-export async function frameAt(ffmpegPath: string, segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>, atUs: number): Promise<Uint8Array | undefined> {
+/**
+ * The whole picture of a file of the recording at a time in it (µs), as JPEG; undefined when there is none. `mask`:
+ * the camera's privacy zones as ffmpeg's filter (privacyFilter), black in the picture.
+ */
+export async function frameAt(
+  ffmpegPath: string,
+  segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>,
+  atUs: number,
+  mask?: string,
+): Promise<Uint8Array | undefined> {
   const offset = Math.max(0, (Math.min(atUs, segment.end_us - FILE_END_US) - segment.start_us) / 1e6);
   const jpeg = await capture(ffmpegPath, [
     '-hide_banner',
@@ -58,7 +69,7 @@ export async function frameAt(ffmpegPath: string, segment: Pick<SegmentRow, 'pat
     '-frames:v',
     '1',
     '-vf',
-    `scale='min(${FRAME_MAX_WIDTH},iw)':-2`,
+    masked(mask, `scale='min(${FRAME_MAX_WIDTH},iw)':-2`),
     '-f',
     'image2pipe',
     '-c:v',
@@ -127,6 +138,7 @@ export async function lookOf(
   segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>,
   keyframeUs: number,
   region: Place,
+  mask?: string,
 ): Promise<{ patch: Uint8Array; overview: Uint8Array; colour: number } | undefined> {
   const width = Math.max(PATCH, OVERVIEW_W);
   const height = PATCH + OVERVIEW_H;
@@ -145,7 +157,7 @@ export async function lookOf(
     '1',
     '-filter_complex',
     [
-      `[0:v]split=2[a][b];[a]${cropOf(region)},scale=${PATCH}:${PATCH}:flags=area,format=yuv444p,pad=${width}:${PATCH}:0:0[p]`,
+      `[0:v]${masked(mask, 'split=2')}[a][b];[a]${cropOf(region)},scale=${PATCH}:${PATCH}:flags=area,format=yuv444p,pad=${width}:${PATCH}:0:0[p]`,
       `[b]scale=${OVERVIEW_W}:${OVERVIEW_H}:flags=area,format=yuv444p,pad=${width}:${OVERVIEW_H}:0:0[o]`,
       '[p][o]vstack=inputs=2[out]',
     ].join(';'),
@@ -184,6 +196,7 @@ export async function patchesOf(
   toUs: number,
   region: Place,
   stepMs: number,
+  mask?: string,
 ): Promise<{ atMs: number; pixels: Uint8Array }[]> {
   const out: { atMs: number; pixels: Uint8Array }[] = [];
   const size = PATCH * PATCH;
@@ -202,7 +215,7 @@ export async function patchesOf(
       '-t',
       ((endUs - startUs) / 1e6).toFixed(3),
       '-vf',
-      `fps=${(1000 / stepMs).toFixed(3)},${PATCH_FILTER(region)}`,
+      masked(mask, `fps=${(1000 / stepMs).toFixed(3)},${PATCH_FILTER(region)}`),
       '-f',
       'rawvideo',
       'pipe:1',

@@ -137,6 +137,26 @@ function jpegWidth(jpeg: Uint8Array): number {
   assert.equal(answer.unreadable, undefined, answer.problem);
 }
 
+// ---- the privacy zones of the camera: the place under one is black at every keyframe, nothing to tell; the pictures
+// around a place beside one come black where it lies
+{
+  const device = (cameras.get('desk') as { device: { zones?: unknown } }).device;
+  device.zones = { privacy: [{ name: 'стол', points: [[40, 55], [62, 55], [62, 80], [40, 80]], dropDetections: true }] };
+  const hidden = await nvr.placeHistory({ cameraId: 'desk', place: BOX, atMs: T + 3000, fromMs: T, toMs: T + 20_000, mode: 'gone' });
+  assert.deepEqual(hidden.changes.filter((c) => c.kind === 'changed'), [], 'a place under a privacy zone tells nothing');
+  // the zone right of the box: the crop around the box reaches into it
+  device.zones = { privacy: [{ name: 'стена', points: [[58, 0], [100, 0], [100, 100], [58, 100]], dropDetections: true }] };
+  const beside = await nvr.placeHistory({ cameraId: 'desk', place: BOX, atMs: T + 3000, fromMs: T, toMs: T + 20_000, mode: 'gone' });
+  assert.equal(beside.pictures.length, 1, JSON.stringify(beside.changes));
+  const gray = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-vf', 'scale=40:30,format=gray', '-f', 'rawvideo', 'pipe:1'], {
+    input: Buffer.from(beside.pictures[0].before!),
+  }).stdout;
+  const column = (x: number) => Array.from({ length: 30 }, (_, y) => gray[y * 40 + x]);
+  assert.ok(Math.max(...column(39)) < 30, `the crop's right edge under the zone is black: ${column(39).join(' ')}`);
+  assert.ok(Math.max(...column(2)) - Math.min(...column(2)) > 40, 'its left edge, outside it, is the table');
+  device.zones = undefined;
+}
+
 const ctx: AssistantToolContext = { userId: 'u1', role: 'admin', language: 'ru', timezone: 'Europe/Moscow' };
 const iso = (ms: number) => new Date(ms).toISOString();
 const clock = (ms: number) =>
