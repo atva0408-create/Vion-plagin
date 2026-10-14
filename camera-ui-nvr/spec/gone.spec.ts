@@ -40,6 +40,8 @@ interface World {
   twoPaths?: boolean;
   /** it moves while it is there (a person sitting): its place never looks the same twice */
   restless?: boolean;
+  /** the camera looks elsewhere from this on (a PTZ camera turned): the whole picture is another, the place too */
+  turnedAt?: number;
 }
 
 function sources(world: World): GoneSources & { asked: number[] } {
@@ -47,7 +49,11 @@ function sources(world: World): GoneSources & { asked: number[] } {
   const lying = (t: number) => (world.lyingFrom === undefined || t >= world.lyingFrom) && (world.lyingUntil === undefined || t < world.lyingUntil);
   const covered = (t: number) => (world.covered ?? []).some(([a, b]) => t >= a && t < b);
   const recordedAt = (t: number) => (world.recorded ?? [{ startMs: T0 - 24 * 60 * MIN, endMs: T0 + 48 * 60 * MIN }]).some((s) => t >= s.startMs && t <= s.endMs);
-  const look = (t: number) => (covered(t) ? pattern(3, t) : lying(t) ? pattern(world.restless ? 1000 + Math.floor(t / 1000) : 1, t) : pattern(2, t, true));
+  const turned = (t: number) => world.turnedAt !== undefined && t >= world.turnedAt;
+  const look = (t: number) =>
+    turned(t) ? pattern(50, t) : covered(t) ? pattern(3, t) : lying(t) ? pattern(world.restless ? 1000 + Math.floor(t / 1000) : 1, t) : pattern(2, t, true);
+  // the whole picture: the room as the camera sees it, another one once it turned
+  const view = (t: number) => pattern(turned(t) ? 60 : 40, t);
   // the picture's path: the same look, other pixels (here reversed: as unlike as two looks can be)
   const viaPicture = (pixels: Uint8Array) => (world.twoPaths ? pixels.slice().reverse() : pixels);
   const decode = (picture: Uint8Array) => Number(new TextDecoder().decode(picture));
@@ -59,10 +65,11 @@ function sources(world: World): GoneSources & { asked: number[] } {
       if (world.noFinder) return { problem: NO_FINDER };
       const t = decode(picture);
       asked.push(t);
-      const seen = lying(t) && !covered(t) && !(world.missed?.(t) ?? false);
+      const seen = lying(t) && !covered(t) && !turned(t) && !(world.missed?.(t) ?? false);
       return { english: 'phone', foundScore: 0.1, boxes: seen ? [{ ...PHONE, score: 0.3 }] : [{ x: 0.1, y: 0.1, width: 0.05, height: 0.05, score: 0.04 }] };
     },
     patchOf: async (picture, region) => {
+      if (region.width === 1 && region.height === 1) return view(decode(picture));
       assert.deepEqual(region, widened(PHONE), 'the place with what is around it');
       return viaPicture(look(decode(picture)));
     },
@@ -185,6 +192,24 @@ const clock = (ms: number | undefined) => (ms === undefined ? '-' : new Date(ms)
     answer.lastSeenMs! < gone && answer.goneMs! >= gone && answer.goneMs! - answer.lastSeenMs! <= 2 * MIN,
     `${clock(answer.lastSeenMs)} → ${clock(answer.goneMs)}`,
   );
+}
+
+// ---- the camera turned at 05:00 while the phone lay all along: not its going; the looking stops at the turn
+{
+  const turnAt = T0 + 300 * MIN;
+  const answer = await whenGone(sources({ turnedAt: turnAt }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(answer.state, 'still-there', JSON.stringify({ ...answer, before: undefined, after: undefined }));
+  assert.ok(answer.turn && answer.turn.beforeMs < turnAt && answer.turn.afterMs >= turnAt && answer.turn.afterMs - answer.turn.beforeMs <= 2 * MIN, `turn ${clock(answer.turn?.beforeMs)} → ${clock(answer.turn?.afterMs)}`);
+  assert.ok(answer.lastSeenMs! <= answer.turn!.beforeMs, `still there until the turn: ${clock(answer.lastSeenMs)}`);
+  // taken before the turn: found as before, the turn said too
+  const gone = T0 + 120 * MIN + 20_000;
+  const taken = await whenGone(sources({ turnedAt: turnAt, lyingUntil: gone }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(taken.state, 'gone');
+  assert.ok(Math.abs(taken.goneMs! - gone) <= FINE_MS, `gone ${clock(taken.goneMs)}`);
+  assert.ok(taken.turn, 'the turn after it is said');
+  // someone close to the lens at the very end (one look unlike the view) is no turn
+  const close = await whenGone(sources({ turnedAt: T0 + 12 * 60 * MIN - 20_000 }), T0, T0 + 12 * 60 * MIN);
+  assert.equal(close.turn, undefined, 'one look at the end is not a turn');
 }
 
 // ---- nothing recorded, no finder

@@ -48,6 +48,8 @@ export interface GoneAnswer {
   gap?: boolean;
   /** its place never looked the same twice while it was there (it moved): the two are the halving's, a minute apart */
   roughly?: boolean;
+  /** the camera turned between the two (the whole picture is another from then on): looked at only before it */
+  turn?: { beforeMs: number; afterMs: number };
   /** the pictures of those two moments, for the one who asked to look at */
   before?: Uint8Array;
   after?: Uint8Array;
@@ -107,6 +109,33 @@ function overlap(a: Place, b: Place): number {
   const inter = w * h;
   const union = a.width * a.height + b.width * b.height - inter;
   return union > 0 ? inter / union : 0;
+}
+
+/**
+ * Over this difference of the whole picture without the place (patchDiff) the camera looks elsewhere. Measured on the
+ * bench (2026-10-14, Xiaomi C300 turned between 10:00 and 13:00 of 10-13): places far from the marked one differed
+ * 0.16-0.43 between hours of the same view and 0.8-1.25 across the turn.
+ */
+export const TURN_LOOK = 0.65;
+
+/** The whole picture, as a place. */
+export const WHOLE: Place = { x: 0, y: 0, width: 1, height: 1 };
+
+/**
+ * The pixels of a width × height picture of the whole frame away from a place and what is next to it: the rest of the
+ * picture, for telling a turned camera from a changed place. Undefined when the place is most of the picture.
+ */
+export function awayMask(place: Place, width: number, height: number): number[] | undefined {
+  const near = widened(place, 0.5);
+  const keep: number[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const fx = (x + 0.5) / width;
+      const fy = (y + 0.5) / height;
+      if (fx < near.x || fx > near.x + near.width || fy < near.y || fy > near.y + near.height) keep.push(y * width + x);
+    }
+  }
+  return keep.length >= 0.3 * width * height ? keep : undefined;
 }
 
 /** The place with its margin, inside the picture. */
@@ -201,6 +230,32 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     const patch = await sources.patchOf(seen.picture, region);
     return { yes: !!patch && patchDiff(patch, reference) < SAME_LOOK, atMs: seen.atMs, picture: seen.picture };
   };
+
+  // the camera turned since (a PTZ camera: the place is elsewhere in the picture, the finder does not see the thing
+  // where it lay): the whole picture without the place is another at the end and a little before it. The turn is
+  // halved to a minute, and the thing looked for only before it
+  const mask = awayMask(place, PATCH, PATCH);
+  const firstView = mask ? await sources.patchOf(first.picture, WHOLE) : undefined;
+  const turnedAt = async (offset: number): Promise<boolean | undefined> => {
+    for (const shift of UNREADABLE_SHIFTS_MS) {
+      const picture = await sources.frame(at(Math.max(0, Math.min(total, offset + shift))));
+      const view = picture ? await sources.patchOf(picture, WHOLE) : undefined;
+      if (view) return patchDiff(Uint8Array.from(mask!, (i) => view[i]), Uint8Array.from(mask!, (i) => firstView![i])) > TURN_LOOK;
+    }
+    return undefined;
+  };
+  if (firstView && total - first.offset > 2 * COARSE_MS && (await turnedAt(total)) && (await turnedAt(total - COARSE_MS))) {
+    let lo = first.offset;
+    let hi = total - COARSE_MS;
+    while (hi - lo > COARSE_MS) {
+      const mid = (lo + hi) / 2;
+      if (await turnedAt(mid)) hi = mid;
+      else lo = mid;
+    }
+    const turn = { beforeMs: at(lo), afterMs: at(hi) };
+    const before = await whenGone(sources, fromMs, turn.beforeMs);
+    return { ...before, turn, looks: looks + before.looks };
+  }
 
   const end = await there(total);
   if ('problem' in end) return { state: 'failed', problem: end.problem, looks, place };

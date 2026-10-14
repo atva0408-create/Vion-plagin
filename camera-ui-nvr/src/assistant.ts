@@ -2073,6 +2073,7 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
           state: 'still-there',
           seen: clock(answer.seenMs!),
           stillThereAt: clock(answer.lastSeenMs!),
+          ...turned(answer, clock),
           note: 'Where it lay at the last look.',
           looks: answer.looks,
         },
@@ -2096,6 +2097,7 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
       lastSeen: clock(answer.lastSeenMs!),
       gone: clock(answer.goneMs!),
       ...(answer.gap ? { pause: 'Nothing was recorded between the two: it went somewhen in that pause.' } : {}),
+      ...turned(answer, clock),
       ...(answer.roughly
         ? { roughly: 'Its place never looked the same twice while it was there (it moved, or something moved by it): it went between lastSeen and gone, about a minute.' }
         : {}),
@@ -2107,6 +2109,16 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
     },
     ...(images.length ? { images } : {}),
     references: around.slice(0, MAX_REFERENCES).map((ev) => reference(ev, names, ctx)),
+  };
+}
+
+/** A turned camera, said to the model: the thing was looked for only before it. */
+function turned(answer: GoneAnswer, clock: (ms: number) => string): { turned?: string } {
+  if (!answer.turn) return {};
+  return {
+    turned:
+      `The camera turned between ${clock(answer.turn.beforeMs)} and ${clock(answer.turn.afterMs)} (the whole picture is another from then ` +
+      'on): the thing was looked for only before it; after it the place is elsewhere in the picture.',
   };
 }
 

@@ -219,6 +219,11 @@ const clock = (ms: number) =>
   const told = await callAssistantTool(host as never, 'object_gone', { camera: 'Стол', object: 'человек', from: iso(T), to: iso(T + 200_000) }, ctx);
   assert.match((told.content as { roughly?: string }).roughly ?? '', /about a minute/);
   assert.equal((told.content as { pause?: string }).pause, undefined);
+  assert.equal((told.content as { turned?: string }).turned, undefined);
+  // the camera turned: still there until it, said with the two moments
+  host.objectGone = async () => ({ state: 'still-there', english: 'phone', place: BOX, seenMs: T, lastSeenMs: T + 50_000, turn: { beforeMs: T + 60_000, afterMs: T + 120_000 }, looks: 12 });
+  const still = await callAssistantTool(host as never, 'object_gone', { camera: 'Стол', object: 'телефон', from: iso(T), to: iso(T + 600_000) }, ctx);
+  assert.match((still.content as { turned?: string }).turned ?? '', new RegExp(`camera turned between ${clock(T + 60_000)} and ${clock(T + 120_000)}`));
 }
 
 console.log(

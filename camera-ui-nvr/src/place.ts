@@ -6,7 +6,7 @@
 // without colour is the night one (compared with night pictures only). A change seen once and gone at the next look
 // is someone passing in front. Reading the recording is given (index.ts), so this is tested on its own.
 
-import { patchDiff, SAME_LOOK, timeline, widened } from './gone.js';
+import { awayMask, patchDiff, SAME_LOOK, timeline, TURN_LOOK } from './gone.js';
 
 import type { Place, Stretch } from './gone.js';
 
@@ -84,12 +84,6 @@ export interface PlaceHistoryAnswer extends PlaceAnswer {
   problem?: string;
 }
 
-/**
- * Over this difference of the whole picture without the place (patchDiff) the camera looks elsewhere. Measured on the
- * bench (2026-10-14, Xiaomi C300 turned between 10:00 and 13:00 of 10-13): places far from the marked one differed
- * 0.16-0.43 between hours of the same view and 0.8-1.25 across the turn.
- */
-export const TURN_LOOK = 0.65;
 /** Below this colour a picture is the night one: infrared pictures are gray (chroma at 128). */
 export const NIGHT_COLOUR = 3;
 /** The first pass: the time asked in about this many looks, but not closer than MIN_STEP_MS. */
@@ -105,21 +99,6 @@ interface Seen {
   night: boolean;
   /** the place looks as at the moment marked (by the light of this picture) */
   asMarked: boolean;
-}
-
-/** The overview pixels away from the place: the rest of the picture, for telling a turn. */
-function awayMask(place: Place): number[] | undefined {
-  const near = widened(place, 0.5);
-  const keep: number[] = [];
-  for (let y = 0; y < OVERVIEW_H; y++) {
-    for (let x = 0; x < OVERVIEW_W; x++) {
-      const fx = (x + 0.5) / OVERVIEW_W;
-      const fy = (y + 0.5) / OVERVIEW_H;
-      if (fx < near.x || fx > near.x + near.width || fy < near.y || fy > near.y + near.height) keep.push(y * OVERVIEW_W + x);
-    }
-  }
-  // the place is most of the picture: what is left is too little to tell the camera turned
-  return keep.length >= 0.3 * OVERVIEW_W * OVERVIEW_H ? keep : undefined;
 }
 
 const same = (a: Uint8Array, b: Uint8Array) => patchDiff(a, b) < SAME_LOOK;
@@ -148,7 +127,7 @@ export async function placeHistory(sources: PlaceSources, query: { place: Place;
     .filter((s) => s.endMs > s.startMs);
   if (!stretches.length) return { state: 'no-recording', changes: [], passes: [], looks: 0 };
   const { total, at, offsetOf } = timeline(stretches);
-  const mask = awayMask(place);
+  const mask = awayMask(place, OVERVIEW_W, OVERVIEW_H);
   const away = (overview: Uint8Array) => Uint8Array.from(mask!, (i) => overview[i]);
   let looks = 0;
   let cut = false;
