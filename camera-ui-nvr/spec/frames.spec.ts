@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
+import { capture, frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
 import { privacyFilter } from '../src/privacy.js';
 import { FINE_MS, PATCH, patchDiff, SAME_LOOK, whenGone, widened } from '../src/gone.js';
 import { NIGHT_COLOUR, OVERVIEW_H, OVERVIEW_W, placeHistory } from '../src/place.js';
@@ -57,6 +57,19 @@ const second = { path: file('b.ts', 10, 2), start_us: T + 10e6, end_us: T + 20e6
 const segments = [first, second];
 const segmentAt = (us: number) => segments.find((s) => us >= s.start_us && us < s.end_us) ?? segments[segments.length - 1];
 const region = widened(BOX);
+
+// ---- an ffmpeg that never ends is stopped: one hung decode held every search of the recorder behind it for good
+{
+  const started = Date.now();
+  let pid = 0;
+  await assert.rejects(
+    capture(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], undefined, 400, (child) => (pid = child.pid ?? 0)),
+    /took longer than 0\.4 s/,
+  );
+  assert.ok(Date.now() - started < 5000, 'not waited for');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.throws(() => process.kill(pid, 0), 'and it is gone');
+}
 
 // ---- a privacy zone of the camera (the left third, in percent) over everything read out of the recording: black there,
 // the rest as it is (the recording itself is raw video: the pictures went to the model with what the zone hides)

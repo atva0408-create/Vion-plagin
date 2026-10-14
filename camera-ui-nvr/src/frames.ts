@@ -5,6 +5,7 @@
 // export cuts a clip (export.ts clipPlan).
 
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 
 import { PATCH } from './gone.js';
 import { OVERVIEW_H, OVERVIEW_W } from './place.js';
@@ -15,16 +16,40 @@ import type { SegmentRow } from './store.js';
 /** A whole frame is made at most this wide: the finder works on 768 px, a small thing needs some of them. */
 const FRAME_MAX_WIDTH = 1280;
 
-/** Runs ffmpeg and gives what it wrote; `input` is written to it first. */
-function capture(bin: string, args: string[], input?: Uint8Array): Promise<Buffer> {
+/**
+ * The longest one ffmpeg here may take (a picture, a look, the patches of one file): a decode that hung held every
+ * search of the recorder behind it (they go one at a time) for good.
+ */
+const FFMPEG_TIMEOUT_MS = 120_000;
+
+/** Runs ffmpeg and gives what it wrote; `input` is written to it first. Killed past `timeoutMs`. */
+export function capture(
+  bin: string,
+  args: string[],
+  input?: Uint8Array,
+  timeoutMs = FFMPEG_TIMEOUT_MS,
+  started?: (child: ChildProcess) => void,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const proc = spawn(bin, args, { stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+    started?.(proc);
     const out: Buffer[] = [];
     let stderr = '';
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL');
+      reject(new Error(`ffmpeg took longer than ${timeoutMs / 1000} s`));
+    }, timeoutMs);
     proc.stdout?.on('data', (d: Buffer) => out.push(d));
     proc.stderr?.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
-    proc.on('error', reject);
-    proc.on('close', (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').pop() ?? ''}`))));
+    proc.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(Buffer.concat(out));
+      else reject(new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').pop() ?? ''}`));
+    });
     if (input && proc.stdin) {
       // a picture the ffmpeg did not need to read whole (it stopped at its first frame) breaks the pipe: not a failure
       proc.stdin.on('error', () => undefined);
