@@ -11,8 +11,9 @@ import { Episodes } from './episodes.js';
 import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
-import { cropOfPicture, frameAt, patchesOf, patchOfPicture } from './frames.js';
+import { cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from './frames.js';
 import { NO_FINDER, whenGone, widened } from './gone.js';
+import { insidePicture, placeHistory } from './place.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
@@ -39,7 +40,8 @@ import type { ExternalEventInput, ExternalEventResult } from './external.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { PersonHit, PersonVector } from './people.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding, TextFindAnswer } from './semantic.js';
-import type { GoneAnswer } from './gone.js';
+import type { GoneAnswer, Place } from './gone.js';
+import type { PlaceHistoryAnswer, PlaceLook, PlaceMode } from './place.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type { IndexFilter } from './vector-index.js';
 import type {
@@ -138,6 +140,8 @@ const CLIP_AUTO_BACKLOG_MS = 20_000;
 const CLIP_AUTO_BATCH = 24;
 const CLIP_EMBED_BATCH = 8;
 const PLUGIN_CALL_TIMEOUT_MS = 30_000;
+/** Changes of a place's history shown in pictures (before, after): a handful, each two crops the model looks at. */
+const PICTURED_CHANGES = 4;
 
 interface FaceEmbedder {
   embedFaceImages(images: Uint8Array[], config?: Record<string, unknown>): Promise<({ embedding: number[]; embeddingModel: string; quality?: number } | undefined)[]>;
@@ -2561,6 +2565,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
       personRoute: (query, opts) => this.personRoute(query, opts),
       objectGone: (query) => this.objectGone(query),
+      placeHistory: (query) => this.placeHistory(query),
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
       crossingLabels: (cameraIds, startMs, endMs) => this.store.crossingLabels({ cameraIds, startMs, endMs }),
@@ -2894,6 +2899,78 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       return { ...answer, ...(before ? { before } : {}), ...(after ? { after } : {}) };
     }
     return answer;
+  }
+
+  /**
+   * What became of a place the person marked on a frame of a camera's recording (place.ts): its look at keyframes
+   * compared with the marked moment. The camera's main stream (a phone is small); the pictures of each change as
+   * crops around the place, whole frames where the camera turned. One at a time with objectGone: each decodes
+   * hundreds of keyframes.
+   */
+  public async placeHistory(query: { cameraId: string; place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceHistoryAnswer> {
+    await this.ready;
+    const run = this.goneChain.then(() => this.placeHistoryNow(query));
+    this.goneChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async placeHistoryNow(query: { cameraId: string; place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceHistoryAnswer> {
+    const { cameraId } = query;
+    const role = this.primaryRole(cameraId);
+    const ffmpeg = this.ffmpegPath;
+    const place = insidePicture(query.place);
+    const read = new Map<number, PlaceLook | undefined>();
+    let unreadable = 0;
+    let problem: string | undefined;
+    const answer = await placeHistory(
+      {
+        recorded: (from, to) => this.merged(cameraId, role, from, to).map((run) => ({ startMs: run.startTime, endMs: run.endTime })),
+        look: async (atMs) => {
+          const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
+          if (!segment || segment.start_us > atMs * 1000 + 2_000_000) return undefined;
+          const keyframe = keyframeAtOrBefore(segment, atMs * 1000);
+          if (!keyframe) return undefined;
+          // halving asks the same keyframe by many times between it and the next: decoded once
+          if (read.has(keyframe.tsUs)) return read.get(keyframe.tsUs);
+          const look = await lookOf(ffmpeg, this.store.located(segment), keyframe.tsUs, place).catch((error: Error) => {
+            unreadable++;
+            problem ??= error.message;
+            return undefined;
+          });
+          const seen = look ? { atMs: Math.round(keyframe.tsUs / 1000), ...look } : undefined;
+          read.set(keyframe.tsUs, seen);
+          return seen;
+        },
+      },
+      { ...query, place },
+    );
+    if (unreadable) this.logger.warn(`Place history of ${cameraId}: ${unreadable} keyframe(s) could not be read: ${problem}`);
+
+    // the pictures of the changes one after another (each an ffmpeg): the place's own first, then the turns
+    const pictureAt = async (atMs: number, region: Place, maxWidth?: number) => {
+      const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
+      const frame = segment && segment.start_us <= atMs * 1000 + 2_000_000 ? await frameAt(ffmpeg, this.store.located(segment), atMs * 1000) : undefined;
+      return frame ? cropOfPicture(ffmpeg, frame, region, maxWidth) : undefined;
+    };
+    const around = widened(place, 2.5);
+    const whole = { x: 0, y: 0, width: 1, height: 1 };
+    const pictures: PlaceHistoryAnswer['pictures'] = [];
+    const shown = answer.changes
+      .map((change, index) => ({ change, index }))
+      .filter(({ change }) => change.kind !== 'light')
+      .sort((a, b) => (a.change.kind === 'changed' ? 0 : 1) - (b.change.kind === 'changed' ? 0 : 1))
+      .slice(0, PICTURED_CHANGES);
+    for (const { change, index } of shown) {
+      const region = change.kind === 'turned' ? whole : around;
+      const before = await pictureAt(change.beforeMs, region, 640);
+      const after = await pictureAt(change.afterMs, region, 640);
+      // who stood in front: wider, a person is taller than what they took
+      const busy = change.busy && pictures.length === 0 ? await pictureAt((change.busy.fromMs + change.busy.toMs) / 2, widened(place, 4), 640) : undefined;
+      pictures.push({ change: index, ...(before ? { before } : {}), ...(after ? { after } : {}), ...(busy ? { busy } : {}) });
+    }
+    const stillMs = query.mode === 'gone' && !shown.length ? answer.lastSameMs : query.mode === 'appeared' && !shown.length ? answer.firstSameMs : undefined;
+    const still = stillMs === undefined ? undefined : await pictureAt(stillMs, around, 640);
+    return { ...answer, place, pictures, ...(still ? { still } : {}), ...(unreadable ? { unreadable, problem } : {}) };
   }
 
   private keepFind(key: string, find: FoundInEvent): void {

@@ -1,7 +1,8 @@
-// Pictures out of the recording by ffmpeg (frames.ts) and the search for a thing's going on them (gone.ts): a made-up
+// Pictures out of the recording by ffmpeg (frames.ts) and the searches on them (gone.ts, place.ts): a made-up
 // recording of two MPEG-TS files, a patterned table that never moves with a dark box on it until its 12th second. A
 // whole frame at a time; the patch of the box the same while it lies and other after; the patches every half second
-// across the two files with their times; and the moment it went, found to the half second.
+// across the two files with their times; the moment it went, found to the half second; a look at one keyframe (its
+// patch as the stream's, the whole picture small, gray or coloured) and the place's history to the keyframe.
 // Needs ffmpeg with libx264 on PATH (or CAMERAUI_FFMPEG_PATH). Run: npx tsx spec/frames.spec.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -9,8 +10,9 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { frameAt, patchesOf, patchOfPicture } from '../src/frames.js';
-import { FINE_MS, patchDiff, SAME_LOOK, whenGone, widened } from '../src/gone.js';
+import { frameAt, lookOf, patchesOf, patchOfPicture } from '../src/frames.js';
+import { FINE_MS, PATCH, patchDiff, SAME_LOOK, whenGone, widened } from '../src/gone.js';
+import { NIGHT_COLOUR, OVERVIEW_H, OVERVIEW_W, placeHistory } from '../src/place.js';
 
 import type { Place } from '../src/gone.js';
 
@@ -19,10 +21,11 @@ const dir = mkdtempSync(join(tmpdir(), 'nvr-frames-'));
 const T = Date.parse('2026-10-14T10:00:00Z') * 1000;
 const BOX = { x: 150 / 320, y: 150 / 240, width: 30 / 320, height: 20 / 240 };
 
-/** A file of `seconds`, the box drawn until `until` s of it (never when undefined). */
-function file(name: string, seconds: number, until?: number): string {
+/** A file of `seconds`, the box drawn until `until` s of it (never when undefined); gray, or with colour. */
+function file(name: string, seconds: number, until?: number, colour = false): string {
   const path = join(dir, name);
   const box = until === undefined ? '' : `,drawbox=x=150:y=150:w=30:h=20:color=black:t=fill:enable='lt(t,${until})'`;
+  const chroma = colour ? "cb='128+50*sin(X/9)':cr='128+40*cos(Y/7)'" : 'cb=128:cr=128';
   const made = spawnSync(FFMPEG, [
     '-hide_banner',
     '-loglevel',
@@ -31,7 +34,7 @@ function file(name: string, seconds: number, until?: number): string {
     '-f',
     'lavfi',
     '-i',
-    `nullsrc=s=320x240:r=10,format=yuv420p,geq=lum='128+60*sin(X/7)*cos(Y/5)':cb=128:cr=128${box}`,
+    `nullsrc=s=320x240:r=10,format=yuv420p,geq=lum='128+60*sin(X/7)*cos(Y/5)':${chroma}${box}`,
     '-t',
     String(seconds),
     '-c:v',
@@ -107,4 +110,48 @@ const region = widened(BOX);
   assert.ok(answer.before?.[0] === 0xff && answer.after?.[0] === 0xff, 'the pictures of the two moments');
 }
 
-console.log('frames.spec: a frame at a time, the patch of a place lying and gone, patches across files, the moment found on a recording OK');
+// ---- a look at one keyframe (place.ts): the patch as the stream's, the whole picture small, how coloured it is
+{
+  const look = await lookOf(FFMPEG, first, T + 5e6, BOX);
+  assert.ok(look, 'a look at the keyframe of the 5th second');
+  assert.equal(look.patch.length, PATCH * PATCH);
+  assert.equal(look.overview.length, OVERVIEW_W * OVERVIEW_H);
+  const [stream] = await patchesOf(FFMPEG, segments, T + 5e6, T + 5.5e6, BOX, FINE_MS);
+  assert.ok(patchDiff(look.patch, stream.pixels) < SAME_LOOK / 3, `the keyframe's patch is the stream's: ${patchDiff(look.patch, stream.pixels)}`);
+  const dark = look.patch.reduce((sum, v) => sum + v, 0) / look.patch.length;
+  assert.ok(dark < 60, `the box itself, black: ${dark}`);
+  const later = await lookOf(FFMPEG, second, T + 15e6, BOX);
+  assert.ok(patchDiff(look.patch, later!.patch) > SAME_LOOK, 'gone at the 15th second');
+  assert.ok(patchDiff(look.overview, later!.overview) < 0.3, `the whole picture the same: ${patchDiff(look.overview, later!.overview)}`);
+  assert.ok(look.colour < NIGHT_COLOUR, `a gray recording is a night one: ${look.colour}`);
+  const coloured = { path: file('c.ts', 3, undefined, true), start_us: T, end_us: T + 3e6 };
+  const day = await lookOf(FFMPEG, coloured, T + 1e6, BOX);
+  assert.ok(day!.colour > NIGHT_COLOUR * 3, `a coloured one is a day one: ${day!.colour}`);
+  assert.equal(await lookOf(FFMPEG, first, T + 30e6, BOX), undefined, 'past the frames of the file: no look');
+  await assert.rejects(lookOf(FFMPEG, { ...first, path: join(dir, 'missing.ts') }, T + 1e6, BOX), 'a file that cannot be read is a failure, not an empty look');
+}
+
+// ---- the whole history of the place on the recording: marked at the 3rd second, the box went at the 12th
+{
+  const answer = await placeHistory(
+    {
+      recorded: () => [{ startMs: T / 1000, endMs: T / 1000 + 20_000 }],
+      look: async (atMs) => {
+        // a keyframe every second (-g 10 at 10 fps), as the index of the recorder gives them
+        const segment = segmentAt(atMs * 1000);
+        const keyframeUs = Math.max(segment.start_us, T + Math.floor((atMs * 1000 - T) / 1e6) * 1e6);
+        const look = await lookOf(FFMPEG, segment, Math.min(keyframeUs, segment.end_us - 1e6), BOX);
+        return look ? { atMs: Math.min(keyframeUs, segment.end_us - 1e6) / 1000, ...look } : undefined;
+      },
+    },
+    { place: BOX, atMs: T / 1000 + 3000, fromMs: T / 1000, toMs: T / 1000 + 20_000, mode: 'gone' },
+  );
+  const changed = answer.changes.filter((c) => c.kind === 'changed');
+  assert.equal(changed.length, 1, JSON.stringify(answer.changes));
+  assert.equal((changed[0].beforeMs - T / 1000) / 1000, 11, 'the last keyframe with the box');
+  assert.equal((changed[0].afterMs - T / 1000) / 1000, 12, 'the first without it');
+  assert.ok(changed[0].exact && !changed[0].busy && !changed[0].gap);
+  assert.equal(answer.changes.filter((c) => c.kind === 'turned').length, 0, 'the camera did not turn');
+}
+
+console.log('frames.spec: a frame at a time, the patch of a place lying and gone, patches across files, the moment found on a recording, a look at a keyframe, the history of a place OK');

@@ -122,6 +122,7 @@ assert.deepEqual(reading.sort(), [
   'list_plates',
   'object_gone',
   'person_route',
+  'place_history',
   'query_events',
   'recording_health',
   'search_events_by_text',

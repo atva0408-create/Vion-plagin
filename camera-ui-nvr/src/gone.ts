@@ -122,7 +122,7 @@ export function widened(place: Place, margin = MARGIN): Place {
 }
 
 /** The recorded time as one line: an offset in it is a time of the recording, pauses left out. */
-function timeline(stretches: Stretch[]) {
+export function timeline(stretches: Stretch[]) {
   const total = stretches.reduce((sum, s) => sum + (s.endMs - s.startMs), 0);
   const at = (offset: number): number => {
     let left = Math.max(0, Math.min(offset, total));

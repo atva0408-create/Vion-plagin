@@ -1,11 +1,13 @@
-// Pictures read out of the recording by ffmpeg for gone.ts: a whole frame at a time (JPEG, for the text finder) and
-// the small gray patch of a region, of one picture or of every half second of a stretch (compared with how the region
-// looked). A file of the recording is MPEG-TS from its keyframe on; a time in it is its offset from the file's start,
-// as the export cuts a clip (export.ts clipPlan).
+// Pictures read out of the recording by ffmpeg for gone.ts and place.ts: a whole frame at a time (JPEG, for the text
+// finder and the pictures shown), the small gray patch of a region, of one picture or of every half second of a
+// stretch (compared with how the region looked), and a look at one keyframe (the patch and the whole picture small).
+// A file of the recording is MPEG-TS from its keyframe on; a time in it is its offset from the file's start, as the
+// export cuts a clip (export.ts clipPlan).
 
 import { spawn } from 'node:child_process';
 
 import { PATCH } from './gone.js';
+import { OVERVIEW_H, OVERVIEW_W } from './place.js';
 
 import type { Place } from './gone.js';
 import type { SegmentRow } from './store.js';
@@ -109,6 +111,66 @@ export async function patchOfPicture(ffmpegPath: string, picture: Uint8Array, re
     picture,
   );
   return raw.length >= PATCH * PATCH ? new Uint8Array(raw.subarray(0, PATCH * PATCH)) : undefined;
+}
+
+/** Seeking a keyframe a little past its time: ffmpeg's fast seek lands on the keyframe at or before (a frame is 40 ms+). */
+const KEYFRAME_PAST_S = 0.02;
+
+/**
+ * A look at one keyframe of a file of the recording (place.ts): the gray patch of a region, the whole picture small
+ * and how coloured it is. Only the keyframe is decoded (0.15-0.2 s on the bench against 0.2-0.45 s for an exact time,
+ * measured 2026-10-14): one ffmpeg makes both pictures, stacked in one frame of planar YUV 4:4:4, whose chroma tells a
+ * night picture (gray, chroma at 128) from a day one.
+ */
+export async function lookOf(
+  ffmpegPath: string,
+  segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>,
+  keyframeUs: number,
+  region: Place,
+): Promise<{ patch: Uint8Array; overview: Uint8Array; colour: number } | undefined> {
+  const width = Math.max(PATCH, OVERVIEW_W);
+  const height = PATCH + OVERVIEW_H;
+  const raw = await capture(ffmpegPath, [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-noaccurate_seek',
+    '-skip_frame',
+    'nokey',
+    '-ss',
+    ((keyframeUs - segment.start_us) / 1e6 + KEYFRAME_PAST_S).toFixed(3),
+    '-i',
+    segment.path,
+    '-frames:v',
+    '1',
+    '-filter_complex',
+    [
+      `[0:v]split=2[a][b];[a]${cropOf(region)},scale=${PATCH}:${PATCH}:flags=area,format=yuv444p,pad=${width}:${PATCH}:0:0[p]`,
+      `[b]scale=${OVERVIEW_W}:${OVERVIEW_H}:flags=area,format=yuv444p,pad=${width}:${OVERVIEW_H}:0:0[o]`,
+      '[p][o]vstack=inputs=2[out]',
+    ].join(';'),
+    '-map',
+    '[out]',
+    '-f',
+    'rawvideo',
+    'pipe:1',
+  ]).catch((error: Error) => {
+    // a keyframe past the frames of the file (it ends early): no look there, not a failure of the search
+    if (/Nothing was written|no packets|Output file is empty/i.test(error.message)) return Buffer.alloc(0);
+    throw error;
+  });
+  const plane = width * height;
+  if (raw.length < 3 * plane) return undefined;
+  const patch = new Uint8Array(PATCH * PATCH);
+  for (let y = 0; y < PATCH; y++) patch.set(raw.subarray(y * width, y * width + PATCH), y * PATCH);
+  const overview = new Uint8Array(OVERVIEW_W * OVERVIEW_H);
+  let chroma = 0;
+  for (let y = 0; y < OVERVIEW_H; y++) {
+    const row = (PATCH + y) * width;
+    overview.set(raw.subarray(row, row + OVERVIEW_W), y * OVERVIEW_W);
+    for (let x = 0; x < OVERVIEW_W; x++) chroma += Math.abs(raw[plane + row + x] - 128) + Math.abs(raw[2 * plane + row + x] - 128);
+  }
+  return { patch, overview, colour: chroma / (OVERVIEW_W * OVERVIEW_H) };
 }
 
 /**

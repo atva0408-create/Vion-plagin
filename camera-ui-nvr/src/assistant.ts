@@ -10,7 +10,8 @@
 
 import type { AssistantToolContext, AssistantToolImage, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
 import type { FaceProfile } from './faces.js';
-import type { GoneAnswer } from './gone.js';
+import type { GoneAnswer, Place } from './gone.js';
+import type { PlaceHistoryAnswer, PlaceMode } from './place.js';
 import type { ClipSearchResult } from './semantic.js';
 import type { GetEventsOptions, ManualRecording, PersonRouteResult, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
 
@@ -50,6 +51,8 @@ export interface AssistantHost {
   personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number; precision?: number }): Promise<PersonRouteResult>;
   /** When a thing that lay in a camera's picture went (gone.ts): found by its words in the recording, halved, compared. */
   objectGone?(query: { cameraId: string; words: string; language?: string; fromMs: number; toMs: number }): Promise<GoneAnswer>;
+  /** What became of a place marked on a frame of the recording (place.ts): its look at keyframes against the marked moment. */
+  placeHistory?(query: { cameraId: string; place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceHistoryAnswer>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
   crossingLines(cameraIds: string[] | undefined, startMs: number, endMs: number): { cameraId: string; line: string; hasWay: boolean }[];
   /** The labels the lines counted in a range, each once. */
@@ -207,6 +210,47 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       required: ['camera', 'object'],
     },
     // dozens of pictures through the finder and a minute of the recording decoded: minutes on a processor
+    timeoutMs: 300_000,
+  },
+  {
+    name: 'place_history',
+    description:
+      'What became of a place the person marked on a frame of a camera\'s recording: «куда делся этот телефон», «когда это исчезло» (mode ' +
+      'gone: from the marked moment on), «когда это появилось» (appeared: back from it), «что было тут за неделю» (history over from…to). The ' +
+      'place is watched, not the thing: its look at keyframes of the recording is compared with the marked moment, so it works for anything, ' +
+      'also what the search in pictures does not know (object_gone needs words it knows). The camera, the moment and the area come with the ' +
+      'person\'s message (a selection made in the archive); without one ask them to open the recording, pause it and mark the place. The ' +
+      'answer: when the place stopped (started) looking as marked, to a keyframe (1-3 s); when someone stood in front of it; night pictures; ' +
+      'where the camera turned (the looking stops there: the place is elsewhere in the picture after it); pauses of the recording; the ' +
+      'pictures before and after each change and the events around it (buttons). Look at the pictures before telling and say what is in ' +
+      'them: a person standing in front, a lamp or a moved chair change a place too. Takes up to a few minutes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: { type: 'string', description: 'Camera name of the selection' },
+        time: { type: 'string', format: 'date-time', description: 'The marked moment of the selection, the user time zone' },
+        area: {
+          type: 'object',
+          description: 'The marked area as shares of the picture (0-1) from its top left corner, as the selection gives it',
+          properties: {
+            x: { type: 'number', minimum: 0, maximum: 1 },
+            y: { type: 'number', minimum: 0, maximum: 1 },
+            width: { type: 'number', minimum: 0, maximum: 1 },
+            height: { type: 'number', minimum: 0, maximum: 1 },
+          },
+          required: ['x', 'y', 'width', 'height'],
+        },
+        mode: {
+          type: 'string',
+          enum: ['gone', 'appeared', 'history'],
+          description: 'gone: where it went, when it disappeared; appeared: when it came; history: what was there over a while',
+        },
+        from: { type: 'string', format: 'date-time', description: 'history: the start (default 12 hours before time); appeared: how far back (default a day)' },
+        to: { type: 'string', format: 'date-time', description: 'history: the end (default 12 hours after time); gone: until when (default now)' },
+      },
+      required: ['camera', 'time', 'area', 'mode'],
+    },
+    // up to 420 keyframes decoded, 0.15-0.2 s each on a processor, and the pictures of the changes
     timeoutMs: 300_000,
   },
   {
@@ -479,6 +523,8 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
       return personRoute(host, input, ctx);
     case 'object_gone':
       return objectGone(host, input, ctx);
+    case 'place_history':
+      return placeHistory(host, input, ctx);
     case 'search_events_by_text':
       return searchByText(host, input, ctx);
     case 'list_plates':
@@ -2000,20 +2046,7 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
   const answer = await host.objectGone({ cameraId, words, language: ctx.language, fromMs: start, toMs: end });
   const names = cameraNames(host);
   const cameraName = names.get(cameraId) ?? cameraId;
-  const clock = (ms: number) => {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: safeZone(ctx.timezone),
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    }).formatToParts(ms);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-    return `${get('year')}-${get('month')}-${get('day')} ${get('hour') === '24' ? '00' : get('hour')}:${get('minute')}:${get('second')}`;
-  };
+  const clock = wallClock(ctx.timezone);
   const head = { camera: cameraName, object: words, ...(answer.english ? { as: answer.english } : {}), timezone: ctx.timezone, from: clock(start), to: clock(end) };
   switch (answer.state) {
     case 'no-recording':
@@ -2071,6 +2104,145 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
         'The place was compared with how it looked when the thing lay there: a light turned off, a moved camera or someone standing in front ' +
         'also change it. Look at the two pictures (before, after) before telling.',
       looks: answer.looks,
+    },
+    ...(images.length ? { images } : {}),
+    references: around.slice(0, MAX_REFERENCES).map((ev) => reference(ev, names, ctx)),
+  };
+}
+
+/** A moment as the person's clock shows it, to the second: «2026-10-14 08:39:20». */
+function wallClock(timezone: string): (ms: number) => string {
+  const format = new Intl.DateTimeFormat('en-CA', {
+    timeZone: safeZone(timezone),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  return (ms) => {
+    const parts = format.formatToParts(ms);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${get('year')}-${get('month')}-${get('day')} ${get('hour') === '24' ? '00' : get('hour')}:${get('minute')}:${get('second')}`;
+  };
+}
+
+/** The longest while place_history looks through, as object_gone: a week (a first pass of 160 looks whatever the length). */
+const PLACE_MAX_MS = 7 * DAY_MS;
+/** The while around the marked moment a history looks through when none is given: the day around it. */
+const PLACE_AROUND_MS = 12 * 3600_000;
+const PLACE_PASSES = 12;
+
+/**
+ * place_history: what became of a place the person marked on a frame of the recording, the changes in the person's
+ * clock, someone in front, night pictures, turns of the camera, with the pictures around each change for the model.
+ */
+async function placeHistory(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  if (!host.placeHistory) return { error: 'This recorder cannot look at a place in its recording' };
+  const camera = resolveOneCamera(host, input.camera);
+  if ('error' in camera) return camera;
+  const mode = input.mode;
+  if (mode !== 'gone' && mode !== 'appeared' && mode !== 'history') return { error: 'mode must be gone, appeared or history' };
+  const area = input.area as Record<string, unknown> | undefined;
+  const shares = ['x', 'y', 'width', 'height'].map((key) => Number(area?.[key]));
+  if (!area || shares.some((v) => !Number.isFinite(v) || v < 0 || v > 1)) return { error: 'area must be x, y, width, height as shares of the picture (0-1)' };
+  const [x, y, width, height] = shares;
+  if (width <= 0 || height <= 0) return { error: 'area must have a width and a height' };
+  const now = Date.now();
+  const at = parseTime(input.time, ctx.timezone);
+  if (at === undefined) return { error: `time must be the marked moment, got "${String(input.time)}"` };
+  if (at > now) return { error: 'time is in the future: the marked moment is a moment of the recording' };
+  const from = input.from === undefined ? undefined : parseTime(input.from, ctx.timezone);
+  const to = input.to === undefined ? undefined : parseTime(input.to, ctx.timezone);
+  if (from === undefined && input.from !== undefined) return { error: `from must be a time, got ${JSON.stringify(input.from)}` };
+  if (to === undefined && input.to !== undefined) return { error: `to must be a time, got ${JSON.stringify(input.to)}` };
+  // gone looks on from the moment, appeared back from it, a history around it; each a week at most
+  let fromMs: number;
+  let end: number;
+  if (mode === 'gone') {
+    fromMs = at;
+    end = Math.min(now, to ?? now, at + PLACE_MAX_MS);
+  } else if (mode === 'appeared') {
+    fromMs = Math.max(from ?? at - DAY_MS, at - PLACE_MAX_MS);
+    end = at;
+  } else {
+    fromMs = from ?? at - PLACE_AROUND_MS;
+    end = Math.min(now, to ?? at + PLACE_AROUND_MS);
+    if (end - fromMs > PLACE_MAX_MS) return { error: 'from…to is longer than a week: ask a shorter while around the marked moment' };
+  }
+  if (fromMs > at || end < at) return { error: 'the marked moment must be inside from…to' };
+
+  const answer = await host.placeHistory({ cameraId: camera.id, place: { x, y, width, height }, atMs: at, fromMs, toMs: end, mode });
+  const clock = wallClock(ctx.timezone);
+  const head = { camera: camera.name, mode, timezone: ctx.timezone, asked: { from: clock(fromMs), to: clock(end) } };
+  if (answer.state === 'no-recording') return { error: `Nothing of «${camera.name}» was recorded from ${clock(fromMs)} to ${clock(end)}.` };
+  if (answer.state === 'unreadable') {
+    return { error: `The recording of «${camera.name}» at ${clock(at)} could not be read${answer.problem ? `: ${answer.problem}` : ''}.` };
+  }
+
+  const images: AssistantToolImage[] = [];
+  const shown = new Map(answer.pictures.map((p) => [p.change, p]));
+  const changes = answer.changes.map((change, i) => {
+    const pictures = shown.get(i);
+    const first = images.length + 1;
+    if (pictures) {
+      images.push(...jpeg(pictures.before, `${camera.name} · before · ${clock(change.beforeMs)}`));
+      images.push(...jpeg(pictures.busy, `${camera.name} · someone in front · ${clock(change.busy?.fromMs ?? change.beforeMs)}`));
+      images.push(...jpeg(pictures.after, `${camera.name} · after · ${clock(change.afterMs)}`));
+    }
+    return {
+      what:
+        change.kind === 'changed'
+          ? 'the place changed'
+          : change.kind === 'turned'
+            ? 'the camera turned: the whole picture changed for good, the place is elsewhere in it after (the looking stopped here)'
+            : 'the light changed: night (gray) pictures came or went; by night the place is compared with night pictures only',
+      before: clock(change.beforeMs),
+      after: clock(change.afterMs),
+      ...(change.busy ? { someoneInFront: { from: clock(change.busy.fromMs), to: clock(change.busy.toMs) } } : {}),
+      ...(change.gap ? { pause: 'nothing was recorded somewhere between the two' } : {}),
+      ...(change.exact ? {} : { roughly: `the two are looks of the first pass, up to ${Math.round((answer.stepMs ?? 0) / 60_000)} min apart` }),
+      ...(change.asMarked ? { asMarked: 'after it the place looks as at the marked moment again' } : {}),
+      ...(images.length >= first ? { pictures: `${first}-${images.length}` } : {}),
+    };
+  });
+  images.push(...jpeg(answer.still, `${camera.name} · the place · ${clock(mode === 'appeared' ? (answer.firstSameMs ?? at) : (answer.lastSameMs ?? at))}`));
+
+  // the events by each change shown: who was there (a button each)
+  const names = cameraNames(host);
+  const around: RecordedEvent[] = [];
+  for (const p of answer.pictures) {
+    const change = answer.changes[p.change];
+    const found = host.events([camera.id], { startMs: change.beforeMs - 60_000, endMs: change.afterMs + 60_000 }, MAX_EVENTS).events;
+    for (const ev of found) if (!around.some((a) => a.id === ev.id)) around.push(ev);
+  }
+  around.sort((a, b) => a.startTime - b.startTime);
+  const placeChanges = answer.changes.filter((c) => c.kind === 'changed');
+  return {
+    content: {
+      ...head,
+      marked: clock(answer.markedMs!),
+      lookedThrough: { from: clock(answer.fromMs!), to: clock(answer.toMs!), step: `${Math.max(1, Math.round((answer.stepMs ?? 0) / 1000))} s` },
+      ...(mode === 'gone' ? { lastAsMarked: clock(answer.lastSameMs!) } : {}),
+      ...(mode === 'appeared' ? { firstAsMarked: clock(answer.firstSameMs!) } : {}),
+      ...(mode !== 'history' && !placeChanges.length
+        ? { unchanged: mode === 'gone' ? 'the place looks as marked to the end of the time looked through' : 'the place looks as marked since its start' }
+        : {}),
+      changes,
+      ...(answer.passes.length
+        ? {
+            passes: answer.passes.slice(0, PLACE_PASSES).map((p) => (p.fromMs === p.toMs ? clock(p.fromMs) : `${clock(p.fromMs)} – ${clock(p.toMs)}`)),
+            passesNote: 'someone or something in front of the place for a look or a few, the place as before after it',
+          }
+        : {}),
+      ...(answer.cut ? { cut: `the looks ran out: the time after ${clock(answer.toMs!)} (before ${clock(answer.fromMs!)}) was not looked at; ask a shorter while` } : {}),
+      ...(answer.unreadable ? { unreadable: `${answer.unreadable} keyframe(s) could not be read` } : {}),
+      around: around.slice(0, 8).map((ev) => ({ id: ev.id, start: clock(ev.startTime), labels: labelsOf(ev), ...(ev.ai?.title ? { title: ev.ai.title } : {}) })),
+      note:
+        'Compared by look, not recognised: tell what the pictures show before saying what went or came. The pictures are numbered in the ' +
+        'order given (`pictures` of each change).',
     },
     ...(images.length ? { images } : {}),
     references: around.slice(0, MAX_REFERENCES).map((ev) => reference(ev, names, ctx)),
