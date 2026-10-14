@@ -20,7 +20,9 @@ const clamp = (v: number) => Math.max(0, Math.min(1, v));
 export function privacyBoxes(zones: readonly PrivacyArea[] | undefined): Place[] {
   const boxes: Place[] = [];
   for (const zone of zones ?? []) {
-    const points = (zone.points ?? []).map(([x, y]) => ({ x: clamp(Number(x) / 100), y: clamp(Number(y) / 100) })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    const points = (zone.points ?? [])
+      .map(([x, y]) => ({ x: clamp(Number(x) / 100), y: clamp(Number(y) / 100) }))
+      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
     if (points.length < 3) continue;
     const top = Math.min(...points.map((p) => p.y));
     const bottom = Math.max(...points.map((p) => p.y));
