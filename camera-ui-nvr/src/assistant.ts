@@ -10,6 +10,7 @@
 
 import type { AssistantToolContext, AssistantToolImage, AssistantToolReference, AssistantToolResult, AssistantToolSpec } from '@camera.ui/sdk';
 import type { FaceProfile } from './faces.js';
+import type { GoneAnswer } from './gone.js';
 import type { ClipSearchResult } from './semantic.js';
 import type { GetEventsOptions, ManualRecording, PersonRouteResult, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
 
@@ -47,6 +48,8 @@ export interface AssistantHost {
   ): Promise<{ scanned: number; capped: boolean; oldestMs?: number }>;
   /** Where a person went, camera after camera, around a recorded moment (people.ts routeOf). */
   personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number; precision?: number }): Promise<PersonRouteResult>;
+  /** When a thing that lay in a camera's picture went (gone.ts): found by its words in the recording, halved, compared. */
+  objectGone?(query: { cameraId: string; words: string; language?: string; fromMs: number; toMs: number }): Promise<GoneAnswer>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
   crossingLines(cameraIds: string[] | undefined, startMs: number, endMs: number): { cameraId: string; line: string; hasWay: boolean }[];
   /** The labels the lines counted in a range, each once. */
@@ -183,6 +186,28 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       },
       required: ['event'],
     },
+  },
+  {
+    name: 'object_gone',
+    description:
+      'When a thing that lay in the picture of a camera went: «на камере в прихожей лежал телефон — когда он исчез», «когда пропал велосипед ' +
+      'со двора», «до скольки стояла коляска у двери». The words are found in pictures of the recording (the search in pictures of ONNX or ' +
+      'OpenVINO), the recording is halved and the last minute compared with how the place looked: the answer gives the last moment the thing ' +
+      'was seen and the first it was not (to about a second), the events around it (who was there, a button each) and two pictures of the ' +
+      'place, before and after. Look at them before telling: a light turned off or someone standing in front can look like a going. The thing ' +
+      'in a few words as it looks; `from` a time it surely lay there (default a day before `to`). Takes up to a few minutes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: { type: 'string', description: 'Camera name: the one the thing lay in the picture of' },
+        object: { type: 'string', description: 'The thing in a few words as it looks: «телефон», «чёрная сумка», «детский велосипед»' },
+        from: { type: 'string', format: 'date-time', description: 'A time it surely lay there, the user time zone; default 24 hours before `to`' },
+        to: { type: 'string', format: 'date-time', description: 'Until when to look, the user time zone; default now' },
+      },
+      required: ['camera', 'object'],
+    },
+    // dozens of pictures through the finder and a minute of the recording decoded: minutes on a processor
+    timeoutMs: 300_000,
   },
   {
     name: 'summarize_day',
@@ -452,6 +477,8 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
       return lineCounts(host, input, ctx);
     case 'person_route':
       return personRoute(host, input, ctx);
+    case 'object_gone':
+      return objectGone(host, input, ctx);
     case 'search_events_by_text':
       return searchByText(host, input, ctx);
     case 'list_plates':
@@ -1943,6 +1970,107 @@ async function personRoute(host: AssistantHost, input: Input, ctx: AssistantTool
         : {}),
     },
     references,
+  };
+}
+
+/** The longest time object_gone looks through: a week (the halving reads a few dozen pictures whatever the length). */
+const GONE_MAX_MS = 7 * DAY_MS;
+
+/**
+ * object_gone: when a thing that lay in a camera's picture went, with the two moments in the person's clock, the
+ * events around them (buttons) and the pictures of the place before and after for the model to look at.
+ */
+async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  const words = typeof input.object === 'string' ? input.object.trim() : '';
+  if (!words) return { error: 'object is required: the thing in a few words, as it looks' };
+  if (!host.objectGone) return { error: 'This recorder cannot look for when a thing went' };
+  const camera = resolveCamera(host, input.camera);
+  if ('error' in camera) return camera;
+  if (camera.ids?.length !== 1) return { error: 'Name one camera: the one the thing lay in the picture of' };
+  const cameraId = camera.ids[0];
+  const now = Date.now();
+  const to = input.to === undefined ? now : parseTime(input.to, ctx.timezone);
+  if (to === undefined) return { error: `to must be a time, got "${String(input.to)}"` };
+  const end = Math.min(to, now);
+  const from = input.from === undefined ? end - DAY_MS : parseTime(input.from, ctx.timezone);
+  if (from === undefined) return { error: `from must be a time, got "${String(input.from)}"` };
+  if (from >= end) return { error: 'from must be before to (and before now)' };
+  const start = Math.max(from, end - GONE_MAX_MS);
+
+  const answer = await host.objectGone({ cameraId, words, language: ctx.language, fromMs: start, toMs: end });
+  const names = cameraNames(host);
+  const cameraName = names.get(cameraId) ?? cameraId;
+  const clock = (ms: number) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: safeZone(ctx.timezone),
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(ms);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${get('year')}-${get('month')}-${get('day')} ${get('hour') === '24' ? '00' : get('hour')}:${get('minute')}:${get('second')}`;
+  };
+  const head = { camera: cameraName, object: words, ...(answer.english ? { as: answer.english } : {}), timezone: ctx.timezone, from: clock(start), to: clock(end) };
+  switch (answer.state) {
+    case 'no-recording':
+      return { error: `Nothing of «${cameraName}» was recorded from ${clock(start)} to ${clock(end)}.` };
+    case 'no-finder':
+      return { error: 'No engine finds words in pictures here: ONNX or OpenVINO 1.7.0 or newer does.' };
+    case 'failed':
+      return { error: `The search failed: ${answer.problem ?? 'unknown'}` };
+    case 'never-seen':
+      return {
+        content: {
+          ...head,
+          state: 'never-seen',
+          note:
+            `The finder did not see «${words}» in the pictures of the recording in that time. Ask with other words, the thing as it looks ` +
+            '(«чёрный телефон на тумбочке»), or a `from` when it surely lay there.',
+          looks: answer.looks,
+        },
+      };
+    case 'still-there':
+      return {
+        content: {
+          ...head,
+          state: 'still-there',
+          seen: clock(answer.seenMs!),
+          stillThereAt: clock(answer.lastSeenMs!),
+          note: 'Where it lay at the last look.',
+          looks: answer.looks,
+        },
+      };
+    default:
+      break;
+  }
+  // the events around the moment: who was by the thing when it went
+  const around = host
+    .events([cameraId], { startMs: answer.lastSeenMs! - 60_000, endMs: answer.goneMs! + 60_000 }, MAX_EVENTS)
+    .events.sort((a, b) => a.startTime - b.startTime);
+  const images = [
+    ...jpeg(answer.before, `${cameraName} · before · ${clock(answer.lastSeenMs!)}`),
+    ...jpeg(answer.after, `${cameraName} · after · ${clock(answer.goneMs!)}`),
+  ];
+  return {
+    content: {
+      ...head,
+      state: 'gone',
+      seen: clock(answer.seenMs!),
+      lastSeen: clock(answer.lastSeenMs!),
+      gone: clock(answer.goneMs!),
+      ...(answer.gap ? { pause: 'Nothing was recorded between the two: it went somewhen in that pause.' } : {}),
+      around: around.slice(0, 8).map((ev) => ({ id: ev.id, start: clock(ev.startTime), labels: labelsOf(ev), ...(ev.ai?.title ? { title: ev.ai.title } : {}) })),
+      note:
+        'The place was compared with how it looked when the thing lay there: a light turned off, a moved camera or someone standing in front ' +
+        'also change it. Look at the two pictures (before, after) before telling.',
+      looks: answer.looks,
+    },
+    ...(images.length ? { images } : {}),
+    references: around.slice(0, MAX_REFERENCES).map((ev) => reference(ev, names, ctx)),
   };
 }
 

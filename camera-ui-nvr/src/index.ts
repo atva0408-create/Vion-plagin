@@ -11,6 +11,8 @@ import { Episodes } from './episodes.js';
 import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
+import { cropOfPicture, frameAt, patchesOf, patchOfPicture } from './frames.js';
+import { NO_FINDER, whenGone, widened } from './gone.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
@@ -37,6 +39,7 @@ import type { ExternalEventInput, ExternalEventResult } from './external.js';
 import type { FaceImageData, FaceMatchResult, FaceNearestResult, FaceProfile, FaceSighting, IgnoredFace, UnknownFace } from './faces.js';
 import type { PersonHit, PersonVector } from './people.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding, TextFindAnswer } from './semantic.js';
+import type { GoneAnswer } from './gone.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type { IndexFilter } from './vector-index.js';
 import type {
@@ -250,8 +253,7 @@ const FIND_CALL_MS = 60_000;
 /** while the finder loads (≈720 MB, downloaded the first time) it is asked again this often, this long at most */
 const FIND_LOAD_POLL_MS = 2_000;
 const FIND_LOAD_WAIT_MS = 15 * 60_000;
-/** a problem of no plugin with a finder, apart from a failure's message */
-const NO_FINDER = '\u0000no-finder';
+// a problem of no plugin with a finder, apart from a failure's message: NO_FINDER of gone.ts
 /**
  * a query not asked for this long is left (another typed, the page closed): the page asks every 2 s while it looks, a
  * call lasts 30 s at most. Its pictures are not looked at, its failure is not told to a search of the same words later.
@@ -277,6 +279,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private people!: PersonIndex;
   /** one people search at a time: each reads the vectors of its window from the disk */
   private similarChain: Promise<unknown> = Promise.resolve();
+  /** one search for a thing's going at a time (objectGone) */
+  private goneChain: Promise<unknown> = Promise.resolve();
   /** finds by query and event, oldest first (findInEvents) */
   private finds = new Map<string, FoundInEvent>();
   /** what the finder made of each query: in English, and the score from which a box is the thing */
@@ -2556,6 +2560,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       events: (cameraIds, opts, limit) => this.queryEvents(cameraIds, opts, limit, STATS_SCAN_ROWS),
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
       personRoute: (query, opts) => this.personRoute(query, opts),
+      objectGone: (query) => this.objectGone(query),
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
       crossingLabels: (cameraIds, startMs, endMs) => this.store.crossingLabels({ cameraIds, startMs, endMs }),
@@ -2772,6 +2777,24 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       this.keepFind(key, { eventId: id, boxes: [], found: false });
       return undefined;
     }
+    // nobody waits for it any more (the load goes on in the plugin): asked again, it is queued again
+    const answer = await this.askFinder(query, language, picture, () => !this.findLeft(this.findAsked.get(asked) ?? 0));
+    if (answer === undefined || typeof answer === 'string') return answer;
+    this.findQueries.delete(asked);
+    this.findQueries.set(asked, { english: answer.query || query, ...(answer.foundScore !== undefined ? { foundScore: answer.foundScore } : {}) });
+    while (this.findQueries.size > FIND_QUERIES_KEPT) this.findQueries.delete(this.findQueries.keys().next().value!);
+    const found = answer.pictures?.[0];
+    const boxes = Array.isArray(found?.boxes) ? found.boxes : [];
+    const sure = answer.foundScore !== undefined && (boxes[0]?.score ?? 0) >= answer.foundScore;
+    this.keepFind(key, { eventId: id, boxes, found: sure, ...(sure && found?.crop ? { crop: new Uint8Array(found.crop) } : {}) });
+    return undefined;
+  }
+
+  /**
+   * A picture through the text finder of a detection plugin, waiting while it loads: its answer, what went wrong (a
+   * failure's message, or NO_FINDER), or nothing when `wanted` says nobody waits for it any more.
+   */
+  private async askFinder(query: string, language: string, picture: Uint8Array, wanted: () => boolean = () => true): Promise<TextFindAnswer | string | undefined> {
     const started = Date.now();
     let anew = false;
     let madeAnew = false;
@@ -2810,19 +2833,66 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (answer.loading) {
         if (Date.now() - started > FIND_LOAD_WAIT_MS) return `the text finder did not load in ${FIND_LOAD_WAIT_MS / 60_000} minutes`;
         await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
-        // nobody waits for it any more (the load goes on in the plugin): asked again, it is queued again
-        if (this.findLeft(this.findAsked.get(asked) ?? 0)) return undefined;
+        if (!wanted()) return undefined;
         continue;
       }
-      this.findQueries.delete(asked);
-      this.findQueries.set(asked, { english: answer.query || query, ...(answer.foundScore !== undefined ? { foundScore: answer.foundScore } : {}) });
-      while (this.findQueries.size > FIND_QUERIES_KEPT) this.findQueries.delete(this.findQueries.keys().next().value!);
-      const found = answer.pictures?.[0];
-      const boxes = Array.isArray(found?.boxes) ? found.boxes : [];
-      const sure = answer.foundScore !== undefined && (boxes[0]?.score ?? 0) >= answer.foundScore;
-      this.keepFind(key, { eventId: id, boxes, found: sure, ...(sure && found?.crop ? { crop: new Uint8Array(found.crop) } : {}) });
-      return undefined;
+      return answer;
     }
+  }
+
+  /**
+   * When a thing that lay in a camera's picture went (gone.ts): its words found in the recording by the text finder,
+   * the recording halved, the last minute compared with how the place looked. The recording of the camera's main
+   * stream (a phone is small); the pictures of the two moments are given as crops around the place. One at a time:
+   * each decodes the recording and asks the finder dozens of times.
+   */
+  public async objectGone(query: { cameraId: string; words: string; language?: string; fromMs: number; toMs: number }): Promise<GoneAnswer> {
+    await this.ready;
+    const run = this.goneChain.then(() => this.objectGoneNow(query));
+    this.goneChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async objectGoneNow(query: { cameraId: string; words: string; language?: string; fromMs: number; toMs: number }): Promise<GoneAnswer> {
+    const { cameraId, fromMs, toMs } = query;
+    const words = query.words.trim();
+    const language = typeof query.language === 'string' ? query.language : '';
+    const role = this.primaryRole(cameraId);
+    const ffmpeg = this.ffmpegPath;
+    const answer = await whenGone(
+      {
+        recorded: (from, to) => this.merged(cameraId, role, from, to).map((run) => ({ startMs: run.startTime, endMs: run.endTime })),
+        frame: async (atMs) => {
+          const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
+          return segment && segment.start_us <= atMs * 1000 + 2_000_000 ? frameAt(ffmpeg, this.store.located(segment), atMs * 1000) : undefined;
+        },
+        find: async (picture) => {
+          const found = await this.askFinder(words, language, picture);
+          if (found === undefined) return { problem: 'the search was stopped' };
+          if (typeof found === 'string') return { problem: found };
+          return { english: found.query || words, foundScore: found.foundScore ?? 0.1, boxes: found.pictures?.[0]?.boxes ?? [] };
+        },
+        patchOf: (picture, region) => patchOfPicture(ffmpeg, picture, region),
+        patches: (from, to, region, stepMs) =>
+          patchesOf(
+            ffmpeg,
+            this.store.segments(cameraId, role, from * 1000, to * 1000).map((s) => this.store.located(s)),
+            from * 1000,
+            to * 1000,
+            region,
+            stepMs,
+          ),
+      },
+      fromMs,
+      toMs,
+    );
+    // the two moments around the place, wide enough to see who was by it
+    if (answer.place && (answer.before || answer.after)) {
+      const around = widened(answer.place, 2.5);
+      const [before, after] = await Promise.all([answer.before, answer.after].map((picture) => (picture ? cropOfPicture(ffmpeg, picture, around) : undefined)));
+      return { ...answer, ...(before ? { before } : {}), ...(after ? { after } : {}) };
+    }
+    return answer;
   }
 
   private keepFind(key: string, find: FoundInEvent): void {
