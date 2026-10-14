@@ -1,3 +1,9 @@
+## [0.22.1]
+
+- A detection trace goes with the video it is drawn on: the disk guard and the quota delete the oldest video long before events go by their days, and the trace of each event stayed until the event went (969 MB of a 1.4 GB database on the bench, a week older than its video). Retention clears the trace of a camera's events older than its oldest video left, a little at a time; the events stay
+- When a thing went: a PTZ camera turned is no longer taken for its going (the place is elsewhere in the picture after it). The turn is said, and the thing is looked for only before it
+- The describer of events is given no empty picture: an empty card file went to the model as an empty image
+
 ## [0.22.0]
 
 - What became of a place marked on a frame of the recording: with ViON 2.4.5, pause a camera's recording, outline a place and ask where what lay there went, when it came or what was there over a while. The place is watched, not the thing, so anything works, also what the search in pictures does not know: its look at keyframes (only keyframes are decoded, 0.15-0.2 s each) is compared with the marked moment, and each change is narrowed to neighbouring keyframes (1-3 s) with the stretch someone stood in front of it. The rest of the picture tells a turned camera (the looking stops there) and night pictures (compared with night pictures only). The assistant says the moments in the person's clock with the pictures before and after, the events by them and buttons that open the recording paused on them; a week at most per question

@@ -1,3 +1,9 @@
+## [0.22.1]
+
+- Die Spur der Erkennungen geht mit dem Video, auf das sie gezeichnet wird: der Speicherschutz und das Kontingent löschen das älteste Video lange bevor Ereignisse nach ihren Tagen gehen, und die Spur jedes Ereignisses blieb bis dahin (969 MB einer 1,4-GB-Datenbank auf dem Prüfstand, eine Woche älter als ihr Video). Die Aufbewahrung löscht nach und nach die Spuren von Ereignissen einer Kamera, die älter sind als ihr ältestes verbliebenes Video; die Ereignisse bleiben
+- Wann ein Gegenstand verschwand: eine gedrehte PTZ-Kamera gilt nicht mehr als sein Verschwinden (die Stelle ist danach woanders im Bild). Die Drehung wird genannt, gesucht wird nur davor
+- Der Beschreiber der Ereignisse bekommt kein leeres Bild: eine leere Kartendatei ging als leeres Bild an das Modell
+
 ## [0.22.0]
 
 - Was aus einer Stelle wurde, die auf einem Bild der Aufzeichnung markiert ist: mit ViON 2.4.5 die Aufnahme einer Kamera anhalten, eine Stelle umrahmen und fragen, wo das hin ist, was dort lag, wann es kam oder was dort eine Weile lang war. Beobachtet wird die Stelle, nicht der Gegenstand, daher geht alles, auch was die Suche im Bild nicht kennt: ihr Aussehen auf Schlüsselbildern (nur diese werden dekodiert, 0,15–0,2 s pro Bild) wird mit dem markierten Moment verglichen, und jede Änderung wird auf benachbarte Schlüsselbilder (1–3 s) eingegrenzt, samt der Zeit, in der jemand davor stand. Der Rest des Bildes zeigt eine gedrehte Kamera (dort endet die Suche) und Nachtbilder (nur mit Nachtbildern verglichen). Der Assistent nennt die Momente in der Uhrzeit der Person mit den Bildern davor und danach, den Ereignissen daneben und Knöpfen, die die Aufnahme dort angehalten öffnen; höchstens eine Woche pro Frage
