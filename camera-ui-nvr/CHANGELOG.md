@@ -1,3 +1,7 @@
+## [0.21.0]
+
+- When a thing that lay in a camera's picture went: ask the assistant «на камере в прихожей лежал телефон — когда он исчез». The search in pictures finds the thing where it lay in the recording, the recording is halved, and the last minutes are compared twice a second with how the place looked; the answer gives the last moment the thing was seen and the first it was not (to about a second), the events around it (who was by it) and two pictures of the place, before and after, which the assistant looks at before telling. A person standing over the thing for a while and a finder missing it now and then are not taken for its going; a pause in the recording is said. Needs ONNX or OpenVINO 1.7.0 for the search in pictures; takes up to a few minutes
+
 ## [0.20.1]
 
 - The assistant finds the recorder's settings: person_route names the hop settings and that the assistant can change them; with ViON 2.4.4 it sets a value only as its field takes it and shows each setting by its title, from what to what, before it is confirmed

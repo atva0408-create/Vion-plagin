@@ -1,3 +1,7 @@
+## [0.21.0]
+
+- Wann ein Gegenstand, der im Bild einer Kamera lag, verschwand: fragen Sie den Assistenten «на камере в прихожей лежал телефон — когда он исчез». Die Suche im Bild findet den Gegenstand dort, wo er in der Aufzeichnung lag, die Aufzeichnung wird halbiert und die letzten Minuten zweimal pro Sekunde damit verglichen, wie die Stelle aussah; die Antwort nennt den letzten Moment, in dem er zu sehen war, und den ersten ohne ihn (auf etwa eine Sekunde), die Ereignisse daneben (wer dort war) und zwei Bilder der Stelle, davor und danach, die der Assistent ansieht, bevor er antwortet. Eine Person, die eine Weile davor stand, und eine Suche, die ihn einmal verfehlt, gelten nicht als sein Verschwinden; eine Pause der Aufzeichnung wird genannt. Braucht die Suche im Bild von ONNX oder OpenVINO 1.7.0; dauert bis zu einigen Minuten
+
 ## [0.20.1]
 
 - Der Assistent findet die Einstellungen der Aufzeichnung: person_route nennt die Einstellungen der Wechsel und dass der Assistent sie ändern kann; mit ViON 2.4.4 setzt er einen Wert nur so, wie sein Feld ihn nimmt, und zeigt jede Einstellung vor der Bestätigung mit ihrem Titel, von was zu was
