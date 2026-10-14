@@ -240,7 +240,13 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     for (const shift of UNREADABLE_SHIFTS_MS) {
       const picture = await sources.frame(at(Math.max(0, Math.min(total, offset + shift))));
       const view = picture ? await sources.patchOf(picture, WHOLE) : undefined;
-      if (view) return patchDiff(Uint8Array.from(mask!, (i) => view[i]), Uint8Array.from(mask!, (i) => firstView![i])) > TURN_LOOK;
+      if (view)
+        return (
+          patchDiff(
+            Uint8Array.from(mask!, (i) => view[i]),
+            Uint8Array.from(mask!, (i) => firstView![i]),
+          ) > TURN_LOOK
+        );
     }
     return undefined;
   };
