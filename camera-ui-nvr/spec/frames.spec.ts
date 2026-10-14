@@ -86,6 +86,47 @@ const region = widened(BOX);
   assert.ok(mean(patch.pixels) < 25 && spread(patch.pixels) < 12, `the zone black in the patches: ${mean(patch.pixels)}`);
 }
 
+// ---- a look at each keyframe of a 50 and a 60 fps camera (no B-frames), the last of the file too: its own keyframe,
+// as an exact seek sees it (looked 20 ms past the keyframe, a frame of 16.7 or 20 ms was passed and the next keyframe
+// decoded; the last keyframe of a file then read nothing)
+for (const fps of [50, 60]) {
+  const path = join(dir, `fast${fps}.ts`);
+  const made = spawnSync(FFMPEG, [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    `nullsrc=s=160x120:r=${fps},format=yuv420p,geq=lum='128+70*sin(X/(2+3*floor(T)))*cos(Y/(9-floor(T)))':cb=128:cr=128`,
+    '-t',
+    '5',
+    '-c:v',
+    'libx264',
+    '-g',
+    String(fps),
+    '-keyint_min',
+    String(fps),
+    '-sc_threshold',
+    '0',
+    '-bf',
+    '0',
+    '-f',
+    'mpegts',
+    path,
+  ]);
+  assert.equal(made.status, 0, made.stderr?.toString());
+  const fast = { path, start_us: T, end_us: T + 5e6 };
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  for (let second = 0; second < 5; second++) {
+    const look = await lookOf(FFMPEG, fast, T + second * 1e6, whole);
+    assert.ok(look, `${fps} fps: a look at the keyframe of second ${second}`);
+    const exact = (await patchOfPicture(FFMPEG, (await frameAt(FFMPEG, { ...fast, end_us: T + 99e6 }, T + second * 1e6 + 1000))!, whole))!;
+    assert.ok(patchDiff(look.patch, exact) < SAME_LOOK / 3, `${fps} fps, second ${second}: the keyframe's own look (${patchDiff(look.patch, exact)})`);
+  }
+}
+
 // ---- a whole frame at a time; the patch of the box: the same while it lies, other after
 {
   const at5 = await frameAt(FFMPEG, first, T + 5e6);

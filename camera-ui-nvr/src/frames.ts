@@ -124,8 +124,13 @@ export async function patchOfPicture(ffmpegPath: string, picture: Uint8Array, re
   return raw.length >= PATCH * PATCH ? new Uint8Array(raw.subarray(0, PATCH * PATCH)) : undefined;
 }
 
-/** Seeking a keyframe a little past its time: ffmpeg's fast seek lands on the keyframe at or before (a frame is 40 ms+). */
-const KEYFRAME_PAST_S = 0.02;
+/**
+ * Seeking a keyframe a little past its time: on MPEG-TS ffmpeg's fast seek lands on the last packet at or before the
+ * time asked, and the time asked is rounded to the millisecond. Less than a frame: 20 ms passed the keyframe of a 50
+ * or 60 fps camera (a frame of 20 or 16.7 ms), and `-skip_frame nokey` decoded the next keyframe (measured 2026-10-14:
+ * 0-10 ms land on the keyframe at 10-60 fps with and without B-frames, 20 ms on the next one at 50 and 60 fps).
+ */
+const KEYFRAME_PAST_S = 0.002;
 
 /**
  * A look at one keyframe of a file of the recording (place.ts): the gray patch of a region, the whole picture small
