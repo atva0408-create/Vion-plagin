@@ -177,7 +177,7 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     const offset = (total * k) / FIRST_LOOKS;
     const seen = await look(offset);
     if (seen && 'problem' in seen) return { state: seen.problem === NO_FINDER ? 'no-finder' : 'failed', problem: seen.problem, looks };
-    if (seen && seen.sure.length) first = { atMs: seen.atMs, picture: seen.picture, offset, place: seen.sure[0] };
+    if (seen?.sure.length) first = { atMs: seen.atMs, picture: seen.picture, offset, place: seen.sure[0] };
   }
   if (!first) return { state: 'never-seen', looks, ...(english ? { english } : {}) };
   const place = first.place;

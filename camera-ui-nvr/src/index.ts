@@ -2889,7 +2889,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     // the two moments around the place, wide enough to see who was by it
     if (answer.place && (answer.before || answer.after)) {
       const around = widened(answer.place, 2.5);
-      const [before, after] = await Promise.all([answer.before, answer.after].map((picture) => (picture ? cropOfPicture(ffmpeg, picture, around) : undefined)));
+      const crop = (picture: Uint8Array | undefined) => (picture ? cropOfPicture(ffmpeg, picture, around) : Promise.resolve(undefined));
+      const [before, after] = await Promise.all([crop(answer.before), crop(answer.after)]);
       return { ...answer, ...(before ? { before } : {}), ...(after ? { after } : {}) };
     }
     return answer;
