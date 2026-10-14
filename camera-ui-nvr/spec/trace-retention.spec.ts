@@ -5,12 +5,19 @@
 // Run: npx tsx spec/trace-retention.spec.ts
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import fsp from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import VionNvr from '../src/index.js';
 
 import type { RecordedEvent } from '../src/types.js';
+
+// the disk as the plugin sees it, half free: the free-space guard of the plugin (1 % at the least) read the disk that
+// ran the test, and on one 96 % full it deleted every segment
+fsp.statfs = (async () => ({ blocks: 1000, bavail: 500, bsize: 4096 })) as unknown as typeof fsp.statfs;
+syncBuiltinESMExports();
 
 const noop = () => undefined;
 const logger = { log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop };
@@ -24,8 +31,8 @@ const api = {
   coreManager: { assistantAccess: async () => ({ allowed: false }), getFFmpegPath: () => new Promise<string>(noop), getPluginsByInterface: async () => [] },
   proxy: { createProxy: () => ({}) },
 };
-// the quota alone decides here: no free-space guard on whatever disk runs the test, events kept by their days
-const storage = { values: { retentionDays: 90, minFreePercent: 0, quotaGB: 1 } as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
+// the quota alone decides here, events kept by their days
+const storage = { values: { retentionDays: 90, minFreePercent: 5, quotaGB: 1 } as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr(logger as never, api as never, storage as never);
 type Store = {
   addSegment(row: Record<string, unknown>): number;
