@@ -36,6 +36,10 @@ interface World {
   missed?: (t: number) => boolean;
   recorded?: Stretch[];
   noFinder?: boolean;
+  /** the whole frame (JPEG, scaled) and the stream give the same place other pixels: measured 0.1-0.27 on the bench */
+  twoPaths?: boolean;
+  /** it moves while it is there (a person sitting): its place never looks the same twice */
+  restless?: boolean;
 }
 
 function sources(world: World): GoneSources & { asked: number[] } {
@@ -43,7 +47,9 @@ function sources(world: World): GoneSources & { asked: number[] } {
   const lying = (t: number) => (world.lyingFrom === undefined || t >= world.lyingFrom) && (world.lyingUntil === undefined || t < world.lyingUntil);
   const covered = (t: number) => (world.covered ?? []).some(([a, b]) => t >= a && t < b);
   const recordedAt = (t: number) => (world.recorded ?? [{ startMs: T0 - 24 * 60 * MIN, endMs: T0 + 48 * 60 * MIN }]).some((s) => t >= s.startMs && t <= s.endMs);
-  const look = (t: number) => (covered(t) ? pattern(3, t) : lying(t) ? pattern(1, t) : pattern(2, t, true));
+  const look = (t: number) => (covered(t) ? pattern(3, t) : lying(t) ? pattern(world.restless ? 1000 + Math.floor(t / 1000) : 1, t) : pattern(2, t, true));
+  // the picture's path: the same look, other pixels (here reversed: as unlike as two looks can be)
+  const viaPicture = (pixels: Uint8Array) => (world.twoPaths ? pixels.slice().reverse() : pixels);
   const decode = (picture: Uint8Array) => Number(new TextDecoder().decode(picture));
   return {
     asked,
@@ -58,7 +64,7 @@ function sources(world: World): GoneSources & { asked: number[] } {
     },
     patchOf: async (picture, region) => {
       assert.deepEqual(region, widened(PHONE), 'the place with what is around it');
-      return look(decode(picture));
+      return viaPicture(look(decode(picture)));
     },
     patches: async (from, to, region, stepMs) => {
       assert.deepEqual(region, widened(PHONE));
@@ -157,6 +163,28 @@ const clock = (ms: number | undefined) => (ms === undefined ? '-' : new Date(ms)
   assert.equal(answer.gap, true);
   assert.ok(answer.lastSeenMs! <= pause[0] && answer.lastSeenMs! > pause[0] - MIN, clock(answer.lastSeenMs));
   assert.ok(answer.goneMs! >= pause[1] && answer.goneMs! < pause[1] + MIN, clock(answer.goneMs));
+}
+
+// ---- the whole frame and the stream give the same place other pixels: each compared with its own kind
+{
+  const gone = T0 + 333 * MIN + 7_500;
+  const answer = await whenGone(sources({ lyingUntil: gone, twoPaths: true }), T0, T0 + 10 * 60 * MIN);
+  assert.equal(answer.state, 'gone');
+  assert.ok(Math.abs(answer.goneMs! - gone) <= FINE_MS && answer.lastSeenMs! < answer.goneMs!, `${clock(answer.lastSeenMs)} → ${clock(answer.goneMs)}`);
+  assert.equal(answer.roughly, undefined);
+}
+
+// ---- a thing that moves while there (a person at a desk): the finder follows it, its place never looks the same; the
+// moment is the halving's, to about a minute, said as such — not one second twice
+{
+  const gone = T0 + 210 * MIN;
+  const answer = await whenGone(sources({ lyingUntil: gone, restless: true }), T0, T0 + 6 * 60 * MIN);
+  assert.equal(answer.state, 'gone');
+  assert.equal(answer.roughly, true);
+  assert.ok(
+    answer.lastSeenMs! < gone && answer.goneMs! >= gone && answer.goneMs! - answer.lastSeenMs! <= 2 * MIN,
+    `${clock(answer.lastSeenMs)} → ${clock(answer.goneMs)}`,
+  );
 }
 
 // ---- nothing recorded, no finder

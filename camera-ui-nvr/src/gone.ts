@@ -46,6 +46,8 @@ export interface GoneAnswer {
   goneMs?: number;
   /** no recording between the two: it went somewhen in that pause */
   gap?: boolean;
+  /** its place never looked the same twice while it was there (it moved): the two are the halving's, a minute apart */
+  roughly?: boolean;
   /** the pictures of those two moments, for the one who asked to look at */
   before?: Uint8Array;
   after?: Uint8Array;
@@ -185,6 +187,10 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
   const region = widened(place);
   const reference = await sources.patchOf(first.picture, region);
   if (!reference) return { state: 'failed', problem: 'the place could not be read in the picture', looks };
+  // the stream's own look of the place for the last stretch: the whole frame (scaled, JPEG) gives the same place other
+  // pixels (0.1-0.27 apart on the bench's cameras), and compared with it the stream's patches never looked the same
+  const [streamFirst] = await sources.patches(first.atMs, first.atMs + FINE_MS, region, FINE_MS);
+  const streamReference = streamFirst?.pixels ?? reference;
 
   /** The thing is still there: found where it lay, or the place looks as it did (the finder missed it this time). */
   const there = async (offset: number): Promise<{ yes: boolean; atMs: number; picture?: Uint8Array } | { problem: string }> => {
@@ -208,6 +214,7 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
   let hi = total;
   let lastSeenMs = at(lo);
   let goneMs = at(hi);
+  let roughly = false;
   for (let round = 0; round < ROUNDS; round++) {
     while (hi - lo > COARSE_MS && looks < LOOKS_MAX) {
       const mid = (lo + hi) / 2;
@@ -221,10 +228,12 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     const samples = await sources.patches(at(lo), at(Math.min(total, hi + FINE_AFTER_MS)), region, FINE_MS);
     let last = -1;
     samples.forEach((sample, i) => {
-      if (patchDiff(sample.pixels, reference) < SAME_LOOK) last = i;
+      if (patchDiff(sample.pixels, streamReference) < SAME_LOOK) last = i;
     });
-    lastSeenMs = last >= 0 ? samples[last].atMs : at(lo);
-    goneMs = last + 1 < samples.length ? samples[last + 1].atMs : at(Math.min(total, hi + FINE_AFTER_MS));
+    // never the same look (it moved while there): the halving's last look with it and first without
+    roughly = last < 0;
+    lastSeenMs = roughly ? at(lo) : samples[last].atMs;
+    goneMs = roughly ? at(hi) : last + 1 < samples.length ? samples[last + 1].atMs : at(Math.min(total, hi + FINE_AFTER_MS));
     if (last >= 0) hi = Math.max(hi, offsetOf(lastSeenMs));
     let again: number | undefined;
     for (let k = 1; k <= LATER_LOOKS && total - hi > COARSE_MS && again === undefined; k++) {
@@ -244,7 +253,8 @@ export async function whenGone(sources: GoneSources, fromMs: number, toMs: numbe
     ...base,
     lastSeenMs,
     goneMs,
-    ...(gap ? { gap } : {}),
+    ...(gap && !roughly ? { gap } : {}),
+    ...(roughly ? { roughly } : {}),
     ...(before ? { before } : {}),
     ...(after ? { after } : {}),
     looks,

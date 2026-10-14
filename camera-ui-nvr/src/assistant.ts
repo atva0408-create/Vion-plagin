@@ -2063,6 +2063,9 @@ async function objectGone(host: AssistantHost, input: Input, ctx: AssistantToolC
       lastSeen: clock(answer.lastSeenMs!),
       gone: clock(answer.goneMs!),
       ...(answer.gap ? { pause: 'Nothing was recorded between the two: it went somewhen in that pause.' } : {}),
+      ...(answer.roughly
+        ? { roughly: 'Its place never looked the same twice while it was there (it moved, or something moved by it): it went between lastSeen and gone, about a minute.' }
+        : {}),
       around: around.slice(0, 8).map((ev) => ({ id: ev.id, start: clock(ev.startTime), labels: labelsOf(ev), ...(ev.ai?.title ? { title: ev.ai.title } : {}) })),
       note:
         'The place was compared with how it looked when the thing lay there: a light turned off, a moved camera or someone standing in front ' +

@@ -211,6 +211,16 @@ const clock = (ms: number) =>
   assert.match((await nvr.callAssistantTool('object_gone', { camera: 'Стол', object: 'телефон', from: 'вчера' }, ctx)).error ?? '', /from must be a time/);
 }
 
+// ---- a thing that moved while there: the assistant is told the moment is known to about a minute
+{
+  const host = (nvr as unknown as { assistantHost(): Record<string, unknown> }).assistantHost();
+  host.objectGone = async () => ({ state: 'gone', english: 'person', place: BOX, seenMs: T, lastSeenMs: T + 60_000, goneMs: T + 110_000, roughly: true, looks: 9 });
+  const { callAssistantTool } = await import('../src/assistant.js');
+  const told = await callAssistantTool(host as never, 'object_gone', { camera: 'Стол', object: 'человек', from: iso(T), to: iso(T + 200_000) }, ctx);
+  assert.match((told.content as { roughly?: string }).roughly ?? '', /about a minute/);
+  assert.equal((told.content as { pause?: string }).pause, undefined);
+}
+
 console.log(
   'object-gone.spec: the moment through the recorder and the assistant, the event by it, pictures before and after, still there, never seen, nothing recorded, no finder, wrong asks OK',
 );
