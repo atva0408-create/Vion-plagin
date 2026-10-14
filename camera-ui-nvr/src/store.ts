@@ -529,6 +529,29 @@ export class Store {
     this.db.prepare('DELETE FROM event_trace WHERE event_id = ?').run(id);
   }
 
+  /** The start of the oldest video left of each camera that has any (ms). */
+  public oldestVideo(): Map<string, number> {
+    const rows = this.db.prepare('SELECT camera_id, MIN(start_us) AS start_us FROM segments GROUP BY camera_id').all() as { camera_id: string; start_us: number }[];
+    return new Map(rows.map((row) => [row.camera_id, Math.floor(Number(row.start_us) / 1000)]));
+  }
+
+  /**
+   * Deletes the detection trace of a camera's events that ended before a time, at most `limit` events a call (a trace is
+   * a few hundred rows: one big delete held the database for seconds). The events stay. Answers the events cleared.
+   */
+  public pruneTracesBefore(cameraId: string, beforeMs: number, limit: number): number {
+    const ids = (
+      this.db
+        .prepare(
+          'SELECT id FROM events e WHERE camera_id = ? AND COALESCE(end_ms, start_ms) < ? AND EXISTS (SELECT 1 FROM event_trace t WHERE t.event_id = e.id) LIMIT ?',
+        )
+        .all(cameraId, beforeMs, limit) as { id: string }[]
+    ).map((row) => row.id);
+    if (!ids.length) return 0;
+    this.db.prepare(`DELETE FROM event_trace WHERE event_id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+    return ids.length;
+  }
+
   // --- detection trace ---
   public addTrace(eventId: string, ticks: { tMs: number }[]): void {
     const insert = this.db.prepare('INSERT INTO event_trace (event_id, t_ms, data) VALUES (?, ?, ?)');

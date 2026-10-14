@@ -82,6 +82,12 @@ type ExportQuality = 'best' | 'smallest';
 const RETENTION_INTERVAL_MS = 5 * 60_000;
 /** The counts of the lines are kept for a year and a month whatever the video's retention: a year is compared with the last. */
 const CROSSINGS_KEEP_MS = 400 * 86_400_000;
+/**
+ * Traces cleared per retention run and camera: events a delete (about 300 rows each), deletes a run. The database is
+ * synchronous: a backlog of thousands at once held the recorder; the rest goes five minutes later.
+ */
+const TRACE_PRUNE_EVENTS = 100;
+const TRACE_PRUNE_ROUNDS = 2;
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
@@ -1894,6 +1900,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           for (const c of this.cameras.values()) for (const r of c.recorders.values()) r.start();
           this.announceManual();
         }
+      }
+
+      // a detection trace is drawn over the recording: the trace of an event older than its camera's oldest video left
+      // has nothing to be drawn on (the guard and the quota delete video long before events go by their days: 969 MB of
+      // traces a week older than the video on the bench, 2026-10-14). A camera with no video at all keeps them
+      for (const [cameraId, oldestMs] of this.store.oldestVideo()) {
+        for (let n = 0; n < TRACE_PRUNE_ROUNDS && this.store.pruneTracesBefore(cameraId, oldestMs, TRACE_PRUNE_EVENTS); n++);
       }
 
       // the people of a moment are kept a shorter time, favourite events too: the event itself stays
