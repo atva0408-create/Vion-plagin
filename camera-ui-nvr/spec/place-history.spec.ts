@@ -176,9 +176,14 @@ const call = async (input: Record<string, unknown>) => nvr.callAssistantTool('pl
     [['taker', ['person']]],
   );
   assert.match(told.note, /not recognised/);
+  // the moments before and after it first (the chat opens the recording paused on them), then the event
   assert.deepEqual(
-    result.references?.map((r) => r.id),
-    ['taker'],
+    result.references?.map((r) => [r.kind, r.id, r.timestamp]),
+    [
+      ['camera', 'desk', T + 11_000],
+      ['camera', 'desk', T + 12_000],
+      ['event', 'taker', T + 11_000],
+    ],
   );
   assert.deepEqual(
     result.images?.map((image) => image.caption?.split(' · ')[1]),
@@ -197,6 +202,11 @@ const call = async (input: Record<string, unknown>) => nvr.callAssistantTool('pl
     still.images?.map((image) => image.caption?.split(' · ')[1]),
     ['the place'],
     'the place as it is at the end, for the model to look at',
+  );
+  assert.deepEqual(
+    (still as { references?: { kind: string; timestamp?: number }[] }).references?.map((r) => [r.kind, r.timestamp]),
+    [['camera', T + 9000]],
+    'a button to the place as it is at the end',
   );
   const came = (await call({ time: iso(T + 15_000), mode: 'appeared', from: iso(T) })).content as Told;
   assert.equal(came.firstAsMarked, clock(T + 12_000), 'the empty table as marked since the 12th second');

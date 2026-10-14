@@ -2134,6 +2134,8 @@ const PLACE_MAX_MS = 7 * DAY_MS;
 /** The while around the marked moment a history looks through when none is given: the day around it. */
 const PLACE_AROUND_MS = 12 * 3600_000;
 const PLACE_PASSES = 12;
+/** Buttons of moments in one answer: before and after two changes, the events by them get the rest. */
+const PLACE_MOMENTS = 4;
 
 /**
  * place_history: what became of a place the person marked on a frame of the recording, the changes in the person's
@@ -2219,6 +2221,25 @@ async function placeHistory(host: AssistantHost, input: Input, ctx: AssistantToo
     for (const ev of found) if (!around.some((a) => a.id === ev.id)) around.push(ev);
   }
   around.sort((a, b) => a.startTime - b.startTime);
+  // the moments shown (before and after the first changes, else the place's last look): a button each, the chat opens
+  // the camera's recording paused on it
+  const momentLabel = new Intl.DateTimeFormat(ctx.language || 'en', {
+    timeZone: safeZone(ctx.timezone),
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const stillMs = answer.still ? (mode === 'appeared' ? answer.firstSameMs : answer.lastSameMs) : undefined;
+  const momentTimes = answer.pictures.length
+    ? answer.pictures.flatMap((p) => [answer.changes[p.change].beforeMs, answer.changes[p.change].afterMs])
+    : stillMs === undefined
+      ? []
+      : [stillMs];
+  const moments: AssistantToolReference[] = momentTimes
+    .slice(0, PLACE_MOMENTS)
+    .map((ms) => ({ kind: 'camera', id: camera.id, timestamp: ms, label: `${camera.name} · ${momentLabel.format(ms)}` }));
   const placeChanges = answer.changes.filter((c) => c.kind === 'changed');
   return {
     content: {
@@ -2245,7 +2266,7 @@ async function placeHistory(host: AssistantHost, input: Input, ctx: AssistantToo
         'order given (`pictures` of each change).',
     },
     ...(images.length ? { images } : {}),
-    references: around.slice(0, MAX_REFERENCES).map((ev) => reference(ev, names, ctx)),
+    references: [...moments, ...around.map((ev) => reference(ev, names, ctx))].slice(0, MAX_REFERENCES),
   };
 }
 
