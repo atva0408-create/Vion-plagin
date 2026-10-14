@@ -1,3 +1,7 @@
+## [0.22.0]
+
+- What became of a place marked on a frame of the recording: with ViON 2.4.5, pause a camera's recording, outline a place and ask where what lay there went, when it came or what was there over a while. The place is watched, not the thing, so anything works, also what the search in pictures does not know: its look at keyframes (only keyframes are decoded, 0.15-0.2 s each) is compared with the marked moment, and each change is narrowed to neighbouring keyframes (1-3 s) with the stretch someone stood in front of it. The rest of the picture tells a turned camera (the looking stops there) and night pictures (compared with night pictures only). The assistant says the moments in the person's clock with the pictures before and after, the events by them and buttons that open the recording paused on them; a week at most per question
+
 ## [0.21.1]
 
 - When a thing went: the last minutes are compared with how the place looked in the stream itself (the scaled whole frame differs from it a little, and on a real camera nothing was taken as the same); a thing that moves while it is there (a person at a desk) is said between two moments about a minute apart

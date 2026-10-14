@@ -1,3 +1,7 @@
+## [0.22.0]
+
+- Was aus einer Stelle wurde, die auf einem Bild der Aufzeichnung markiert ist: mit ViON 2.4.5 die Aufnahme einer Kamera anhalten, eine Stelle umrahmen und fragen, wo das hin ist, was dort lag, wann es kam oder was dort eine Weile lang war. Beobachtet wird die Stelle, nicht der Gegenstand, daher geht alles, auch was die Suche im Bild nicht kennt: ihr Aussehen auf Schlüsselbildern (nur diese werden dekodiert, 0,15–0,2 s pro Bild) wird mit dem markierten Moment verglichen, und jede Änderung wird auf benachbarte Schlüsselbilder (1–3 s) eingegrenzt, samt der Zeit, in der jemand davor stand. Der Rest des Bildes zeigt eine gedrehte Kamera (dort endet die Suche) und Nachtbilder (nur mit Nachtbildern verglichen). Der Assistent nennt die Momente in der Uhrzeit der Person mit den Bildern davor und danach, den Ereignissen daneben und Knöpfen, die die Aufnahme dort angehalten öffnen; höchstens eine Woche pro Frage
+
 ## [0.21.1]
 
 - Wann ein Gegenstand verschwand: die letzten Minuten werden damit verglichen, wie die Stelle im Stream selbst aussah (das verkleinerte ganze Bild weicht etwas davon ab, und bei einer echten Kamera galt nichts als gleich); ein Gegenstand, der sich bewegt, solange er da ist (eine Person am Schreibtisch), wird zwischen zwei Momenten etwa eine Minute auseinander genannt
