@@ -1,3 +1,7 @@
+## [0.21.1]
+
+- Wann ein Gegenstand verschwand: die letzten Minuten werden damit verglichen, wie die Stelle im Stream selbst aussah (das verkleinerte ganze Bild weicht etwas davon ab, und bei einer echten Kamera galt nichts als gleich); ein Gegenstand, der sich bewegt, solange er da ist (eine Person am Schreibtisch), wird zwischen zwei Momenten etwa eine Minute auseinander genannt
+
 ## [0.21.0]
 
 - Wann ein Gegenstand, der im Bild einer Kamera lag, verschwand: fragen Sie den Assistenten «на камере в прихожей лежал телефон — когда он исчез». Die Suche im Bild findet den Gegenstand dort, wo er in der Aufzeichnung lag, die Aufzeichnung wird halbiert und die letzten Minuten zweimal pro Sekunde damit verglichen, wie die Stelle aussah; die Antwort nennt den letzten Moment, in dem er zu sehen war, und den ersten ohne ihn (auf etwa eine Sekunde), die Ereignisse daneben (wer dort war) und zwei Bilder der Stelle, davor und danach, die der Assistent ansieht, bevor er antwortet. Eine Person, die eine Weile davor stand, und eine Suche, die ihn einmal verfehlt, gelten nicht als sein Verschwinden; eine Pause der Aufzeichnung wird genannt. Braucht die Suche im Bild von ONNX oder OpenVINO 1.7.0; dauert bis zu einigen Minuten
