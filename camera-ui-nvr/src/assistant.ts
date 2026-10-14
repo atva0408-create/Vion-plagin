@@ -215,11 +215,11 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
   {
     name: 'place_history',
     description:
-      'What became of a place the person marked on a frame of a camera\'s recording: «куда делся этот телефон», «когда это исчезло» (mode ' +
+      "What became of a place the person marked on a frame of a camera's recording: «куда делся этот телефон», «когда это исчезло» (mode " +
       'gone: from the marked moment on), «когда это появилось» (appeared: back from it), «что было тут за неделю» (history over from…to). The ' +
       'place is watched, not the thing: its look at keyframes of the recording is compared with the marked moment, so it works for anything, ' +
       'also what the search in pictures does not know (object_gone needs words it knows). The camera, the moment and the area come with the ' +
-      'person\'s message (a selection made in the archive); without one ask them to open the recording, pause it and mark the place. The ' +
+      "person's message (a selection made in the archive); without one ask them to open the recording, pause it and mark the place. The " +
       'answer: when the place stopped (started) looking as marked, to a keyframe (1-3 s); when someone stood in front of it; night pictures; ' +
       'where the camera turned (the looking stops there: the place is elsewhere in the picture after it); pauses of the recording; the ' +
       'pictures before and after each change and the events around it (buttons). Look at the pictures before telling and say what is in ' +

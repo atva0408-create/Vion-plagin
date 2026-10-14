@@ -140,10 +140,7 @@ export function insidePicture(place: Place): Place {
   return { x: x.start, y: y.start, width: x.size, height: y.size };
 }
 
-export async function placeHistory(
-  sources: PlaceSources,
-  query: { place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode },
-): Promise<PlaceAnswer> {
+export async function placeHistory(sources: PlaceSources, query: { place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceAnswer> {
   const { place, mode } = query;
   const stretches = sources
     .recorded(query.fromMs, query.toMs)
