@@ -29,6 +29,9 @@ const HELLO =
   'Это бот уведомлений ViON. Подключите чат в ViON: Настройки → Уведомления → «Подключить Telegram».\n' +
   'This is the ViON notification bot. Connect the chat in ViON: Settings → Notifications → Connect Telegram.';
 const STOPPED = 'Уведомления ViON в этот чат отключены.\nViON notifications to this chat are off.';
+// shown as is under «Подключить Telegram» in ViON, whose language the plugin does not know
+const NO_BOT =
+  'Бот Telegram ещё не подключён: введите его токен в настройках плагина Telegram.\n' + 'The Telegram bot is not connected yet: enter its token in the plugin settings.';
 const OPEN = 'Открыть в ViON';
 
 export default class Telegram extends ServicePlugin<StorageValues> implements NotifierInterface {
@@ -208,7 +211,7 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
    * active): it carries the link to show; the chat becomes a device once it opens the bot.
    */
   public async registerDevice(ownerUserId: string): Promise<NotifierDevice> {
-    if (!this.bot || !this.botName) throw new Error('Telegram: the bot is not connected yet. Enter its token in the plugin settings.');
+    if (!this.bot || !this.botName) throw new Error(NO_BOT);
     const now = Date.now();
     const code = newCode();
     this.pending = [...fresh(this.pending, now), { code, ownerUserId, expiresAt: now + LINK_TTL_MS }].slice(-MAX_PENDING);

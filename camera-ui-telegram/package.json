@@ -1,7 +1,7 @@
 {
   "displayName": "Telegram",
   "name": "@vionvision/camera-ui-telegram",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

@@ -132,7 +132,8 @@ try {
     const { plugin, lines } = host();
     plugin.start();
     assert.ok(lines.some((line) => /no bot token yet/.test(line)));
-    await assert.rejects(plugin.registerDevice('u1'), /not connected/);
+    // shown as is under «Подключить Telegram»: in both languages of the home, as the bot's own words
+    await assert.rejects(plugin.registerDevice('u1'), /Бот Telegram ещё не подключён[\s\S]*not connected/);
   }
 
   // ---- linked by its link, the notifications of its user only
