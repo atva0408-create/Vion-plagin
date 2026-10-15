@@ -58,6 +58,9 @@ rust-motion:
 smtp:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-smtp/**'
+telegram:
+  - changed-files:
+      - any-glob-to-any-file: 'camera-ui-telegram/**'
 tuya:
   - changed-files:
       - any-glob-to-any-file: 'camera-ui-tuya/**'

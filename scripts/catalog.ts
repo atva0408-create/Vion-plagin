@@ -54,6 +54,7 @@ const CATEGORY_OVERRIDES: Record<string, Category> = {
   'camera-ui-ring': 'camera-source',
   'camera-ui-rust-motion': 'detection',
   'camera-ui-smtp': 'detection',
+  'camera-ui-telegram': 'notification',
   'camera-ui-tuya': 'camera-source',
   'camera-ui-wasm-motion': 'detection',
   'camera-ui-wyze': 'camera-source',

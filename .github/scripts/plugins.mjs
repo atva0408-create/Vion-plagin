@@ -9,6 +9,7 @@ export const NODE = {
   'camera-ui-pamdiff': '',
   'camera-ui-rust-motion': '',
   'camera-ui-smtp': '',
+  'camera-ui-telegram': '',
   'camera-ui-tuya': '',
   'camera-ui-wasm-motion': '',
   'camera-ui-yandex': '',

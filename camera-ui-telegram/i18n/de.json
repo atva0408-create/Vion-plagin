@@ -1,0 +1,9 @@
+{
+  "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.": "ViON-Benachrichtigungen in Telegram über Ihren eigenen Bot: Bild und Text eines Ereignisses, Zonenregeln, Ruhezeiten und Benutzerrechte wie auf dem Telefon.",
+  "Bot token": "Bot-Token",
+  "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each ViON user then connects their chat under Settings, Notifications.": "Erstellen Sie in Telegram mit @BotFather einen Bot (/newbot) und fügen Sie das erhaltene Token ein. Danach verbindet jeder ViON-Benutzer seinen Chat unter Einstellungen → Benachrichtigungen.",
+  "Bot API address": "Bot-API-Adresse",
+  "Leave empty for api.telegram.org. A self-hosted Bot API server or a proxy in its place, for example when Telegram is blocked.": "Leer lassen für api.telegram.org. Ein eigener Bot-API-Server oder ein Proxy an seiner Stelle, zum Beispiel wenn Telegram gesperrt ist.",
+  "ViON address for the button": "ViON-Adresse für die Schaltfläche",
+  "For example https://vion.example.com. A message then has a button that opens the moment in ViON; empty: no button.": "Zum Beispiel https://vion.example.com. Eine Nachricht hat dann eine Schaltfläche, die den Moment in ViON öffnet; leer: keine Schaltfläche."
+}

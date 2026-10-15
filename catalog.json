@@ -558,6 +558,31 @@
       "node": ">=22.0.0"
     }
   },
+  "@vionvision/camera-ui-telegram": {
+    "displayName": "Telegram",
+    "category": "notification",
+    "featured": false,
+    "tagline": "ViON notifications in Telegram through your own bot: the picture and words of an event, zone rules, quiet hours and the rights of users as on a phone.",
+    "i18n": {
+      "en": {
+        "tagline": "ViON notifications in Telegram through your own bot: the picture and words of an event, zone rules, quiet hours and the rights of users as on a phone."
+      },
+      "ru": {
+        "tagline": "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона."
+      },
+      "de": {
+        "tagline": "ViON-Benachrichtigungen in Telegram über Ihren eigenen Bot: Bild und Text eines Ereignisses, Zonenregeln, Ruhezeiten und Benutzerrechte wie auf dem Telefon."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-telegram/logo.png",
+    "screenshots": [],
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.2.5",
+      "node": ">=22.0.0"
+    }
+  },
   "@vionvision/camera-ui-tuya": {
     "displayName": "Tuya",
     "category": "camera-source",
