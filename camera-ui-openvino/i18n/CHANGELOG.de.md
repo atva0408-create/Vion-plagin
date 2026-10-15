@@ -1,3 +1,7 @@
+## [1.7.2]
+
+- «Objekt umranden» findet eine auf dem Bett liegende Person: die Probeerkennung nimmt die angefragte Schwelle (die Umrandung fragt 0,25 an und zeigt bei jedem den Prozentwert); andere Proben behalten die Schwelle des Plugins
+
 ## [1.7.1]
 
 - Suche im Bild: ein Bild, das sich nicht lesen lässt (eine bei voller Platte oder beim Stopp abgeschnittene Karte, eine leere Datei), hat keine Rahmen, die anderen werden angesehen; es ließ den ganzen Aufruf scheitern, und ViON NVR beendete die Suche in allen gefundenen Ereignissen

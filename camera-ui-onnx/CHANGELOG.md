@@ -1,3 +1,7 @@
+## [1.7.2]
+
+- «Outline the object» finds a person lying on the bed: the picture try-out takes the threshold it is asked for (the outline asks for 0.25 and shows each one's percentage); other try-outs keep the plugin's own
+
 ## [1.7.1]
 
 - Search in the picture: a picture that cannot be read (a card cut short on a full disk or at a stop, an empty file) has no boxes and the others are looked at; it failed the whole call, and ViON NVR ended the search of all the events found

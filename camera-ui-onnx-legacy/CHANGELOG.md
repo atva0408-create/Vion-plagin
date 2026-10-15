@@ -1,3 +1,7 @@
+## [1.5.3]
+
+- «Outline the object» finds a person lying on the bed: the picture try-out takes the threshold it is asked for (the outline asks for 0.25 and shows each one's percentage); other try-outs keep the plugin's own
+
 ## [1.5.2]
 
 - Search in pictures in Russian and German: the translator of the query needs sentencepiece and protobuf, which this plugin did not install (only ONNX did): every start logged «Не удалось предзагрузить модели CLIP» with an empty reason and a search through ONNX Legacy failed with «MarianTokenizer requires the SentencePiece library»

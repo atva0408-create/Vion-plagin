@@ -109,6 +109,17 @@ from textfind import IDLE_S as TEXT_FINDER_IDLE_S
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
 
+TRYOUT_THRESHOLD_MIN = 0.05
+
+
+def tryout_threshold(config: dict[str, Any]) -> float | None:
+    """The threshold a picture try-out asks for, held to 0.05..1; none keeps the detector's own. «Обвести объект»
+    asks for less than the 0.5 the cameras keep: a boy lying on the bed scored 0.16-0.46 and was dropped."""
+    value = config.get("threshold")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return min(1.0, max(TRYOUT_THRESHOLD_MIN, float(value)))
+
 
 class OpenVinoPlugin(
     BasePlugin,
@@ -547,7 +558,7 @@ class OpenVinoPlugin(
         if not detector.initialized:
             return None
 
-        raw = await detector.detect_single(image_data, metadata)
+        raw = await detector.detect_single(image_data, metadata, tryout_threshold(config))
         detections: list[Detection] = [
             {
                 "label": detector.labels.get(cid, "unknown"),  # type: ignore[typeddict-item]

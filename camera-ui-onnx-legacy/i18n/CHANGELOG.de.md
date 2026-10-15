@@ -1,3 +1,7 @@
+## [1.5.3]
+
+- «Objekt umranden» findet eine auf dem Bett liegende Person: die Probeerkennung nimmt die angefragte Schwelle (die Umrandung fragt 0,25 an und zeigt bei jedem den Prozentwert); andere Proben behalten die Schwelle des Plugins
+
 ## [1.5.2]
 
 - Suche im Bild auf Russisch und Deutsch: der Übersetzer der Anfrage braucht sentencepiece und protobuf, die dieses Plugin nicht installierte (nur ONNX): bei jedem Start stand «Не удалось предзагрузить модели CLIP» ohne Grund im Protokoll, und eine Suche über ONNX Legacy scheiterte mit «MarianTokenizer requires the SentencePiece library»
