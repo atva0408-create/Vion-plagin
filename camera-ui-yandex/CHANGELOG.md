@@ -1,3 +1,7 @@
+## [0.2.2]
+
+- A station speaks notifications again. Through the home network: a station that names its link-local address (169.254.x.x) first is reached on its home network address, the link-local one timed out. Through the cloud: the token of the Smart Home is read from yandex.ru/iot, yandex.ru/quasar hangs up without an answer
+
 ## [0.2.1]
 
 - The assistant: a phrase said on a station, a command to Alice and a scenario of the Smart Home are an admin's and ask for approval in the chat, so neither a user nor a schedule nor Alice can make a station say something

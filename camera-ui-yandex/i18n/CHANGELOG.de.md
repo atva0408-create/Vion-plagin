@@ -1,3 +1,7 @@
+## [0.2.2]
+
+- Eine Station spricht Benachrichtigungen wieder. Über das Heimnetz: eine Station, die zuerst ihre Link-Local-Adresse (169.254.x.x) nennt, wird über ihre Heimnetzadresse erreicht, an der Link-Local-Adresse lief die Wartezeit ab. Über die Cloud: das Token des Smart Home wird von yandex.ru/iot gelesen, yandex.ru/quasar legt ohne Antwort auf
+
 ## [0.2.1]
 
 - Der Assistent: Ein Satz auf einer Station, ein Befehl an Alice und ein Szenario des Smart Home sind Sache des Admins und brauchen eine Bestätigung im Chat, sodass weder ein Benutzer noch ein Zeitplan noch Alice eine Station etwas sagen lassen kann

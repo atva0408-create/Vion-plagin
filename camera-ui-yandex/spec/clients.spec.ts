@@ -87,13 +87,32 @@ async function main(): Promise<void> {
     const session = new YandexSession();
     assert.equal((await session.useXToken(X_TOKEN)).login, 'ivan');
     const quasar = new YandexQuasar(session);
+    const signedIn = async () => {
+      const next = new YandexSession();
+      await next.useXToken(X_TOKEN);
+      return next;
+    };
 
-    // a change carries the CSRF token of the page
+    // a change carries the CSRF token of the page; yandex.ru/quasar hangs up without an answer since 2026-10, and the
+    // station never spoke through the cloud (the bench, 2026-10-15: «fetch failed: other side closed»)
+    state.closedPages = ['/quasar'];
     await quasar.runScenario('sc-1');
     assert.deepEqual(state.ran, ['sc-1']);
     const run = fake.calls.find((c) => c.url.endsWith('/m/user/scenarios/sc-1/actions'));
     assert.ok(run);
-    assert.ok(fake.calls.some((c) => c.url === 'https://yandex.ru/quasar'), 'the CSRF token was read from the page');
+    assert.ok(fake.calls.some((c) => c.url === 'https://yandex.ru/iot'), 'the CSRF token was read from the page');
+    // the other page, when the first one hangs up in its turn
+    state.closedPages = ['/iot'];
+    const other = new YandexQuasar(await signedIn());
+    await other.runScenario('sc-1');
+    assert.deepEqual(state.ran, ['sc-1', 'sc-1']);
+    // both hang up: the failure itself, not a session taken for ended
+    state.closedPages = ['/iot', '/quasar'];
+    const xTokenCalls = fake.calls.filter((c) => c.url.includes('/bundle/auth/x_token/')).length;
+    await assert.rejects(new YandexQuasar(await signedIn()).runScenario('sc-1'), /fetch failed/);
+    assert.equal(fake.calls.filter((c) => c.url.includes('/bundle/auth/x_token/')).length, xTokenCalls + 1, 'only the sign-in of the new session');
+    state.closedPages = undefined;
+    state.ran.splice(1);
 
     // Yandex ended the session: the cookies are made again from the x_token and the request repeated
     state.sessionEnded = true;

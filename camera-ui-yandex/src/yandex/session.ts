@@ -5,7 +5,11 @@ import { CookieJar, YandexApiError, YandexAuthError, http, json } from './http.j
 export const PASSPORT_URL = 'https://passport.yandex.ru';
 export const MOBILE_PROXY_URL = 'https://mobileproxy.passport.yandex.net';
 export const MOBILE_OAUTH_URL = 'https://oauth.mobile.yandex.net';
-export const QUASAR_PAGE_URL = 'https://yandex.ru/quasar';
+/**
+ * The pages of the Smart Home with the CSRF token, in turn: yandex.ru/quasar hangs up without an answer since 2026-10
+ * («fetch failed: other side closed»), and nothing changed through the cloud: the station never spoke.
+ */
+export const SMART_HOME_PAGES = ['https://yandex.ru/iot', 'https://yandex.ru/quasar'];
 
 // the applications the Yandex apps sign in as: one turns the cookies of the QR sign-in into an x_token,
 // the other turns the x_token into the token the stations accept
@@ -243,19 +247,31 @@ export class YandexSession {
 
   private async csrfToken(): Promise<string> {
     if (this.csrf) return this.csrf;
-    const page = await (await this.fetch(QUASAR_PAGE_URL)).text();
-    const token = /"csrfToken2":"(.+?)"/.exec(page)?.[1];
+    let token = await this.pageToken();
     if (!token) {
       // the page without the token is the page of a visitor: the session has ended
       await this.cookiesFromXToken();
-      const again = await (await this.fetch(QUASAR_PAGE_URL)).text();
-      const retry = /"csrfToken2":"(.+?)"/.exec(again)?.[1];
-      if (!retry) throw new YandexAuthError('Yandex did not open the Smart Home for this account');
-      this.csrf = retry;
-      return retry;
+      token = await this.pageToken();
+      if (!token) throw new YandexAuthError('Yandex did not open the Smart Home for this account');
     }
     this.csrf = token;
     return token;
+  }
+
+  /** The token of the first page that answers, none from the page of a visitor; when none answers, why. */
+  private async pageToken(): Promise<string | undefined> {
+    let failure: unknown;
+    for (const url of SMART_HOME_PAGES) {
+      let page: string;
+      try {
+        page = await (await this.fetch(url)).text();
+      } catch (error) {
+        failure = error;
+        continue;
+      }
+      return /"csrfToken2":"(.+?)"/.exec(page)?.[1];
+    }
+    throw failure;
   }
 
   private async pace(): Promise<void> {

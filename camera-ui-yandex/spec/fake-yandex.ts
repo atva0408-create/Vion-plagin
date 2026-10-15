@@ -30,6 +30,8 @@ export interface FakeState {
   /** the session of the app ended: the next request of the app gets 401 */
   sessionEnded: boolean;
   stationHost?: { host: string; port: number };
+  /** A page of the Smart Home that closes the connection without an answer, as yandex.ru/quasar did in 2026-10. */
+  closedPages?: string[];
   /** The addresses the station names, in its order; by default an IPv6 one and `stationHost`. */
   stationAddresses?: string[];
   /** scenarios the plugin made, by id */
@@ -179,8 +181,10 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
       }
     }
 
-    // ---- the page of the Smart Home with the CSRF token
-    if (url.host === 'yandex.ru' && path === '/quasar') {
+    // ---- the pages of the Smart Home with the CSRF token
+    if (url.host === 'yandex.ru' && (path === '/iot' || path === '/quasar')) {
+      // what undici throws when the other side hangs up before answering
+      if (state.closedPages?.includes(path)) throw new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) });
       if (cookie(init, 'Session_id') !== SESSION) return new Response('<html>guest</html>');
       return new Response(`<script>{"csrfToken2":"${CSRF}"}</script>`);
     }
