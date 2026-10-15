@@ -37,6 +37,8 @@ export interface SpeechTexts {
   };
   askParents: string;
   moreTimeWords: string[];
+  /** Words of a question about playing: without them, what the microphone picked up is not answered unless the model hears one. */
+  questionWords: string[];
   notify: Record<Reason | 'title' | 'moreTimeTitle' | 'moreTime' | 'notSaid', string>;
   /** The event of a violation in the camera's recordings: its title by reason and the line of the reminders. */
   event: Record<Reason | 'reminders' | 'tag', string>;
@@ -248,19 +250,30 @@ function asksMoreTime(question: string, language: Language): boolean {
   return texts(language).moreTimeWords.some((word) => lower.includes(word));
 }
 
+function asksWhen(question: string, language: Language): boolean {
+  const lower = question.toLowerCase();
+  return texts(language).questionWords.some((word) => lower.includes(word));
+}
+
+/** Fewer letters than this is a sound, not words: «с», «мм», «за» were answered on the bench (2026-10-15). */
+const MIN_QUESTION_LETTERS = 3;
+
 /**
  * The answer to what the child said after a phrase of VOICE or when calling it. What is said is always the answer of
  * the schedule (`reply`): a model that answers the child can be talked round, and a check of its numbers let
- * "поиграй ещё 10 минут" and "ещё часок" through. The LLM only tells whether the child asks for more time.
+ * "поиграй ещё 10 минут" and "ещё часок" through. The LLM only tells whether the child asks for more time, or asks at
+ * all: "other" (a sound, a game, a word to someone else) is not answered by the conversation after a phrase. On the
+ * bench the microphone picked up «с», «мм», «лес а дальше», and the boy heard «играть можно будет завтра» three times.
  */
 export async function answerChild(ask: Ask | undefined, reply: string, question: string, language: Language): Promise<Answer> {
   const t = texts(language);
-  const byWords: Intent = asksMoreTime(question, language) ? 'asks_more_time' : 'when_can_i_play';
+  const byWords: Intent = asksMoreTime(question, language) ? 'asks_more_time' : asksWhen(question, language) ? 'when_can_i_play' : 'other';
   const answer = (intent: Intent, phrase: Omit<Phrase, 'text'>): Answer => ({
     text: intent === 'asks_more_time' ? `${reply} ${t.askParents}` : reply,
     intent,
     ...phrase,
   });
+  if (question.replace(/[^\p{L}]/gu, '').length < MIN_QUESTION_LETTERS) return answer('other', { source: 'template', fallback: 'no words' });
   if (!ask) return answer(byWords, { source: 'template', fallback: 'no LLM' });
 
   let result: AssistantAskResult;
@@ -280,6 +293,6 @@ export async function answerChild(ask: Ask | undefined, reply: string, question:
   if (!result.ok) return answer(byWords, { source: 'template', fallback: result.reason });
   const json = (result.json ?? {}) as { intent?: unknown };
   const llmIntent: Intent = json.intent === 'asks_more_time' || json.intent === 'when_can_i_play' || json.intent === 'other' ? json.intent : 'other';
-  // the words decide too: a model that missed the request must not swallow it
-  return answer(byWords === 'asks_more_time' ? 'asks_more_time' : llmIntent, { source: 'template' });
+  // the words decide too: a model that missed the request or the question must not swallow it
+  return answer(byWords === 'asks_more_time' ? 'asks_more_time' : llmIntent === 'other' ? byWords : llmIntent, { source: 'template' });
 }

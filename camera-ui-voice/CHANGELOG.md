@@ -1,3 +1,7 @@
+## [0.5.1]
+
+- After a reminder VOICE answers only a question: a sound, a game or a word to someone else that the microphone picked up («с», «мм», «лес а дальше») is no longer answered with «you can play tomorrow at 07:30» up to three times
+
 ## [0.5.0]
 
 - VOICE keeps a journal of every day: when the child sat down and got up, the breaks between, the reminders and the ones the child went on after or that reached the parents. The assistant (and Alice through it) answers for any of the last 30 days how long the child played, how many times and how long they rested, and when and how often they broke the rules (voice_report). Days before this version have the minutes only

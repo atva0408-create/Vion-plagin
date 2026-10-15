@@ -117,6 +117,34 @@ test('4. "когда можно играть?" at bedtime: the answer is tomorro
   assert.equal(s.engine.said[1], 'Артём, играть можно будет завтра в 07:30.');
 });
 
+test('4b. what the microphone picks up that is no question is not answered: «с», «мм», a game (the bench, 2026-10-15)', async () => {
+  // after «уже давно время сна» the boy got «играть можно будет завтра в 07:30» three times, for «с», «мм» and «за»
+  const s = await setup(unconfigured, { answerQuestions: true, schoolFrom: '21:30', schoolTo: '07:30', freeFrom: '22:30', freeTo: '08:30' }, msk('2026-10-07T21:20:00'));
+  for (let i = 0; i < 3; i++) s.camera.answers.push(new Float32Array(16_000));
+  s.engine.heard.push('с', 'мм', 'лес а дальше');
+  await s.look(15 * MINUTE, true);
+  assert.match(s.engine.said[0], /время сна/);
+  // the next reminder of the quarter of an hour is said, no answer
+  assert.ok(!s.engine.said.includes('Артём, играть можно будет завтра в 07:30.'), `answered: ${s.engine.said.slice(1).join(' | ')}`);
+});
+
+test('4c. the model hears no question in what was said: nothing is answered, unless the words ask', async () => {
+  const reply = 'Артём, играть можно будет завтра в 07:30.';
+  const other = fakeAsk(() => ({ ok: true, text: '', json: { intent: 'other' }, usage: { promptTokens: 1, completionTokens: 1 } }));
+  assert.equal((await answerChild(other.ask, reply, 'а если дальше', 'ru')).intent, 'other');
+  // the words of a question are answered whatever the model says
+  assert.equal((await answerChild(other.ask, reply, 'а когда можно играть', 'ru')).intent, 'when_can_i_play');
+  // a sound of one or two letters is not even sent to the model
+  const asked = fakeAsk(() => ({ ok: true, text: '', json: { intent: 'when_can_i_play' }, usage: { promptTokens: 1, completionTokens: 1 } }));
+  assert.equal((await answerChild(asked.ask, reply, 'мм', 'ru')).intent, 'other');
+  assert.equal(asked.requests.length, 0);
+  // without a model the words decide: a question is answered, a game is not
+  assert.equal((await answerChild(undefined, reply, 'сколько ещё отдыхать', 'ru')).intent, 'when_can_i_play');
+  assert.equal((await answerChild(undefined, reply, 'улицу дальше', 'ru')).intent, 'other');
+  assert.equal((await answerChild(undefined, reply, 'how long do I rest', 'en')).intent, 'when_can_i_play');
+  assert.equal((await answerChild(undefined, reply, 'wie lange noch', 'de')).intent, 'when_can_i_play');
+});
+
 test('7. the LLM refuses for each of the four reasons: the template phrase is said', async () => {
   for (const reason of ['not_allowed', 'unconfigured', 'timeout', 'error'] as const) {
     const { ask } = fakeAsk(() => ({ ok: false, reason, message: reason }));

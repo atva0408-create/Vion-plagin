@@ -1,3 +1,7 @@
+## [0.5.1]
+
+- Nach einer Erinnerung antwortet VOICE nur noch auf eine Frage: ein Geräusch, ein Spiel oder Worte an jemand anderen, die das Mikrofon aufgenommen hat («с», «мм», «лес а дальше»), beantwortet es nicht mehr bis zu dreimal mit «spielen darfst du morgen um 07:30»
+
 ## [0.5.0]
 
 - VOICE führt ein Tagebuch jedes Tages: wann das Kind sich hinsetzte und aufstand, die Pausen dazwischen, die Erinnerungen und die, nach denen das Kind weitermachte oder die Eltern Bescheid bekamen. Der Assistent (und Alice über ihn) sagt für jeden der letzten 30 Tage, wie lange das Kind spielte, wie oft und wie lange es Pause machte und wann und wie oft es die Regeln brach (voice_report). Für Tage vor dieser Version sind nur die Minuten bekannt

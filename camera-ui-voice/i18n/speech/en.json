@@ -39,6 +39,18 @@
     "lessThanMinute": "less than a minute"
   },
   "askParents": "Only your parents can give you more time. I have passed your request on to them.",
+  "questionWords": [
+    "when",
+    "how long",
+    "how much",
+    "can i",
+    "may i",
+    "play",
+    "time",
+    "rest",
+    "break",
+    "why"
+  ],
   "moreTimeWords": [
     "more time",
     "longer",

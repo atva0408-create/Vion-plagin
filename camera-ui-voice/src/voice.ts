@@ -644,6 +644,12 @@ export class Voice {
         const reply = replyText(scenario.engine.standing(now, this.deps.timeZone()), facts.childName, language);
         const answer = await this.waitFor(answerChild(this.deps.ask, reply, heard, language), signal);
         if (!valid()) return;
+        // a sound, a game, a word to someone else: no question to VOICE, and the conversation is over (what was heard
+        // stays out of the log, as the sound does)
+        if (answer.intent === 'other') {
+          this.deps.log(`${camera.name}: heard no question to VOICE, not answered`);
+          return;
+        }
         if (answer.intent === 'asks_more_time') {
           const t = texts(language).notify;
           const values = { name: facts.childName, text: heard };
