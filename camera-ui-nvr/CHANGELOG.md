@@ -1,3 +1,8 @@
+## [0.22.3]
+
+- A person's route: a hop between cameras needs a likeness of at least 0.2 at the broadest precision (it went down to 0.1, where the most alike person of another camera minutes later is almost anyone: on the bench 75 % of the same minutes of other days passed 0.1, 42 % pass 0.2). The hops keep a threshold of their own under the one asked for the stays, moved by it: across cameras re-ID is weak (8 % of the bench's hops pass 0.6)
+- The detection traces behind the oldest video are cleared reading only the events since the last pass, by an index (every five minutes each pass read every old event of each camera)
+
 ## [0.22.2]
 
 - The privacy zones of a camera are black in every picture of its recording that «what became of a place» and «when a thing went» read and show the assistant: the recording is the camera's raw video, and those pictures went to the model with what the zones hide

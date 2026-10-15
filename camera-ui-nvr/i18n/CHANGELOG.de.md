@@ -1,3 +1,8 @@
+## [0.22.3]
+
+- Der Weg einer Person: ein Wechsel zwischen Kameras braucht bei der breitesten Genauigkeit eine Ähnlichkeit von mindestens 0,2 (die Schwelle sank auf 0,1, wo die ähnlichste Person einer anderen Kamera Minuten später fast jeder ist: auf dem Prüfstand passierten 75 % derselben Minuten anderer Tage 0,1, 42 % passieren 0,2). Die Wechsel behalten eine eigene Schwelle unter der für die Aufenthalte verlangten, von ihr verschoben: zwischen Kameras ist Re-ID schwach (0,6 passieren 8 % der Wechsel auf dem Prüfstand)
+- Die Spuren der Erkennungen hinter dem ältesten Video werden gelöscht, indem nur die Ereignisse seit dem letzten Durchgang gelesen werden, über einen Index (alle fünf Minuten las jeder Durchgang alle alten Ereignisse jeder Kamera)
+
 ## [0.22.2]
 
 - Die Privatzonen einer Kamera sind in jedem Bild ihrer Aufnahme schwarz, das «was aus einer Stelle wurde» und «wann ein Gegenstand verschwand» lesen und dem Assistenten zeigen: die Aufnahme ist das Rohvideo der Kamera, und diese Bilder gingen mit dem, was die Zonen verbergen, an das Modell
