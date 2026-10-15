@@ -236,6 +236,11 @@ const PERSON_ROUTE_GAP_MS = 3 * 60_000;
  */
 const PERSON_HOP_MS = 3 * 60_000;
 const PERSON_HOP_SCORE = 0.35;
+/**
+ * The least a hop's threshold is, set or moved by the precision: under it the best person of another camera minutes
+ * later is anyone (bench 2026-10-15, 319 people: 75 % of the same minutes of other days pass 0.1, 42 % pass 0.2).
+ */
+const PERSON_HOP_SCORE_MIN = 0.2;
 const PERSON_ROUTE_HOPS = 6;
 /** the moments alike a route takes, the most alike: more is a crowd dressed alike (a uniform), and is said (capped) */
 const PERSON_ROUTE_HITS = 500;
@@ -520,10 +525,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           'Маршрут человека идёт от камеры к камере: от конца остановки — к самому похожему человеку на другой камере за ' +
           'несколько минут. Между камерами Re-ID слабее, поэтому порог ниже, чем для остановок. Выше — меньше чужих людей ' +
           'в маршруте, но и переходов меньше. Это порог при средней точности: ползунок «Точнее» на странице записей ' +
-          'сдвигает его вместе с порогом остановок. На стенде при 0,35 найдено 56 % проходов, чужой человек — в 3 % окон.',
+          'сдвигает его вместе с порогом остановок, но не ниже 0,2: ниже на другой камере подходит почти любой человек. ' +
+          'На стенде при 0,35 найдено 56 % проходов, чужой человек — в 3 % окон.',
         group: 'People',
         defaultValue: PERSON_HOP_SCORE,
-        minimum: 0.2,
+        minimum: PERSON_HOP_SCORE_MIN,
         maximum: 0.65,
         step: 0.01,
         store: true,
@@ -615,7 +621,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
     };
     return {
-      hopScore: num(v.routeHopScore, PERSON_HOP_SCORE, 0.2, 0.65),
+      hopScore: num(v.routeHopScore, PERSON_HOP_SCORE, PERSON_HOP_SCORE_MIN, 0.65),
       hopMs: num(v.routeHopMinutes, PERSON_HOP_MS / 60_000, 1, 15) * 60_000,
       hops: Math.round(num(v.routeHops, PERSON_ROUTE_HOPS, 0, 20)),
     };
@@ -2002,7 +2008,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const minScore = Math.max(low, Number.isFinite(opts.minScore) ? Number(opts.minScore) : precise);
     // the hops move with the precision asked as much as the stays' floor: «точнее» made only the stays stricter
     const setting = this.routeSetting;
-    const hopScore = Math.round(Math.min(0.95, Math.max(0.1, setting.hopScore + minScore - middle)) * 1000) / 1000;
+    // a threshold of its own, under the stays' one asked: re-ID across cameras is weak (on the bench 8 % of the hop windows
+    // pass 0.6, 53 % pass 0.35), and a moment over the stays' one is a stay already, over the whole window
+    const hopScore = Math.round(Math.min(0.95, Math.max(PERSON_HOP_SCORE_MIN, setting.hopScore + minScore - middle)) * 1000) / 1000;
     const hop = { score: hopScore, ms: setting.hopMs, count: setting.hops };
     const none = (reason: SimilarReason): PersonRouteResult => ({
       mode: 'none',

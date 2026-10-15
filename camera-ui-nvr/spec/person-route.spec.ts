@@ -234,6 +234,14 @@ const hopStays = (route: Awaited<ReturnType<typeof nvr.personRoute>>, base: numb
     const surer = await nvr.personRoute({ eventId: 'hop-door-1' });
     assert.deepEqual(hopStays(surer, B), ['door 0-2 hop-door-1 *'], 'a hop of 0.45 is under 0.5');
     assert.equal(surer.hopScore, 0.5);
+    // the setting's least (0.2) at the broadest precision: the hop went down to 0.1, where the best person of another
+    // camera a minute later is anyone (on the bench 75 % of the same minutes of other days passed, 42 % at 0.2)
+    values.routeHopScore = 0.2;
+    assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { precision: 0 })).hopScore, 0.2);
+    assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { minScore: 0.45 })).hopScore, 0.2);
+    assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { precision: 1 })).hopScore, 0.325, 'above the least it moves as before');
+    values.routeHopScore = 0.1;
+    assert.equal((await nvr.personRoute({ eventId: 'hop-door-1' }, { precision: 1 })).hopScore, 0.325, 'a stored setting under the least is the least');
     delete values.routeHopScore;
     values.routeHopMinutes = 1;
     assert.deepEqual(hopStays(await nvr.personRoute({ eventId: 'hop-door-1' }), B), ['door 0-2 hop-door-1 *'], 'the lift is two minutes after the stay');
