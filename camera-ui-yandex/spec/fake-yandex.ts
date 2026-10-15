@@ -30,6 +30,8 @@ export interface FakeState {
   /** the session of the app ended: the next request of the app gets 401 */
   sessionEnded: boolean;
   stationHost?: { host: string; port: number };
+  /** The addresses the station names, in its order; by default an IPv6 one and `stationHost`. */
+  stationAddresses?: string[];
   /** scenarios the plugin made, by id */
   own: Map<string, any>;
   /** scenarios run, by id */
@@ -247,7 +249,9 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
               id: d.quasar_info.device_id,
               name: d.name,
               platform: d.quasar_info.platform,
-              networkInfo: state.stationHost ? { ip_addresses: ['fe80::1', state.stationHost.host], external_port: state.stationHost.port } : undefined,
+              networkInfo: state.stationHost
+                ? { ip_addresses: state.stationAddresses ?? ['fe80::1', state.stationHost.host], external_port: state.stationHost.port }
+                : undefined,
             })),
         });
       }

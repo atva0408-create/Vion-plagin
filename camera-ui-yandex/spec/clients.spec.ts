@@ -125,6 +125,13 @@ async function main(): Promise<void> {
     state.stationHost = { host: '192.168.1.20', port: 1961 };
     const local = await quasar.glagolDevices();
     assert.deepEqual(local, [{ id: 'ST100', name: 'Станция', platform: 'yandexstation_2', host: '192.168.1.20', port: 1961 }]);
+    // «Спальня» on the bench (2026-10-15) named its link-local address first: no route reaches it, the handshake timed out
+    state.stationAddresses = ['169.254.57.164', '192.168.1.144'];
+    assert.equal((await quasar.glagolDevices())[0].host, '192.168.1.144');
+    // the only one it names is tried all the same: on the station's own network it may answer
+    state.stationAddresses = ['fe80::1', '169.254.57.164'];
+    assert.equal((await quasar.glagolDevices())[0].host, '169.254.57.164');
+    state.stationAddresses = undefined;
     assert.equal(session.musicToken, STATION_TOKEN);
     assert.equal(await quasar.glagolToken('ST100', 'yandexstation_2'), 'conv-ST100');
   }

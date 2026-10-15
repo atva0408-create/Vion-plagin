@@ -155,7 +155,10 @@ export class YandexQuasar {
     const answer = await this.session.glagol(`${GLAGOL_URL}/device_list`);
     return (answer.devices ?? []).map((d: any) => {
       const info = d.networkInfo ?? d.network_info ?? {};
-      const host = Array.isArray(info.ip_addresses) ? info.ip_addresses.find((ip: string) => /^\d+\.\d+\.\d+\.\d+$/.test(ip)) : undefined;
+      const ipv4: string[] = Array.isArray(info.ip_addresses) ? info.ip_addresses.filter((ip: unknown) => typeof ip === 'string' && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) : [];
+      // a station names its link-local address (169.254.x.x) too, «Спальня» first: no route reaches it from the
+      // server's network and the handshake timed out (the bench, 2026-10-15); it is kept when it is the only one
+      const host = ipv4.find((ip) => !ip.startsWith('169.254.')) ?? ipv4[0];
       return { id: String(d.id), name: String(d.name ?? d.id), platform: String(d.platform ?? ''), host, port: Number(info.external_port) || undefined };
     });
   }
