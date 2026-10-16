@@ -69,8 +69,8 @@ async function record(stream: Buffer, seconds: number, atMs: number): Promise<{ 
   assert.ok(row, 'recorded');
   const frames: number[] = [];
   for await (const frame of readFrames(row, parseKeyframes(row.keyframes)[0])) frames.push(frame.tsUs);
-  // a recording starts at the second keyframe of a connection (the codec is learned from the first one)
-  assert.equal(frames.length, (seconds - 1) * 10, 'the frames of the stream are in the file');
+  // all of them: from the first keyframe of the connection (it waited for the second, the codec is learned from the first)
+  assert.equal(frames.length, seconds * 10, 'the frames of the stream are in the file');
   assert.ok(frames.every((tsUs, i) => i === 0 || tsUs - frames[i - 1] === 100_000), 'a tenth of a second apart');
   return { row, frames };
 }

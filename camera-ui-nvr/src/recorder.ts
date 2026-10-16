@@ -197,7 +197,12 @@ export class Recorder {
     return new TsDemuxer((au) => {
       if (au.keyframe && !this.codec && this.demux.codec) {
         this.codec = probeCodec(au.data, this.demux.codec);
-        if (this.codec) this.opts.log('log', `${this.label} ${this.codec.codecString} ${this.codec.width}x${this.codec.height}`);
+        if (!this.codec) return;
+        this.opts.log('log', `${this.label} ${this.codec.codecString} ${this.codec.width}x${this.codec.height}`);
+        // the codec is known once its keyframe is whole, after the keyframe began a GOP (a picture of hundreds of KiB
+        // comes in many chunks): a continuous recording begins with that GOP, it waited for the next keyframe (the
+        // first GOP of every connection was lost, 50 s on the Xiaomi's second stream)
+        if (this.opts.mode === 'continuous' && !this.segment && this.gop && !this.stopped) this.openSegment(this.gop.tsUs, [this.gop]);
       }
     });
   }
@@ -601,7 +606,7 @@ export class Recorder {
       this.segment.keyframes.push([this.segment.bytes, gop.tsUs]);
       for (const p of gop.packets) this.write(p);
     }
-    if (this.gop) this.segment.keyframes.push([this.segment.bytes, this.gop.tsUs]);
+    if (this.gop && !backlog.includes(this.gop)) this.segment.keyframes.push([this.segment.bytes, this.gop.tsUs]);
     // index the first keyframes now: playback and scrub reaching a brand-new segment (rollover at the
     // live tip) must not see an empty index until the first periodic flush
     this.saveIndex(this.segment);

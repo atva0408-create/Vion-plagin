@@ -6,7 +6,7 @@
 // the spacing of the stream when they arrive late in a burst while a healthy stream is stamped exactly as it was.
 // Run: npx tsx spec/recorder.spec.ts
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -736,6 +736,38 @@ Date.now = () => clock;
   const files = store.segments('end-busy', 'high', 0, Number.MAX_SAFE_INTEGER).map((s) => [(s.start_us - t0 * 1000) / US, (s.end_us - t0 * 1000) / US]);
   assert.deepEqual(files, [[0, 35.9]]);
   store.close();
+}
+{
+  // a camera's stream comes in chunks smaller than a keyframe (a picture of 2304x1296 is hundreds of KiB): the codec
+  // is known only once the keyframe is whole, after the recorder has seen it start. The file began at the next
+  // keyframe, and the first GOP of every connection was lost (50 s on the Xiaomi's second stream)
+  const t0 = clock;
+  const { rec, store, feed } = recorder('first-gop');
+  for (let n = 0; n < 4; n++) {
+    clock = t0 + n * 1000;
+    const gop = stream('h264', { gops: 1, firstGop: n });
+    for (let at = 0; at < gop.length; at += TS) feed(gop.subarray(at, at + TS));
+  }
+  await rec.stop();
+  const [row] = store.segments('first-gop', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.equal((row.start_us - t0 * 1000) / US, 0, 'the file begins with the first keyframe of the connection');
+  assert.deepEqual(parseKeyframes(row.keyframes).map((k) => (k.tsUs - t0 * 1000) / US), [0, 1, 2, 3]);
+  const first = parseKeyframes(row.keyframes)[0];
+  const head = readFileSync(row.path).subarray(first.offset, first.offset + TS);
+  assert.equal(head[0], 0x47);
+  assert.equal(head[1] & 0x40, 0x40, 'the index points at the first packet of the keyframe');
+  assert.equal(((head[1] & 0x1f) << 8) | head[2], VIDEO_PID);
+  store.close();
+  // recording by events: nothing is recorded without an event, the GOP waits in the pre-buffer
+  const quiet = recorder('first-gop-event', { mode: 'event' });
+  for (let n = 0; n < 4; n++) {
+    clock = t0 + n * 1000;
+    const gop = stream('h264', { gops: 1, firstGop: n });
+    for (let at = 0; at < gop.length; at += TS) quiet.feed(gop.subarray(at, at + TS));
+  }
+  await quiet.rec.stop();
+  assert.deepEqual(quiet.store.segments('first-gop-event', 'high', 0, Number.MAX_SAFE_INTEGER), []);
+  quiet.store.close();
 }
 Date.now = realNow;
 

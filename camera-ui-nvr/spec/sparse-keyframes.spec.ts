@@ -28,12 +28,11 @@ const noop = () => undefined;
 const realNow = Date.now;
 const S = 1_000_000;
 
-// 160 s at 10 fps with keyframes at 0, 10 and 130 s only: the recorder starts its file at the second one (the first
-// comes before it knows the codec), so the file has two keyframes two minutes apart
+// 150 s at 10 fps with keyframes at 0 and 120 s only: two keyframes two minutes apart in one file
 const file = join(dir, 'stream.ts');
 const made = spawnSync(
   FFMPEG,
-  ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=10', '-t', '160', '-c:v', 'libx264', '-x264-params', 'keyint=10000:min-keyint=10000:scenecut=0', '-force_key_frames', '0,10,130', '-bf', '0', '-f', 'mpegts', file],
+  ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=10', '-t', '150', '-c:v', 'libx264', '-x264-params', 'keyint=10000:min-keyint=10000:scenecut=0', '-force_key_frames', '0,120', '-bf', '0', '-f', 'mpegts', file],
   { encoding: 'utf8' },
 );
 assert.equal(made.status, 0, `ffmpeg could not make a stream: ${made.stderr}`);
