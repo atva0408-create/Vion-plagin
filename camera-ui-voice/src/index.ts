@@ -55,6 +55,21 @@ interface CameraEntry {
 
 const DEVICE_PREFIX = 'voice:';
 const MAX_NOTIFICATION_CHARS = 300;
+
+/** Whether a speaker said a notification, and why not: ViON keeps it and sends the notification another way. */
+interface SpeakerDelivery {
+  deviceId: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
+ */
+function answered(deliveries: SpeakerDelivery[]): void {
+  return deliveries as unknown as void;
+}
 const INTERCOM_PLUGIN = '@vionvision/camera-ui-intercom';
 const NVR_PLUGIN = '@vionvision/camera-ui-nvr';
 /** How often VOICE asks the intercom which cameras are its panels. */
@@ -995,29 +1010,39 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     return entry && !speakerProblem(entry.device) ? this.device(entry.device.id, entry.device.name) : null;
   }
 
+  /**
+   * A notification said on the speakers of the cameras named. What became of it on each goes back to ViON, which keeps
+   * it and sends the notification another way when no speaker said it (the audit of 2026-10-17).
+   */
   async sendNotification(deviceIds: string[], n: Notification): Promise<void> {
-    if (n.silent) return;
     const values = this.values();
     const enabled = new Set(values.channelSpeakers ?? []);
     const rewrite = new Set(values.channelRewrite ?? []);
     const text = [n.title, n.subtitle, n.body].filter((part) => part?.trim()).join('. ');
-    if (!text) return;
+    // nothing to say failed nothing: a silent notification is for the screen of a phone, not for a voice
+    if (n.silent || !text) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: true })));
     // a speaker is no reader of long texts: a page would hold the camera for minutes
     if (text.length > MAX_NOTIFICATION_CHARS) {
       this.logger.warn(`notification not said: ${text.length} characters, more than ${MAX_NOTIFICATION_CHARS}`);
-      return;
+      const error = `too long to say: ${text.length} characters, more than ${MAX_NOTIFICATION_CHARS}`;
+      return answered(deviceIds.map((deviceId) => ({ deviceId, ok: false, error })));
     }
-    await Promise.all(
-      deviceIds.map(async (deviceId) => {
+    const deliveries = await Promise.all(
+      deviceIds.map(async (deviceId): Promise<SpeakerDelivery> => {
         const cameraId = deviceId.slice(DEVICE_PREFIX.length);
-        if (!deviceId.startsWith(DEVICE_PREFIX) || !enabled.has(cameraId)) return;
-        if (n.severity !== Severity.Critical && this.inQuietHours()) return;
+        if (!deviceId.startsWith(DEVICE_PREFIX)) return { deviceId, ok: false, error: 'not a speaker of VOICE' };
+        if (!enabled.has(cameraId)) return { deviceId, ok: false, error: 'speaking notifications is off for this camera' };
+        if (n.severity !== Severity.Critical && this.inQuietHours()) return { deviceId, ok: false, error: 'the quiet hours of VOICE' };
         const result = rewrite.has(cameraId)
           ? await this.voice.sayInstructed(cameraId, `Read this notification aloud as a short natural phrase: ${text}`)
           : await this.voice.say(cameraId, text, 'owner');
-        if (result.status !== 'spoken') this.logger.warn(`notification on ${cameraId}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+        if (result.status === 'spoken') return { deviceId, ok: true };
+        const why = `${result.status}${result.reason ? ` (${result.reason})` : ''}`;
+        this.logger.warn(`notification on ${cameraId}: ${why}`);
+        return { deviceId, ok: false, error: why };
       }),
     );
+    return answered(deliveries);
   }
 
   async registerDevice(): Promise<NotifierDevice> {

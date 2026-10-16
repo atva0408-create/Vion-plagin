@@ -205,12 +205,15 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
   assert.equal(await s.plugin.getDevice('voice:door'), null, 'a camera without a speaker is no device');
   assert.equal(await s.plugin.getDevice('yandex:1'), null);
 
-  await s.plugin.sendNotification(['voice:kids'], { title: 'Ужин', body: 'готов' });
+  // what became of it on each speaker goes back to ViON
+  assert.deepEqual(await s.plugin.sendNotification(['voice:kids'], { title: 'Ужин', body: 'готов' }), [
+    { deviceId: 'voice:kids', ok: false, error: 'speaking notifications is off for this camera' },
+  ]);
   assert.equal(s.engine.said.length, 0, 'the speaker is off');
 
   await s.plugin.updateDevice('voice:kids', { active: true });
   assert.deepEqual(s.pluginStorage.values.channelSpeakers, ['kids']);
-  await s.plugin.sendNotification(['voice:kids'], { title: 'Ужин', body: 'готов' });
+  assert.deepEqual(await s.plugin.sendNotification(['voice:kids'], { title: 'Ужин', body: 'готов' }), [{ deviceId: 'voice:kids', ok: true }]);
   assert.deepEqual(s.engine.said, ['Ужин. готов']);
 
   assert.deepEqual(
@@ -219,8 +222,11 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
     'still inactive when it speaks',
   );
 
-  await s.plugin.sendNotification(['voice:kids'], { title: 'Тихо', silent: true });
-  await s.plugin.sendNotification(['voice:door', 'other:1'], { title: 'Не сюда' });
+  assert.deepEqual(await s.plugin.sendNotification(['voice:kids'], { title: 'Тихо', silent: true }), [{ deviceId: 'voice:kids', ok: true }], 'nothing to say failed nothing');
+  assert.deepEqual(await s.plugin.sendNotification(['voice:door', 'other:1'], { title: 'Не сюда' }), [
+    { deviceId: 'voice:door', ok: false, error: 'speaking notifications is off for this camera' },
+    { deviceId: 'other:1', ok: false, error: 'not a speaker of VOICE' },
+  ]);
   assert.deepEqual(s.engine.said, ['Ужин. готов']);
   assert.ok(s.kids.packets.length > 0, 'the phrase went to the camera as RTP');
   assert.equal(s.kids.packets[0][1] & 0x7f, 8);
@@ -469,7 +475,9 @@ test('the speakers belong to no user: not the target of "send me a notification"
 test('a notification too long to be said is not said', async () => {
   const s = await setup();
   await s.plugin.updateDevice('voice:kids', { active: true });
-  await s.plugin.sendNotification(['voice:kids'], { title: 'Отчёт', body: 'слово '.repeat(80) });
+  const [answer] = (await s.plugin.sendNotification(['voice:kids'], { title: 'Отчёт', body: 'слово '.repeat(80) })) as unknown as { ok: boolean; error: string }[];
+  assert.equal(answer?.ok, false);
+  assert.match(answer!.error, /too long to say/);
   assert.equal(s.engine.said.length, 0);
   assert.ok(s.logs.some((line) => /not said: \d+ characters/.test(line)));
 });
