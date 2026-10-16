@@ -1,3 +1,7 @@
+## [1.7.3]
+
+- At its start the plugin no longer writes «Не удалось предзагрузить модели CLIP:» with nothing after it: a failure of the translator of the search words is told as its own, and an error without text is named by its kind
+
 ## [1.7.2]
 
 - «Outline the object» finds a person lying on the bed: the picture try-out takes the threshold it is asked for (the outline asks for 0.25 and shows each one's percentage); other try-outs keep the plugin's own

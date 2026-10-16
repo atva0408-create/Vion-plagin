@@ -1,3 +1,7 @@
+## [1.5.3]
+
+- Beim Start schreibt das Plugin nicht mehr «Не удалось предзагрузить модели CLIP:» ohne Fortsetzung: ein Fehler des Übersetzers der Suchwörter wird als eigener gemeldet, und ein Fehler ohne Text wird nach seiner Art benannt
+
 ## [1.5.2]
 
 - «Objekt umranden» findet eine auf dem Bett liegende Person: die Probeerkennung nimmt die angefragte Schwelle (die Umrandung fragt 0,25 an und zeigt bei jedem den Prozentwert); andere Proben behalten die Schwelle des Plugins

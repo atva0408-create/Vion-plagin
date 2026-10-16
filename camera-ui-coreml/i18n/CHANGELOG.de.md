@@ -1,3 +1,7 @@
+## [1.2.14]
+
+- Beim Start schreibt das Plugin nicht mehr «Не удалось предзагрузить модели CLIP:» ohne Fortsetzung: ein Fehler des Übersetzers der Suchwörter wird als eigener gemeldet, und ein Fehler ohne Text wird nach seiner Art benannt
+
 ## [1.2.13]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche
