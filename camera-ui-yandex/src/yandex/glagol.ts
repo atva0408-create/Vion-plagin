@@ -23,6 +23,17 @@ export class GlagolTokenError extends Error {
   }
 }
 
+/**
+ * The text went to the station and it did not confirm it (no answer in time, the connection closed): it may have said
+ * it. Not to be said again another way, or the station says it twice.
+ */
+export class GlagolSentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GlagolSentError';
+  }
+}
+
 /** The station got the request and answered, but not with success: it is reachable. */
 export class GlagolAnswerError extends Error {
   constructor(message: string) {
@@ -115,7 +126,14 @@ export class GlagolClient {
       });
     });
     socket.send(JSON.stringify({ conversationToken, id, payload, sentTime: Date.now() }));
-    const message = await answer;
+    let message: Record<string, unknown>;
+    try {
+      message = await answer;
+    } catch (error) {
+      // a refused token is a refusal, nothing was said; anything else after the text went out leaves it unknown
+      if (error instanceof GlagolTokenError) throw error;
+      throw new GlagolSentError(`${(error as Error).message} after it got the text: it may have said it`);
+    }
     if (message.status && message.status !== 'SUCCESS') throw new GlagolAnswerError(`The station ${this.address} answered ${JSON.stringify(message.status)}`);
     return message;
   }

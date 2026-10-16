@@ -15,6 +15,8 @@ export const GLAGOL_URL = 'https://quasar.yandex.net/glagol';
 
 /** The longest text a scenario says, as the app allows it. */
 export const CLOUD_TEXT_LIMIT = 100;
+/** The pause before the one more try of a scenario the network failed before it ran. */
+export const CLOUD_RETRY_MS = 2_000;
 const MASK_EN = '0123456789abcdef-';
 const MASK_RU = 'оеаинтсрвлкмдпуяы';
 
@@ -116,9 +118,23 @@ export class YandexQuasar {
    */
   private runOwnScenario(deviceId: string, body: ReturnType<typeof ttsScenario>): Promise<void> {
     const run = async () => {
-      const id = await this.ownScenario(deviceId);
-      await this.session.quasar('PUT', `${this.baseUrl}/m/v4/user/scenarios/${encodeURIComponent(id)}`, body);
-      await this.session.quasar('POST', `${this.baseUrl}/m/user/scenarios/${encodeURIComponent(id)}/actions`);
+      let launched = false;
+      const attempt = async () => {
+        const id = await this.ownScenario(deviceId);
+        await this.session.quasar('PUT', `${this.baseUrl}/m/v4/user/scenarios/${encodeURIComponent(id)}`, body);
+        launched = true;
+        await this.session.quasar('POST', `${this.baseUrl}/m/user/scenarios/${encodeURIComponent(id)}/actions`);
+      };
+      try {
+        await attempt();
+      } catch (error) {
+        // the network failed before the scenario was run («fetch failed: other side closed» on the bench, 2026-10-15):
+        // nothing was said yet, once more. After the run was asked for the station may have said it, and would twice;
+        // what Yandex refused is refused again
+        if (launched || error instanceof YandexApiError || error instanceof YandexAuthError) throw error;
+        await new Promise((resolve) => setTimeout(resolve, CLOUD_RETRY_MS));
+        await attempt();
+      }
     };
     const previous = this.speaking.get(deviceId);
     // the text before failed or not, this one is said: its caller got that failure already

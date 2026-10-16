@@ -785,6 +785,46 @@ test('scenarios in the app mode: read with the list and again when Yandex says t
   await updates.close();
 });
 
+test('what became of a notification on each station goes back to ViON: off, unknown, offline, not signed in, said', async () => {
+  const state = baseState();
+  globalThis.fetch = fakeYandex(state).fetch;
+  const h = host({ ...(await appSignIn()), source: 'app', voiceMode: 'cloud' });
+  await h.launch();
+  await until(() => h.inside.complete, 'the list');
+  const n = { title: 'Движение' };
+  assert.deepEqual(await h.plugin.sendNotification(['station:station-1', 'station:nope'], n), [
+    { deviceId: 'station:station-1', ok: false, error: 'speaking notifications is off for this station' },
+    { deviceId: 'station:nope', ok: false, error: 'no such station in the Yandex account' },
+  ]);
+  await h.plugin.updateDevice('station:station-1', { active: true });
+  assert.deepEqual(await h.plugin.sendNotification(['station:station-1'], n), [{ deviceId: 'station:station-1', ok: true }]);
+  assert.equal(state.own.size, 1, 'said through the cloud');
+  // nothing to say failed nothing
+  assert.deepEqual(await h.plugin.sendNotification(['station:station-1'], { title: 'Тихо', silent: true }), [{ deviceId: 'station:station-1', ok: true }]);
+  await h.shutdown();
+
+  // a station Yandex says is off is not asked: it took 5 s at home and 15 s in the cloud to fail
+  const offline = baseState();
+  (offline.devices.find((d: any) => d.id === 'station-1') as any).state = 'offline';
+  const fake = fakeYandex(offline);
+  globalThis.fetch = fake.fetch;
+  const o = host({ ...(await appSignIn()), source: 'app', voiceMode: 'cloud', speakingStations: ['station-1'] });
+  await o.launch();
+  await until(() => o.inside.complete, 'the list');
+  assert.deepEqual(await o.plugin.sendNotification(['station:station-1'], n), [{ deviceId: 'station:station-1', ok: false, error: 'the station is offline (Yandex)' }]);
+  assert.equal(offline.own.size, 0, 'nothing was said');
+  await o.shutdown();
+
+  // without the sign-in as the app no station can speak, and ViON hears why
+  const unsigned = host({ oauthToken: OAUTH_TOKEN, pollSeconds: 300 });
+  globalThis.fetch = fakeYandex(baseState()).fetch;
+  await unsigned.launch();
+  const [answer] = (await unsigned.plugin.sendNotification(['station:station-1'], n)) as unknown as { ok: boolean; error: string }[];
+  assert.equal(answer?.ok, false);
+  assert.match(answer!.error, /sign-in by QR code or x_token/);
+  await unsigned.shutdown();
+});
+
 // a step that hangs (a socket or a timer left running keeps the process alive) ends the run red instead of never
 // ending; the run is not ended by hand when it passes, so whatever is left running shows here
 setTimeout(() => {

@@ -1,6 +1,6 @@
 // Speech on the Yandex stations: through the local protocol when ViON reaches the station in the home network,
 // through a scenario of the account otherwise. Both need the sign-in by QR code or x_token.
-import { GlagolAnswerError, GlagolClient, GlagolTokenError, GLAGOL_PORT, commandPayload, sayPayload } from './yandex/glagol.js';
+import { GlagolAnswerError, GlagolClient, GlagolSentError, GlagolTokenError, GLAGOL_PORT, commandPayload, sayPayload } from './yandex/glagol.js';
 import { YandexApiError, YandexAuthError } from './yandex/http.js';
 import { cloudText } from './yandex/quasar.js';
 
@@ -73,6 +73,9 @@ export class StationVoice {
         return 'local';
       } catch (error) {
         if (mode === 'local') throw error;
+        // the station got the text and did not confirm it: through the cloud it could say it a second time (ViON sends
+        // the notification another way when it is told the station did not)
+        if (error instanceof GlagolSentError) throw error;
         this.debug(`${station.name}: the local connection failed, speaking through the cloud`, error);
       }
     }
@@ -119,7 +122,7 @@ export class StationVoice {
     } catch (error) {
       // a station that answered is in reach, and a token Yandex did not give says nothing of the station; one that
       // did not answer is skipped for a while
-      const reached = error instanceof GlagolAnswerError || error instanceof GlagolTokenError;
+      const reached = error instanceof GlagolAnswerError || error instanceof GlagolTokenError || error instanceof GlagolSentError;
       if (!reached && !(error instanceof YandexApiError) && !(error instanceof YandexAuthError)) this.unreachable.set(address, Date.now() + UNREACHABLE_MS);
       throw error;
     }

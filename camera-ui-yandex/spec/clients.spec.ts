@@ -8,8 +8,8 @@ import { createServer } from 'node:net';
 
 import { WebSocketServer } from 'ws';
 
-import { GlagolClient, sayPayload } from '../src/yandex/glagol.js';
-import { YandexAuthError } from '../src/yandex/http.js';
+import { GlagolClient, GlagolSentError, sayPayload } from '../src/yandex/glagol.js';
+import { YandexApiError, YandexAuthError } from '../src/yandex/http.js';
 import { AuthorizationPending, YandexIot, exchangeDeviceCode, refreshOAuthToken, requestDeviceCode, tokenPageUrl } from '../src/yandex/iot.js';
 import { QuasarUpdates, YandexQuasar } from '../src/yandex/quasar.js';
 import { YandexSession } from '../src/yandex/session.js';
@@ -171,13 +171,13 @@ async function main(): Promise<void> {
     assert.equal(state.own.size, 1, 'one scenario for the station, not one per text');
     assert.deepEqual(said(), ['PUT:Front door opened', 'RUN', 'PUT:Smoke in the kitchen', 'RUN'], 'each text is said once, none is lost');
 
-    // a text that fails does not keep the next one from being said
+    // a text Yandex refused does not keep the next one from being said, and is not tried again
     const realQuasar = session.quasar.bind(session);
     let failPut = true;
     session.quasar = (async (method: 'GET' | 'POST' | 'PUT', url: string, body?: unknown) => {
       if (method === 'PUT' && failPut) {
         failPut = false;
-        throw new Error('Yandex is down');
+        throw new YandexApiError('Yandex is down', 503);
       }
       return realQuasar(method, url, body);
     }) as typeof session.quasar;
@@ -187,6 +187,33 @@ async function main(): Promise<void> {
       ['rejected', 'fulfilled'],
     );
     assert.equal(said().at(-2), 'PUT:Kept');
+
+    // the network failing before the scenario ran (the bench, 2026-10-15: «fetch failed: other side closed»): one more
+    // try, and the text is said once
+    let dropPut = 1;
+    let dropRun = 0;
+    const runs = () => fake.calls.filter((c) => /\/scenarios\/own-\d+\/actions$/.test(c.url)).length;
+    session.quasar = (async (method: 'GET' | 'POST' | 'PUT', url: string, body?: unknown) => {
+      if (method === 'PUT' && dropPut > 0) {
+        dropPut--;
+        throw new TypeError('fetch failed', { cause: new Error('other side closed') });
+      }
+      if (method === 'POST' && url.endsWith('/actions') && dropRun > 0) {
+        dropRun--;
+        throw new TypeError('fetch failed', { cause: new Error('other side closed') });
+      }
+      return realQuasar(method, url, body);
+    }) as typeof session.quasar;
+    const runsBefore = runs();
+    await quasar.say('station-1', 'Retried');
+    assert.equal(said().at(-2), 'PUT:Retried');
+    assert.equal(runs() - runsBefore, 1, 'run once, after the one more try');
+    // failing when the run was asked for: the station may have said it, no second run
+    dropRun = 1;
+    const runsBeforeFailed = runs();
+    await assert.rejects(quasar.say('station-1', 'Maybe said'), /fetch failed/);
+    assert.equal(runs() - runsBeforeFailed, 0, 'the run that failed reached no fake, and none was asked again');
+    assert.equal(dropRun, 0);
   }
 
   // ---- the live updates of the app
@@ -416,6 +443,17 @@ async function main(): Promise<void> {
     assert.equal(failing.received.length, 1, 'the text went to the station once');
     voice.close();
     failing.server.close();
+
+    // a station that got the text and did not confirm it may have said it: not said again through the cloud, and the
+    // caller hears it did not confirm (ViON sends the notification another way)
+    const mute = await fakeStation(() => {});
+    const unconfirmed = voiceFor(mute.port, 'auto');
+    const scenariosBefore = state.own.size;
+    await assert.rejects(unconfirmed.say(station, 'Без ответа'), (error: Error) => error instanceof GlagolSentError && /may have said it/.test(error.message));
+    assert.equal(mute.received.length, 1, 'the text went to the station once');
+    assert.equal(state.own.size, scenariosBefore, 'and not through the cloud');
+    unconfirmed.close();
+    mute.server.close();
 
     // a station that closed over the token gets a new one, once
     const before = tokenRequests();

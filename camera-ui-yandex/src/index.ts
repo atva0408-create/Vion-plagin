@@ -58,6 +58,7 @@ const SCENARIO_RETRY_MS = 60_000;
 const QR_WAIT_MS = 20_000;
 const QR_POLL_MS = 2_000;
 const NOT_SIGNED_IN = 'Not signed in to Yandex: sign in in the settings of the plugin';
+const NO_VOICE = 'the stations speak after the sign-in by QR code or x_token in the settings of the plugin';
 const SIGNED_OUT = 'Signed out of Yandex while this sign-in ran: sign in again';
 /**
  * The owner of a station for everyone but a notification on its way: a station belongs to the house, not to a user
@@ -66,6 +67,21 @@ const SIGNED_OUT = 'Signed out of Yandex while this sign-in ran: sign in again';
 const HOUSEHOLD = '';
 
 type ReadSource = 'official' | 'app';
+
+/** Whether a station said a notification, and why not: ViON keeps it and sends the notification another way. */
+interface StationDelivery {
+  deviceId: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
+ */
+function answered(deliveries: StationDelivery[]): void {
+  return deliveries as unknown as void;
+}
 
 export default class YandexPlugin extends BasePlugin<YandexConfig> implements SensorDiscoveryProvider, NotifierInterface, DiscoveryProvider, AssistantToolProvider {
   private session?: YandexSession;
@@ -789,31 +805,42 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     return station ? this.toNotifierDevice(station, HOUSEHOLD) : null;
   }
 
-  /** A notification is said aloud: its title, then its text. */
+  /**
+   * A notification is said aloud: its title, then its text. What became of it on each station goes back to ViON, which
+   * keeps it in its history and sends the notification another way when no station said it: a station that did not
+   * speak was counted as one that did, the error stayed in this log (the audit of 2026-10-17).
+   */
   async sendNotification(deviceIds: string[], n: Notification): Promise<void> {
-    if (n.silent) return;
     const text = [n.title, n.subtitle, n.body]
       .filter(Boolean)
       .map((part) => String(part).replace(/[.!?…]+$/, ''))
       .join('. ');
-    if (!text) return;
+    // nothing to say failed nothing: a silent notification is for the screen of a phone, not for a voice
+    if (n.silent || !text) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: true })));
+    if (!this.quasar) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: false, error: NO_VOICE })));
     const stations = await this.stations();
-    const targets = deviceIds.flatMap((deviceId) => {
-      const id = deviceId.startsWith(STATION_PREFIX) ? deviceId.slice(STATION_PREFIX.length) : undefined;
-      const station = id ? stations.find((s) => s.id === id) : undefined;
-      return station && this.speaks(station.id) ? [station] : [];
-    });
     // all at once: a station that does not answer must not hold back the others
-    await Promise.all(
-      targets.map(async (station) => {
+    const deliveries = await Promise.all(
+      deviceIds.map(async (deviceId): Promise<StationDelivery> => {
+        const id = deviceId.startsWith(STATION_PREFIX) ? deviceId.slice(STATION_PREFIX.length) : undefined;
+        const station = id ? stations.find((s) => s.id === id) : undefined;
+        if (!station) return { deviceId, ok: false, error: 'no such station in the Yandex account' };
+        if (!this.speaks(station.id)) return { deviceId, ok: false, error: 'speaking notifications is off for this station' };
+        // Yandex knows a station that is off or out of the network: asked anyway, it took 5 s at home and 15 s in the
+        // cloud to fail
+        if (!station.online) return { deviceId, ok: false, error: 'the station is offline (Yandex)' };
         try {
           const route = await this.voice.say(station, text);
           if (this.storage.values.debug) this.logger.log(`${station.name} said the notification (${route})`);
+          return { deviceId, ok: true };
         } catch (error: any) {
-          this.logger.error(`${station.name} could not say the notification:`, errorText(error));
+          const reason = errorText(error);
+          this.logger.error(`${station.name} could not say the notification:`, reason);
+          return { deviceId, ok: false, error: reason };
         }
       }),
     );
+    return answered(deliveries);
   }
 
   async registerDevice(): Promise<NotifierDevice> {
