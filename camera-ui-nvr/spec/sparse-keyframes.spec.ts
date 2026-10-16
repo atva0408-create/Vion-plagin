@@ -4,7 +4,7 @@
 // Needs ffmpeg with libx264 on PATH (or CAMERAUI_FFMPEG_PATH). Run: npx tsx spec/sparse-keyframes.spec.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -206,11 +206,18 @@ for (const [what, at, nearest, picture] of [
   mkdirSync(unreadable);
   const broken = internals.store.addSegment({ ...row, path: unreadable, end_us: segment.start_us + 42 * 60 * S });
   const later = internals.store.addSegment({ ...row, end_us: segment.start_us + 42 * 60 * S });
+  // and one with a hole: three seconds more of video 2.5 hours on by the camera's clock, past its last keyframe
+  const tail = join(dir, 'tail.ts');
+  const madeTail = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=10', '-t', '3', '-c:v', 'libx264', '-bf', '0', '-output_ts_offset', '9000', '-f', 'mpegts', tail]);
+  assert.equal(madeTail.status, 0, madeTail.stderr?.toString());
+  const holed = join(dir, 'holed.ts');
+  writeFileSync(holed, Buffer.concat([readFileSync(file_.path), readFileSync(tail)]));
+  const withHole = internals.store.addSegment({ ...row, path: holed, end_us: segment.start_us + 9200 * S });
   const gone = internals.store.addSegment({ ...row, path: join(dir, 'gone.ts'), start_us: segment.start_us + 3600 * S, end_us: segment.start_us + 3600 * S + 42 * 60 * S, keyframes: JSON.stringify([[0, segment.start_us + 3600 * S]]) });
   // read in portions: the late rows of each
   const first = internals.store.endingLate(0, 60 * S, 201);
   const second = internals.store.endingLate(first.next!, 60 * S, 201);
-  assert.deepEqual([first.rows.map((r) => r.id), second.rows.map((r) => r.id)], [[segment.id], [broken, later, gone]]);
+  assert.deepEqual([first.rows.map((r) => r.id), second.rows.map((r) => r.id)], [[segment.id], [broken, later, withHole, gone]]);
   assert.equal(second.next, undefined);
   // a file still being written is left to its recorder, which ends it at its last frame itself
   const recorders = internals.cameras.get('cam') as { recorders: Map<string, unknown> };
@@ -218,21 +225,22 @@ for (const [what, at, nearest, picture] of [
   await internals.endSegmentsAtLastFrame();
   assert.equal(internals.store.segment(segment.id)!.end_us, segment.start_us + 42 * 60 * S, 'the open file is not read');
   recorders.recorders.clear();
-  internals.store.setMeta('segment_ends_at_last_frame', '');
+  internals.store.setMeta('segment_ends_before_holes', '');
   await internals.endSegmentsAtLastFrame();
   assert.equal(internals.store.segment(segment.id)!.end_us, ended, 'the file ends at its last frame');
   assert.equal(internals.store.segment(later)!.end_us, ended, 'and so does the row after the first portion');
+  assert.equal(internals.store.segment(withHole)!.end_us, ended, 'the file with a hole ends before it');
   assert.equal(internals.store.segment(gone)!.end_us, segment.start_us + 3600 * S + 42 * 60 * S, 'a file that is gone is left as it is');
   assert.equal(internals.store.segment(broken)!.end_us, segment.start_us + 42 * 60 * S, 'a file that cannot be read too');
   assert.ok(logged.some((m) => /^1 recorded file\(s\) could not be read for their last frame and keep their end: /.test(m)), logged.join(' | '));
-  assert.equal(internals.store.meta('segment_ends_at_last_frame'), 'done');
+  assert.equal(internals.store.meta('segment_ends_before_holes'), 'done');
   // a row its recorder wrote since it was read keeps what the recorder wrote
   assert.equal(internals.store.endSegmentAt(later, segment.start_us, segment.start_us + 42 * 60 * S), false);
   assert.equal(internals.store.segment(later)!.end_us, ended);
   // the row after the first portion in the pass that left the open file, the file itself in the next one
   assert.deepEqual(
     logged.filter((m) => m.includes('closed by the clock')),
-    ['1 recorded files closed by the clock end at their last frame now', '1 recorded files closed by the clock end at their last frame now'],
+    ['2 recorded files closed by the clock end at their last frame now', '1 recorded files closed by the clock end at their last frame now'],
   );
   // done once: not read again at the next start
   sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(segment.start_us + 42 * 60 * S, segment.id);

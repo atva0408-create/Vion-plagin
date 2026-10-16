@@ -82,7 +82,7 @@ const NO_KEYFRAME_WARN_MS = 30_000;
  * A stream that stopped with its connection open kept its file open (the Xiaomi of the bench: 155 minutes with 14 s
  * of video at the start and a few frames at the end), and the timeline showed the hole recorded.
  */
-const FRAME_GAP_US = 20_000_000;
+export const FRAME_GAP_US = 20_000_000;
 /** A frame waits for its picture NAL no longer than this many TS packets (~750 KiB, far more than any parameter sets and SEI). */
 const HELD_MAX_PACKETS = 4096;
 const EMPTY = Buffer.alloc(0);

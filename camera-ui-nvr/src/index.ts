@@ -17,7 +17,7 @@ import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
-import { Recorder } from './recorder.js';
+import { FRAME_GAP_US, Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
 import { PersonIndex, personEmbeddings, routeOf } from './people.js';
 import { parseKeyframes, Store } from './store.js';
@@ -95,8 +95,11 @@ const TRACE_CAP_GB = 1;
 const NO_ANSWER_TYPES_KEY = 'types_without_no_answers';
 /** The meta key of how far each camera's traces were cleared behind its oldest video (enforceRetention). */
 const TRACES_CLEARED_KEY = 'traces_cleared_to';
-/** The meta key of the one pass that ended the files closed by the clock at their last frame (Recorder: endUs). */
-const SEGMENT_ENDS_KEY = 'segment_ends_at_last_frame';
+/**
+ * The meta key of the one pass that ended the files closed by the clock at their last frame before a hole (Recorder:
+ * endUs, FRAME_GAP_US). A new key: NVR 0.22.10-11 ended them at their last frame, after a hole too.
+ */
+const SEGMENT_ENDS_KEY = 'segment_ends_before_holes';
 /** A file ending this far past its last keyframe is read for its last frame; a camera's keyframes are seconds apart. */
 const LATE_END_US = 60_000_000;
 const MERGE_GAP_US = 2_000_000;
@@ -868,8 +871,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /**
    * Once: the files that NVR before 0.22.10 closed by the clock end at their last frame. Streams that stopped with
    * their connection open left rows of 42 and 155 minutes over files of a few seconds (bench, a Xiaomi, 2026-10-14
-   * and 15): the timeline showed them recorded, and a picture asked there was one of those seconds. Only a file that
-   * ends more than a minute past its last keyframe is read, from that keyframe on.
+   * and 15): the timeline showed them recorded, and a picture asked there was one of those seconds. One of them had a
+   * few frames at its end, after a hole of 2.5 hours with no keyframe: such a file ends before the hole. Only a file
+   * that ends more than a minute past its last keyframe is read, from that keyframe on.
    */
   private async endSegmentsAtLastFrame(): Promise<void> {
     if (this.store.meta(SEGMENT_ENDS_KEY) === 'done') return;
@@ -884,7 +888,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           if (this.stopping) return;
           if (this.isLiveSegment(row.id)) continue;
           // a file that cannot be read (a bad sector) is left as it is: it stopped the pass at every start
-          const last = await lastFrameUs(this.store.located(row)).catch((error: Error) => {
+          const last = await lastFrameUs(this.store.located(row), FRAME_GAP_US).catch((error: Error) => {
             unreadable++;
             problem ??= error.message;
             return undefined;

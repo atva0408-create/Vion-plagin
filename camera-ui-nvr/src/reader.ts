@@ -110,12 +110,18 @@ export async function *readFrames(
   }
 }
 
-/** The time of the last video frame of a file, read from its last indexed keyframe on; undefined when none is read. */
-export async function lastFrameUs(segment: SegmentRow): Promise<number | undefined> {
+/**
+ * The time of the last video frame of a file, read from its last indexed keyframe on, up to a hole of more than
+ * `gapUs` between two frames (the frames after it have no keyframe to be decoded from); undefined when none is read.
+ */
+export async function lastFrameUs(segment: SegmentRow, gapUs = Infinity): Promise<number | undefined> {
   const last = parseKeyframes(segment.keyframes).at(-1);
   if (!last) return undefined;
   let end: number | undefined;
-  for await (const frame of readFrames(segment, last)) end = Math.max(end ?? frame.tsUs, frame.tsUs);
+  for await (const frame of readFrames(segment, last)) {
+    if (end !== undefined && frame.tsUs - end > gapUs) break;
+    end = Math.max(end ?? frame.tsUs, frame.tsUs);
+  }
   return end;
 }
 

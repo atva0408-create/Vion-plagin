@@ -6,13 +6,13 @@
 // the spacing of the stream when they arrive late in a burst while a healthy stream is stamped exactly as it was.
 // Run: npx tsx spec/recorder.spec.ts
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { nalType, nalUnits } from '../src/media/ts-demux.js';
-import { readKeyframe } from '../src/reader.js';
+import { lastFrameUs, readKeyframe } from '../src/reader.js';
 import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio, StreamRetry } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
 
@@ -638,6 +638,35 @@ Date.now = realNow;
 }
 
 // ------------------------------------------------------------------ where a file ends
+{
+  // a file an older version wrote over a hole (the Xiaomi of the bench: 155 minutes): 6 s of video, then frames with
+  // no keyframe 2.5 hours on by the camera's clock. The last frame the pass of the ends (index.ts) gives it is the one
+  // before the hole: the frames after it cannot be decoded
+  const parts = Array.from({ length: 6 }, (_, n) => stream('h264', { gops: 1, firstGop: n }));
+  const offsets = parts.map((_, n) => parts.slice(0, n).reduce((sum, part) => sum + part.length, 0) + 2 * TS);
+  const after = stream('h264', { gops: 1, firstGop: 6, keyframes: false, ptsOffset: 9000 * 90_000 });
+  const path = join(dir, 'hole.ts');
+  writeFileSync(path, Buffer.concat([...parts, after]));
+  const T0 = 1_792_000_000_000_000;
+  const row = {
+    id: 1,
+    camera_id: 'hole',
+    role: 'high',
+    start_us: T0,
+    end_us: T0 + 9100 * US,
+    path,
+    bytes: statSync(path).size,
+    codec: 'h264',
+    codec_string: 'avc1.640015',
+    width: 320,
+    height: 240,
+    video_pid: VIDEO_PID,
+    audio_pid: -1,
+    keyframes: JSON.stringify(offsets.map((offset, n) => [offset, T0 + n * US])),
+  };
+  assert.equal(((await lastFrameUs(row, 20 * US))! - T0) / US, 5.9, 'the last frame before the hole');
+  assert.ok(((await lastFrameUs(row))! - T0) / US > 9000, 'and past it when no hole is asked for');
+}
 clock = realNow();
 Date.now = () => clock;
 {
