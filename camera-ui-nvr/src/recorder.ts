@@ -77,6 +77,12 @@ interface HeldFrame {
 const FLUSH_MS = 4000;
 /** Video that runs this long without a keyframe is reported: nothing can start or be cut until one comes. */
 const NO_KEYFRAME_WARN_MS = 30_000;
+/**
+ * Video that stops this long ends its file at its last frame; what comes after is a file of its own from its keyframe.
+ * A stream that stopped with its connection open kept its file open (the Xiaomi of the bench: 155 minutes with 14 s
+ * of video at the start and a few frames at the end), and the timeline showed the hole recorded.
+ */
+const FRAME_GAP_US = 20_000_000;
 /** A frame waits for its picture NAL no longer than this many TS packets (~750 KiB, far more than any parameter sets and SEI). */
 const HELD_MAX_PACKETS = 4096;
 const EMPTY = Buffer.alloc(0);
@@ -165,6 +171,8 @@ export class Recorder {
   private held: HeldFrame | undefined;
   /** When the last keyframe came, or the first frame of a stream that has had none yet. */
   private keyframeMs: number | undefined;
+  /** When the last video frame came, by the clock: a connection open with no frame in it ends the file (FRAME_GAP_US). */
+  private videoMs: number | undefined;
   private keyframeWarned = false;
   private gop: Gop | undefined;
   private ring: Gop[] = [];
@@ -340,6 +348,7 @@ export class Recorder {
     this.late = undefined;
     this.held = undefined;
     this.keyframeMs = undefined;
+    this.videoMs = undefined;
     this.gop = undefined;
     this.ring = [];
     // the next connection may carry another codec, resolution or PID (camera reconfigured, fallback
@@ -367,6 +376,8 @@ export class Recorder {
       this.onPacket(Buffer.from(data.subarray(i, i + TS_PACKET)));
     }
     this.pending = Buffer.from(data.subarray(i));
+    // after the chunk is read: video that waited in the socket while this process was busy comes in it, and is no hole
+    if (this.segment && this.videoMs !== undefined && (Date.now() - this.videoMs) * 1000 > FRAME_GAP_US) this.closeSegmentSoon();
   }
 
   private onPacket(pkt: Buffer): void {
@@ -390,6 +401,7 @@ export class Recorder {
       // the frame before this one ended without a picture (parameter sets or SEI alone): it starts nothing
       this.release(false);
       this.watchKeyframes();
+      this.videoMs = Date.now();
       const pes = payloadOf(pkt);
       const pts = pes && pes[7] & 0x80 ? readPts(pes, 9) : undefined;
       const frameUs = pts === undefined ? undefined : this.frameTime(pts);
@@ -478,6 +490,8 @@ export class Recorder {
     const held = this.held;
     if (!held) return;
     this.held = undefined;
+    // a hole in the video: the file ends before it (FRAME_GAP_US)
+    if (this.segment && held.tsUs !== undefined && held.tsUs - this.segment.endUs > FRAME_GAP_US) this.closeSegmentSoon();
     if (keyframe && held.tsUs !== undefined) this.onKeyframe(held.tsUs);
     for (const pkt of held.packets) this.keep(pkt);
     if (this.segment && held.tsUs !== undefined) this.segment.endUs = Math.max(this.segment.endUs, held.tsUs);

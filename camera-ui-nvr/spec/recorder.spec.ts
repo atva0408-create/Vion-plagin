@@ -677,6 +677,66 @@ Date.now = () => clock;
   assert.equal(first.end_us, second.start_us);
   store.close();
 }
+{
+  // the video stops on the same connection and comes back hours later with the camera's clock run on (the Xiaomi
+  // of the bench, 2026-10-15: one file of 155 minutes with 14 s of video at its start and a few frames at its end):
+  // the file ends at its last frame before the hole, and the video after it is a file of its own from its keyframe
+  const t0 = clock;
+  const { rec, store, feed } = recorder('end-hole');
+  for (let n = 0; n < 6; n++) {
+    clock = t0 + n * 1000;
+    feed(stream('h264', { gops: 1, firstGop: n }));
+  }
+  for (let n = 0; n < 3; n++) {
+    clock = t0 + 9000_000 + n * 1000;
+    feed(stream('h264', { gops: 1, firstGop: n, ptsOffset: 9000 * 90_000 }));
+  }
+  await rec.stop();
+  const files = store.segments('end-hole', 'high', 0, Number.MAX_SAFE_INTEGER).map((s) => [(s.start_us - t0 * 1000) / US, (s.end_us - t0 * 1000) / US]);
+  assert.deepEqual(files, [
+    [0, 5.9],
+    [9000, 9002.9],
+  ]);
+  store.close();
+}
+{
+  // the video stops and the connection stays open with no frame in it (here the tables of the stream go on): the file
+  // ends at its last frame 20 s on, and the camera is no longer said to record
+  const t0 = clock;
+  const { rec, store, feed, states } = recorder('end-quiet');
+  for (let n = 0; n < 6; n++) {
+    clock = t0 + n * 1000;
+    feed(stream('h264', { gops: 1, firstGop: n }));
+  }
+  clock = t0 + 15_000;
+  feed(Buffer.concat([pat(), pmt(CODECS.h264.streamType)]));
+  assert.equal(rec.liveSegmentId !== undefined, true, 'a pause of 10 s is no end');
+  clock = t0 + 26_000;
+  feed(Buffer.concat([pat(), pmt(CODECS.h264.streamType)]));
+  await settle();
+  assert.equal(rec.liveSegmentId, undefined, 'no frame for 20 s: the file is closed');
+  assert.equal(states.at(-1), false, 'and the camera does not record');
+  const [row] = store.segments('end-quiet', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.equal((row.end_us - t0 * 1000) / US, 5.9);
+  await rec.stop();
+  store.close();
+}
+{
+  // the process was busy for 30 s (a statistics query): the video waited in the socket and comes at once, with the
+  // times the camera gave it. No hole, one file
+  const t0 = clock;
+  const { rec, store, feed } = recorder('end-busy');
+  for (let n = 0; n < 5; n++) {
+    clock = t0 + n * 1000;
+    feed(stream('h264', { gops: 1, firstGop: n }));
+  }
+  clock = t0 + 35_000;
+  feed(Buffer.concat(Array.from({ length: 31 }, (_, k) => stream('h264', { gops: 1, firstGop: 5 + k }))));
+  await rec.stop();
+  const files = store.segments('end-busy', 'high', 0, Number.MAX_SAFE_INTEGER).map((s) => [(s.start_us - t0 * 1000) / US, (s.end_us - t0 * 1000) / US]);
+  assert.deepEqual(files, [[0, 35.9]]);
+  store.close();
+}
 Date.now = realNow;
 
 console.log(
