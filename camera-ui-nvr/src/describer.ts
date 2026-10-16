@@ -55,7 +55,9 @@ export interface TextSearchResult {
 }
 
 const QUEUE_LIMIT = 50;
-const OBJECT_LABELS = new Set(['person', 'vehicle', 'animal']);
+// a segment's detections are what the object detector found, the classes of modules among them (a store module's
+// bicycle): every label but these is an object to describe
+const NOT_OBJECTS = new Set(['', 'motion', 'audio']);
 
 const LABELS_RU: Record<string, string> = { person: 'человек', vehicle: 'транспорт', animal: 'животное', face: 'лицо', license_plate: 'номер' };
 
@@ -113,13 +115,13 @@ export class EventDescriber {
     this.queue.length = 0;
   }
 
-  /** Called for every ended event; only events with objects are described. */
+  /** Called for every ended event; only events with objects are described, a module's class is one too. */
   public offer(event: RecordedEvent): void {
     const s = this.deps.settings();
     if (!s.enabled || this.stopped) return;
     if ((event as { ai?: EventDescription }).ai) return;
     const labels = labelsOf(event);
-    if (!labels.some((l) => OBJECT_LABELS.has(l))) return;
+    if (!labels.some((l) => !NOT_OBJECTS.has(l))) return;
     if (this.queue.some((e) => e.id === event.id)) return;
     if (this.queue.length >= QUEUE_LIMIT) {
       const dropped = this.queue.shift()!;
@@ -169,12 +171,14 @@ export class EventDescriber {
     const language = access.language ?? 'ru';
     const labels = labelsOf(event);
     const names = namesOf(event);
+    const answers = answersOf(event);
     const when = new Date(event.startTime);
     const prompt = [
       `Камера: ${this.deps.cameraName(event.cameraId)}`,
       `Время: ${when.toLocaleString('ru-RU')}`,
       `Детектор увидел: ${[...new Set(labels)].map((l) => LABELS_RU[l] ?? l).join(', ') || '—'}`,
       names.length ? `Распознано: ${names.join(', ')}` : '',
+      answers.length ? `Ответы модулей: ${answers.join('; ')}` : '',
       `Кадров: ${pictures.length}`,
     ]
       .filter(Boolean)
@@ -252,6 +256,24 @@ function namesOf(event: RecordedEvent): string[] {
     }
   }
   return [...out];
+}
+
+/**
+ * What modules answered about the people of the event («играет в компьютер: да», «поза: сидит»), each question with its
+ * answers in the order given: a hint for the model, which still writes only what the pictures show.
+ */
+function answersOf(event: RecordedEvent): string[] {
+  const byQuestion = new Map<string, string[]>();
+  for (const s of event.segments ?? []) {
+    for (const a of (s.attributes ?? []) as { type?: string; label?: string }[]) {
+      if (!a.type || !a.label?.startsWith(`${a.type}: `)) continue;
+      const answers = byQuestion.get(a.type) ?? [];
+      const answer = a.label.slice(a.type.length + 2);
+      if (!answers.includes(answer)) answers.push(answer);
+      byQuestion.set(a.type, answers);
+    }
+  }
+  return [...byQuestion].map(([question, answers]) => `${question}: ${answers.join(', ')}`);
 }
 
 function parseAnswer(result: AskResult): Omit<EventDescription, 'model' | 'at'> | undefined {

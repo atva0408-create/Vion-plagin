@@ -152,5 +152,52 @@ function gate(): { promise: Promise<void>; release: () => void } {
   assert.equal(warnings(), 2);
 }
 
-console.log('describer.spec: hourly limit counts model calls, full queue, permission warning — ok');
+// ------------------------------------------------------------------ what modules add
+
+{
+  // a store module's bicycle is an object: described like a person, its class named to the model
+  const { describer, asked, saved, idle } = make();
+  const bicycle = event('bicycle');
+  bicycle.types = ['motion', 'bicycle'];
+  (bicycle.segments[0] as { detections: unknown[] }).detections = [{ label: 'bicycle', score: 0.8 }];
+  describer.offer(bicycle);
+  // motion alone, or a sound: nothing to describe, no call
+  const motion = event('motion');
+  motion.types = ['motion'];
+  (motion.segments[0] as { detections: unknown[] }).detections = [{ label: 'motion', score: 1 }];
+  describer.offer(motion);
+  const sound = event('sound');
+  sound.types = ['audio'];
+  (sound.segments[0] as { detections: unknown[] }).detections = [];
+  describer.offer(sound);
+  await idle();
+  assert.deepEqual(saved, ['bicycle']);
+  assert.match(asked[0]!, /bicycle/);
+}
+{
+  // the answers of modules are told to the model, each question with its answers in the order given; faces and
+  // plates as before, a picture embedding is no answer
+  const { describer, asked, idle } = make();
+  const playing = event('playing');
+  (playing.segments[0] as { attributes: unknown[] }).attributes = [
+    { type: 'играет в компьютер', label: 'играет в компьютер: нет' },
+    { type: 'поза', label: 'поза: сидит' },
+    { type: 'играет в компьютер', label: 'играет в компьютер: да' },
+    { type: 'играет в компьютер', label: 'играет в компьютер: да' },
+    { type: 'face', label: 'Артём' },
+    { type: 'clip', label: 'clip' },
+  ];
+  describer.offer(playing);
+  await idle();
+  assert.match(asked[0]!, /Ответы модулей: играет в компьютер: нет, да; поза: сидит/);
+  assert.match(asked[0]!, /Распознано: лицо: Артём/);
+  assert.doesNotMatch(asked[0]!, /clip/);
+  // none: no line
+  const plain = make();
+  plain.describer.offer(event('plain'));
+  await plain.idle();
+  assert.doesNotMatch(plain.asked[0]!, /Ответы модулей/);
+}
+
+console.log('describer.spec: hourly limit counts model calls, full queue, permission warning, module classes and answers — ok');
 process.exit(0);
