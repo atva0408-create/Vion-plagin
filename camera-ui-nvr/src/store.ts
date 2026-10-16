@@ -75,6 +75,7 @@ export interface EpisodeRow {
 export class Store {
   private readonly db: DatabaseSync;
   private lastSegment: StatementSync | undefined;
+  private anySegment: StatementSync | undefined;
 
   /**
    * `recordingsDir`: the directory the segment files are kept in. With it new rows name their file below it and
@@ -104,6 +105,9 @@ export class Store {
         keyframes TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS segments_camera_time ON segments (camera_id, role, start_us);
+      -- the span of each file in the index itself: «has a recording» in a pause of a camera's recording looks at every
+      -- earlier file, and read from the rows (each with its keyframes) on a cold HDD it held the recorder a minute
+      CREATE INDEX IF NOT EXISTS segments_camera_span ON segments (camera_id, role, start_us, end_us);
       CREATE INDEX IF NOT EXISTS segments_time ON segments (start_us);
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
@@ -332,14 +336,17 @@ export class Store {
    * one that covers it, when one does, and the index gives it at once. Only when that one ends before the range is
    * the old question asked: files overlap a little where one was cut, so an earlier one may still reach into it.
    */
+  /** Whether any file of a camera's role reaches into a range (cameraId, role, startUs, endUs): from the index alone. */
+  public readonly anySegmentSql = 'SELECT 1 FROM segments WHERE camera_id = ? AND role = ? AND end_us >= ? AND start_us <= ? LIMIT 1';
+
   public hasSegments(cameraId: string, role: string, startUs: number, endUs: number): boolean {
     // prepared once: asked thousands of times in a row, where preparing costs more than the look itself
     this.lastSegment ??= this.db.prepare('SELECT end_us FROM segments WHERE camera_id = ? AND role = ? AND start_us <= ? ORDER BY start_us DESC LIMIT 1');
     const last = this.lastSegment.get(cameraId, role, endUs) as { end_us: number } | undefined;
     if (!last) return false;
     if (last.end_us >= startUs) return true;
-    const any = this.db.prepare('SELECT 1 FROM segments WHERE camera_id = ? AND role = ? AND end_us >= ? AND start_us <= ? LIMIT 1');
-    return any.get(cameraId, role, startUs, endUs) !== undefined;
+    this.anySegment ??= this.db.prepare(this.anySegmentSql);
+    return this.anySegment.get(cameraId, role, startUs, endUs) !== undefined;
   }
 
   /** The segment containing `tsUs`, else the first one starting after it. */

@@ -118,6 +118,11 @@ function planOf(store: Store, run: () => unknown): string {
   assert.deepEqual(store.segmentsBefore(cutoffUs, 3).length, 3);
   const before = planOf(store, () => store.segmentsBefore(cutoffUs, 200));
   assert.match(before, /SEARCH segments USING INDEX segments_time \(start_us<\?\)/, `only the old rows are read: ${before}`);
+  // «has a recording» for a range in a pause of the recording looks at every earlier file of the camera: from the index
+  // alone, not from the rows with their keyframes (a cold HDD held the recorder a minute at a start, 2026-10-16)
+  const db = (store as unknown as { db: DatabaseSync }).db;
+  const reaching = (db.prepare(`EXPLAIN QUERY PLAN ${store.anySegmentSql}`).all('cam1', 'high', 1, 2) as { detail: string }[]).map((r) => r.detail).join(' | ');
+  assert.match(reaching, /USING COVERING INDEX segments_camera_span/, reaching);
   store.close();
 }
 {
@@ -139,6 +144,12 @@ function planOf(store: Store, run: () => unknown): string {
     /USING INDEX segments_time/,
   );
   assert.equal(store.oldestSegments(1)[0].path, '/a.ts');
+  const reaching = ((store as unknown as { db: DatabaseSync }).db.prepare(`EXPLAIN QUERY PLAN ${store.anySegmentSql}`).all('c', 'high', 1, 2) as { detail: string }[])
+    .map((r) => r.detail)
+    .join(' | ');
+  assert.match(reaching, /USING COVERING INDEX segments_camera_span/, reaching);
+  assert.equal(store.hasSegments('c', 'high', 3, 4), false);
+  assert.equal(store.hasSegments('c', 'high', 2, 4), true);
   store.close();
   new Store(path).close(); // opening again must not fail on the index that now exists
 }
