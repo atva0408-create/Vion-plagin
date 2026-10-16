@@ -66,10 +66,13 @@ export interface ThingSources {
   changes(place: Place, atMs: number, toMs: number): Promise<{ changes: { beforeMs: number; afterMs: number }[]; turnedMs?: number }>;
   /** the people the camera tracked about a time, with their boxes */
   people(atMs: number): Promise<PersonThere[]>;
+  /** the clock the time of a question is counted by (Date.now; tests give theirs) */
+  now?(): number;
 }
 
 export interface ThingAnswer {
-  state: 'gone' | 'still-there' | 'not-outlined' | 'no-recording' | 'no-outliner' | 'failed';
+  /** cut: the time (or the pictures) of a question ran out before the thing was told there or gone */
+  state: 'gone' | 'still-there' | 'not-outlined' | 'no-recording' | 'no-outliner' | 'failed' | 'cut';
   /** the moment marked, and the outline of the thing then */
   markedMs: number;
   outline?: Place;
@@ -86,6 +89,8 @@ export interface ThingAnswer {
   pictures: { marked?: Uint8Array; before?: Uint8Array; after?: Uint8Array; lastSeen?: Uint8Array };
   /** pictures outlined */
   looks: number;
+  /** the time or the pictures of a question ran out: what was found by then is the answer */
+  cut?: boolean;
   problem?: string;
 }
 
@@ -122,6 +127,11 @@ const LOST_AFTER = 4;
 const EDGE = 0.03;
 /** Pictures outlined at most for one question (about 2 s each on the CPU of a small server). */
 export const LOOKS_MAX = 120;
+/**
+ * The time of one question: the assistant's call of it ends after 10 minutes. An outline took 2.4-2.8 s on the bench,
+ * once 12 s while the live models were busy: past this what was found is the answer.
+ */
+export const BUDGET_MS = 8 * 60_000;
 
 /** The overlap of two boxes: intersection over union. */
 export function overlap(a: Place, b: Place): number {
@@ -190,9 +200,12 @@ function grid(box: Place, n: number): { x: number; y: number }[] {
 
 export async function followThing(
   sources: ThingSources,
-  query: { place: Place; atMs: number; toMs: number; carried: boolean },
+  query: { place: Place; atMs: number; toMs: number; carried: boolean; budgetMs?: number },
 ): Promise<ThingAnswer> {
   const { atMs } = query;
+  const clock = () => (sources.now ? sources.now() : Date.now());
+  const started = clock();
+  const budget = query.budgetMs ?? BUDGET_MS;
   const answer: ThingAnswer = { state: 'failed', markedMs: atMs, pictures: {}, looks: 0 };
   const recorded = sources.recorded(atMs, query.toMs);
   if (!recorded.length) return { ...answer, state: 'no-recording' };
@@ -201,7 +214,10 @@ export async function followThing(
   let problem: string | undefined;
   /** the outlines of the prompts on the picture at a time; undefined where no picture or no outliner */
   const outlined = async (picture: Uint8Array, prompts: Prompt[]): Promise<Outlined[] | undefined> => {
-    if (answer.looks >= LOOKS_MAX) return undefined;
+    if (answer.looks >= LOOKS_MAX || clock() - started >= budget) {
+      answer.cut = true;
+      return undefined;
+    }
     answer.looks++;
     const got = await sources.outline(picture, prompts);
     if (!Array.isArray(got)) {
@@ -282,11 +298,13 @@ export async function followThing(
   if (firstGone === undefined) {
     const atEnd = await there(toMs);
     if (atEnd === undefined && problem) return { ...answer, state: 'no-outliner', problem };
+    // the time ran out before the end was looked at: neither there nor gone can be said
+    if (atEnd === undefined && answer.cut) return { ...answer, state: 'cut', lastThereMs: lastThere };
     if (atEnd !== false) return { ...answer, state: 'still-there', lastThereMs: atEnd ? toMs : lastThere };
     firstGone = toMs;
   }
   // narrowed to a second between a picture with it and one without (looks that cannot be told end the narrowing)
-  while (firstGone - lastThere > GONE_EXACT_MS && answer.looks < LOOKS_MAX) {
+  while (firstGone - lastThere > GONE_EXACT_MS && !answer.cut) {
     const middle = Math.round((lastThere + firstGone) / 2);
     const seen = await there(middle);
     if (seen === undefined) break;
@@ -306,7 +324,7 @@ export async function followThing(
   const withWhom = new Map<string, { eventId: string; trackId: number; times: number }>();
   let last = thing.box;
   let misses = 0;
-  for (let t = lastThere + FOLLOW_STEP_MS; t <= Math.min(toMs, lastThere + FOLLOW_MS) && answer.looks < LOOKS_MAX; t += FOLLOW_STEP_MS) {
+  for (let t = lastThere + FOLLOW_STEP_MS; t <= Math.min(toMs, lastThere + FOLLOW_MS) && !answer.cut; t += FOLLOW_STEP_MS) {
     const picture = await frame(t);
     if (!picture) continue;
     const near = widened(last, 2);

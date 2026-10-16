@@ -2230,6 +2230,13 @@ async function markedThing(host: AssistantHost, input: Input, ctx: AssistantTool
     };
   }
   if (answer.state === 'failed') return { error: `The thing could not be followed${answer.problem ? `: ${answer.problem}` : ''}.` };
+  if (answer.state === 'cut') {
+    return {
+      error:
+        `The time of one question ran out after ${answer.looks} picture(s) before the thing was told there or gone (it was there at ` +
+        `${clock(answer.lastThereMs ?? at)}): ask again with \`to\` nearer the marked moment.`,
+    };
+  }
 
   const images: AssistantToolImage[] = [
     ...jpeg(answer.pictures.marked, `${camera.name} · the thing marked · ${clock(at)}`),
@@ -2285,6 +2292,7 @@ async function markedThing(host: AssistantHost, input: Input, ctx: AssistantTool
         : { stillThere: `the thing is there at ${clock(answer.lastThereMs ?? end)}` }),
       ...(answer.turnedMs !== undefined ? { turned: `the camera turned after ${clock(answer.turnedMs)}: the thing was looked for until then` } : {}),
       ...(carriedContent ? { carried: carriedContent } : {}),
+      ...(answer.cut ? { cut: 'the time of one question ran out on the way: what was found by then is given' } : {}),
       around: around.slice(0, 8).map((ev) => ({ id: ev.id, start: clock(ev.startTime), labels: labelsOf(ev), ...(ev.ai?.title ? { title: ev.ai.title } : {}) })),
       pictures: images.map((image) => image.caption),
       outlined: `${answer.looks} picture(s) outlined`,

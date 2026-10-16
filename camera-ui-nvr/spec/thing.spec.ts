@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 
 import { PATCH } from '../src/gone.js';
-import { colourDistance, FOLLOW_MS, followThing, GONE_EXACT_MS, LOOKS_MAX, overlap, sameThing, thingLook } from '../src/thing.js';
+import { BUDGET_MS, colourDistance, FOLLOW_MS, followThing, GONE_EXACT_MS, LOOKS_MAX, overlap, sameThing, thingLook } from '../src/thing.js';
 
 import type { Place } from '../src/gone.js';
 import type { Outlined, PersonThere, Prompt, ThingLook, ThingSources } from '../src/thing.js';
@@ -65,10 +65,13 @@ interface World {
   weakMark?: boolean;
   /** the camera turned at this moment (before the thing was taken): elsewhere after it */
   turnedAt?: number;
+  /** each outline takes this long by the question's clock */
+  outlineMs?: number;
 }
 
 function world(w: World = {}) {
   const asked: number[] = [];
+  let clock = 0;
   const at = (t: number) => (w.stays ? LYING : thingAt(t, w.speed));
   /** the thing a prompt falls on, the marked one before its twin */
   const things = (t: number) => [at(t), ...(w.twin ? [TWIN] : [])].filter((p): p is Place => p !== undefined);
@@ -78,6 +81,7 @@ function world(w: World = {}) {
     outline: async (picture, prompts: Prompt[]) => {
       const t = decode(picture);
       asked.push(t);
+      clock += w.outlineMs ?? 0;
       if (w.failAfter !== undefined && asked.length > w.failAfter) return { problem: 'outliner gone' };
       return prompts.map((prompt): Outlined => {
         if (w.turnedAt !== undefined && t >= w.turnedAt) return prompts.map(() => ({ score: 0.7, present: true }));
@@ -101,6 +105,7 @@ function world(w: World = {}) {
       return { changes: out.filter((c) => c.beforeMs >= from && c.afterMs <= to && overlap(place, LYING) > 0), ...(w.turnedAt !== undefined ? { turnedMs: w.turnedAt - 10 * S } : {}) };
     },
     people: async (t) => peopleAt(t, w.speed),
+    now: () => clock,
   };
   return { sources, asked };
 }
@@ -164,6 +169,23 @@ const query = (carried: boolean) => ({ place: { x: 0.42, y: 0.52, width: 0.12, h
   // the last keyframe before the turn, as the place's looks give it
   assert.equal(answer.turnedMs, 2490 * S);
   assert.equal(answer.lastThereMs, 2490 * S, 'there until the camera turned');
+}
+
+// ------------------------------------------------------------------ the time of a question runs out
+{
+  // an outline of 12 s (the bench once, its live models busy): after the mark and one more the minute is gone, and
+  // neither there nor gone can be said (it was said still there)
+  const none = await followThing(world({ outlineMs: 12 * S }).sources, { ...query(true), budgetMs: 20 * S });
+  assert.equal(none.state, 'cut', JSON.stringify({ ...none, pictures: undefined }));
+  assert.equal(none.cut, true);
+  assert.equal(none.looks, 2);
+  // enough for when it went, not for all of where: what was followed is the answer, said cut
+  const enough = await followThing(world({ outlineMs: 1 * S }).sources, { ...query(true), budgetMs: 30 * S });
+  assert.equal(enough.state, 'gone');
+  assert.equal(enough.cut, true);
+  assert.ok(enough.looks <= 31, `${enough.looks} looks in 30 s of 1 s each`);
+  // the default: the question of the first test took 30 looks, far within
+  assert.equal(BUDGET_MS, 8 * 60_000);
 }
 
 // ------------------------------------------------------------------ the thing never went
