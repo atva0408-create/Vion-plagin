@@ -450,6 +450,20 @@ export class Store {
     return { changed, next: rows.length === limit ? rows[rows.length - 1].rowid : undefined };
   }
 
+  /**
+   * Files whose row ends more than `gapUs` past their last keyframe, among up to `limit` rows after the id `after`
+   * (`next`: where to go on, undefined at the end): before NVR 0.22.10 a file was closed by the clock, and one whose
+   * stream stopped with its connection open was said to be recorded for as long as it stayed open.
+   */
+  public endingLate(after: number, gapUs: number, limit = 200): { rows: SegmentRow[]; next: number | undefined } {
+    const scanned = this.db.prepare('SELECT * FROM segments WHERE id > ? ORDER BY id LIMIT ?').all(after, limit) as unknown as SegmentRow[];
+    const rows = scanned.filter((row) => {
+      const last = parseKeyframes(row.keyframes).at(-1);
+      return last !== undefined && row.end_us - last.tsUs > gapUs;
+    });
+    return { rows, next: scanned.length === limit ? scanned[scanned.length - 1].id : undefined };
+  }
+
   public event(id: string): EventRow | undefined {
     return (this.db.prepare('SELECT * FROM events WHERE id = ?').get(id) ?? undefined) as EventRow | undefined;
   }

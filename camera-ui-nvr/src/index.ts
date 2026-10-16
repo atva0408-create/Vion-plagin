@@ -16,7 +16,7 @@ import { NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
 import { PlaybackManager } from './playback.js';
-import { keyframeAtOrBefore, readExact, readFrames, readKeyframe } from './reader.js';
+import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
 import { PersonIndex, personEmbeddings, routeOf } from './people.js';
@@ -95,6 +95,10 @@ const TRACE_CAP_GB = 1;
 const NO_ANSWER_TYPES_KEY = 'types_without_no_answers';
 /** The meta key of how far each camera's traces were cleared behind its oldest video (enforceRetention). */
 const TRACES_CLEARED_KEY = 'traces_cleared_to';
+/** The meta key of the one pass that ended the files closed by the clock at their last frame (Recorder: endUs). */
+const SEGMENT_ENDS_KEY = 'segment_ends_at_last_frame';
+/** A file ending this far past its last keyframe is read for its last frame; a camera's keyframes are seconds apart. */
+const LATE_END_US = 60_000_000;
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
@@ -835,6 +839,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
     void this.enforceRetention();
     void this.dropNoAnswerTypes();
+    void this.endSegmentsAtLastFrame();
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
     this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
@@ -857,6 +862,38 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (changed) this.logger.log(`A question of a module answered only «нет» is out of the types of ${changed} older events`);
     } catch (error) {
       this.logger.warn(`The types of older events were not cleared of questions answered «нет», the next start goes on: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Once: the files that NVR before 0.22.10 closed by the clock end at their last frame. Streams that stopped with
+   * their connection open left rows of 42 and 155 minutes over files of a few seconds (bench, a Xiaomi, 2026-10-14
+   * and 15): the timeline showed them recorded, and a picture asked there was one of those seconds. Only a file that
+   * ends more than a minute past its last keyframe is read, from that keyframe on.
+   */
+  private async endSegmentsAtLastFrame(): Promise<void> {
+    if (this.store.meta(SEGMENT_ENDS_KEY) === 'done') return;
+    let after: number | undefined = 0;
+    let ended = 0;
+    try {
+      while (after !== undefined && !this.stopping) {
+        const step = this.store.endingLate(after, LATE_END_US);
+        for (const row of step.rows) {
+          if (this.stopping) return;
+          if (this.isLiveSegment(row.id)) continue;
+          const last = await lastFrameUs(this.store.located(row));
+          if (last === undefined || last >= row.end_us) continue;
+          this.store.updateSegment(row.id, last, row.bytes, row.keyframes);
+          ended++;
+        }
+        after = step.next;
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      if (this.stopping) return;
+      this.store.setMeta(SEGMENT_ENDS_KEY, 'done');
+      if (ended) this.logger.log(`${ended} recorded files closed by the clock end at their last frame now`);
+    } catch (error) {
+      this.logger.warn(`The ends of older recorded files were not checked, the next start goes on: ${(error as Error).message}`);
     }
   }
 

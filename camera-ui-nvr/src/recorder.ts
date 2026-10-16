@@ -53,6 +53,11 @@ interface OpenSegment {
   path: string;
   stream: WriteStream;
   startUs: number;
+  /**
+   * The time of its last frame (of the keyframe the next file starts with, once cut). Not the clock: a stream that
+   * stopped with its connection open (a Xiaomi, 2026-10-14) kept a file of 6 s open for 42 minutes, and its row said
+   * all of them were recorded.
+   */
   endUs: number;
   bytes: number;
   keyframes: [number, number][];
@@ -475,6 +480,7 @@ export class Recorder {
     this.held = undefined;
     if (keyframe && held.tsUs !== undefined) this.onKeyframe(held.tsUs);
     for (const pkt of held.packets) this.keep(pkt);
+    if (this.segment && held.tsUs !== undefined) this.segment.endUs = Math.max(this.segment.endUs, held.tsUs);
   }
 
   private keep(pkt: Buffer): void {
@@ -511,9 +517,9 @@ export class Recorder {
     if (this.segment) {
       const age = tsUs - this.segment.startUs;
       if (!wantRecord) {
-        this.closeSegmentSoon();
+        this.closeSegmentSoon(tsUs);
       } else if (age >= this.opts.segmentSec * 1_000_000) {
-        this.closeSegmentSoon();
+        this.closeSegmentSoon(tsUs);
         this.openSegment(tsUs, []);
       } else {
         this.segment.keyframes.push([this.segment.bytes, tsUs]);
@@ -615,7 +621,6 @@ export class Recorder {
     if (this.gop) seg.endUs = Math.max(seg.endUs, this.gop.tsUs, lastKf?.[1] ?? 0);
     if (Date.now() - seg.lastFlush > FLUSH_MS) {
       seg.lastFlush = Date.now();
-      seg.endUs = Math.max(seg.endUs, Date.now() * 1000 - 500_000);
       this.saveIndex(seg);
     }
   }
@@ -635,19 +640,22 @@ export class Recorder {
     }
   }
 
-  /** Closes the segment without waiting for it: a rejection nobody awaits ends the process, so a failure is logged here. */
-  private closeSegmentSoon(): void {
-    const closing = this.closeSegment()
+  /**
+   * Closes the segment without waiting for it: a rejection nobody awaits ends the process, so a failure is logged here.
+   * `nextUs`: the keyframe it is cut at, where its time ends.
+   */
+  private closeSegmentSoon(nextUs?: number): void {
+    const closing = this.closeSegment(nextUs)
       .catch((error: Error) => this.opts.log('error', `${this.label} closing a segment failed: ${error.message}`))
       .finally(() => this.closing.delete(closing));
     this.closing.add(closing);
   }
 
-  private async closeSegment(): Promise<void> {
+  private async closeSegment(nextUs?: number): Promise<void> {
     const seg = this.segment;
     if (!seg) return;
     this.segment = undefined;
-    seg.endUs = Math.max(seg.endUs, Date.now() * 1000);
+    if (nextUs !== undefined) seg.endUs = Math.max(seg.endUs, nextUs);
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     await new Promise<void>((resolve) => seg.stream.end(() => resolve()));
     try {

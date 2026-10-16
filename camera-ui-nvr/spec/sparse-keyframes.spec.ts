@@ -58,8 +58,9 @@ const api = {
   coreManager: { assistantAccess: async () => ({ allowed: false }), getFFmpegPath: () => new Promise<string>(noop), getPluginsByInterface: async () => [] },
 };
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
-const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
-const internals = nvr as unknown as { cameras: Map<string, unknown>; store: Store; ready: Promise<void>; stop(): Promise<void> };
+const logged: string[] = [];
+const nvr = new VionNvr({ log: (m: string) => void logged.push(m), warn: (m: string) => void logged.push(m), error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
+const internals = nvr as unknown as { cameras: Map<string, unknown>; store: Store; ready: Promise<void>; stop(): Promise<void>; endSegmentsAtLastFrame(): Promise<void> };
 await internals.ready;
 internals.cameras.set('cam', { device: { id: 'cam', name: 'cam' }, recorders: new Map(), subscriptions: [] });
 
@@ -167,6 +168,46 @@ for (const [what, at, nearest] of [
   );
 }
 
+// files an older version closed by the clock: the row of this one as it would have been after a stream that stopped
+// with its connection open (42 minutes), and one of a file that is gone. Once, at the start: the first ends at its
+// last frame again, the second is left as it is
+{
+  const ended = segment.end_us;
+  assert.ok(ended - k0 > 149 * S && ended - k0 < 150 * S, `the file ends with its last frame: ${(ended - k0) / S}`);
+  const sql = internals.store.sql;
+  sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(segment.start_us + 42 * 60 * S, segment.id);
+  const { id: _id, ...row } = segment;
+  // two hundred files that end with their frames (a portion), then the same file once more as an older version left it
+  for (let n = 0; n < 200; n++) internals.store.addSegment(row);
+  const later = internals.store.addSegment({ ...row, end_us: segment.start_us + 42 * 60 * S });
+  const gone = internals.store.addSegment({ ...row, path: join(dir, 'gone.ts'), start_us: segment.start_us + 3600 * S, end_us: segment.start_us + 3600 * S + 42 * 60 * S, keyframes: JSON.stringify([[0, segment.start_us + 3600 * S]]) });
+  // read in portions: the late rows of each
+  const first = internals.store.endingLate(0, 60 * S, 201);
+  const second = internals.store.endingLate(first.next!, 60 * S, 201);
+  assert.deepEqual([first.rows.map((r) => r.id), second.rows.map((r) => r.id)], [[segment.id], [later, gone]]);
+  assert.equal(second.next, undefined);
+  // a file still being written is left to its recorder, which ends it at its last frame itself
+  const recorders = internals.cameras.get('cam') as { recorders: Map<string, unknown> };
+  recorders.recorders.set('high', { liveSegmentId: segment.id });
+  await internals.endSegmentsAtLastFrame();
+  assert.equal(internals.store.segment(segment.id)!.end_us, segment.start_us + 42 * 60 * S, 'the open file is not read');
+  recorders.recorders.clear();
+  internals.store.setMeta('segment_ends_at_last_frame', '');
+  await internals.endSegmentsAtLastFrame();
+  assert.equal(internals.store.segment(segment.id)!.end_us, ended, 'the file ends at its last frame');
+  assert.equal(internals.store.segment(later)!.end_us, ended, 'and so does the row after the first portion');
+  assert.equal(internals.store.segment(gone)!.end_us, segment.start_us + 3600 * S + 42 * 60 * S, 'a file that is gone is left as it is');
+  // the row after the first portion in the pass that left the open file, the file itself in the next one
+  assert.deepEqual(
+    logged.filter((m) => m.includes('closed by the clock')),
+    ['1 recorded files closed by the clock end at their last frame now', '1 recorded files closed by the clock end at their last frame now'],
+  );
+  // done once: not read again at the next start
+  sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(segment.start_us + 42 * 60 * S, segment.id);
+  await internals.endSegmentsAtLastFrame();
+  assert.equal(internals.store.segment(segment.id)!.end_us, segment.start_us + 42 * 60 * S);
+}
+
 await internals.stop();
-console.log('sparse-keyframes.spec: a time is decoded from the keyframe before it; far from it, the nearest keyframe is its picture — ok');
+console.log('sparse-keyframes.spec: a time is decoded from the keyframe before it; far from it, the nearest keyframe is its picture; files closed by the clock end at their last frame — ok');
 process.exit(0);

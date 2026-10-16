@@ -637,7 +637,49 @@ Date.now = realNow;
   assert.equal(flaky.ended('no data for 20s', 3_600_000, now + 7_200_000).level, 'warn', 'each end after a long run is told');
 }
 
+// ------------------------------------------------------------------ where a file ends
+clock = realNow();
+Date.now = () => clock;
+{
+  // the Xiaomi's stream stopped with its connection open (2026-10-14): a file of 6 s of video was closed 42 minutes
+  // later and its row said all of it was recorded. The timeline showed the 42 minutes, and every picture asked there
+  // read nothing. A file ends with its last frame, however long it stays open after it
+  const t0 = clock;
+  const { rec, store, feed } = recorder('end-stall');
+  for (let n = 0; n < 6; n++) {
+    clock = t0 + n * 1000;
+    feed(stream('h264', { gops: 1, firstGop: n }));
+  }
+  clock = t0 + 42 * 60_000;
+  await rec.stop();
+  const [row] = store.segments('end-stall', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.equal((row.end_us - t0 * 1000) / US, 5.9, 'the file ends with its last frame, not when it was closed');
+  store.close();
+}
+{
+  // a file cut at its length ends where the next one starts, also when the video comes late (here 3 s from the 30th
+  // second on: the file reached past the start of the next by the lateness)
+  const t0 = clock;
+  const { rec, store, feed } = recorder('end-cut');
+  for (let n = 0; n < 63; n++) {
+    clock = t0 + n * 1000 + (n >= 30 ? 3000 : 0);
+    feed(stream('h264', { gops: 1, firstGop: n }));
+    if (n === 45) {
+      // the row of the file being written, flushed every few seconds: as far as its frames, not ahead by the lateness
+      const live = (store.segment(rec.liveSegmentId!)!.end_us - t0 * 1000) / US;
+      assert.ok(live > 40 && live <= 45.9, `the open file reaches its last frame flushed: ${live}`);
+    }
+  }
+  await rec.stop();
+  const [first, second] = store.segments('end-cut', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.ok(second, 'cut after a minute');
+  assert.equal((first.end_us - t0 * 1000) / US, 60, 'the first file ends at the keyframe the second one starts with');
+  assert.equal(first.end_us, second.start_us);
+  store.close();
+}
+Date.now = realNow;
+
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a file ends with its last frame — ok',
 );
 process.exit(0);
