@@ -1,3 +1,8 @@
+## [0.22.10]
+
+- A recorded file ends with its last frame, not when it was closed: a stream that stopped with its connection open left a file of a few seconds open, and its row said it was recorded all that time (a Xiaomi on the bench: 42 and 155 minutes over files of 6 and 14 s). The timeline showed those minutes recorded and every picture asked there read nothing. Files closed so by older versions end at their last frame after the first start (read once, only the files that end more than a minute past their last keyframe)
+- The picture of a time is the frame of that time: the search for when a thing went and the history of a place read the picture of the keyframe after the time (1-2 s late on every camera, minutes late or nothing on a camera that sends keyframes rarely). The exact frame of the archive and of a trace, more than 300 frames past its keyframe, stopped short of the time and gave the last frame read as its picture; it now gives the nearest keyframe of the file, with its own time
+
 ## [0.22.9]
 
 - The database of the recorder keeps to a size: its detection traces were most of it (744 thousand rows, 1.2 of 1.41 GB on the bench) and those of the events whose video is still there were never cleared. Over «Предел базы событий, ГБ» (Storage, 1 GB unless set; 0: no size) the retention clears the traces of the oldest events, 200 at most every five minutes; the events and the recordings stay. The file does not shrink, its freed pages are used again and it stops growing

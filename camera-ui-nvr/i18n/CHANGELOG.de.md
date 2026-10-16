@@ -1,3 +1,8 @@
+## [0.22.10]
+
+- Eine Aufnahmedatei endet mit ihrem letzten Bild, nicht beim Schließen: ein Stream, der bei offener Verbindung stehen blieb, hielt eine Datei von wenigen Sekunden offen, und ihre Zeile sagte, die ganze Zeit sei aufgenommen (eine Xiaomi auf dem Prüfstand: 42 und 155 Minuten über Dateien von 6 und 14 s). Die Zeitleiste zeigte diese Minuten als aufgenommen, und jedes Bild von dort las nichts. Von älteren Versionen so geschlossene Dateien enden nach dem ersten Start mit ihrem letzten Bild (einmal gelesen, nur Dateien, die mehr als eine Minute nach ihrem letzten Schlüsselbild enden)
+- Das Bild eines Zeitpunkts ist das Bild dieses Zeitpunkts: die Suche, wann ein Ding verschwand, und die Geschichte eines Ortes lasen das Bild des nächsten Schlüsselbilds (1-2 s zu spät bei jeder Kamera, Minuten zu spät oder nichts bei einer Kamera mit seltenen Schlüsselbildern). Das genaue Bild des Archivs und einer Spur hörte mehr als 300 Bilder nach seinem Schlüsselbild vor dem Zeitpunkt auf und gab das zuletzt gelesene; jetzt kommt das nächste Schlüsselbild der Datei mit seiner eigenen Zeit
+
 ## [0.22.9]
 
 - Die Datenbank der Aufnahme hält eine Größe ein: die Spuren der Erkennungen waren der größte Teil (744 Tausend Zeilen, 1,2 von 1,41 GB auf dem Prüfstand), und die der Ereignisse, deren Video noch da ist, wurden nie gelöscht. Über «Предел базы событий, ГБ» (Speicher, 1 GB ohne Einstellung; 0: ohne Grenze) löscht die Aufbewahrung die Spuren der ältesten Ereignisse, höchstens 200 alle fünf Minuten; Ereignisse und Aufnahmen bleiben. Die Datei schrumpft nicht, ihre freien Seiten werden wieder belegt und sie wächst nicht mehr
