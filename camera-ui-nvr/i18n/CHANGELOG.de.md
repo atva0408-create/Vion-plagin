@@ -1,3 +1,7 @@
+## [0.22.9]
+
+- Die Datenbank der Aufnahme hält eine Größe ein: die Spuren der Erkennungen waren der größte Teil (744 Tausend Zeilen, 1,2 von 1,41 GB auf dem Prüfstand), und die der Ereignisse, deren Video noch da ist, wurden nie gelöscht. Über «Предел базы событий, ГБ» (Speicher, 1 GB ohne Einstellung; 0: ohne Grenze) löscht die Aufbewahrung die Spuren der ältesten Ereignisse, höchstens 200 alle fünf Minuten; Ereignisse und Aufnahmen bleiben. Die Datei schrumpft nicht, ihre freien Seiten werden wieder belegt und sie wächst nicht mehr
+
 ## [0.22.8]
 
 - Eine Kamera, die nicht antwortet, wird einmal gemeldet, nicht jede Minute: die Aufnahme einer unerreichbaren Kamera schrieb die ganze Nacht jede Minute «stream ended (HTTP 500); retrying in 60s» (177 Warnungen pro Nacht, jede ein Ereignis des Systempanels). Ihr erstes Ende wird wie bisher gemeldet, dann einmal, dass die Kamera seit dann nicht antwortet und still jede Minute versucht wird, und dass sie wieder antwortet, wenn sie es tut. Eine zurückgekehrte Kamera nimmt wie bisher innerhalb einer Minute auf

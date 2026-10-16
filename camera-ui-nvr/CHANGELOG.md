@@ -1,3 +1,7 @@
+## [0.22.9]
+
+- The database of the recorder keeps to a size: its detection traces were most of it (744 thousand rows, 1.2 of 1.41 GB on the bench) and those of the events whose video is still there were never cleared. Over «Предел базы событий, ГБ» (Storage, 1 GB unless set; 0: no size) the retention clears the traces of the oldest events, 200 at most every five minutes; the events and the recordings stay. The file does not shrink, its freed pages are used again and it stops growing
+
 ## [0.22.8]
 
 - A camera that does not answer is told once, not every minute: the recorder of an unreachable camera wrote «stream ended (HTTP 500); retrying in 60s» every minute all night (177 warnings a night, each an event of the system panel). Its first end is told as before, then once that the camera does not answer since then and is tried quietly every minute, and that it answers again when it does. A camera that is back records within a minute as before
