@@ -1622,7 +1622,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   ): Promise<{ frame?: Uint8Array; ts: number; videoCodec: string; noData?: boolean; codecString?: string; width?: number; height?: number; frames?: NvrFrame[] }> {
     await this.ready;
     const role = this.resolveRole(cameraId, sourceRole);
-    const seg = this.store.segmentAt(cameraId, role, tsUs);
+    const seg = this.segmentAt(cameraId, role, tsUs);
     if (!seg || seg.start_us > tsUs + 2_000_000) return { ts: tsUs, videoCodec: '', noData: true };
     const kf = keyframeAtOrBefore(seg, tsUs);
     if (!kf) return { ts: tsUs, videoCodec: '', noData: true };
@@ -1703,7 +1703,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const n = Math.max(1, Math.min(Number.isFinite(count) ? Math.floor(count) : 12, 60));
     for (let i = 0; i < n; i++) {
       const t = startUs + ((endUs - startUs) * i) / Math.max(1, n - 1);
-      const seg = this.store.segmentAt(cameraId, role, t);
+      const seg = this.segmentAt(cameraId, role, t);
       if (!seg || seg.start_us > t) continue;
       const kf = keyframeAtOrBefore(seg, t);
       if (!kf || seen.has(`${seg.id}:${kf.offset}`)) continue;
@@ -1735,7 +1735,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (let target = 0; target < list.length; target++) {
       const tsUs = Math.round(Number(list[target].tMs) * 1000);
       const role = this.resolveRole(cameraId, list[target].src);
-      const seg = Number.isFinite(tsUs) ? this.store.segmentAt(cameraId, role, tsUs) : undefined;
+      const seg = Number.isFinite(tsUs) ? this.segmentAt(cameraId, role, tsUs) : undefined;
       const kf = seg && seg.start_us <= tsUs + 2_000_000 ? keyframeAtOrBefore(seg, tsUs) : undefined;
       if (!seg || !kf) {
         missing.push(target);
@@ -3735,6 +3735,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /** Maps a requested role to one that has recordings (scrub/preview prefer the lightest stream). */
+  /**
+   * The file of a stream that holds a time. The row of the file being written ends where its index was last written
+   * (every few seconds, and by the time of its frames, which lag the clock as much as the camera's clock does): a time
+   * past it, up to the moment, is in that file. It ended at the clock before, and the newest seconds of the archive
+   * read nothing now and then.
+   */
+  private segmentAt(cameraId: string, role: string, tsUs: number): SegmentRow | undefined {
+    const row = this.store.segmentAt(cameraId, role, tsUs);
+    if (row) return row;
+    const id = this.cameras.get(cameraId)?.recorders.get(role as Role)?.liveSegmentId;
+    const live = id === undefined ? undefined : this.store.segment(id);
+    return live && live.start_us <= tsUs && tsUs <= Date.now() * 1000 ? live : undefined;
+  }
+
   private resolveRole(cameraId: string, requested?: string): string {
     const roles = [...(this.cameras.get(cameraId)?.recorders.keys() ?? [])] as string[];
     if (requested && roles.includes(requested)) return requested;

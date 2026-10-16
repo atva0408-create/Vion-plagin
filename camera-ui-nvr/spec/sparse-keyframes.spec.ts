@@ -179,6 +179,24 @@ for (const [what, at, nearest, picture] of [
   if (picture === undefined) assert.equal(jpeg, undefined, `${what}: no picture from ffmpeg`);
   else assert.ok(same(jpeg, exactJpeg(picture)), `${what}: ffmpeg's picture is the keyframe after`);
 }
+// the file being written: its row ends where its index was last written, behind its frames. A time past that end is
+// read from the file (it read nothing)
+{
+  const sql = internals.store.sql;
+  const ended = internals.store.segment(segment.id)!.end_us;
+  sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(ended - 20 * S, segment.id);
+  assert.equal((await nvr.nvrScrub('cam', k0 + 140 * S, true)).noData, true, 'a closed file ends where its row does');
+  const recorders = internals.cameras.get('cam') as { recorders: Map<string, unknown> };
+  recorders.recorders.set('high', { liveSegmentId: segment.id });
+  const tip = await nvr.nvrScrub('cam', k0 + 140 * S, true);
+  assert.equal(tip.noData, undefined, 'the file being written has the time');
+  assert.ok(Math.abs(tip.ts - (k0 + 140 * S)) < 0.11 * S, `the frame of the time: ${(tip.ts - k0) / S}`);
+  const trace = await nvr.nvrTraceFrames('cam', [{ tMs: (k0 + 140 * S) / 1000 }], 'exact');
+  assert.ok(Math.abs(trace.chains[0]?.frames.at(-1)!.ts - (k0 + 140 * S)) < 0.11 * S, 'and the trace');
+  assert.equal((await nvr.nvrScrub('cam', Date.now() * 1000 + 3600 * S, true)).noData, true, 'not a time still to come');
+  recorders.recorders.clear();
+  sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(ended, segment.id);
+}
 // a stretch far from the keyframe before: its patches from the next keyframe on, with their times
 {
   const patches = await patchesOf(FFMPEG, [file_], k0 + 100 * S, k0 + 122 * S, { x: 0, y: 0, width: 1, height: 1 }, 500);
