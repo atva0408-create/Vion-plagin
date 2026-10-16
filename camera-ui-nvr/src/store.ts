@@ -124,6 +124,9 @@ export class Store {
       CREATE INDEX IF NOT EXISTS events_camera_end ON events (camera_id, COALESCE(end_ms, start_ms));
       -- the events still going on, looked for every minute (closeStaleActive): a few rows, not a read of every event
       CREATE INDEX IF NOT EXISTS events_active ON events (state) WHERE state = 'active';
+      -- the ended events newest first with their ids, from the index alone: the search index looks for those without a
+      -- vector every two minutes (SemanticIndex.unindexed), and the rows of the events are big
+      CREATE INDEX IF NOT EXISTS events_state_time ON events (state, start_ms, id);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS event_trace (event_id TEXT NOT NULL, t_ms INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS event_trace_event ON event_trace (event_id, t_ms);

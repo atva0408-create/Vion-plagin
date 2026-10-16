@@ -88,6 +88,9 @@ export class SemanticIndex {
         PRIMARY KEY (event_id, seg, attr)
       );
       CREATE INDEX IF NOT EXISTS clip_vectors_model ON clip_vectors (model);
+      -- whether an event has a vector of a model, from the index alone: asked by its model, every vector of the model
+      -- was read for every event (12.5 s a pass of the search index on the bench, minutes on its cold HDD)
+      CREATE INDEX IF NOT EXISTS clip_vectors_event_model ON clip_vectors (event_id, model);
     `);
   }
 
@@ -162,19 +165,21 @@ export class SemanticIndex {
     return row ? { id: Number(row.id), model: row.model } : undefined;
   }
 
+  /** (eventId, model) */
+  public readonly hasVectorsSql = 'SELECT 1 FROM clip_vectors WHERE event_id = ? AND model = ? LIMIT 1';
+
   public hasVectors(eventId: string, model: string): boolean {
-    return !!this.db.prepare('SELECT 1 FROM clip_vectors WHERE event_id = ? AND model = ? LIMIT 1').get(eventId, model);
+    return !!this.db.prepare(this.hasVectorsSql).get(eventId, model);
   }
+
+  /** (model, limit): from the indexes events_state_time and clip_vectors_event_model alone */
+  public readonly unindexedSql = `SELECT id FROM events
+         WHERE state = 'ended' AND NOT EXISTS (SELECT 1 FROM clip_vectors v WHERE v.event_id = events.id AND v.model = ?)
+         ORDER BY start_ms DESC LIMIT ?`;
 
   /** Ids of the ended events that have no vector of `model` yet, newest first: what the search cannot find. */
   public unindexed(model: string, limit: number): string[] {
-    const rows = this.db
-      .prepare(
-        `SELECT id FROM events
-         WHERE state = 'ended' AND NOT EXISTS (SELECT 1 FROM clip_vectors v WHERE v.event_id = events.id AND v.model = ?)
-         ORDER BY start_ms DESC LIMIT ?`,
-      )
-      .all(model, limit) as unknown as { id: string }[];
+    const rows = this.db.prepare(this.unindexedSql).all(model, limit) as unknown as { id: string }[];
     return rows.map((row) => row.id);
   }
 
