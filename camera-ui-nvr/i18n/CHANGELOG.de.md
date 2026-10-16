@@ -1,3 +1,7 @@
+## [0.22.6]
+
+- Keine Minute angehaltener Aufnahme nach einem Start mehr: der erste Durchgang der Aufbewahrung las jedes Ereignis jeder Kamera, das älter als ihr ältestes Video ist, erneut (sein Fortschritt lag nur im Speicher), und ein Ereignis einer Kamera, die zu seinem Beginn nicht aufnahm, sah bei jeder Nachricht alle früheren Dateien der Kamera mit ihren Keyframes durch. Auf der HDD des Prüfstands, kalt nach einem Neustart und beschäftigt mit dem Laden der Engines, stand der einzige Thread der Aufnahme bis zu einer Minute, und 35 Nachrichten eines Ereignisses liefen in die Zeitüberschreitung. Der Fortschritt liegt in der Datenbank, und ein Index der Zeitspannen der Dateien beantwortet die Frage allein (einmal gebaut, etwa 3 s für 12 783 Dateien)
+
 ## [0.22.5]
 
 - Die Engine der Suche in Bildern lässt sich wählen: Einstellungen des NVR → KI → «Движок поиска по картинкам» listet die Erkennungs-Engines mit CLIP auf diesem Server (ONNX Legacy auf der Grafikkarte, OpenVINO auf dem Prozessor…). Die gewählte wird zuerst gefragt; ist sie nicht da, sucht die Suche wie bisher, und die Einstellung sagt, dass sie nicht installiert ist. «Автоматически» ist die erste, die antwortet, wie bisher

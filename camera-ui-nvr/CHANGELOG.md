@@ -1,3 +1,7 @@
+## [0.22.6]
+
+- No minute of a held recorder after a start: the first pass of the retention read every event of each camera older than its oldest video again (its progress was kept in memory only), and an event of a camera not recording at its start looked through every earlier file of the camera with its keyframes at each message. On the bench's HDD, cold after a restart and busy with the engines loading, the recorder's one thread stood for up to a minute and 35 messages of an event timed out. The progress is kept in the database, and an index of each file's span answers the look alone (built once, ~3 s for 12 783 files)
+
 ## [0.22.5]
 
 - The engine of the search in pictures can be chosen: Settings of the NVR → AI → «Движок поиска по картинкам» lists the detection engines with CLIP here (ONNX Legacy on the GPU, OpenVINO on the CPU…). The chosen one is asked first; when it is not there the search goes on as before and the setting says it is not installed. «Автоматически» is the first that answers, as it was
