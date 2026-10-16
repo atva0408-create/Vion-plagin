@@ -1,3 +1,9 @@
+## [0.22.11]
+
+- Eine Aufnahmedatei wird geschnitten, wo ihr Video aufhört: Video, das 20 s ausbleibt, beendet seine Datei mit dem letzten Bild, und was danach kommt, ist eine eigene Datei. Eine Kamera, die bei offener Verbindung kein Video mehr schickt, wird nicht mehr als aufnehmend gezeigt, und die Stunden bis zu ihrer Rückkehr sind eine Lücke in der Zeitleiste (eine Datei von 155 Minuten auf dem Prüfstand hatte 14 s Video am Anfang und ein paar Bilder am Ende). Video, das wartete, während die Aufnahme beschäftigt war, behält seine Zeiten und ist keine Lücke
+- Die Ausschnitte der Suche, wann ein Ding verschwand, halten ihre Zeiten (sie lagen bis zu einer halben Sekunde vor ihren Bildern, und ein Abschnitt, der kurz nach einem Schlüsselbild endete, las die ganze Datei oder scheiterte); fern von einem Schlüsselbild ist ein Bild das Schlüsselbild danach innerhalb von 30 s oder keines, nicht eines einer anderen Minute
+- Das einmalige Beenden älterer Dateien geht über eine unlesbare Datei hinweg, und eine Datei, die geschrieben wird, wird nie mit einem Bereich gelöscht
+
 ## [0.22.10]
 
 - Eine Aufnahmedatei endet mit ihrem letzten Bild, nicht beim Schließen: ein Stream, der bei offener Verbindung stehen blieb, hielt eine Datei von wenigen Sekunden offen, und ihre Zeile sagte, die ganze Zeit sei aufgenommen (eine Xiaomi auf dem Prüfstand: 42 und 155 Minuten über Dateien von 6 und 14 s). Die Zeitleiste zeigte diese Minuten als aufgenommen, und jedes Bild von dort las nichts. Von älteren Versionen so geschlossene Dateien enden nach dem ersten Start mit ihrem letzten Bild (einmal gelesen, nur Dateien, die mehr als eine Minute nach ihrem letzten Schlüsselbild enden)

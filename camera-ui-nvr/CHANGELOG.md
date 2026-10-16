@@ -1,3 +1,9 @@
+## [0.22.11]
+
+- A recorded file is cut where its video stops: video that stops for 20 s ends its file at its last frame and what comes after is a file of its own, so a camera that stops sending video on an open connection is no longer shown recording, and the hours until it comes back are a gap on the timeline (a file of 155 minutes on the bench held 14 s of video at its start and a few frames at its end). Video that waited while the recorder was busy keeps its times and is no gap
+- The patches of the search for when a thing went keep to their times (they were up to half a second early for their pictures, and a stretch ending just after a keyframe read the whole file or failed); far from a keyframe a picture is the keyframe after within 30 s or none, not one of another minute
+- The one-time end of older files goes past a file it cannot read, and a file being written is never deleted with a range
+
 ## [0.22.10]
 
 - A recorded file ends with its last frame, not when it was closed: a stream that stopped with its connection open left a file of a few seconds open, and its row said it was recorded all that time (a Xiaomi on the bench: 42 and 155 minutes over files of 6 and 14 s). The timeline showed those minutes recorded and every picture asked there read nothing. Files closed so by older versions end at their last frame after the first start (read once, only the files that end more than a minute past their last keyframe)
