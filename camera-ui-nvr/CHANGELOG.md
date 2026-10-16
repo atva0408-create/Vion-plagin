@@ -1,3 +1,7 @@
+## [0.22.5]
+
+- The engine of the search in pictures can be chosen: Settings of the NVR → AI → «Движок поиска по картинкам» lists the detection engines with CLIP here (ONNX Legacy on the GPU, OpenVINO on the CPU…). The chosen one is asked first; when it is not there the search goes on as before and the setting says it is not installed. «Автоматически» is the first that answers, as it was
+
 ## [0.22.4]
 
 - The describer of events describes an event of a module's class too (a store module's bicycle: only a person, a vehicle or an animal was offered to the model), and is told what modules answered («Ответы модулей: играет в компьютер: нет, да; поза: сидит») as a hint beside the pictures

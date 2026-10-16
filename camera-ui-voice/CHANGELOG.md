@@ -1,3 +1,7 @@
+## [0.5.2]
+
+- At its start VOICE no longer says a camera cannot speak before the server has looked at the camera's stream: the talk channel is known only then, a while after a restart, and the screen time switched on at once but the warning «cannot speak here» stood alone in the log. A camera whose stream has no talk channel is still told
+
 ## [0.5.1]
 
 - After a reminder VOICE answers only a question: a sound, a game or a word to someone else that the microphone picked up («с», «мм», «лес а дальше») is no longer answered with «you can play tomorrow at 07:30» up to three times

@@ -1,3 +1,7 @@
+## [0.22.5]
+
+- Die Engine der Suche in Bildern lässt sich wählen: Einstellungen des NVR → KI → «Движок поиска по картинкам» listet die Erkennungs-Engines mit CLIP auf diesem Server (ONNX Legacy auf der Grafikkarte, OpenVINO auf dem Prozessor…). Die gewählte wird zuerst gefragt; ist sie nicht da, sucht die Suche wie bisher, und die Einstellung sagt, dass sie nicht installiert ist. «Автоматически» ist die erste, die antwortet, wie bisher
+
 ## [0.22.4]
 
 - Der Beschreiber der Ereignisse beschreibt auch ein Ereignis der Klasse eines Moduls (das Fahrrad eines Moduls aus dem Store: dem Modell wurden nur Person, Fahrzeug und Tier angeboten), und ihm wird gesagt, was die Module antworteten («Ответы модулей: играет в компьютер: нет, да; поза: сидит»), als Hinweis neben den Bildern

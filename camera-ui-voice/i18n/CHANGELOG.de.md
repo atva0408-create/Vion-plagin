@@ -1,3 +1,7 @@
+## [0.5.2]
+
+- Beim Start sagt VOICE nicht mehr, dass eine Kamera nicht sprechen kann, bevor der Server ihren Stream geprüft hat: der Sprechkanal ist erst danach bekannt, eine Weile nach einem Neustart. Die Bildschirmzeit schaltete sich dann sofort ein, die Warnung «cannot speak here» stand aber unerklärt im Protokoll. Für eine Kamera, deren Stream keinen Sprechkanal hat, warnt VOICE weiterhin
+
 ## [0.5.1]
 
 - Nach einer Erinnerung antwortet VOICE nur noch auf eine Frage: ein Geräusch, ein Spiel oder Worte an jemand anderen, die das Mikrofon aufgenommen hat («с», «мм», «лес а дальше»), beantwortet es nicht mehr bis zu dreimal mit «spielen darfst du morgen um 07:30»
