@@ -1,3 +1,9 @@
+## [0.23.0]
+
+- A thing marked on a picture of the archive is followed by its outline: when it went and who carried it off (the assistant's `marked_thing`, «Кто унёс?» in the archive). Asked once, answered in minutes, never in the background. The outline comes from ONNX or OpenVINO 1.7.4 (ONNX Legacy 1.5.5, OpenVINO Legacy 1.5.4); the moments to look at come from the history of the place. It is gone only when it is still gone 5 s later and nobody from the event traces stands over the place (else 15 and 45 s later); the moment is found to a second. From the last picture with it, 2 pictures a second for up to 20 s follow it, also in the hands of the people traced near it; the one in whose box it was seen most is named, nobody else (a passer-by beside the place is never named for a thing nobody was seen carrying). A turn of the camera ends the search («there until the turn»)
+- It is there when the outline of its box (10 % wider) or of its middle point overlaps the marked one by 0.4 at least, is within ×2.5 of its size and has the same pattern and hue (colour without brightness: a red cup at dusk, 30 % darker, is the same cup). At night and for dark things only the pattern. On the real model a thing was found on the picture it was marked on 15 times of 15, an empty desk was gone every time, a warm lamp and 30 % less light left it there. An empty place marked is said not outlined
+- A question keeps to 8 minutes from the moment it is asked, its wait in the queue and the model's first load included, and to 120 pictures; past that the answer is what was found so far (`cut`), never «still there». Questions about a thing, about a place and `object_gone` go one at a time
+
 ## [0.22.12]
 
 - A continuous recording keeps the first GOP of every connection: the file began at the second keyframe (the codec is learned from the first one once it is whole), and a second or two was lost after every restart, 50 s on a camera that sends a keyframe that rarely
