@@ -1,3 +1,7 @@
+## [0.22.7]
+
+- The search index no longer holds the recorder every two minutes: its look for the events without a picture's vector went over the vectors by their model and read every vector for every event (12.5 s on the bench's 4 097 events with a warm cache, minutes on its cold disk after a start, every camera's messages timed out meanwhile). Two indexes answer it alone: 25.8 s → 2.5 ms on a database of that size (built once at the start, a few seconds)
+
 ## [0.22.6]
 
 - No minute of a held recorder after a start: the first pass of the retention read every event of each camera older than its oldest video again (its progress was kept in memory only), and an event of a camera not recording at its start looked through every earlier file of the camera with its keyframes at each message. On the bench's HDD, cold after a restart and busy with the engines loading, the recorder's one thread stood for up to a minute and 35 messages of an event timed out. The progress is kept in the database, and an index of each file's span answers the look alone (built once, ~3 s for 12 783 files)

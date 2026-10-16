@@ -1,3 +1,7 @@
+## [0.22.7]
+
+- Der Suchindex hält die Aufnahme nicht mehr alle zwei Minuten an: seine Suche nach Ereignissen ohne Bildvektor ging über die Vektoren nach ihrem Modell und las für jedes Ereignis jeden Vektor (12,5 s bei den 4 097 Ereignissen des Prüfstands mit warmem Cache, Minuten auf seiner kalten Platte nach einem Start, die Nachrichten aller Kameras liefen derweil in die Zeitüberschreitung). Zwei Indizes beantworten sie allein: 25,8 s → 2,5 ms bei einer Datenbank dieser Größe (einmal beim Start gebaut, wenige Sekunden)
+
 ## [0.22.6]
 
 - Keine Minute angehaltener Aufnahme nach einem Start mehr: der erste Durchgang der Aufbewahrung las jedes Ereignis jeder Kamera, das älter als ihr ältestes Video ist, erneut (sein Fortschritt lag nur im Speicher), und ein Ereignis einer Kamera, die zu seinem Beginn nicht aufnahm, sah bei jeder Nachricht alle früheren Dateien der Kamera mit ihren Keyframes durch. Auf der HDD des Prüfstands, kalt nach einem Neustart und beschäftigt mit dem Laden der Engines, stand der einzige Thread der Aufnahme bis zu einer Minute, und 35 Nachrichten eines Ereignisses liefen in die Zeitüberschreitung. Der Fortschritt liegt in der Datenbank, und ein Index der Zeitspannen der Dateien beantwortet die Frage allein (einmal gebaut, etwa 3 s für 12 783 Dateien)
