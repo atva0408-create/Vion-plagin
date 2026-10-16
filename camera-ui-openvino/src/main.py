@@ -95,6 +95,8 @@ from model_manager import OpenVinoModelManager
 from modules import installed_modules, is_module, usable_choice
 from pose import POSE_MODEL, PoseEstimator
 from reid import PersonEmbedder, Segmenter, embed_people_in_pictures, embed_person_images, segment_images
+from sam import IDLE_S as OUTLINER_IDLE_S
+from sam import SAM_MODEL, Sam
 from sensors.attribute_sensor import ViONAttributeSensor
 from sensors.clip_sensor import OpenVinoClipSensor
 from sensors.face_embedder_sensor import OpenVinoFaceEmbedderSensor
@@ -166,6 +168,11 @@ class OpenVinoPlugin(
         # the load of the finder in the background, and why the last one failed until it is said
         self._text_finder_load: asyncio.Task[None] | None = None
         self._text_finder_error: str | None = None
+        # the outline of a thing marked on a picture (sam.py): on the CPU, loaded when asked, closed when idle
+        self.outliner: Sam | None = None
+        self._outliner_idle: asyncio.Task[None] | None = None
+        self._outliner_load: asyncio.Task[None] | None = None
+        self._outliner_error: str | None = None
         self._preparing: set[str] = set()
         self._failed_models: dict[str, float] = {}
         # the files of the module version each pause above is for: only another version lifts it early
@@ -962,6 +969,74 @@ class OpenVinoPlugin(
             ],
         }
 
+    async def outlineMarked(
+        self, pictures: list[dict[str, Any]], config: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """The things marked on pictures (the recorder asks it to follow a thing marked on a frame of the archive): per
+        picture (`image`, JPEG) its `prompts`, each a `box` and/or `points` in shares of the picture; per prompt the
+        thing's outline (`mask`, as a segmenter's, with its `area`), the decoder's `score` of it and whether the model
+        takes a thing to be there (`present`). The model loads longer than a call may last: while it loads the answer
+        is `loading` and the recorder asks again; a load that failed is said to the next call."""
+        if not pictures:
+            return {"pictures": []}
+        outliner = self.outliner
+        if outliner is None or not outliner.initialized:
+            if self._outliner_error is not None:
+                error, self._outliner_error = self._outliner_error, None
+                raise RuntimeError(error)
+            self._load_outliner()
+            return {"loading": True, "pictures": []}
+        answers: list[dict[str, Any]] = []
+        try:
+            for picture in pictures:
+                prompts = list(picture.get("prompts") or [])
+                try:
+                    image = Image.fromarray(decode_image(bytes(picture["image"])))
+                except Exception as error:
+                    # a picture cut short has no outline; the others of the call still do
+                    self.logger.warn(f"A picture to outline a thing on cannot be read: {error}")
+                    answers.append({"answers": [{"score": 0.0, "present": False} for _ in prompts]})
+                    continue
+                answers.append({"answers": await outliner.segment(image, prompts) if prompts else []})
+        finally:
+            self._close_outliner_when_idle()
+        return {"pictures": answers}
+
+    def _load_outliner(self) -> None:
+        if self._outliner_load is not None and not self._outliner_load.done():
+            return
+
+        async def load() -> None:
+            # an ONNX model, read by OpenVINO: from where the finder's come
+            outliner = self.outliner or Sam(self.model_manager, self.logger, base_url=TEXTFIND_BASE_URL)
+            self.outliner = outliner
+            try:
+                await outliner.initialize()
+                self._load_succeeded(SAM_MODEL)
+                # loaded and perhaps never asked: it leaves memory as after an outline
+                self._close_outliner_when_idle()
+            except Exception as error:
+                if self.outliner is outliner:
+                    self.outliner = None
+                self._load_failed(SAM_MODEL, error)
+                self._outliner_error = str(error) or type(error).__name__
+
+        self._outliner_load = asyncio.create_task(load())
+
+    def _close_outliner_when_idle(self) -> None:
+        if self._outliner_idle is not None:
+            self._outliner_idle.cancel()
+
+        async def close_later() -> None:
+            await asyncio.sleep(OUTLINER_IDLE_S)
+            outliner = self.outliner
+            if outliner is not None and outliner.idle(time.monotonic()):
+                self.outliner = None
+                outliner.close()
+                self.logger.log("The outliner left memory: nobody asked for a while")
+
+        self._outliner_idle = asyncio.create_task(close_later())
+
     def _load_text_finder(self, language: str | None) -> None:
         if self._text_finder_load is not None and not self._text_finder_load.done():
             return
@@ -1492,6 +1567,9 @@ class OpenVinoPlugin(
         if self.text_finder is not None:
             self.text_finder.close()
             self.text_finder = None
+        if self.outliner is not None:
+            self.outliner.close()
+            self.outliner = None
         self.translators.close()
         self.object_detectors.clear()
         self.face_detectors.clear()
