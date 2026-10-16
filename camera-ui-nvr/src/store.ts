@@ -632,6 +632,23 @@ export class Store {
   }
 
   // --- detection trace ---
+  /**
+   * The trace tick nearest a time of each event of a camera about it (`spanMs` either side): what the camera tracked
+   * then (its `world`). The events are looked for among those that started up to `longestMs` before it.
+   */
+  public traceNear(cameraId: string, atMs: number, spanMs: number, longestMs: number): { eventId: string; data: string }[] {
+    const events = this.db
+      .prepare('SELECT id FROM events WHERE camera_id = ? AND start_ms BETWEEN ? AND ? AND (end_ms IS NULL OR end_ms >= ?)')
+      .all(cameraId, atMs - longestMs, atMs + spanMs, atMs - spanMs) as { id: string }[];
+    const tick = this.db.prepare('SELECT data FROM event_trace WHERE event_id = ? AND t_ms BETWEEN ? AND ? ORDER BY abs(t_ms - ?) LIMIT 1');
+    const out: { eventId: string; data: string }[] = [];
+    for (const { id } of events) {
+      const row = tick.get(id, atMs - spanMs, atMs + spanMs, atMs) as { data: string } | undefined;
+      if (row) out.push({ eventId: id, data: row.data });
+    }
+    return out;
+  }
+
   public addTrace(eventId: string, ticks: { tMs: number }[]): void {
     const insert = this.db.prepare('INSERT INTO event_trace (event_id, t_ms, data) VALUES (?, ?, ?)');
     this.db.exec('BEGIN');

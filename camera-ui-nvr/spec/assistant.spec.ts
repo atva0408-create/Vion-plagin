@@ -120,6 +120,7 @@ assert.deepEqual(reading.sort(), [
   'line_counts',
   'list_faces',
   'list_plates',
+  'marked_thing',
   'object_gone',
   'person_route',
   'place_history',

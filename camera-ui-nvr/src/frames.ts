@@ -168,6 +168,19 @@ export async function cropOfPicture(ffmpegPath: string, picture: Uint8Array, reg
   return jpeg.length ? new Uint8Array(jpeg) : undefined;
 }
 
+/** A region of a picture (JPEG) as PATCH × PATCH RGB: the look of a thing inside its outline (thing.ts thingLook). */
+export async function rgbPatchOfPicture(ffmpegPath: string, picture: Uint8Array, region: Place): Promise<Uint8Array | undefined> {
+  const raw = await capture(
+    ffmpegPath,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-f', 'image2pipe', '-i', 'pipe:0', '-frames:v', '1'],
+      ...['-vf', `${cropOf(region)},scale=${PATCH}:${PATCH}:flags=area,format=rgb24`, '-f', 'rawvideo', 'pipe:1'],
+    ],
+    picture,
+  );
+  return raw.length >= PATCH * PATCH * 3 ? new Uint8Array(raw.subarray(0, PATCH * PATCH * 3)) : undefined;
+}
+
 /** How coloured a picture (JPEG) is: the mean distance of its chroma from gray (NIGHT_COLOUR tells the night one). */
 export async function colourOfPicture(ffmpegPath: string, picture: Uint8Array): Promise<number | undefined> {
   const raw = await capture(

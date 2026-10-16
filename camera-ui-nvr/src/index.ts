@@ -11,7 +11,7 @@ import { Episodes } from './episodes.js';
 import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
-import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture } from './frames.js';
+import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture, rgbPatchOfPicture } from './frames.js';
 import { NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
@@ -19,6 +19,7 @@ import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
 import { FRAME_GAP_US, Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
+import { followThing, thingLook } from './thing.js';
 import { PersonIndex, personEmbeddings, routeOf } from './people.js';
 import { parseKeyframes, Store } from './store.js';
 
@@ -43,6 +44,7 @@ import type { PersonHit, PersonVector } from './people.js';
 import type { ClipEncoder, ClipReindexStatus, ClipSearchResult, TextEmbedding, TextFindAnswer } from './semantic.js';
 import type { GoneAnswer, Place } from './gone.js';
 import type { PlaceHistoryAnswer, PlaceLook, PlaceMode } from './place.js';
+import type { Outlined, PersonThere, Prompt, ThingAnswer } from './thing.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type { IndexFilter } from './vector-index.js';
 import type {
@@ -282,6 +284,26 @@ const FIND_CALL_MS = 60_000;
 /** while the finder loads (≈720 MB, downloaded the first time) it is asked again this often, this long at most */
 const FIND_LOAD_POLL_MS = 2_000;
 const FIND_LOAD_WAIT_MS = 15 * 60_000;
+/** No detection plugin here outlines a thing marked on a picture (SAM 2: ONNX and OpenVINO 1.7.4 and later). */
+const NO_OUTLINER = 'no detection plugin here outlines a marked thing: ONNX or OpenVINO 1.7.4 or later is needed';
+/** A thing's look: the mean spread of its colour channels under this is a picture without colour (the night one). */
+const THING_NIGHT_CHROMA = 8;
+/** The people the camera tracked about a time: its trace ticks are 500 ms apart, an event lasts up to an hour here. */
+const PEOPLE_NEAR_MS = 600;
+const EVENT_LONGEST_MS = 3_600_000;
+
+/** A detection plugin's outliner of a thing marked on a picture (sam.py outlineMarked). */
+interface Outliner {
+  outlineMarked?(
+    pictures: { image: Uint8Array; prompts: Prompt[] }[],
+  ): Promise<{ loading?: boolean; pictures: { answers: OutlinedReply[] }[] }>;
+}
+
+interface OutlinedReply {
+  score: number;
+  present: boolean;
+  mask?: { box: Place; width: number; height: number; data: Uint8Array; area: number };
+}
 // a problem of no plugin with a finder, apart from a failure's message: NO_FINDER of gone.ts
 /**
  * a query not asked for this long is left (another typed, the page closed): the page asks every 2 s while it looks, a
@@ -342,6 +364,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private findAsked = new Map<string, number>();
   /** the plugin whose finder answered last */
   private findEncoder: ClipEncoder | undefined;
+  /** the plugin whose outliner answered last */
+  private outliner: Outliner | undefined;
   /** the detection engines with CLIP here (package names), for the choice of the one the search in pictures asks */
   private clipEngines: string[] = [];
   private faces!: FaceStore;
@@ -2770,6 +2794,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       scan: (cameraIds, opts, visit, maxRows) => this.scanEvents(cameraIds, opts, visit, maxRows),
       personRoute: (query, opts) => this.personRoute(query, opts),
       objectGone: (query) => this.objectGone(query),
+      markedThing: (query) => this.markedThing(query),
       placeHistory: (query) => this.placeHistory(query),
       crossings: (cameraIds, startMs, endMs, maxRows, visit) => this.scanCrossings(cameraIds, startMs, endMs, maxRows, visit),
       crossingLines: (cameraIds, startMs, endMs) => this.store.crossingLines({ cameraIds, startMs, endMs }),
@@ -3132,6 +3157,167 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * crops around the place, whole frames where the camera turned. One at a time with objectGone: each decodes
    * hundreds of keyframes.
    */
+  /**
+   * A thing the person marked on a frame of a camera's recording (thing.ts): when it went and, `carried`, where it was
+   * carried and with whom, by its outline (SAM 2 of a detection plugin, on the CPU: about 2 s a picture, minutes for an
+   * answer). One at a time with objectGone and placeHistory: each decodes the recording for minutes.
+   */
+  public async markedThing(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }): Promise<ThingAnswer> {
+    await this.ready;
+    const run = this.goneChain.then(() => this.markedThingNow(query));
+    this.goneChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async markedThingNow(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }): Promise<ThingAnswer> {
+    const { cameraId } = query;
+    const role = this.primaryRole(cameraId);
+    const ffmpeg = this.ffmpegPath;
+    const mask = this.privacyMask(cameraId);
+    const recorded = (from: number, to: number) => this.merged(cameraId, role, from, to).map((run) => ({ startMs: run.startTime, endMs: run.endTime }));
+    let unreadable = 0;
+    let problem: string | undefined;
+    const answer = await followThing(
+      {
+        recorded,
+        frame: async (atMs) => {
+          const segment = this.segmentAt(cameraId, role, atMs * 1000);
+          if (!segment || segment.start_us > atMs * 1000 + 2_000_000) return undefined;
+          return frameAt(ffmpeg, this.store.located(segment), atMs * 1000, mask).catch((error: Error) => {
+            unreadable++;
+            problem ??= error.message;
+            return undefined;
+          });
+        },
+        outline: (picture, prompts) => this.askOutliner(picture, prompts),
+        lookOf: async (picture, outline) => {
+          const rgb = await rgbPatchOfPicture(ffmpeg, picture, outline.box);
+          return rgb ? thingLook(rgb, outline, THING_NIGHT_CHROMA) : undefined;
+        },
+        // the place's keyframe looks, as placeHistory takes them: the cheap first pass that finds the moments
+        changes: async (place, from, to) => {
+          const read = new Map<number, PlaceLook | undefined>();
+          const looks = await placeHistory(
+            {
+              recorded,
+              look: async (atMs) => {
+                const segment = this.store.segmentAt(cameraId, role, atMs * 1000);
+                if (!segment || segment.start_us > atMs * 1000 + 2_000_000) return undefined;
+                const keyframe = keyframeAtOrBefore(segment, atMs * 1000);
+                if (!keyframe) return undefined;
+                if (read.has(keyframe.tsUs)) return read.get(keyframe.tsUs);
+                const look = await lookOf(ffmpeg, this.store.located(segment), keyframe.tsUs, place, mask).catch((error: Error) => {
+                  unreadable++;
+                  problem ??= error.message;
+                  return undefined;
+                });
+                const seen = look ? { atMs: Math.round(keyframe.tsUs / 1000), ...look } : undefined;
+                read.set(keyframe.tsUs, seen);
+                return seen;
+              },
+            },
+            { place, atMs: from, fromMs: from, toMs: to, mode: 'gone' },
+          );
+          const turn = looks.changes.find((change) => change.kind === 'turned');
+          return {
+            changes: looks.changes.filter((change) => change.kind === 'changed').map(({ beforeMs, afterMs }) => ({ beforeMs, afterMs })),
+            ...(turn ? { turnedMs: turn.beforeMs } : {}),
+          };
+        },
+        people: async (atMs) => this.peopleAt(cameraId, atMs),
+      },
+      { place: insidePicture(query.place), atMs: query.atMs, toMs: query.toMs, carried: query.carried },
+    );
+    if (unreadable) this.logger.warn(`The marked thing of ${cameraId}: ${unreadable} picture(s) could not be read: ${problem}`);
+    // the pictures as crops around the thing (whole frames of the main stream are megabytes for the model to look at)
+    const crop = async (picture: Uint8Array | undefined, region: Place | undefined, margin: number) =>
+      picture && region ? cropOfPicture(ffmpeg, picture, widened(region, margin), 640).catch(() => picture) : picture;
+    const thing = answer.outline;
+    return {
+      ...answer,
+      pictures: {
+        marked: await crop(answer.pictures.marked, thing ?? insidePicture(query.place), 2.5),
+        before: await crop(answer.pictures.before, thing, 2.5),
+        after: await crop(answer.pictures.after, thing, 2.5),
+        lastSeen: await crop(answer.pictures.lastSeen, answer.carried?.lastBox, 4),
+      },
+    };
+  }
+
+  /**
+   * The outlines the prompts mark on a picture, from a detection plugin's outliner (SAM 2 on the CPU): the first answers
+   * are `loading` while its model loads (longer than a call may last), and it is asked again; a plugin without it
+   * answers with an error, and the next is asked.
+   */
+  private async askOutliner(picture: Uint8Array, prompts: Prompt[]): Promise<Outlined[] | { problem: string }> {
+    const started = Date.now();
+    let anew = false;
+    let madeAnew = false;
+    for (;;) {
+      const entries = await this.pluginProxyEntries<Outliner>('Segmentation', anew);
+      anew = false;
+      const proxies = entries.map((entry) => entry.proxy);
+      const ordered = [this.outliner, ...proxies].filter((p, i, all): p is Outliner => !!p && proxies.includes(p) && all.indexOf(p) === i);
+      let answer: Awaited<ReturnType<NonNullable<Outliner['outlineMarked']>>> | undefined;
+      const errors: string[] = [];
+      for (const outliner of ordered) {
+        try {
+          answer = await withTimeout(outliner.outlineMarked!([{ image: picture, prompts }]), FIND_CALL_MS);
+          this.outliner = outliner;
+          break;
+        } catch (e) {
+          errors.push((e as Error).message);
+        }
+      }
+      if (!answer) {
+        const real = errors.find((message) => !/is not a function|unknown method|no such method|no responders/i.test(message));
+        if (!real) {
+          // a proxy knows the methods its plugin had when it first answered: an engine updated since has none of the new
+          if (!madeAnew) {
+            madeAnew = anew = true;
+            continue;
+          }
+          return { problem: NO_OUTLINER };
+        }
+        this.logger.warn(`Outlining a marked thing failed: ${real}`);
+        return { problem: real };
+      }
+      if (answer.loading) {
+        if (Date.now() - started > FIND_LOAD_WAIT_MS) return { problem: `the outliner did not load in ${FIND_LOAD_WAIT_MS / 60_000} minutes` };
+        await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
+        continue;
+      }
+      return (answer.pictures[0]?.answers ?? prompts.map(() => ({ score: 0, present: false }))).map((a) => ({
+        score: Number(a.score) || 0,
+        present: a.present === true,
+        ...(a.mask ? { mask: { ...a.mask, data: new Uint8Array(a.mask.data) } } : {}),
+      }));
+    }
+  }
+
+  /** The people the camera tracked about a time, with their boxes: the trace tick of each event nearest it. */
+  private peopleAt(cameraId: string, atMs: number): PersonThere[] {
+    const people: PersonThere[] = [];
+    let unread = 0;
+    for (const { eventId, data } of this.store.traceNear(cameraId, atMs, PEOPLE_NEAR_MS, EVENT_LONGEST_MS)) {
+      let tick: { world?: { id?: number; label?: string; box?: number[] }[] };
+      try {
+        tick = JSON.parse(data) as typeof tick;
+      } catch {
+        // a tick cut short (the disk full while it was written) has no people: the others still do
+        unread++;
+        continue;
+      }
+      for (const tracked of tick.world ?? []) {
+        const box = tracked.box;
+        if (tracked.label !== 'person' || !Array.isArray(box) || box.length < 4 || typeof tracked.id !== 'number') continue;
+        people.push({ eventId, trackId: tracked.id, box: { x: box[0], y: box[1], width: box[2], height: box[3] } });
+      }
+    }
+    if (unread) this.logger.debug(`${unread} trace tick(s) of ${cameraId} about ${atMs} could not be read`);
+    return people;
+  }
+
   public async placeHistory(query: { cameraId: string; place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceHistoryAnswer> {
     await this.ready;
     const run = this.goneChain.then(() => this.placeHistoryNow(query));

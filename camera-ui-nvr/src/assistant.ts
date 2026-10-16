@@ -12,6 +12,7 @@ import type { AssistantToolContext, AssistantToolImage, AssistantToolReference, 
 import type { FaceProfile } from './faces.js';
 import type { GoneAnswer, Place } from './gone.js';
 import type { PlaceHistoryAnswer, PlaceMode } from './place.js';
+import type { ThingAnswer } from './thing.js';
 import type { ClipSearchResult } from './semantic.js';
 import type { GetEventsOptions, ManualRecording, PersonRouteResult, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
 
@@ -51,6 +52,8 @@ export interface AssistantHost {
   personRoute(query: { eventId: string; segment?: number; trackId?: number }, opts: { minutes?: number; precision?: number }): Promise<PersonRouteResult>;
   /** When a thing that lay in a camera's picture went (gone.ts): found by its words in the recording, halved, compared. */
   objectGone?(query: { cameraId: string; words: string; language?: string; fromMs: number; toMs: number }): Promise<GoneAnswer>;
+  /** A thing marked on a frame of the recording, followed by its outline (thing.ts): when it went, where it was carried. */
+  markedThing?(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }): Promise<ThingAnswer>;
   /** What became of a place marked on a frame of the recording (place.ts): its look at keyframes against the marked moment. */
   placeHistory?(query: { cameraId: string; place: Place; atMs: number; fromMs: number; toMs: number; mode: PlaceMode }): Promise<PlaceHistoryAnswer>;
   /** The lines that counted in a range, by camera, and whether one has a way in. */
@@ -211,6 +214,42 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
     },
     // dozens of pictures through the finder and a minute of the recording decoded: minutes on a processor
     timeoutMs: 300_000,
+  },
+  {
+    name: 'marked_thing',
+    description:
+      "A thing the person marked on a frame of a camera's recording, followed by its outline (SAM 2 of a detection plugin, on the " +
+      'processor): «когда пропала эта вещь» (carried false), «куда её унесли», «кто её взял» (carried true). The thing itself is compared, ' +
+      'not the area around it, so what lies beside it, a lamp or someone passing do not count, and it works for any thing, also a small one ' +
+      'the search in pictures does not know. The camera, the moment and the area come with the person\'s message (a selection made in the ' +
+      'archive); without one ask them to open the recording, pause it and mark the thing. The answer: the last moment the thing was there ' +
+      'and the first it was not (to a second); with carried: where it was seen after (followed twice a second up to 20 s), whether it left ' +
+      'the picture, and the person it went with (event and person: person_route follows them over the cameras); the pictures of the thing ' +
+      'marked, before, after and last seen. Look at the pictures before telling. It takes minutes (about 2 s a picture on a processor): say ' +
+      'so to the person before calling. When no plugin here outlines things, place_history watches the place instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        camera: { type: 'string', description: 'Camera name of the selection' },
+        time: { type: 'string', format: 'date-time', description: 'The marked moment of the selection, the user time zone' },
+        area: {
+          type: 'object',
+          description: 'The marked area as shares of the picture (0-1) from its top left corner, as the selection gives it',
+          properties: {
+            x: { type: 'number', minimum: 0, maximum: 1 },
+            y: { type: 'number', minimum: 0, maximum: 1 },
+            width: { type: 'number', minimum: 0, maximum: 1 },
+            height: { type: 'number', minimum: 0, maximum: 1 },
+          },
+          required: ['x', 'y', 'width', 'height'],
+        },
+        carried: { type: 'boolean', description: 'true: also where it was carried and by whom (a minute or two longer); false: when it went only' },
+        to: { type: 'string', format: 'date-time', description: 'Until when to look, the user time zone; default now, a week at most' },
+      },
+      required: ['camera', 'time', 'area', 'carried'],
+    },
+    // the outline of a picture takes about 2 s on a processor: up to 120 pictures, and the model's load the first time
+    timeoutMs: 600_000,
   },
   {
     name: 'place_history',
@@ -525,6 +564,8 @@ export async function callAssistantTool(host: AssistantHost, name: string, input
       return objectGone(host, input, ctx);
     case 'place_history':
       return placeHistory(host, input, ctx);
+    case 'marked_thing':
+      return markedThing(host, input, ctx);
     case 'search_events_by_text':
       return searchByText(host, input, ctx);
     case 'list_plates':
@@ -2153,6 +2194,115 @@ const PLACE_AROUND_MS = 12 * 3600_000;
 const PLACE_PASSES = 12;
 /** Buttons of moments in one answer: before and after two changes, the events by them get the rest. */
 const PLACE_MOMENTS = 4;
+
+/**
+ * marked_thing: a thing the person marked on a frame of the recording, when it went and where it was carried, in the
+ * person's clock, with the pictures of it for the model and the one it went with.
+ */
+async function markedThing(host: AssistantHost, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
+  if (!host.markedThing) return { error: 'This recorder cannot follow a marked thing' };
+  const camera = resolveOneCamera(host, input.camera);
+  if ('error' in camera) return camera;
+  const area = input.area as Record<string, unknown> | undefined;
+  const shares = ['x', 'y', 'width', 'height'].map((key) => Number(area?.[key]));
+  if (!area || shares.some((v) => !Number.isFinite(v) || v < 0 || v > 1)) return { error: 'area must be x, y, width, height as shares of the picture (0-1)' };
+  const [x, y, width, height] = shares;
+  if (width <= 0 || height <= 0) return { error: 'area must have a width and a height' };
+  const now = Date.now();
+  const at = parseTime(input.time, ctx.timezone);
+  if (at === undefined) return { error: `time must be the marked moment, got "${String(input.time)}"` };
+  if (at > now) return { error: 'time is in the future: the marked moment is a moment of the recording' };
+  const to = input.to === undefined ? undefined : parseTime(input.to, ctx.timezone);
+  if (to === undefined && input.to !== undefined) return { error: `to must be a time, got ${JSON.stringify(input.to)}` };
+  const end = Math.min(now, to ?? now, at + PLACE_MAX_MS);
+  if (end <= at) return { error: 'to must be after the marked moment' };
+  const carried = input.carried === true;
+
+  const answer = await host.markedThing({ cameraId: camera.id, place: { x, y, width, height }, atMs: at, toMs: end, carried });
+  const clock = wallClock(ctx.timezone);
+  if (answer.state === 'no-recording') return { error: `Nothing of «${camera.name}» was recorded at ${clock(at)}.` };
+  if (answer.state === 'no-outliner') return { error: `The thing could not be outlined: ${answer.problem}. place_history watches the place instead.` };
+  if (answer.state === 'not-outlined') {
+    return {
+      error:
+        'No thing was outlined in the area marked: ask the person to mark the thing itself, a little wider than it, or use place_history ' +
+        'to watch the place.',
+    };
+  }
+  if (answer.state === 'failed') return { error: `The thing could not be followed${answer.problem ? `: ${answer.problem}` : ''}.` };
+
+  const images: AssistantToolImage[] = [
+    ...jpeg(answer.pictures.marked, `${camera.name} · the thing marked · ${clock(at)}`),
+    ...(answer.lastThereMs !== undefined && answer.state === 'gone' ? jpeg(answer.pictures.before, `${camera.name} · last there · ${clock(answer.lastThereMs)}`) : []),
+    ...(answer.goneMs !== undefined ? jpeg(answer.pictures.after, `${camera.name} · gone · ${clock(answer.goneMs)}`) : []),
+    ...(answer.carried?.lastSeenMs !== undefined ? jpeg(answer.pictures.lastSeen, `${camera.name} · last seen carried · ${clock(answer.carried.lastSeenMs)}`) : []),
+  ];
+  const names = cameraNames(host);
+  const by = answer.carried?.by ? host.event(answer.carried.by.eventId) : undefined;
+  // the events by the moment it went: who was there (a button each)
+  const around =
+    answer.state === 'gone'
+      ? host.events([camera.id], { startMs: answer.lastThereMs! - 60_000, endMs: answer.goneMs! + 60_000 }, MAX_EVENTS).events.sort((a, b) => a.startTime - b.startTime)
+      : [];
+  const momentLabel = new Intl.DateTimeFormat(ctx.language || 'en', {
+    timeZone: safeZone(ctx.timezone),
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const moments: AssistantToolReference[] = [answer.lastThereMs, answer.goneMs, answer.carried?.lastSeenMs]
+    .filter((ms): ms is number => ms !== undefined)
+    .filter((ms, i, all) => all.indexOf(ms) === i)
+    .map((ms) => ({ kind: 'camera', id: camera.id, timestamp: ms, label: `${camera.name} · ${momentLabel.format(ms)}` }));
+  const carriedContent = answer.carried && {
+    seen: answer.carried.track.length
+      ? `followed ${answer.carried.track.length} times from ${clock(answer.carried.track[0].atMs)} to ${clock(answer.carried.lastSeenMs!)}`
+      : 'not seen anywhere in the picture after it went',
+    ...(answer.carried.lastBox ? { lastSeenAt: placeWords(answer.carried.lastBox) } : {}),
+    ...(answer.carried.track.length ? { leftThePicture: answer.carried.leftPicture } : {}),
+    ...(answer.carried.by
+      ? {
+          with: {
+            event: answer.carried.by.eventId,
+            person: answer.carried.by.trackId,
+            ...(by ? { start: clock(by.startTime), labels: labelsOf(by) } : {}),
+            how: answer.carried.by.times ? `in their hands in ${answer.carried.by.times} of the pictures followed` : 'by its place when it went',
+            next: 'person_route with this event and person: where they went over the cameras',
+          },
+        }
+      : { with: 'nobody the camera tracked was by it' }),
+  };
+  return {
+    content: {
+      camera: camera.name,
+      timezone: ctx.timezone,
+      marked: clock(at),
+      lookedUntil: clock(end),
+      ...(answer.state === 'gone'
+        ? { lastThere: clock(answer.lastThereMs!), gone: clock(answer.goneMs!), ...(answer.gap ? { pause: 'nothing was recorded between the two' } : {}) }
+        : { stillThere: `the thing is there at ${clock(answer.lastThereMs ?? end)}` }),
+      ...(answer.turnedMs !== undefined ? { turned: `the camera turned after ${clock(answer.turnedMs)}: the thing was looked for until then` } : {}),
+      ...(carriedContent ? { carried: carriedContent } : {}),
+      around: around.slice(0, 8).map((ev) => ({ id: ev.id, start: clock(ev.startTime), labels: labelsOf(ev), ...(ev.ai?.title ? { title: ev.ai.title } : {}) })),
+      pictures: images.map((image) => image.caption),
+      outlined: `${answer.looks} picture(s) outlined`,
+      note: 'Compared by its outline and look: tell what the pictures show before saying it went or who took it.',
+    },
+    ...(images.length ? { images } : {}),
+    references: [...moments, ...(by ? [reference(by, names, ctx)] : []), ...around.map((ev) => reference(ev, names, ctx))].slice(0, MAX_REFERENCES),
+  };
+}
+
+/** Where in the picture a box is, in words: «left/middle/right, top/middle/bottom». */
+function placeWords(box: Place): string {
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const across = cx < 1 / 3 ? 'left' : cx > 2 / 3 ? 'right' : 'middle';
+  const down = cy < 1 / 3 ? 'top' : cy > 2 / 3 ? 'bottom' : 'middle';
+  return `${down} ${across} of the picture (x ${box.x.toFixed(2)}, y ${box.y.toFixed(2)})`;
+}
 
 /**
  * place_history: what became of a place the person marked on a frame of the recording, the changes in the person's
