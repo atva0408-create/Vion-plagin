@@ -58,6 +58,8 @@ function camera(id: string, name: string, talks: boolean) {
   const events = subject<{ type: string; event: unknown }>();
   const changes = subject<unknown>();
   const source = {
+    // probed by the server: the codecs of the stream are known
+    videoCodec: 'h264',
     backchannelAudioCodec: talks ? 'opus' : undefined,
     audioCodecs: ['opus'],
     generateRTSPUrl: () => 'rtsp://127.0.0.1/none',
@@ -418,16 +420,34 @@ test('door events of the cameras reach the door rules', async () => {
 
 test('after a server restart the talk channel is known only later: screen time switches on then', async () => {
   const s = await setup();
-  // as at boot: the server has not probed the stream yet, the codec of the talk channel is unknown
-  s.kids.device.sources[0].backchannelAudioCodec = undefined;
+  // as at boot: the server has not probed the stream yet, none of its codecs is known, the talk channel neither
+  const source = s.kids.device.sources[0];
+  for (const key of ['backchannelAudioCodec', 'videoCodec', 'audioCodecs']) delete source[key];
   await s.plugin.onCameraAdded(s.kids.device);
   await s.kids.device.storage.setValue('screenTime', [{ childName: 'Артём', zone: 'desk' }]);
   assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 0);
+  // not probed is not «no channel»: the owner is not told the camera cannot speak
+  assert.ok(!s.logs.some((l) => /Детская.*cannot speak here/.test(l)), s.logs.join('\n'));
 
-  s.kids.device.sources[0].backchannelAudioCodec = 'opus';
+  Object.assign(source, { videoCodec: 'h264', audioCodecs: ['opus'], backchannelAudioCodec: 'opus' });
   s.kids.device.changes.next({ property: 'sources' });
   await flush();
   assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 1, 'switched on once the stream was probed');
+  assert.ok(!s.logs.some((l) => /Детская.*cannot speak here/.test(l)));
+});
+
+test('probed without a talk channel: then the owner is told the camera cannot speak', async () => {
+  const s = await setup();
+  const source = s.kids.device.sources[0];
+  for (const key of ['backchannelAudioCodec', 'videoCodec', 'audioCodecs']) delete source[key];
+  await s.plugin.onCameraAdded(s.kids.device);
+  await s.kids.device.storage.setValue('screenTime', [{ childName: 'Артём', zone: 'desk' }]);
+  // probed: its audio is known (its video codec may stay unknown: a stream that offers two leaves it so)
+  Object.assign(source, { audioCodecs: ['opus'] });
+  s.kids.device.changes.next({ property: 'sources' });
+  await flush();
+  assert.equal((s.plugin as any).voice.scenariosOf('kids').length, 0);
+  assert.ok(s.logs.some((l) => /Детская.*cannot speak here/.test(l)), s.logs.join('\n'));
 });
 
 test('a camera that is offline for a while keeps its scenario: it speaks again when it is back', async () => {

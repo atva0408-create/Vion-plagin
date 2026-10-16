@@ -764,7 +764,10 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     // a camera that reconnects speaks again without the owner touching anything
     const problem = speakerProblemCode(entry.device);
     const mute = problem === 'no_channel' || problem === 'channel_off';
-    if (configs.length && mute) this.logger.warn(`${entry.device.name}: screen time is not used, VOICE cannot speak here: ${PROBLEM_TEXT[problem]}`);
+    // the talk channel is known once the server has probed the stream, its codecs known then (after a restart a while
+    // after the start): a camera not probed yet is not said to have none, the probe applies this again ('sources')
+    const probed = entry.device.sources.some((source) => source.videoCodec !== undefined || !!source.audioCodecs?.length);
+    if (configs.length && mute && probed) this.logger.warn(`${entry.device.name}: screen time is not used, VOICE cannot speak here: ${PROBLEM_TEXT[problem]}`);
     this.voice.setScreenTime(entry.device.id, mute ? [] : configs);
   }
 
