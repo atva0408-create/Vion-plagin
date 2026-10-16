@@ -12,14 +12,14 @@ import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './expo
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
 import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture, rgbPatchOfPicture } from './frames.js';
-import { NO_FINDER, whenGone, widened } from './gone.js';
+import { NIGHT_COLOUR, NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
 import { PlaybackManager } from './playback.js';
 import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
 import { FRAME_GAP_US, Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
-import { followThing, thingLook } from './thing.js';
+import { BUDGET_MS, followThing, thingLook } from './thing.js';
 import { PersonIndex, personEmbeddings, routeOf } from './people.js';
 import { parseKeyframes, Store } from './store.js';
 
@@ -286,8 +286,8 @@ const FIND_LOAD_POLL_MS = 2_000;
 const FIND_LOAD_WAIT_MS = 15 * 60_000;
 /** No detection plugin here outlines a thing marked on a picture (SAM 2: ONNX and OpenVINO 1.7.4 and later). */
 const NO_OUTLINER = 'no detection plugin here outlines a marked thing: ONNX or OpenVINO 1.7.4 or later is needed';
-/** A thing's look: the mean spread of its colour channels under this is a picture without colour (the night one). */
-const THING_NIGHT_CHROMA = 8;
+/** The time of a question about a marked thing, from when it is asked (thing.ts BUDGET_MS; the call ends after 10 min). */
+const THING_BUDGET_MS = BUDGET_MS;
 /** The people the camera tracked about a time: its trace ticks are 500 ms apart, an event lasts up to an hour here. */
 const PEOPLE_NEAR_MS = 600;
 const EVENT_LONGEST_MS = 3_600_000;
@@ -3164,19 +3164,29 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    */
   public async markedThing(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }): Promise<ThingAnswer> {
     await this.ready;
-    const run = this.goneChain.then(() => this.markedThingNow(query));
+    // the question's time counts from now: a wait behind another question was not in it, and the assistant's call ended
+    // after 10 minutes while the work went on
+    const asked = Date.now();
+    const run = this.goneChain.then(() => this.markedThingNow(query, asked));
     this.goneChain = run.catch(() => undefined);
     return run;
   }
 
-  private async markedThingNow(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }): Promise<ThingAnswer> {
+  private async markedThingNow(query: { cameraId: string; place: Place; atMs: number; toMs: number; carried: boolean }, asked: number): Promise<ThingAnswer> {
     const { cameraId } = query;
+    const deadline = asked + THING_BUDGET_MS;
     const role = this.primaryRole(cameraId);
     const ffmpeg = this.ffmpegPath;
     const mask = this.privacyMask(cameraId);
     const recorded = (from: number, to: number) => this.merged(cameraId, role, from, to).map((run) => ({ startMs: run.startTime, endMs: run.endTime }));
     let unreadable = 0;
     let problem: string | undefined;
+    // whether a picture is the night one (infrared, no colour), once a picture: its things' colours are not compared
+    const nights = new WeakMap<Uint8Array, boolean>();
+    const nightOf = async (picture: Uint8Array) => {
+      if (!nights.has(picture)) nights.set(picture, ((await colourOfPicture(ffmpeg, picture)) ?? 0) < NIGHT_COLOUR);
+      return nights.get(picture)!;
+    };
     const answer = await followThing(
       {
         recorded,
@@ -3189,10 +3199,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
             return undefined;
           });
         },
-        outline: (picture, prompts) => this.askOutliner(picture, prompts),
+        outline: (picture, prompts) => this.askOutliner(picture, prompts, deadline),
         lookOf: async (picture, outline) => {
-          const rgb = await rgbPatchOfPicture(ffmpeg, picture, outline.box);
-          return rgb ? thingLook(rgb, outline, THING_NIGHT_CHROMA) : undefined;
+          try {
+            const rgb = await rgbPatchOfPicture(ffmpeg, picture, outline.box);
+            return rgb ? thingLook(rgb, outline, await nightOf(picture)) : undefined;
+          } catch (error) {
+            // one outline that cannot be cut is no thing there; the question goes on
+            unreadable++;
+            problem ??= (error as Error).message;
+            return undefined;
+          }
         },
         // the place's keyframe looks, as placeHistory takes them: the cheap first pass that finds the moments
         changes: async (place, from, to) => {
@@ -3226,7 +3243,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         },
         people: async (atMs) => this.peopleAt(cameraId, atMs),
       },
-      { place: insidePicture(query.place), atMs: query.atMs, toMs: query.toMs, carried: query.carried },
+      { place: insidePicture(query.place), atMs: query.atMs, toMs: query.toMs, carried: query.carried, budgetMs: deadline - Date.now() },
     );
     if (unreadable) this.logger.warn(`The marked thing of ${cameraId}: ${unreadable} picture(s) could not be read: ${problem}`);
     // the pictures as crops around the thing (whole frames of the main stream are megabytes for the model to look at)
@@ -3249,7 +3266,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * are `loading` while its model loads (longer than a call may last), and it is asked again; a plugin without it
    * answers with an error, and the next is asked.
    */
-  private async askOutliner(picture: Uint8Array, prompts: Prompt[]): Promise<Outlined[] | { problem: string }> {
+  private async askOutliner(picture: Uint8Array, prompts: Prompt[], deadline: number): Promise<Outlined[] | { problem: string }> {
     const started = Date.now();
     let anew = false;
     let madeAnew = false;
@@ -3283,6 +3300,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         return { problem: real };
       }
       if (answer.loading) {
+        // the model's first load (a download of 155 MB) may take longer than the question has
+        if (Date.now() + FIND_LOAD_POLL_MS > deadline) return { problem: 'the outliner is still loading its model: ask again in a few minutes' };
         if (Date.now() - started > FIND_LOAD_WAIT_MS) return { problem: `the outliner did not load in ${FIND_LOAD_WAIT_MS / 60_000} minutes` };
         await new Promise((resolve) => setTimeout(resolve, FIND_LOAD_POLL_MS));
         continue;

@@ -41,6 +41,8 @@ function peopleAt(t: number, speed = SPEED): PersonThere[] {
   if (Math.abs(t - PASS) < 2 * S) out.push({ eventId: 'ev-passed', trackId: 3, box: { x: 0.4, y: 0.2, width: 0.2, height: 0.7 } });
   return out;
 }
+/** The table the thing lies on. */
+const TABLE_TOP: Place = { x: 0.2, y: 0.45, width: 0.6, height: 0.4 };
 /** A thing like it, lying beside it all the time. */
 const TWIN: Place = { ...LYING, x: LYING.x + LYING.width * 0.9 };
 
@@ -67,12 +69,25 @@ interface World {
   turnedAt?: number;
   /** each outline takes this long by the question's clock */
   outlineMs?: number;
+  /** a bag: a point on it outlines its pocket, a part (as the real SAM did) */
+  pocket?: boolean;
+  /** someone stands in front of it over these times */
+  hidden?: [number, number];
+  /** the light 30 % darker from this moment (dusk) */
+  dimFrom?: number;
+  /** a point outlines a sliver 1 px wide (ffmpeg cannot cut its look) */
+  thin?: boolean;
+  /** taken at TAKEN without anyone seen carrying it (out of view at once), a passer-by beside the place then */
+  vanishes?: boolean;
+  /** a table top the thing lies on: a point on it off the thing outlines the whole table */
+  table?: boolean;
 }
 
 function world(w: World = {}) {
   const asked: number[] = [];
   let clock = 0;
-  const at = (t: number) => (w.stays ? LYING : thingAt(t, w.speed));
+  const at = (t: number) => (w.stays ? LYING : w.vanishes && t >= TAKEN ? undefined : thingAt(t, w.speed));
+  const hiddenAt = (t: number) => !!w.hidden && t >= w.hidden[0] && t <= w.hidden[1];
   /** the thing a prompt falls on, the marked one before its twin */
   const things = (t: number) => [at(t), ...(w.twin ? [TWIN] : [])].filter((p): p is Place => p !== undefined);
   const sources: ThingSources = {
@@ -83,20 +98,36 @@ function world(w: World = {}) {
       asked.push(t);
       clock += w.outlineMs ?? 0;
       if (w.failAfter !== undefined && asked.length > w.failAfter) return { problem: 'outliner gone' };
+      // the camera turned: another picture, nothing of the place in it
+      if (w.turnedAt !== undefined && t >= w.turnedAt) return prompts.map(() => ({ score: 0.7, present: true }));
       return prompts.map((prompt): Outlined => {
-        if (w.turnedAt !== undefined && t >= w.turnedAt) return prompts.map(() => ({ score: 0.7, present: true }));
-      const thing = things(t).find(
-          (one) => (prompt.box && overlap(prompt.box, one) > 0.1) || (prompt.points ?? []).some((p) => contains({ ...one, x: one.x - 0.01, y: one.y - 0.01, width: one.width + 0.02, height: one.height + 0.02 }, p)),
-        );
+        // as SAM: a box that fits a thing outlines it, a box much wider outlines itself (the thing and around it), a
+        // point on a thing outlines it (or a part of it), a point on nothing nothing
+        const thing = hiddenAt(t)
+          ? undefined
+          : things(t).find((one) =>
+              prompt.box ? overlap(prompt.box, one) >= 0.45 : (prompt.points ?? []).some((p) => contains({ ...one, x: one.x - 0.01, y: one.y - 0.01, width: one.width + 0.02, height: one.height + 0.02 }, p)),
+            );
+        if (thing && !prompt.box && w.thin) return { score: 0.9, present: true, mask: { box: { ...thing, width: 0.001 }, width: 1, height: 40, data: new Uint8Array(40).fill(255), area: 0.00005 } };
+        if (thing && !prompt.box && w.pocket) {
+          const pocket = { x: thing.x + thing.width * 0.3, y: thing.y + thing.height * 0.3, width: thing.width * 0.4, height: thing.height * 0.4 };
+          return { score: 0.9, present: true, mask: { box: pocket, width: 24, height: 16, data: new Uint8Array(24 * 16).fill(255), area: pocket.width * pocket.height * 0.8 } };
+        }
         if (thing) return { score: w.weakMark && t === MARK ? 0.2 : 0.95, present: true, mask: { box: thing, width: 60, height: 40, data: new Uint8Array(60 * 40).fill(255), area: thing.width * thing.height * 0.8 } };
-        // some part of the table: a box is outlined as it is, a point on nothing gets nothing
-        if (prompt.box) return { score: 0.74, present: true, mask: { box: prompt.box, width: 60, height: 40, data: new Uint8Array(60 * 40).fill(255), area: prompt.box.width * prompt.box.height * 0.6 } };
+        if (prompt.box) return { score: 0.7, present: true, mask: { box: prompt.box, width: 60, height: 40, data: new Uint8Array(60 * 40).fill(255), area: prompt.box.width * prompt.box.height * 0.85 } };
+        if (w.table && (prompt.points ?? []).some((p) => contains(TABLE_TOP, p))) {
+          return { score: 0.92, present: true, mask: { box: TABLE_TOP, width: 80, height: 40, data: new Uint8Array(80 * 40).fill(255), area: 0.25 } };
+        }
         return { score: 0.06, present: true };
       });
     },
     lookOf: async (picture, outline) => {
-      const look = things(decode(picture)).some((thing) => overlap(outline.box, thing) > 0.5) ? RED : TABLE;
-      return w.night ? { colour: [90, 90, 90], patch: look.patch, night: true } : look;
+      if (outline.width < 2 || outline.height < 2) throw new Error('crop of width 0');
+      const t = decode(picture);
+      const look = !hiddenAt(t) && things(t).some((thing) => overlap(outline.box, thing) > 0.5) ? RED : TABLE;
+      if (w.night) return { colour: [90, 90, 90], patch: look.patch, night: true };
+      const dim = w.dimFrom !== undefined && t >= w.dimFrom ? 0.7 : 1;
+      return { ...look, colour: look.colour.map((c) => c * dim) as [number, number, number] };
     },
     changes: async (place, from, to) => {
       // keyframes every 10 s: the place changes as the person passes (and is as before after) and as the thing goes
@@ -104,7 +135,12 @@ function world(w: World = {}) {
       if (!w.stays) out.push({ beforeMs: Math.floor(TAKEN / (10 * S)) * 10 * S, afterMs: Math.ceil(TAKEN / (10 * S)) * 10 * S });
       return { changes: out.filter((c) => c.beforeMs >= from && c.afterMs <= to && overlap(place, LYING) > 0), ...(w.turnedAt !== undefined ? { turnedMs: w.turnedAt - 10 * S } : {}) };
     },
-    people: async (t) => peopleAt(t, w.speed),
+    people: async (t) => [
+      ...(w.vanishes ? peopleAt(t, w.speed).filter((p) => p.eventId !== 'ev-took' && p.eventId !== 'ev-helper') : peopleAt(t, w.speed)),
+      // the one in front of it, and the passer-by beside its place as it vanishes
+      ...(hiddenAt(t) ? [{ eventId: 'ev-front', trackId: 5, box: { x: LYING.x - 0.05, y: LYING.y - 0.3, width: 0.16, height: 0.5 } }] : []),
+      ...(w.vanishes && Math.abs(t - TAKEN) < 3 * S ? [{ eventId: 'ev-by', trackId: 8, box: { x: LYING.x + 0.07, y: LYING.y - 0.3, width: 0.15, height: 0.5 } }] : []),
+    ],
     now: () => clock,
   };
   return { sources, asked };
@@ -188,6 +224,40 @@ const query = (carried: boolean) => ({ place: { x: 0.42, y: 0.52, width: 0.12, h
   assert.equal(BUDGET_MS, 8 * 60_000);
 }
 
+// ------------------------------------------------------------------ what the real SAM did, and the light
+{
+  // a bag: a point on it outlines its pocket; a box twice as wide outlines the box. It never went (it was said gone)
+  const bag = await followThing(world({ stays: true, pocket: true }).sources, { ...query(true), place: { x: 0.444, y: 0.545, width: 0.072, height: 0.06 } });
+  assert.equal(bag.state, 'still-there', JSON.stringify({ ...bag, pictures: undefined }));
+  // someone stands in front of it at the end of the time asked: a few seconds before, it is there
+  const front = await followThing(world({ stays: true, hidden: [END - 3 * S, END] }).sources, query(true));
+  assert.equal(front.state, 'still-there', JSON.stringify({ ...front, pictures: undefined }));
+  // and for 10 s: the look 5 s before has them in front too, the one 15 s before has the thing
+  const longer = await followThing(world({ stays: true, hidden: [END - 10 * S, END] }).sources, query(true));
+  assert.equal(longer.state, 'still-there', JSON.stringify({ ...longer, pictures: undefined }));
+  // and in front of it for a moment while the halving looks: the moment it went is still the one
+  const passing = await followThing(world({ hidden: [TAKEN - 600 * S, TAKEN - 597 * S] }).sources, query(false));
+  assert.ok(passing.goneMs! > TAKEN && passing.goneMs! - TAKEN <= 1.5 * S, `went at ${passing.goneMs}`);
+  // dusk: 30 % darker, the same hue (as RGB it was 0.14 away and taken for gone)
+  assert.equal((await followThing(world({ stays: true, dimFrom: PASS }).sources, query(false))).state, 'still-there');
+  // an outline 1 px wide is passed over: its look cannot be cut (the question failed on it)
+  assert.equal((await followThing(world({ thin: true }).sources, { ...query(false), place: { x: 0.444, y: 0.545, width: 0.072, height: 0.06 } })).state, 'gone');
+  // an empty place marked: a part of the table outlined weakly, nothing by the point at its middle
+  assert.equal((await followThing(world().sources, { ...query(true), place: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } })).state, 'not-outlined');
+  // an empty spot of the table marked: the point at its middle outlines the whole table, far wider than the box drawn
+  assert.equal((await followThing(world({ table: true }).sources, { ...query(true), place: { x: 0.3, y: 0.7, width: 0.06, height: 0.05 } })).state, 'not-outlined');
+  // a sliver at the mark: no look to cut, no thing (it failed the question)
+  assert.equal((await followThing(world({ thin: true, weakMark: true }).sources, { ...query(false), place: { x: 0.444, y: 0.545, width: 0.072, height: 0.06 } })).state, 'not-outlined');
+  // gone without anyone seen carrying it: the passer-by beside its place is not named for it
+  const vanished = await followThing(world({ vanishes: true }).sources, query(true));
+  assert.equal(vanished.state, 'gone');
+  assert.equal(vanished.carried?.track.length, 0);
+  assert.equal(vanished.carried?.by, undefined, 'nobody named');
+  // the queue took the question's time: cut, nothing outlined
+  const late = await followThing(world().sources, { ...query(true), budgetMs: 0 });
+  assert.deepEqual([late.state, late.looks], ['cut', 0]);
+}
+
 // ------------------------------------------------------------------ the thing never went
 {
   const answer = await followThing(world({ stays: true }).sources, query(true));
@@ -227,14 +297,19 @@ const query = (carried: boolean) => ({ place: { x: 0.42, y: 0.52, width: 0.12, h
   // the outline is the left half of its box: green outside it is not the thing
   const data = new Uint8Array(10 * 10);
   for (let y = 0; y < 10; y++) for (let x = 0; x < 5; x++) data[y * 10 + x] = 255;
-  const look = thingLook(rgb, { width: 10, height: 10, data }, 3)!;
+  const look = thingLook(rgb, { width: 10, height: 10, data }, false)!;
   assert.deepEqual(look.colour.map(Math.round), [200, 20, 20]);
   assert.equal(look.night, false);
   assert.ok(look.patch.every((v) => v === 80), 'outside the outline at the mean inside it');
-  assert.equal(thingLook(rgb, { width: 10, height: 10, data: new Uint8Array(100) }, 3), undefined, 'an empty outline has no look');
-  const gray = thingLook(new Uint8Array(PATCH * PATCH * 3).fill(90), { width: 10, height: 10, data }, 3)!;
-  assert.equal(gray.night, true);
-  assert.ok(colourDistance([0, 0, 0], [255, 255, 255]) === 1 && colourDistance([10, 10, 10], [10, 10, 10]) === 0);
+  assert.equal(thingLook(rgb, { width: 10, height: 10, data: new Uint8Array(100) }, false), undefined, 'an empty outline has no look');
+  // a gray thing by day is no night (it was: a black phone, a white charger had their colours never compared)
+  const gray = new Uint8Array(PATCH * PATCH * 3).fill(90);
+  assert.equal(thingLook(gray, { width: 10, height: 10, data }, false)!.night, false);
+  assert.equal(thingLook(gray, { width: 10, height: 10, data }, true)!.night, true, 'the night is the whole picture');
+  // the hue: a pure colour against another 1, the same colour darker 0; too dark to have a hue: none
+  assert.ok(Math.abs(colourDistance([255, 0, 0], [0, 255, 0])! - 1) < 1e-9 && colourDistance([200, 30, 30], [140, 21, 21]) === 0);
+  assert.equal(colourDistance([10, 10, 12], [200, 30, 30]), undefined);
+  assert.ok(colourDistance([200, 30, 30], [120, 118, 115])! > 0.3, 'red against the gray table');
   assert.ok(sameThing(RED, RED) && !sameThing(RED, TABLE));
   assert.ok(sameThing(RED, { ...RED, colour: [90, 90, 90], night: true }), 'at night by the pattern only');
   assert.ok(!sameThing(RED, { ...RED, colour: [30, 30, 200] }), 'the same pattern of another colour is another thing');

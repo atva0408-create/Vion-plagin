@@ -3,8 +3,10 @@
 // by the person, a question of minutes, never a task in the background. The place's keyframe looks (place.ts) find the
 // moments the place changed cheaply; the outline tells at each whether the thing itself is there: the same outline,
 // the same look inside it (a box drawn on an empty table is outlined too, as some part of the table: its look tells
-// it from the thing). Where it went: from the last picture with it, twice a second, the thing is looked for near where
-// it was and in the hands of the people the camera tracked there; who carried it is the one it was with most.
+// it from the thing). A look without it is confirmed by another a few seconds on (someone in front of it is no going).
+// Where it went: from the last picture with it, twice a second, the thing is looked for near where it was and in the
+// hands of the people the camera tracked there; who carried it is the one it was seen with most, and nobody when it
+// was seen with nobody (a person standing by the place is not named for it).
 // Reading the recording, asking the plugin and the events are given (index.ts), so this is tested on its own.
 
 import { patchDiff, PATCH, SAME_LOOK, widened } from './gone.js';
@@ -40,7 +42,7 @@ export interface ThingLook {
   colour: [number, number, number];
   /** PATCH × PATCH gray of the outline's box, outside the outline at the mean inside it (patchDiff compares the thing) */
   patch: Uint8Array;
-  /** the picture has no colour (the night one): colours are not compared */
+  /** the whole picture has no colour (the night one, infrared): colours are not compared */
   night: boolean;
 }
 
@@ -57,7 +59,7 @@ export interface ThingSources {
   frame(atMs: number): Promise<Uint8Array | undefined>;
   /** the outlines the prompts mark on a picture, or why there are none */
   outline(picture: Uint8Array, prompts: Prompt[]): Promise<Outlined[] | { problem: string }>;
-  /** how the thing inside an outline looks */
+  /** how the thing inside an outline looks; undefined where it cannot be read (an outline too thin to cut) */
   lookOf(picture: Uint8Array, outline: Outline): Promise<ThingLook | undefined>;
   /**
    * the moments a place stopped looking as at a time, from its keyframe looks, in time order (place.ts, gone); and
@@ -101,18 +103,33 @@ export interface Carried {
   lastSeenMs?: number;
   lastBox?: Place;
   leftPicture: boolean;
-  /** the person it went with: the one whose box it was in most */
+  /** the person it went with: the one whose box it was seen in most; nobody when it was seen in no one's */
   by?: { eventId: string; trackId: number; times: number };
 }
 
-/** The outline at the moment marked is taken for the thing from this estimate of it. */
-const MARK_SCORE = 0.5;
+/**
+ * An outline at the mark is taken for the thing from this estimate of it: by the box drawn, else by the point at its
+ * middle when that outline lies inside the box (a box drawn wider than a thing is outlined as itself, the thing and
+ * what is around it). A box on an empty table was outlined at 0.67-0.74 as a part of it and the point at its middle
+ * outlined nothing; things at 0.95-0.98.
+ */
+export const MARK_SCORE = 0.8;
 /** An outline is the thing's when its box overlaps the marked one this much (intersection over union)… */
 const SAME_PLACE = 0.4;
 /** …its size is within this factor of it… */
 const SAME_SIZE = 2.5;
-/** …and its mean colour is within this distance (0-1, of the RGB cube's diagonal) of the marked one's. */
-export const SAME_COLOUR = 0.12;
+/**
+ * …and its hue is within this distance of the marked one's (0-1, of the chromaticity: the colour without its
+ * brightness: a red cup 30 % darker at dusk is the same cup; compared as RGB it was 0.13 away and taken for gone).
+ */
+export const SAME_COLOUR = 0.08;
+/** Darker than this (the sum of the mean R, G, B) a thing has no hue to tell: its pattern alone is compared. */
+const DARK = 90;
+/**
+ * A look without the thing is confirmed this much later (earlier at the end of the time asked): with it there then,
+ * someone stood in front at the first; with a person over its place then, the next (people stand by a table a while).
+ */
+export const CONFIRM_MS = [5_000, 15_000, 45_000];
 /** The thing in hands looks turned and smaller or larger: its size within this factor, its look a little looser. */
 const CARRIED_SIZE = 3;
 const CARRIED_LOOK = SAME_LOOK * 1.4;
@@ -142,13 +159,22 @@ export function overlap(a: Place, b: Place): number {
   return union > 0 ? inter / union : 0;
 }
 
-/** The distance of two colours: 0 the same, 1 black against white. */
-export function colourDistance(a: [number, number, number], b: [number, number, number]): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) / (255 * Math.sqrt(3));
+/**
+ * The distance of two hues: their chromaticities (each channel's share of the three), 0 the same, 1 a pure colour
+ * against another; undefined when either is too dark to have one.
+ */
+export function colourDistance(a: [number, number, number], b: [number, number, number]): number | undefined {
+  const sa = a[0] + a[1] + a[2];
+  const sb = b[0] + b[1] + b[2];
+  if (sa < DARK || sb < DARK) return undefined;
+  return Math.hypot(a[0] / sa - b[0] / sb, a[1] / sa - b[1] / sb, a[2] / sa - b[2] / sb) / Math.SQRT2;
 }
 
-/** How a thing looks, from the pixels of its outline's box (`rgb`: PATCH × PATCH RGB) and its mask over that box. */
-export function thingLook(rgb: Uint8Array, outline: Pick<Outline, 'width' | 'height' | 'data'>, nightColour: number): ThingLook | undefined {
+/**
+ * How a thing looks, from the pixels of its outline's box (`rgb`: PATCH × PATCH RGB) and its mask over that box; `night`:
+ * the whole picture has no colour (a thing of no colour by day is no night: a black phone, a white charger).
+ */
+export function thingLook(rgb: Uint8Array, outline: Pick<Outline, 'width' | 'height' | 'data'>, night: boolean): ThingLook | undefined {
   const n = PATCH * PATCH;
   if (rgb.length < n * 3 || !outline.width || !outline.height) return undefined;
   const inside = new Uint8Array(n);
@@ -165,26 +191,25 @@ export function thingLook(rgb: Uint8Array, outline: Pick<Outline, 'width' | 'hei
   }
   if (!count) return undefined;
   const sum = [0, 0, 0];
-  let chroma = 0;
   for (let i = 0; i < n; i++) {
     if (!inside[i]) continue;
-    const [r, g, b] = [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]];
-    sum[0] += r;
-    sum[1] += g;
-    sum[2] += b;
-    chroma += Math.max(r, g, b) - Math.min(r, g, b);
+    sum[0] += rgb[i * 3];
+    sum[1] += rgb[i * 3 + 1];
+    sum[2] += rgb[i * 3 + 2];
   }
   const colour: [number, number, number] = [sum[0] / count, sum[1] / count, sum[2] / count];
   const gray = (colour[0] + colour[1] + colour[2]) / 3;
   const patch = new Uint8Array(n);
   for (let i = 0; i < n; i++) patch[i] = inside[i] ? Math.round((rgb[i * 3] + rgb[i * 3 + 1] + rgb[i * 3 + 2]) / 3) : Math.round(gray);
-  return { colour, patch, night: chroma / count < nightColour };
+  return { colour, patch, night };
 }
 
-/** Whether a look is the marked thing's: its pattern, and its colour unless either picture is the night one. */
+/** Whether a look is the marked thing's: its pattern, and its hue unless a picture is the night one or a thing dark. */
 export function sameThing(marked: ThingLook, look: ThingLook, looseness = 1): boolean {
   if (patchDiff(marked.patch, look.patch) >= SAME_LOOK * looseness) return false;
-  return marked.night || look.night || colourDistance(marked.colour, look.colour) < SAME_COLOUR * looseness;
+  if (marked.night || look.night) return true;
+  const hue = colourDistance(marked.colour, look.colour);
+  return hue === undefined || hue < SAME_COLOUR * looseness;
 }
 
 const centre = (box: Place) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
@@ -205,8 +230,10 @@ export async function followThing(
   const { atMs } = query;
   const clock = () => (sources.now ? sources.now() : Date.now());
   const started = clock();
+  // what is left of the question's time (index.ts counts the wait in the queue)
   const budget = query.budgetMs ?? BUDGET_MS;
   const answer: ThingAnswer = { state: 'failed', markedMs: atMs, pictures: {}, looks: 0 };
+  if (budget <= 0) return { ...answer, state: 'cut', cut: true };
   const recorded = sources.recorded(atMs, query.toMs);
   if (!recorded.length) return { ...answer, state: 'no-recording' };
   let toMs = Math.min(query.toMs, recorded[recorded.length - 1].endMs);
@@ -227,13 +254,23 @@ export async function followThing(
     return got;
   };
 
-  // the thing at the moment marked: what the box drawn shows most, with its look
+  // the thing at the moment marked: what the box drawn shows most, with its look; a box on an empty place outlines a
+  // part of it weakly, and the point at its middle nothing
   const marked = await sources.frame(atMs);
   if (!marked) return { ...answer, state: 'no-recording' };
-  const first = await outlined(marked, [{ box: query.place }]);
-  if (!first) return { ...answer, state: problem ? 'no-outliner' : 'failed', problem };
-  const mask = first[0]?.mask;
-  const look = mask && first[0].score >= MARK_SCORE ? await sources.lookOf(marked, mask) : undefined;
+  const first = await outlined(marked, [{ box: query.place }, { points: [centre(query.place)] }]);
+  if (!first) return { ...answer, state: problem ? 'no-outliner' : answer.cut ? 'cut' : 'failed', problem };
+  const [byBox, byPoint] = first;
+  const within = (box: Place) => {
+    const drawn = widened(query.place, 0.1);
+    return box.x >= drawn.x && box.y >= drawn.y && box.x + box.width <= drawn.x + drawn.width && box.y + box.height <= drawn.y + drawn.height;
+  };
+  // an outline thinner than 2 px has no look to cut (ffmpeg was asked a crop of width 0 and failed the question)
+  const cuttable = (outline: Outline | undefined) => (outline && outline.width >= 2 && outline.height >= 2 ? outline : undefined);
+  const boxed = cuttable(byBox?.mask);
+  const pointed = cuttable(byPoint?.mask);
+  const mask = boxed && byBox.score >= MARK_SCORE ? boxed : pointed && byPoint.score >= MARK_SCORE && within(pointed.box) ? pointed : undefined;
+  const look = mask ? await sources.lookOf(marked, mask) : undefined;
   if (!mask || !look) return { ...answer, state: 'not-outlined', pictures: { marked } };
   const thing = { box: mask.box, area: mask.area, look };
   answer.outline = mask.box;
@@ -248,20 +285,23 @@ export async function followThing(
     if (!answers) return undefined;
     let best: { outline: Outline; diff: number } | undefined;
     for (const a of answers) {
-      if (!a.mask) continue;
-      const size = a.mask.area / thing.area;
+      const mask = cuttable(a.mask);
+      if (!mask) continue;
+      const size = mask.area / thing.area;
       const limit = carried ? CARRIED_SIZE : SAME_SIZE;
       if (size > limit || size < 1 / limit) continue;
-      if (!carried && overlap(a.mask.box, thing.box) < SAME_PLACE) continue;
-      const seen = await sources.lookOf(picture, a.mask);
+      if (!carried && overlap(mask.box, thing.box) < SAME_PLACE) continue;
+      const seen = await sources.lookOf(picture, mask);
       if (!seen || !sameThing(thing.look, seen, carried ? CARRIED_LOOK / SAME_LOOK : 1)) continue;
       const diff = patchDiff(thing.look.patch, seen.patch);
-      if (!best || diff < best.diff) best = { outline: a.mask, diff };
+      if (!best || diff < best.diff) best = { outline: mask, diff };
     }
     return best?.outline ?? null;
   };
-  // at its place: the box it had, a little wider, and a point at its middle
-  const atPlace = (): Prompt[] => [{ box: widened(thing.box, 0.5) }, { points: [centre(thing.box)] }];
+  // at its place: the box of its outline, hardly wider, and a point at its middle. A box twice as wide was outlined as
+  // the size of the box (the thing and what is around it) and the point alone as a part of the thing (a bag's pocket):
+  // the real SAM found 8 of 15 things on the very picture they were marked on that way, all 15 by the box of the outline
+  const atPlace = (): Prompt[] => [{ box: widened(thing.box, 0.1) }, { points: [centre(thing.box)] }];
   const pictures = new Map<number, Uint8Array | undefined>();
   const frame = async (t: number) => {
     if (!pictures.has(t)) pictures.set(t, await sources.frame(t));
@@ -274,6 +314,25 @@ export async function followThing(
     const outline = await found(picture, atPlace(), false);
     return outline === undefined ? undefined : outline !== null;
   };
+  /** someone the camera tracked over its place at a time */
+  const covered = async (t: number) => (await sources.people(t)).some((p) => overlap(p.box, widened(thing.box, 0.3)) > 0);
+  /**
+   * Whether the thing is gone from its place at a time: not there then, and not there a few seconds later (earlier,
+   * `back`, at the end of the time asked) with nobody over the place; there then, someone stood in front of it.
+   */
+  const absent = async (t: number, back = false): Promise<boolean | undefined> => {
+    const now = await there(t);
+    if (now !== false) return now === undefined ? undefined : false;
+    for (const shift of CONFIRM_MS) {
+      const again = back ? t - shift : t + shift;
+      if (again <= atMs || again > toMs) break;
+      const seen = await there(again);
+      if (seen === undefined) return undefined;
+      if (seen) return false;
+      if (!(await covered(again))) return true;
+    }
+    return true;
+  };
 
   // the moments its place changed after the mark, from the cheap keyframe looks; the outline says at which the thing went
   let lastThere = atMs;
@@ -284,9 +343,9 @@ export async function followThing(
     toMs = place.turnedMs;
   }
   for (const change of place.changes.filter((c) => c.afterMs <= toMs)) {
-    const after = await there(change.afterMs);
-    if (after === undefined) break;
-    if (after) {
+    const gone = await absent(change.afterMs);
+    if (gone === undefined) break;
+    if (!gone) {
       lastThere = change.afterMs;
       continue;
     }
@@ -296,20 +355,20 @@ export async function followThing(
   }
   // no change of the place, or none it went at: is it there at the end? If not it went unseen by the looks: halved
   if (firstGone === undefined) {
-    const atEnd = await there(toMs);
-    if (atEnd === undefined && problem) return { ...answer, state: 'no-outliner', problem };
+    const goneAtEnd = await absent(toMs, true);
+    if (goneAtEnd === undefined && problem) return { ...answer, state: 'no-outliner', problem };
     // the time ran out before the end was looked at: neither there nor gone can be said
-    if (atEnd === undefined && answer.cut) return { ...answer, state: 'cut', lastThereMs: lastThere };
-    if (atEnd !== false) return { ...answer, state: 'still-there', lastThereMs: atEnd ? toMs : lastThere };
+    if (goneAtEnd === undefined && answer.cut) return { ...answer, state: 'cut', lastThereMs: lastThere };
+    if (goneAtEnd !== true) return { ...answer, state: 'still-there', lastThereMs: goneAtEnd === false ? toMs : lastThere };
     firstGone = toMs;
   }
   // narrowed to a second between a picture with it and one without (looks that cannot be told end the narrowing)
   while (firstGone - lastThere > GONE_EXACT_MS && !answer.cut) {
     const middle = Math.round((lastThere + firstGone) / 2);
-    const seen = await there(middle);
-    if (seen === undefined) break;
-    if (seen) lastThere = middle;
-    else firstGone = middle;
+    const gone = await absent(middle);
+    if (gone === undefined) break;
+    if (gone) firstGone = middle;
+    else lastThere = middle;
   }
   answer.state = 'gone';
   answer.lastThereMs = lastThere;
@@ -330,7 +389,7 @@ export async function followThing(
     const near = widened(last, 2);
     const people = (await sources.people(t)).filter((p) => overlap(p.box, widened(last, 3)) > 0 || inside(centre(last), widened(p.box, 0.2)));
     const prompts: Prompt[] = [
-      { box: widened(last, 1) },
+      { box: widened(last, 0.2) },
       ...grid(near, 3).map((p) => ({ points: [p] })),
       // in hands: the lower middle of the person, where hands carry things
       ...people.flatMap((p) => [
@@ -363,13 +422,6 @@ export async function followThing(
     const b = lastSeen.box;
     carried.leftPicture = b.x < EDGE || b.y < EDGE || b.x + b.width > 1 - EDGE || b.y + b.height > 1 - EDGE;
     answer.pictures.lastSeen = await frame(lastSeen.atMs);
-  }
-  // with nobody followed: who stood over its place when it went
-  if (!withWhom.size) {
-    for (const p of await sources.people(firstGone)) {
-      if (overlap(p.box, widened(thing.box, 1)) <= 0) continue;
-      withWhom.set(`${p.eventId}:${p.trackId}`, { eventId: p.eventId, trackId: p.trackId, times: 0 });
-    }
   }
   carried.by = [...withWhom.values()].sort((a, b) => b.times - a.times)[0];
   answer.carried = carried;

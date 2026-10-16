@@ -74,6 +74,8 @@ const full = (box: Place, area: number) => ({ box, width: 20, height: 20, data: 
 
 let loadingLeft = 1;
 let calls = 0;
+/** the next mark outlined as a sliver 1 px wide by its middle point, weakly by its box */
+let sliver = false;
 /** The fake outliner: the red thing where a prompt falls on it, a piece of the table where a box does not. */
 const sam = {
   outlineMarked: async (pictures: { image: Uint8Array; prompts: Prompt[] }[]) => {
@@ -86,6 +88,10 @@ const sam = {
         answers: prompts.map((prompt) => {
           const near = red && { x: red.x - 0.02, y: red.y - 0.02, width: red.width + 0.04, height: red.height + 0.04 };
           const on = near && ((prompt.box && overlapping(prompt.box, red!)) || (prompt.points ?? []).some((p) => p.x >= near.x && p.x <= near.x + near.width && p.y >= near.y && p.y <= near.y + near.height));
+          if (sliver) {
+            if (prompt.box) return { score: 0.5, present: true, mask: full(prompt.box, 0.01) };
+            return { score: 0.9, present: true, mask: { box: { ...red!, width: 1 / W }, width: 2, height: 20, data: new Uint8Array(40).fill(255), area: 0.0005 } };
+          }
           if (on) return { score: 0.95, present: true, mask: full(red!, red!.width * red!.height) };
           if (prompt.box) return { score: 0.7, present: true, mask: full(prompt.box, prompt.box.width * prompt.box.height * 0.5) };
           return { score: 0.05, present: true };
@@ -248,6 +254,28 @@ const MARKED = { x: 140 / W, y: 140 / H, width: 50 / W, height: 40 / H };
     content: { stillThere?: string; gone?: string };
   };
   assert.ok(still.content.stillThere && !still.content.gone, JSON.stringify(still.content));
+}
+
+// ---- a sliver at the mark: ffmpeg cannot cut its look (a crop of width 0), and the question goes on to say so
+{
+  sliver = true;
+  warned.length = 0;
+  const answer = await nvr.markedThing({ cameraId: 'desk', place: MARKED, atMs: T + 2_000, toMs: T + 29_000, carried: false });
+  sliver = false;
+  assert.equal(answer.state, 'not-outlined', JSON.stringify({ ...answer, pictures: undefined }));
+  assert.ok(warned.some((m) => /could not be read/.test(m)), warned.join(' | '));
+}
+
+// ---- the model still loading when the question's time is near its end: said, not waited for
+{
+  loadingLeft = 1_000;
+  const picture = await (nvr as unknown as { askOutliner(p: Uint8Array, prompts: Prompt[], deadline: number): Promise<unknown> }).askOutliner(
+    new Uint8Array([0xff, 0xd8]),
+    [{ box: MARKED }],
+    Date.now() + 1_000,
+  );
+  loadingLeft = 0;
+  assert.match((picture as { problem: string }).problem, /still loading/);
 }
 
 // ---- no engine here outlines things: said as such, the place's watch offered
