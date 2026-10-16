@@ -33,6 +33,23 @@ const STOPPED = 'Уведомления ViON в этот чат отключен
 const NO_BOT =
   'Бот Telegram ещё не подключён: введите его токен в настройках плагина Telegram.\n' + 'The Telegram bot is not connected yet: enter its token in the plugin settings.';
 const OPEN = 'Открыть в ViON';
+/** Why a notification went to no chat: no token yet, or Telegram did not answer the bot's sign-in (getMe) so far. */
+const NOT_CONNECTED = 'the bot of the server is not connected: no token in the settings of the Telegram plugin, or Telegram is not reachable';
+
+/** Whether a chat got a notification, and why not: ViON keeps it and sends the notification another way. */
+interface ChatDelivery {
+  deviceId: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
+ */
+function answered(deliveries: ChatDelivery[]): void {
+  return deliveries as unknown as void;
+}
 
 export default class Telegram extends ServicePlugin<StorageValues> implements NotifierInterface {
   private bot?: TelegramBot;
@@ -244,15 +261,26 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
 
   /**
    * To each chat named: the picture with the words under it, or the words alone. A chat that blocked the bot is
-   * switched off (it would refuse every time); a «too many requests» is waited out once.
+   * switched off (it would refuse every time); a «too many requests» is waited out once. What became of it in each
+   * chat goes back to ViON, which keeps it and sends the notification another way when no chat got it: without a bot
+   * nothing was sent and ViON counted it delivered (the audit of 2026-10-17).
    */
   public async sendNotification(deviceIds: string[], notification: Notification): Promise<void> {
+    const ids = [...new Set(deviceIds)];
     const bot = this.bot;
-    if (!bot) return;
+    if (!bot) return answered(ids.map((deviceId) => ({ deviceId, ok: false, error: NOT_CONNECTED })));
     const options = { silent: notification.silent === true, button: this.buttonFor(notification) };
-    for (const id of new Set(deviceIds)) {
+    const deliveries: ChatDelivery[] = [];
+    for (const id of ids) {
       const chat = this.chats.find((candidate) => candidate.id === id);
-      if (!chat?.active) continue;
+      if (!chat) {
+        deliveries.push({ deviceId: id, ok: false, error: 'no such chat' });
+        continue;
+      }
+      if (!chat.active) {
+        deliveries.push({ deviceId: id, ok: false, error: 'this chat is switched off' });
+        continue;
+      }
       const send = () =>
         notification.thumbnail?.length
           ? bot.sendPhoto(chat.chatId, notification.thumbnail, messageOf(notification, CAPTION_MAX), options)
@@ -265,16 +293,20 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
           }
           throw error;
         });
+        deliveries.push({ deviceId: id, ok: true });
       } catch (error) {
         if (error instanceof BotApiError && error.status === 403) {
           chat.active = false;
           await this.save();
           this.logger.warn(`Telegram: chat ${chat.name} blocked the bot or left: switched off`);
+          deliveries.push({ deviceId: id, ok: false, error: 'the chat blocked the bot or left it: switched off' });
           continue;
         }
         this.logger.error(`Telegram: a notification to ${chat.name} was not sent: ${(error as Error).message}`);
+        deliveries.push({ deviceId: id, ok: false, error: (error as Error).message });
       }
     }
+    return answered(deliveries);
   }
 
   private buttonFor(notification: Notification): { text: string; url: string } | undefined {

@@ -164,7 +164,8 @@ try {
   assert.equal((await plugin.getDevices(['u1'])).length, 1);
 
   // ---- a zone rule's notice: the picture, the words bold title first, silent, the button to the moment
-  await plugin.sendNotification(['tg:111:u1', 'tg:999:u9'], {
+  // what became of it in each chat goes back to ViON
+  const zoneNotice = await plugin.sendNotification(['tg:111:u1', 'tg:999:u9'], {
     title: 'Комната: Стена',
     body: 'Кот точит когти о стену',
     thumbnail: new Uint8Array([255, 216, 9]),
@@ -181,6 +182,10 @@ try {
     inline_keyboard: [[{ text: 'Открыть в ViON', url: 'https://vion.example.com/cameras/%D0%9A%D0%BE%D0%BC%D0%BD%D0%B0%D1%82%D0%B0?startTs=1' }]],
   });
   assert.equal(tg.sent().length, 4, 'nothing to a chat that is not linked');
+  assert.deepEqual(zoneNotice, [
+    { deviceId: 'tg:111:u1', ok: true },
+    { deviceId: 'tg:999:u9', ok: false, error: 'no such chat' },
+  ]);
   // words alone, with sound
   await plugin.sendNotification(['tg:111:u1'], { title: 'Сервер', body: 'Обновление' });
   const text = tg.sent('sendMessage').at(-1)!;
@@ -205,14 +210,16 @@ try {
     metadata: { chatId: 111, linkedAt: (values._chats as { linkedAt: number }[])[0]!.linkedAt },
   });
   const quiet = tg.sent().length;
-  await plugin.sendNotification(['tg:111:u1'], { title: 'Тихо' });
+  assert.deepEqual(await plugin.sendNotification(['tg:111:u1'], { title: 'Тихо' }), [{ deviceId: 'tg:111:u1', ok: false, error: 'this chat is switched off' }]);
   assert.equal(tg.sent().length, quiet, 'a switched-off chat gets nothing');
   await plugin.updateDevice('tg:111:u1', { active: true });
   assert.equal(await plugin.updateDevice('nope', { active: true }), null, 'not ours: the next notifier is asked');
 
   // ---- a chat that blocked the bot is switched off, not tried every time
   tg.refuse.sendMessage = [{ status: 403, description: 'Forbidden: bot was blocked by the user' }];
-  await plugin.sendNotification(['tg:111:u1'], { title: 'Заблокирован' });
+  assert.deepEqual(await plugin.sendNotification(['tg:111:u1'], { title: 'Заблокирован' }), [
+    { deviceId: 'tg:111:u1', ok: false, error: 'the chat blocked the bot or left it: switched off' },
+  ]);
   assert.equal((await plugin.getDevice('tg:111:u1'))?.active, false);
   assert.ok(lines.some((line) => /blocked the bot or left: switched off/.test(line)));
   await plugin.updateDevice('tg:111:u1', { active: true });
@@ -246,6 +253,10 @@ try {
   await sleep(100);
   assert.equal(tg.calls.length, asked, 'no more requests with a refused token');
   assert.ok(!refused.lines.some((line) => /trying again/.test(line)), 'a refused token is not tried again');
+  // with no bot nothing went out, and ViON hears why (it counted such a notification delivered)
+  const [unsent] = (await refused.plugin.sendNotification(['tg:111:u1'], { title: 'Без бота' })) as unknown as { ok: boolean; error: string }[];
+  assert.equal(unsent?.ok, false);
+  assert.match(unsent!.error, /bot of the server is not connected/);
 
   // ---- Telegram out of reach: why, without the token
   tg.setUnreachable(true);
