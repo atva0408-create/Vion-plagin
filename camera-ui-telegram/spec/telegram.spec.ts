@@ -153,6 +153,7 @@ try {
     { id: 'tg:111:u1', ownerUserId: 'u1', name: '@anna', active: true, metadata: { chatId: 111, linkedAt: (values._chats as { linkedAt: number }[])[0]!.linkedAt } },
   ]);
   assert.deepEqual(await plugin.getDevices(['u2']), [], 'not another user\'s');
+  assert.deepEqual((await plugin.getDevices([])).map((device) => [device.id, device.ownerUserId]), [['tg:111:u1', 'u1']], 'an admin\'s list: every chat');
   await until(() => values._offset === update + 1, 'the place to read from kept');
 
   // ---- a wrong link, a bare /start

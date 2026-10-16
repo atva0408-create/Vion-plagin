@@ -214,6 +214,9 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
   }
 
   public async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
+    // nobody named is the list of an admin in ViON (the notification settings): every chat, each with its owner. A
+    // notification is never sent so: ViON names the people it tells
+    if (!ownerUserIds.length) return this.chats.map(deviceOf);
     const owners = new Set(ownerUserIds);
     return this.chats.filter((chat) => owners.has(chat.ownerUserId)).map(deviceOf);
   }
