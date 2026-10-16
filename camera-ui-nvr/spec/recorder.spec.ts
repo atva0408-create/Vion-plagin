@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { nalType, nalUnits } from '../src/media/ts-demux.js';
 import { readKeyframe } from '../src/reader.js';
-import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio } from '../src/recorder.js';
+import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio, StreamRetry } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
 
 import type { VideoCodec } from '../src/media/ts-demux.js';
@@ -535,6 +535,11 @@ Date.now = realNow;
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ producers: [{ medias }] }));
       return;
     }
+    // a camera go2rtc cannot reach: its stream answers 500
+    if (src === 'down') {
+      res.writeHead(500).end();
+      return;
+    }
     // the MPEG-TS stays open, as go2rtc's does
     res.writeHead(200, { 'content-type': 'video/mp2t' });
   });
@@ -588,9 +593,48 @@ Date.now = realNow;
   assert.ok(await waitFor(() => seen.includes('/api/stream.ts quiet')));
   assert.ok(!seen.includes('/api/streams quiet'));
 
+  // the stream of a camera that does not answer: its first end is a warning, the try 2 s later only a debug line
+  const down = start('down', false);
+  for (let i = 0; i < 80 && down.logs.filter((l) => l.message.includes('stream ended')).length < 2; i++) await new Promise((r) => setTimeout(r, 50));
+  const ended = down.logs.filter((l) => l.message.includes('stream ended'));
+  assert.deepEqual(
+    ended.slice(0, 2).map((l) => l.level),
+    ['warn', 'debug'],
+    JSON.stringify(down.logs),
+  );
+  await down.rec.stop();
   await Promise.all([dahua, xiaomi, broken, quiet].map((r) => r.rec.stop()));
   server.closeAllConnections();
   server.close();
+}
+
+// ------------------------------------------------------------------ a camera that does not answer
+{
+  // ViON Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
+  // panel). The first end is told, then once that it goes on quietly, and when it answers again
+  const retry = new StreamRetry('[sensor/high]');
+  let now = Date.parse('2026-10-16T01:00:00Z');
+  const ends: { delayMs: number; level: string; message: string }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const end = retry.ended('HTTP 500', 50, now);
+    ends.push(end);
+    now += end.delayMs + 50;
+  }
+  assert.deepEqual(ends.map((e) => e.delayMs), [2000, 4000, 8000, 16000, 32000, 60000, 60000, 60000, 60000, 60000, 60000, 60000], 'the pause grows to a minute and stays there');
+  assert.deepEqual(ends.map((e) => e.level), ['warn', 'debug', 'debug', 'debug', 'debug', 'warn', 'debug', 'debug', 'debug', 'debug', 'debug', 'debug']);
+  assert.match(ends[0].message, /\[sensor\/high\] stream ended \(HTTP 500\); retrying in 2s/);
+  assert.match(ends[5].message, /does not answer since .*\(HTTP 500\).*quietly until it answers/);
+  assert.equal(retry.data(now), '[sensor/high] answers again after 8 min', 'said once it was said not to answer');
+  assert.equal(retry.data(now + 1000), undefined, 'and not at every chunk');
+  // answering again starts the count anew: a later outage is told again
+  const again = retry.ended('stream closed', 120_000, now + 120_000);
+  assert.deepEqual([again.level, again.delayMs], ['warn', 2000]);
+
+  // a stream that drops now and then and comes back at once: nothing said beyond the end itself
+  const flaky = new StreamRetry('[door/low]');
+  assert.equal(flaky.ended('no data for 20s', 3_600_000, now).level, 'warn');
+  assert.equal(flaky.data(now + 3000), undefined);
+  assert.equal(flaky.ended('no data for 20s', 3_600_000, now + 7_200_000).level, 'warn', 'each end after a long run is told');
 }
 
 console.log(

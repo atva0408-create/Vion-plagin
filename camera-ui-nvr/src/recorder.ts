@@ -89,12 +89,61 @@ const PTS_WRAP = 2 ** 33;
  * Records one camera stream tier. ffmpeg copies the go2rtc RTSP restream into MPEG-TS (no transcode);
  * the recorder splits it into segment files at keyframes and indexes every keyframe for seeking.
  */
+/** The pause before the first try again after a stream ended, and the longest one. */
+const FIRST_RETRY_MS = 2000;
+const MAX_RETRY_MS = 60_000;
+
+/**
+ * When a recorder tries its stream again and what it says about it. A camera that does not answer (ViON Sensor 89C0, all
+ * night) wrote a warning a minute, each one an event of the system panel too: its first end is told, then once that it
+ * goes on quietly when the pause reached a minute, and that it answers again when data comes after that.
+ */
+export class StreamRetry {
+  private backoffMs = FIRST_RETRY_MS;
+  /** since when the stream ends without data coming in between */
+  private failingSince: number | undefined;
+  private quiet = false;
+
+  constructor(private readonly label: string) {}
+
+  /** The stream ended after running `ranMs`: when to try again, and what to say how loud. */
+  public ended(reason: string, ranMs: number, now: number): { delayMs: number; level: 'warn' | 'debug'; message: string } {
+    if (ranMs > 60_000) this.backoffMs = FIRST_RETRY_MS;
+    const delayMs = this.backoffMs;
+    this.backoffMs = Math.min(this.backoffMs * 2, MAX_RETRY_MS);
+    const message = `${this.label} stream ended (${reason}); retrying in ${delayMs / 1000}s`;
+    if (this.failingSince === undefined) {
+      this.failingSince = now;
+      return { delayMs, level: 'warn', message };
+    }
+    if (!this.quiet && delayMs >= MAX_RETRY_MS) {
+      this.quiet = true;
+      const since = new Date(this.failingSince).toISOString().slice(11, 16);
+      return {
+        delayMs,
+        level: 'warn',
+        message: `${this.label} does not answer since ${since} UTC (${reason}): tried again every ${MAX_RETRY_MS / 1000} s, quietly until it answers`,
+      };
+    }
+    return { delayMs, level: 'debug', message };
+  }
+
+  /** Data came: what to say, once, when the stream was said not to answer. */
+  public data(now: number): string | undefined {
+    if (this.failingSince === undefined) return undefined;
+    const { failingSince, quiet } = this;
+    this.failingSince = undefined;
+    this.quiet = false;
+    return quiet ? `${this.label} answers again after ${Math.round((now - failingSince) / 60_000)} min` : undefined;
+  }
+}
+
 export class Recorder {
   private proc: ChildProcess | undefined;
   private httpAbort: AbortController | undefined;
   private stopped = false;
   private restartTimer: NodeJS.Timeout | undefined;
-  private backoffMs = 2000;
+  private readonly retry: StreamRetry;
 
   private demux: TsDemuxer;
   private codec: CodecInfo | undefined;
@@ -127,6 +176,7 @@ export class Recorder {
 
   constructor(private opts: RecorderOptions) {
     this.demux = this.createDemuxer();
+    this.retry = new StreamRetry(this.label);
     mkdirSync(opts.dir, { recursive: true });
   }
 
@@ -272,10 +322,10 @@ export class Recorder {
     this.closeSegmentSoon();
     this.resetStream();
     if (this.stopped) return;
-    if (Date.now() - startedAt > 60_000) this.backoffMs = 2000;
-    this.opts.log('warn', `${this.label} stream ended (${reason}); retrying in ${this.backoffMs / 1000}s`);
-    this.restartTimer = setTimeout(() => this.spawn(), this.backoffMs);
-    this.backoffMs = Math.min(this.backoffMs * 2, 60_000);
+    const now = Date.now();
+    const next = this.retry.ended(reason, now - startedAt, now);
+    this.opts.log(next.level, next.message);
+    this.restartTimer = setTimeout(() => this.spawn(), next.delayMs);
   }
 
   private resetStream(): void {
@@ -297,6 +347,8 @@ export class Recorder {
   }
 
   private onData(chunk: Buffer): void {
+    const back = this.retry.data(Date.now());
+    if (back) this.opts.log('log', back);
     this.demux.push(chunk);
     const data = this.pending.length ? Buffer.concat([this.pending, chunk]) : chunk;
     let i = 0;
