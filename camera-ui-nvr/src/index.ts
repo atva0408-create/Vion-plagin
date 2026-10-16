@@ -314,6 +314,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private findAsked = new Map<string, number>();
   /** the plugin whose finder answered last */
   private findEncoder: ClipEncoder | undefined;
+  /** the detection engines with CLIP here (package names), for the choice of the one the search in pictures asks */
+  private clipEngines: string[] = [];
   private faces!: FaceStore;
   private describer!: EventDescriber;
   private episodes!: Episodes;
@@ -572,6 +574,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           this.logger.log(`Данные поиска людей удалены: ${this.people.clear()}`);
         },
       },
+      this.pictureSearchEngineSchema(),
       {
         type: 'string',
         key: 'aiStatus',
@@ -582,6 +585,36 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         onGet: async () => this.aiStatusText(),
       },
     ];
+  }
+
+  /** The choice of the engine that finds words in pictures, among those installed (and the one chosen, if gone). */
+  private pictureSearchEngineSchema(): JsonSchema {
+    const chosen = typeof this.storage.values.pictureSearchEngine === 'string' ? this.storage.values.pictureSearchEngine : '';
+    const engines = chosen && !this.clipEngines.includes(chosen) ? [...this.clipEngines, chosen] : this.clipEngines;
+    const label = (name: string) => `${name.replace(/^@vionvision\/camera-ui-/, '')}${this.clipEngines.includes(name) ? '' : ' — не установлен'}`;
+    return {
+      type: 'string',
+      key: 'pictureSearchEngine',
+      title: 'Движок поиска по картинкам',
+      description: 'Какой движок распознавания ищет слова в кадрах архива. «Автоматически» — первый ответивший; выбранный, если он недоступен, заменяет другой.',
+      group: 'AI',
+      defaultValue: '',
+      enum: ['', ...engines],
+      enumLabels: { '': 'Автоматически', ...Object.fromEntries(engines.map((name) => [name, label(name)])) },
+      store: true,
+    };
+  }
+
+  /** The engines with CLIP as the host lists them: the choice of the settings follows them. */
+  private noteClipEngines(infos: { name?: string }[]): void {
+    const engines = [...new Set(infos.flatMap((info) => (info.name ? [info.name] : [])))].sort();
+    if (engines.join('\n') === this.clipEngines.join('\n')) return;
+    this.clipEngines = engines;
+    const storage = this.storage as unknown as { hasSchema?(key: string): boolean; changeSchema?(key: string, schema: JsonSchema): Promise<void> };
+    if (!storage.hasSchema?.('pictureSearchEngine') || !storage.changeSchema) return;
+    storage
+      .changeSchema('pictureSearchEngine', this.pictureSearchEngineSchema())
+      .catch((error: Error) => this.logger.warn(`The choice of the engine of the search in pictures was not updated: ${error.message}`));
   }
 
   private async aiStatusText(): Promise<string> {
@@ -763,6 +796,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
     void this.enforceRetention();
     void this.dropNoAnswerTypes();
+    // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
+    this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
   }
 
@@ -2544,9 +2579,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** RPC proxies of the plugins implementing an interface (CLIP, face embedding), cached per plugin. */
   private async pluginProxies<T>(iface: string, anew = false): Promise<T[]> {
+    return (await this.pluginProxyEntries<T>(iface, anew)).map((entry) => entry.proxy);
+  }
+
+  /** The same with the package of each plugin. */
+  private async pluginProxyEntries<T>(iface: string, anew = false): Promise<{ name?: string; proxy: T }[]> {
     const rpc = (this.api as unknown as { proxy?: { createProxy<P>(namespace: string): P } }).proxy;
     if (!rpc) return [];
     const infos = await this.api.coreManager.getPluginsByInterface(iface as never);
+    if (iface === 'ClipDetection') this.noteClipEngines(infos);
     return infos.map((info) => {
       const key = `${iface}:${info.id}`;
       let proxy = anew ? undefined : (this.proxies.get(key) as T | undefined);
@@ -2554,7 +2595,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         proxy = rpc.createProxy<T>(`plugin.${info.id}.child.rpc`);
         this.proxies.set(key, proxy);
       }
-      return proxy;
+      return { name: (info as { name?: string }).name, proxy };
     });
   }
 
@@ -2860,10 +2901,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     let anew = false;
     let madeAnew = false;
     for (;;) {
-      const encoders = await this.pluginProxies<ClipEncoder>('ClipDetection', anew);
+      const entries = await this.pluginProxyEntries<ClipEncoder>('ClipDetection', anew);
+      const encoders = entries.map((entry) => entry.proxy);
       anew = false;
-      // the one that answered before first: a plugin without the finder answers its call with an error
-      const ordered = this.findEncoder && encoders.includes(this.findEncoder) ? [this.findEncoder, ...encoders.filter((e) => e !== this.findEncoder)] : encoders;
+      // the engine chosen in the settings first, then the one that answered before: a plugin without the finder answers
+      // its call with an error. A chosen one not here (removed, stopped) leaves the order as it was
+      const chosen = entries.find((entry) => entry.name && entry.name === this.storage.values.pictureSearchEngine)?.proxy;
+      const first = [chosen, this.findEncoder].filter((encoder, i, all): encoder is ClipEncoder => !!encoder && encoders.includes(encoder) && all.indexOf(encoder) === i);
+      const ordered = [...first, ...encoders.filter((e) => !first.includes(e))];
       let answer: TextFindAnswer | undefined;
       const errors: string[] = [];
       for (const encoder of ordered) {

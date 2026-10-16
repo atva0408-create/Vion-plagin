@@ -329,6 +329,8 @@ export interface PluginStorageValues {
   routeHopScore?: number;
   routeHopMinutes?: number;
   routeHops?: number;
+  /** the package of the detection engine the search in pictures asks first; '' or none: the first that answers */
+  pictureSearchEngine?: string;
   [key: string]: unknown;
 }
 /** One crossing of a line as the NVR keeps it (ingestCrossings): `way` in or out when the line has a way in. */

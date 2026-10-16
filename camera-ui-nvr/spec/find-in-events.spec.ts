@@ -83,7 +83,7 @@ const api = {
     getFFmpegPath: () => new Promise<string>(noop),
     getPluginsByInterface: async (iface: string) => {
       if (pluginsFail) throw new Error(pluginsFail);
-      return iface === 'ClipDetection' ? finders.map((id) => ({ id })) : [];
+      return iface === 'ClipDetection' ? finders.map((id) => ({ id, name: `@vionvision/camera-ui-${id}` })) : [];
     },
   },
   // OpenVINO has no finder: the call is not even a function there. A proxy knows the methods its plugin had when it
@@ -215,6 +215,28 @@ async function problem(text: string, ids: string[]) {
   finders = ['other', 'onnx'];
   await settled('лопата', ['weak']);
   assert.deepEqual(otherCalls, [], 'the one that answered before is asked first');
+  finders = ['openvino', 'onnx'];
+}
+
+// ---- the engine chosen in the settings is asked first; one not installed leaves the search as it was
+{
+  finders = ['onnx', 'other'];
+  storage.values.pictureSearchEngine = '@vionvision/camera-ui-other';
+  await settled('грабли', ['bag']);
+  assert.deepEqual(otherCalls, ['грабли'], 'the chosen one, though another answered before');
+  const field = nvr.storageSchema.find((s) => s.key === 'pictureSearchEngine') as { enum: string[]; enumLabels: Record<string, string> };
+  assert.deepEqual(field.enum, ['', '@vionvision/camera-ui-onnx', '@vionvision/camera-ui-other']);
+  assert.equal(field.enumLabels['@vionvision/camera-ui-other'], 'other');
+  storage.values.pictureSearchEngine = '@vionvision/camera-ui-gone';
+  otherCalls.length = 0;
+  const kept = await settled('вилы', ['bag']);
+  assert.equal(kept.results[0]!.found, true, 'found by another engine');
+  // the choice of an engine no longer here stays to be seen and changed
+  const again = nvr.storageSchema.find((s) => s.key === 'pictureSearchEngine') as { enum: string[]; enumLabels: Record<string, string> };
+  assert.ok(again.enum.includes('@vionvision/camera-ui-gone'));
+  assert.match(again.enumLabels['@vionvision/camera-ui-gone']!, /не установлен/);
+  delete storage.values.pictureSearchEngine;
+  otherCalls.length = 0;
   finders = ['openvino', 'onnx'];
 }
 
@@ -375,6 +397,19 @@ async function problem(text: string, ids: string[]) {
   }
 }
 
+// ---- the engines are listed for the choice at the start, before anyone searched
+{
+  // the host's copy of the settings is told the new choices
+  const changed: { key: string; enum: string[] }[] = [];
+  const hosted = { ...storage, values: {}, hasSchema: (key: string) => key === 'pictureSearchEngine', changeSchema: async (key: string, schema: { enum: string[] }) => void changed.push({ key, enum: schema.enum }) };
+  const fresh = new VionNvr(logger as never, { ...api, storagePath: mkdtempSync(join(tmpdir(), 'nvr-find-start-')) } as never, hosted as never);
+  await (fresh as unknown as { start(): Promise<void> }).start();
+  for (let i = 0; i < 100 && (fresh.storageSchema.find((s) => s.key === 'pictureSearchEngine') as { enum: string[] }).enum.length < 2; i++) await tick();
+  assert.deepEqual((fresh.storageSchema.find((s) => s.key === 'pictureSearchEngine') as { enum: string[] }).enum, ['', '@vionvision/camera-ui-onnx', '@vionvision/camera-ui-openvino']);
+  assert.deepEqual(changed, [{ key: 'pictureSearchEngine', enum: ['', '@vionvision/camera-ui-onnx', '@vionvision/camera-ui-openvino'] }]);
+  await (fresh as unknown as { stop(): Promise<void> }).stop();
+}
+
 assert.deepEqual(unhandled, []);
-console.log('find-in-events.spec: answered at once, pending asked again, a picture at a time, the loading finder waited for, kept by query, failures said once, the newest query first, a left one dropped OK');
+console.log('find-in-events.spec: answered at once, pending asked again, a picture at a time, the loading finder waited for, kept by query, failures said once, the newest query first, a left one dropped, the engine chosen in the settings OK');
 process.exit(0);
