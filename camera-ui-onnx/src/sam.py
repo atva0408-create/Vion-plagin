@@ -40,8 +40,9 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
 NO_POINT = -10
 # the model leaves memory when nobody asked for this long
 IDLE_S = 300
-# the live models keep the rest of the CPU: a question of minutes, not a stall of the cameras
-THREADS = 4
+# a quarter of the logical processors, two at least: 2 of the 4 cores of the bench's i5-8300H (4 were all of them, and
+# the live models had none left)
+THREADS = max(2, (os.cpu_count() or 8) // 4)
 # below this the decoder's own estimate of its outline is no outline
 MIN_SCORE = 0.3
 
@@ -113,10 +114,15 @@ def runner(path: str) -> Run:
         import onnxruntime as ort
     except ImportError:
         ort = None
+    # one kind of separator: OpenVINO 2024.6 (OpenVINO Legacy) found no external data beside a path of both
+    path = os.path.normpath(path)
     if ort is not None:
         options = ort.SessionOptions()
         options.intra_op_num_threads = THREADS
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        # without its arena: it kept 2.5 GB while the model was loaded, 0.4 GB without, at the same speed (measured
+        # with ONNX Runtime 1.26 and 1.31); the bench has 8 GB and its live models beside it
+        options.enable_cpu_mem_arena = False
         session = ort.InferenceSession(path, options, providers=["CPUExecutionProvider"])
         return lambda feeds: list(session.run(None, feeds))
     import openvino as ov
@@ -136,6 +142,9 @@ class Sam(_Loaded):
         self.last_used = time.monotonic()
         # outlines under way: the model is not closed under them
         self.busy = 0
+        # one picture at a time: a call the recorder gave up on (30 s) still runs when it asks again, and two encodings
+        # at once doubled the memory and halved the speed of both
+        self._one = asyncio.Lock()
 
     async def _load(self) -> None:
         started = time.monotonic()
@@ -157,7 +166,8 @@ class Sam(_Loaded):
         self.last_used = time.monotonic()
         self.busy += 1
         try:
-            return await self._segment(image, prompts)
+            async with self._one:
+                return await self._segment(image, prompts)
         finally:
             self.busy -= 1
             self.last_used = time.monotonic()

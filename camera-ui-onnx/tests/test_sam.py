@@ -148,6 +148,30 @@ def test_one_encoding_a_picture_and_one_decoding_a_prompt():
     assert not model.busy and not model.idle(time.monotonic()), "just asked: not idle"
 
 
+def test_one_picture_at_a_time_and_a_share_of_the_cpu():
+    # a call the recorder gave up on still runs when it asks again: the two encodings wait for each other
+    active = 0
+    most = 0
+
+    def slow(_feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
+        nonlocal active, most
+        active += 1
+        most = max(most, active)
+        time.sleep(0.05)
+        active -= 1
+        return encoder().answer(_feeds)
+
+    model = loaded(Runner(slow), decoder_of(0.95, 2.0, (100, 140, 100, 160)))
+    box = {"box": {"x": 0.4, "y": 0.4, "width": 0.2, "height": 0.2}}
+
+    async def both() -> None:
+        await asyncio.gather(*(model.segment(Image.new("RGB", (64, 64)), [box]) for _ in range(3)))
+
+    asyncio.run(both())
+    assert most == 1
+    assert 2 <= sam.THREADS <= max(2, (os.cpu_count() or 8) // 4)
+
+
 def test_a_weak_outline_is_none_and_gone_is_said():
     model = loaded(encoder(), decoder_of(0.1, -3.0, (100, 140, 100, 160)))
     whole = {"box": {"x": 0, "y": 0, "width": 1, "height": 1}}
