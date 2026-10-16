@@ -3,7 +3,7 @@
 // same kind of object appearing on another camera right after (or at the same time), or the same licence plate
 // or known face within minutes. Every link is kept with its reason; that is what the episode trace shows.
 
-import { facesOf, labelsOf, normalizePlate, platesOf } from './assistant.js';
+import { answersOf, facesOf, labelsOf, normalizePlate, platesOf } from './assistant.js';
 
 import type { EpisodeRow, Store } from './store.js';
 import type { RecordedEvent } from './types.js';
@@ -112,6 +112,12 @@ const CLASS_OF: Record<string, string> = {
 };
 const CLASS_ORDER = ['person', 'vehicle', 'animal'];
 const CLASS_RU: Record<string, string> = { person: 'Человек', vehicle: 'Транспорт', animal: 'Животное' };
+const NOT_OBJECTS = new Set(['', 'motion', 'audio']);
+
+/** A label the map does not know is a module's class (a store module's «самокат»): a kind of its own. */
+function classOf(label: string): string | undefined {
+  return CLASS_OF[label] ?? (NOT_OBJECTS.has(label) ? undefined : label);
+}
 
 interface MemberState {
   eventId: string;
@@ -124,6 +130,8 @@ interface MemberState {
   lastSeen: number;
   ended: boolean;
   aiTitle?: string;
+  /** what modules answered yes in the event: «падение», «поза: сидит» */
+  said?: string[];
 }
 
 interface Candidate {
@@ -387,6 +395,7 @@ function compose(
       labels: m.labels,
       identities: [...m.identities],
       ...(m.aiTitle ? { aiTitle: m.aiTitle } : {}),
+      ...(m.said?.length ? { said: m.said } : {}),
     })),
     startedAt,
     decidedAt,
@@ -395,11 +404,11 @@ function compose(
 }
 
 /** A member as stored in an episode row (its event may be gone from memory). */
-function stateOfStored(m: EpisodeTraceMember & { aiTitle?: string }): MemberState {
+function stateOfStored(m: EpisodeTraceMember & { aiTitle?: string; said?: string[] }): MemberState {
   return {
     eventId: m.eventId,
     cameraId: m.cameraId,
-    classes: new Set(m.labels.map((label) => CLASS_OF[label]).filter((c): c is string => !!c)),
+    classes: new Set(m.labels.map(classOf).filter((c): c is string => !!c)),
     identities: new Set(m.identities),
     labels: m.labels,
     spans: m.segmentSpans,
@@ -407,6 +416,7 @@ function stateOfStored(m: EpisodeTraceMember & { aiTitle?: string }): MemberStat
     lastSeen: m.lastSeen,
     ended: true,
     ...(m.aiTitle ? { aiTitle: m.aiTitle } : {}),
+    ...(m.said?.length ? { said: m.said } : {}),
   };
 }
 
@@ -422,11 +432,14 @@ function memberOf(event: RecordedEvent): MemberState {
     spans.push({ index: 0, firstSeen: event.startTime, lastSeen: Math.max(end, event.startTime) });
   }
   const labels = labelsOf(event);
-  const classes = new Set(labels.map((label) => CLASS_OF[label]).filter((c): c is string => !!c));
+  const classes = new Set(labels.map(classOf).filter((c): c is string => !!c));
   const identities = new Set([...platesOf(event).map((p) => `plate:${normalizePlate(p)}`), ...facesOf(event).map((f) => `face:${f}`)]);
   if (identities.size && ![...identities].some((i) => i.startsWith('plate:')) && !classes.size) classes.add('person');
   if ([...identities].some((i) => i.startsWith('plate:')) && !classes.size) classes.add('vehicle');
   const aiTitle = event.ai?.title?.trim();
+  const said = Object.entries(answersOf(event))
+    .filter(([, answers]) => answers.yes > 0)
+    .map(([question]) => question);
   return {
     eventId: event.id,
     cameraId: event.cameraId,
@@ -438,6 +451,7 @@ function memberOf(event: RecordedEvent): MemberState {
     lastSeen: Math.max(...spans.map((s) => s.lastSeen)),
     ended: event.state === 'ended' || event.endTime !== undefined,
     ...(aiTitle ? { aiTitle } : {}),
+    ...(said.length ? { said } : {}),
   };
 }
 
@@ -521,8 +535,10 @@ export function buildBlocks(members: { cameraId: string; spans: EpisodeSegmentSp
 function describe(members: MemberState[], cameraName: (id: string) => string): EpisodeText {
   const faces = unique(members.flatMap((m) => [...m.identities].filter((i) => i.startsWith('face:')).map((i) => i.slice(5))));
   const plates = unique(members.flatMap((m) => [...m.identities].filter((i) => i.startsWith('plate:')).map((i) => i.slice(6))));
-  const kind = CLASS_ORDER.find((c) => members.some((m) => m.classes.has(c)));
-  const subject = faces.length ? faces.join(', ') : plates.length ? `${CLASS_RU.vehicle} ${plates.join(', ')}` : (CLASS_RU[kind ?? ''] ?? 'Движение');
+  // the built-in kinds first; a module's class names the story when it is all there is
+  const kind = CLASS_ORDER.find((c) => members.some((m) => m.classes.has(c))) ?? members.flatMap((m) => [...m.classes])[0];
+  const named = kind ? (CLASS_RU[kind] ?? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`) : 'Движение';
+  const subject = faces.length ? faces.join(', ') : plates.length ? `${CLASS_RU.vehicle} ${plates.join(', ')}` : named;
 
   // cameras in the order the visit reached them; a return to a camera is a new step
   const steps: { cameraId: string; at: number }[] = [];
@@ -534,6 +550,7 @@ function describe(members: MemberState[], cameraName: (id: string) => string): E
   const route = steps.map((s, i) => (i === 0 ? cameraName(s.cameraId) : `${cameraName(s.cameraId)} (через ${duration(s.at - start)})`)).join(' → ');
   const cameraCount = new Set(members.map((m) => m.cameraId)).size;
   const seen = unique(members.map((m) => m.aiTitle).filter((t): t is string => !!t));
+  const said = unique(members.flatMap((m) => m.said ?? []));
 
   return {
     title: `${subject}: ${path}`,
@@ -541,6 +558,7 @@ function describe(members: MemberState[], cameraName: (id: string) => string): E
       `${route}.`,
       `Всего ${duration(total)}, ${cameraCount} ${plural(cameraCount, 'камера', 'камеры', 'камер')}.`,
       seen.length ? `Что видно: ${seen.join('; ')}.` : '',
+      said.length ? `Модули: ${said.join('; ')}.` : '',
     ]
       .filter(Boolean)
       .join(' '),

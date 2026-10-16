@@ -72,6 +72,8 @@ interface Spec {
   labels?: string[];
   plate?: string;
   face?: string;
+  /** what modules answered, «играет в компьютер: да» */
+  answers?: string[];
   state?: 'active' | 'ended';
 }
 function event(s: Spec): RecordedEvent {
@@ -80,6 +82,7 @@ function event(s: Spec): RecordedEvent {
   const attributes = [
     ...(s.plate ? [{ type: 'license_plate', label: s.plate, confidence: 0.9 }] : []),
     ...(s.face ? [{ type: 'face', label: s.face, confidence: 0.9 }] : []),
+    ...(s.answers ?? []).map((label) => ({ type: label.slice(0, label.indexOf(': ')), label, confidence: 0.9 })),
   ];
   const ended = (s.state ?? 'ended') === 'ended';
   return {
@@ -177,6 +180,36 @@ await ingest({ id: 's3-car', camera: 'gate', at: scene(2, 0), labels: ['vehicle'
 await ingest({ id: 's3-man', camera: 'door', at: scene(2, 10), labels: ['person'] });
 assert.equal((await nvr.getEpisodes({ startMs: scene(2, -60), endMs: scene(2, 120) })).episodes.length, 0);
 
+// 3a. a module's class (a store module's «самокат»): a kind of its own, joined across cameras like a person, titled by
+// it, and not joined with a person
+await ingest({ id: 's3a-gate', camera: 'gate', at: scene(30, 0), labels: ['самокат'] });
+await ingest({ id: 's3a-door', camera: 'door', at: scene(30, 20), labels: ['самокат'] });
+await ingest({ id: 's3a-man', camera: 'lift', at: scene(30, 40), labels: ['person'] });
+const scooter = (await nvr.getEpisodes({ startMs: scene(30, -60), endMs: scene(30, 120) })).episodes;
+assert.equal(scooter.length, 1);
+assert.deepEqual(
+  scooter[0].members.map((m) => m.eventId),
+  ['s3a-gate', 's3a-door'],
+);
+assert.equal(scooter[0].description?.title, 'Самокат: Въезд → Входная дверь');
+assert.match(scooter[0].description?.description ?? '', /^Въезд → Входная дверь/);
+
+// 3b. what modules answered «да» is told in the episode; «нет» is not
+await ingest({ id: 's3b-gate', camera: 'gate', at: scene(31, 0), labels: ['person'], answers: ['играет в компьютер: нет', 'поза: сидит'] });
+await ingest({ id: 's3b-door', camera: 'door', at: scene(31, 20), labels: ['person'], answers: ['падение: да', 'играет в компьютер: нет'] });
+await ingest({ id: 's3b-lift', camera: 'lift', at: scene(31, 40), labels: ['person'] });
+const answered = (await nvr.getEpisodes({ startMs: scene(31, -60), endMs: scene(31, 120) })).episodes;
+assert.equal(answered.length, 1);
+assert.equal(answered[0].description?.title, 'Человек: Въезд → Входная дверь → Лифт');
+assert.match(answered[0].description?.description ?? '', /Модули: поза: сидит; падение\./);
+assert.doesNotMatch(answered[0].description?.description ?? '', /играет в компьютер/);
+// closed (its candidate gone) and an event deleted: rebuilt from what the episode keeps, the answers stay
+(nvr as unknown as { episodes: { candidates: Map<string, unknown> } }).episodes.candidates.delete(answered[0].id);
+await nvr.deleteEvents(['s3b-lift']);
+const kept = (await nvr.getEpisodes({ startMs: scene(31, -60), endMs: scene(31, 120) })).episodes[0];
+assert.equal(kept.description?.title, 'Человек: Въезд → Входная дверь');
+assert.match(kept.description?.description ?? '', /Модули: поза: сидит; падение\./);
+
 // 4. too long between the cameras for a transition, but the same plate joins it (and the plate is normalized)
 const gap = LINK_GAP_MS / 1000 + 60;
 await ingest({ id: 's4-in', camera: 'gate', at: scene(3, 0), labels: ['vehicle'] });
@@ -208,6 +241,10 @@ await ingest({ id: 's6-motion-a', camera: 'gate', at: scene(5, 0) });
 await ingest({ id: 's6-motion-b', camera: 'door', at: scene(5, 5) });
 assert.equal((await nvr.getEpisodes({ startMs: scene(5, -60), endMs: scene(5, 120) })).episodes.length, 0);
 assert.equal(candidates(), waiting, 'motion-only events must not pile up as candidates');
+// a detection named «motion» is no object either (it is no module's class)
+await ingest({ id: 's6-motion-c', camera: 'gate', at: scene(5, 40), labels: ['motion'] });
+await ingest({ id: 's6-motion-d', camera: 'door', at: scene(5, 45), labels: ['motion'] });
+assert.equal((await nvr.getEpisodes({ startMs: scene(5, -60), endMs: scene(5, 120) })).episodes.length, 0);
 
 // 7. a busy place: a chain of people across cameras stops growing at the member limit
 const cams = ['gate', 'door'];
@@ -312,7 +349,8 @@ assert.ok(zip.length > 20_000, 'the clips are in the zip');
 assert.deepEqual(readdirSync(dirname(zipDownload.filePath)), [basename(zipDownload.filePath)], 'the intermediate MP4s are removed');
 
 // 11. restart in the middle of a visit: the next camera still joins the same episode
-await ingest({ id: 's11-gate', camera: 'gate', at: scene(10, 0), labels: ['person'] });
+// (what a module answered at the gate is still told after the restart)
+await ingest({ id: 's11-gate', camera: 'gate', at: scene(10, 0), labels: ['person'], answers: ['падение: да'] });
 await ingest({ id: 's11-door', camera: 'door', at: scene(10, 15), labels: ['person'] });
 const open = (await nvr.getEpisodes({ startMs: scene(10, -60), endMs: scene(10, 120) })).episodes[0];
 (nvr as unknown as { store: { close(): void } }).store.close();
@@ -327,6 +365,7 @@ assert.deepEqual(
   resumed[0].members.map((m) => m.eventId),
   ['s11-gate', 's11-door', 's11-lift'],
 );
+assert.match(resumed[0].description?.description ?? '', /Модули: падение\./);
 
 // helpers
 assert.deepEqual(
