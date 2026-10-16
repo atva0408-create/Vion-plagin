@@ -138,11 +138,30 @@ const same = (a: Uint8Array | undefined, b: Uint8Array) => a !== undefined && Bu
     const diffs = looks.map((look) => patchDiff(patch.pixels, look));
     assert.equal(diffs.indexOf(Math.min(...diffs)), i + 1, `patch ${i}: the look of its own time (${diffs.map((d) => d.toFixed(3)).join(', ')})`);
   }
+  // a stretch that starts between two frames: the steps from its first frame, each patch the look of its time (they
+  // were counted from the keyframe's clock: up to a step late, and the last one lost)
+  const between = await patchesOf(FFMPEG, [file_], k0 + 13.27 * S, k0 + 15.27 * S, lower, 500);
+  assert.deepEqual(
+    between.map((p) => Math.round((p.atMs * 1000 - k0) / 1000) / 1000),
+    [13.27, 13.77, 14.27, 14.77],
+  );
+  const near = await Promise.all([13.3, 13.5, 13.8, 14, 14.3, 14.5, 14.8, 15].map(async (t) => (await patchOfPicture(FFMPEG, exactJpeg(k0 + t * S), lower))!));
+  for (const [i, patch] of between.entries()) {
+    const diffs = near.map((look) => patchDiff(patch.pixels, look));
+    assert.equal(diffs.indexOf(Math.min(...diffs)), 2 * i, `patch at ${13.27 + i / 2}: the look of its first frame (${diffs.map((d) => d.toFixed(3)).join(', ')})`);
+  }
+  // a stretch that ends right after a keyframe (the next file of a run that begins as the asked time ends): its
+  // keyframe, not the whole file and no failure
+  for (const endsAfter of [0.0005, 0.001, 0.002]) {
+    const one = await patchesOf(FFMPEG, [file_], k0 - S, k0 + endsAfter * S, lower, 500);
+    assert.deepEqual(one.map((p) => Math.round((p.atMs * 1000 - k0) / 1000)), [0], `a stretch ending ${endsAfter * 1000} ms after the keyframe`);
+  }
 }
-// far from both keyframes: the nearest one, with its own time, not frames short of the time
-for (const [what, at, nearest] of [
-  ['nearer the one before', k0 + 50 * S, k0],
-  ['nearer the one after', k0 + 100 * S, k1],
+// far from both keyframes: the nearest one, with its own time, not frames short of the time; ffmpeg's picture is the
+// keyframe after when it is as near as the frames it decodes to, else none (not a picture of another minute)
+for (const [what, at, nearest, picture] of [
+  ['nearer the one before', k0 + 50 * S, k0, undefined],
+  ['nearer the one after', k0 + 100 * S, k1, k1],
 ] as const) {
   const fine = await nvr.nvrScrub('cam', at, true);
   assert.equal(fine.noData, undefined, `${what}: the scrubber has a picture`);
@@ -157,7 +176,9 @@ for (const [what, at, nearest] of [
   assert.equal(chain.frames[0].ts, nearest, `${what}: the trace's picture at its time (${(chain.frames[0].ts - k0) / S} s)`);
   assert.deepEqual(chain.keep, [{ target: 0, index: 0, exact: false }]);
 
-  assert.ok(same(await frameAt(FFMPEG, file_, at), exactJpeg(nearest)), `${what}: ffmpeg's picture is the nearest keyframe`);
+  const jpeg = await frameAt(FFMPEG, file_, at);
+  if (picture === undefined) assert.equal(jpeg, undefined, `${what}: no picture from ffmpeg`);
+  else assert.ok(same(jpeg, exactJpeg(picture)), `${what}: ffmpeg's picture is the keyframe after`);
 }
 // a stretch far from the keyframe before: its patches from the next keyframe on, with their times
 {
@@ -176,6 +197,8 @@ for (const [what, at, nearest] of [
   assert.ok(ended - k0 > 149 * S && ended - k0 < 150 * S, `the file ends with its last frame: ${(ended - k0) / S}`);
   const sql = internals.store.sql;
   sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(segment.start_us + 42 * 60 * S, segment.id);
+  // in its hole, before it is ended at its last frame: no picture (not the last keyframe, 40 s before)
+  assert.equal(await frameAt(FFMPEG, internals.store.located(internals.store.segment(segment.id)!), k1 + 40 * S), undefined, 'no picture in the hole');
   const { id: _id, ...row } = segment;
   // two hundred files that end with their frames (a portion), then the same file once more as an older version left it
   for (let n = 0; n < 200; n++) internals.store.addSegment(row);

@@ -69,9 +69,10 @@ const masked = (mask: string | undefined, filter: string) => (mask ? `${mask},${
 const FILE_END_US = 500_000;
 
 /**
- * How far past the keyframe before it a time is decoded to. A camera that sends a keyframe a minute or less often (a
- * Xiaomi file of 42 minutes had two, 2026-10-15) needs minutes decoded for one picture: farther, the nearest keyframe
- * of the file is the picture of the time.
+ * How far past the keyframe before it a time is decoded to. A camera that sends a keyframe a minute or less often
+ * needs minutes decoded for one picture: farther, the keyframe after the time is its picture when it is as near, and
+ * there is none otherwise (a picture of another minute was taken for the time asked: a hole of a stream that stopped
+ * in a file of an older version showed the thing still there).
  */
 export const FRAME_REACH_US = 30_000_000;
 
@@ -91,7 +92,7 @@ const skipTo = (segment: Pick<SegmentRow, 'start_us'>, seek: number, atUs: numbe
 
 /**
  * The whole picture of a file of the recording at a time in it (µs), as JPEG; undefined when there is none. Decoded
- * from the keyframe before; farther from it than FRAME_REACH_US, the picture of the nearest keyframe of the file.
+ * from the keyframe before; farther from it than FRAME_REACH_US, the keyframe after the time within as much, or none.
  * `mask`: the camera's privacy zones as ffmpeg's filter (privacyFilter), black in the picture.
  */
 export async function frameAt(
@@ -104,7 +105,7 @@ export async function frameAt(
   const before = keyframeAtOrBefore(segment, target);
   const far = before !== undefined && target - before.tsUs > FRAME_REACH_US;
   const after = far ? parseKeyframes(segment.keyframes).find((kf) => kf.tsUs > target) : undefined;
-  const from = after && after.tsUs - target < target - before!.tsUs ? after : before;
+  const from = far ? (after && after.tsUs - target <= FRAME_REACH_US ? after : undefined) : before;
   if (!from) return undefined;
   const seek = seekOf(segment, from);
   const skip = far ? 0 : skipTo(segment, seek, target);
@@ -305,13 +306,17 @@ export async function patchesOf(
       '-noaccurate_seek',
       '-ss',
       seek.toFixed(3),
-      // before `-i`: the reading stops at the end of the stretch, on the clock `-ss` set (trim's too)
+      // before `-i`: the reading stops at the end of the stretch, on the clock `-ss` set (trim's too). At least the
+      // keyframe: a stretch ending within the 2 ms past it gave 0 (no end: the whole file) or less (ffmpeg failed)
       '-t',
-      ((endUs - segment.start_us) / 1e6 - seek).toFixed(3),
+      Math.max(0.001, (endUs - segment.start_us) / 1e6 - seek).toFixed(3),
       '-i',
       segment.path,
       '-vf',
-      `${skip > 0 ? `trim=start=${skip.toFixed(3)},` : ''}${masked(mask, `fps=${(1000 / stepMs).toFixed(3)},${PATCH_FILTER(region)}`)}`,
+      // the steps counted from the first frame of the stretch, as the times are given (from the keyframe's clock they
+      // were up to a step late), each the last frame at or before its time (`round=up`; the nearest rounding gave the
+      // last frame up to half a step after it)
+      `${skip > 0 ? `trim=start=${skip.toFixed(3)},` : ''}setpts=PTS-STARTPTS,${masked(mask, `fps=${(1000 / stepMs).toFixed(3)}:round=up,${PATCH_FILTER(region)}`)}`,
       '-f',
       'rawvideo',
       'pipe:1',
