@@ -815,6 +815,28 @@ test('what became of a notification on each station goes back to ViON: off, unkn
   assert.equal(offline.own.size, 0, 'nothing was said');
   await o.shutdown();
 
+  // with the official API reading the home the stations come from a list of the app kept for minutes: one offline in
+  // it is looked up again before it is refused, though not at every notification
+  const back = baseState();
+  const backStation = back.devices.find((d: any) => d.id === 'station-1') as any;
+  backStation.state = 'offline';
+  const backFake = fakeYandex(back);
+  globalThis.fetch = backFake.fetch;
+  const b = host({ ...(await appSignIn()), oauthToken: OAUTH_TOKEN, pollSeconds: 300, source: 'official', voiceMode: 'cloud', speakingStations: ['station-1'] });
+  await b.launch();
+  const lists = () => backFake.calls.filter((c) => c.url.includes('/m/v3/user/devices')).length;
+  assert.deepEqual(await b.plugin.sendNotification(['station:station-1'], n), [{ deviceId: 'station:station-1', ok: false, error: 'the station is offline (Yandex)' }]);
+  const listed = lists();
+  backStation.state = 'online';
+  b.inside.appDevices.at -= 30_000;
+  assert.deepEqual(await b.plugin.sendNotification(['station:station-1'], n), [{ deviceId: 'station:station-1', ok: false, error: 'the station is offline (Yandex)' }]);
+  assert.equal(lists(), listed, 'a list read half a minute ago is not read again');
+  b.inside.appDevices.at -= 60_000;
+  assert.deepEqual(await b.plugin.sendNotification(['station:station-1'], n), [{ deviceId: 'station:station-1', ok: true }]);
+  assert.equal(lists(), listed + 1, 'the list more than a minute old was read again');
+  assert.equal(back.own.size, 1, 'and the station back on said it');
+  await b.shutdown();
+
   // without the sign-in as the app no station can speak, and ViON hears why
   const unsigned = host({ oauthToken: OAUTH_TOKEN, pollSeconds: 300 });
   globalThis.fetch = fakeYandex(baseState()).fetch;

@@ -48,6 +48,8 @@ const DEFAULT_POLL_SECONDS = 10;
 const MIN_POLL_SECONDS = 3;
 /** The devices of the app are read again this often for the voice when the official API reads the rest. */
 const APP_LIST_MS = 10 * 60_000;
+/** A station offline in a list older than this is looked up again before a notification is refused to it. */
+const OFFLINE_RECHECK_MS = 60_000;
 /** A token of Yandex ID is renewed this long before it ends. */
 const TOKEN_MARGIN_MS = 24 * 60 * 60_000;
 /** A renewal that failed on the way (not refused) is tried again after this, not at every reading. */
@@ -736,11 +738,11 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
    * Stations with what the voice needs, from the app. Without the sign-in as the app there are none: a station can
    * speak only through it, and one offered as a target would fail every notification chosen for it.
    */
-  private async stations(): Promise<YDevice[]> {
+  private async stations(maxAge = APP_LIST_MS): Promise<YDevice[]> {
     const { quasar, session } = this;
     if (!quasar) return [];
     if (this.readSource() === 'app' && this.complete) return [...this.devices.values()].filter(isStation);
-    if (!this.appDevices || Date.now() - this.appDevices.at > APP_LIST_MS) {
+    if (!this.appDevices || Date.now() - this.appDevices.at > maxAge) {
       try {
         const { devices } = await quasar.devices();
         // signed out or restarted while Yandex answered: the list belongs to a sign-in that is gone
@@ -819,7 +821,10 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     // nothing to say failed nothing: a silent notification is for the screen of a phone, not for a voice
     if (n.silent || !text) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: true })));
     if (!this.quasar) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: false, error: NO_VOICE })));
-    const stations = await this.stations();
+    let stations = await this.stations();
+    // the list of the app is kept for minutes: a station offline in it may be back on, and would be refused until the
+    // list is read again (the live updates of the app keep theirs current, and this reads nothing then)
+    if (stations.some((station) => !station.online && deviceIds.includes(STATION_PREFIX + station.id))) stations = await this.stations(OFFLINE_RECHECK_MS);
     // all at once: a station that does not answer must not hold back the others
     const deliveries = await Promise.all(
       deviceIds.map(async (deviceId): Promise<StationDelivery> => {
