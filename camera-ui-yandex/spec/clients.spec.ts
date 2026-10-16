@@ -452,8 +452,38 @@ async function main(): Promise<void> {
     await assert.rejects(unconfirmed.say(station, 'Без ответа'), (error: Error) => error instanceof GlagolSentError && /may have said it/.test(error.message));
     assert.equal(mute.received.length, 1, 'the text went to the station once');
     assert.equal(state.own.size, scenariosBefore, 'and not through the cloud');
+    // the next notification does not wait on it again: the cloud speaks it, and says whether the station did
+    assert.equal(await unconfirmed.say(station, 'Следующий'), 'cloud');
+    assert.equal(mute.received.length, 1, 'the station that did not confirm is skipped for a while');
     unconfirmed.close();
     mute.server.close();
+
+    // a connection kept from before that died without a close (the station restarted, the Wi-Fi dropped): the text
+    // goes on a new connection, not into the dead one, where it would get no answer and never be said
+    const sockets: import('ws').WebSocket[] = [];
+    const restarted = await fakeStation((message, socket) => {
+      socket.send(JSON.stringify({ requestId: message.id, status: 'SUCCESS' }));
+      // the first connection goes dead after its answer: it reads nothing more, a ping neither
+      if (sockets.length === 1) socket.pause();
+    });
+    restarted.server.on('connection', (socket) => void sockets.push(socket));
+    const kept = voiceFor(restarted.port, 'auto');
+    assert.equal(await kept.say(station, 'Первый'), 'local');
+    assert.equal(sockets.length, 1);
+    const scenariosNow = state.own.size;
+    assert.equal(await kept.say(station, 'Второй'), 'local', 'said by the station on a new connection');
+    assert.equal(sockets.length, 2, 'a new connection after the unanswered ping');
+    assert.deepEqual(
+      restarted.received.map((m) => m.payload.serverActionEventPayload.payload.form_update.slots[0].value),
+      ['Первый', 'Второй'],
+      'each text went to the station once',
+    );
+    assert.equal(state.own.size, scenariosNow, 'and nothing through the cloud');
+    // a kept connection that answers the ping takes the text itself
+    assert.equal(await kept.say(station, 'Третий'), 'local');
+    assert.equal(sockets.length, 2, 'the live connection is kept');
+    kept.close();
+    restarted.server.close();
 
     // a station that closed over the token gets a new one, once
     const before = tokenRequests();

@@ -10,6 +10,8 @@ import { messageText } from './http.js';
 export const GLAGOL_PORT = 1961;
 const ANSWER_TIMEOUT_MS = 5_000;
 const CONNECT_TIMEOUT_MS = 5_000;
+/** How long a connection kept from before has to answer a ping before a text goes on it. */
+const PING_TIMEOUT_MS = 2_000;
 /** A connection no one used for this long is closed: the station keeps one per client. */
 const IDLE_MS = 5 * 60_000;
 /** Codes a station closes the connection with when it does not take the token, as the YandexStation integration reads them. */
@@ -147,9 +149,17 @@ export class GlagolClient {
     for (const socket of sockets) socket?.close();
   }
 
-  private connect(): Promise<WebSocket> {
+  private async connect(): Promise<WebSocket> {
     this.keepAlive();
-    if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve(this.socket);
+    const kept = this.socket?.readyState === WebSocket.OPEN ? this.socket : undefined;
+    if (kept) {
+      // a connection kept from before may be dead without a close (the station restarted, the Wi-Fi dropped): a text
+      // sent on it gets no answer, and one with no answer may have been said, so it is said no other way. A ping goes
+      // first: with no pong a new connection takes the text, which has not gone out yet
+      if (await answersPing(kept)) return kept;
+      if (this.socket === kept) this.socket = undefined;
+      kept.terminate();
+    }
     this.opening ??= new Promise<WebSocket>((resolve, reject) => {
       const scheme = this.target.secure === false ? 'ws' : 'wss';
       // the certificate of a station is its own, not one a browser would trust
@@ -204,4 +214,19 @@ export class GlagolClient {
     this.idleTimer = setTimeout(() => this.close(), IDLE_MS);
     this.idleTimer.unref?.();
   }
+}
+
+function answersPing(socket: WebSocket): Promise<boolean> {
+  return new Promise((resolve) => {
+    const done = (alive: boolean) => {
+      clearTimeout(timer);
+      socket.off('pong', pong);
+      resolve(alive);
+    };
+    const pong = () => done(true);
+    const timer = setTimeout(() => done(false), PING_TIMEOUT_MS);
+    socket.once('pong', pong);
+    // a socket that closed meanwhile cannot ping: it is as dead as one that does not answer
+    socket.ping(undefined, undefined, (error) => error && done(false));
+  });
 }
