@@ -788,7 +788,8 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       ownerUserId: owner,
       name: this.stationName(station),
       active: this.speaks(station.id),
-      metadata: { type: station.type },
+      // ViON says a station Yandex counts off before it is tried (its assistant's notification_channels)
+      metadata: { type: station.type, online: station.online },
     };
   }
 
