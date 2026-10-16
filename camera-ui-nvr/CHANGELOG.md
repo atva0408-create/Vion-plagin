@@ -1,3 +1,7 @@
+## [0.22.8]
+
+- A camera that does not answer is told once, not every minute: the recorder of an unreachable camera wrote «stream ended (HTTP 500); retrying in 60s» every minute all night (177 warnings a night, each an event of the system panel). Its first end is told as before, then once that the camera does not answer since then and is tried quietly every minute, and that it answers again when it does. A camera that is back records within a minute as before
+
 ## [0.22.7]
 
 - The search index no longer holds the recorder every two minutes: its look for the events without a picture's vector went over the vectors by their model and read every vector for every event (12.5 s on the bench's 4 097 events with a warm cache, minutes on its cold disk after a start, every camera's messages timed out meanwhile). Two indexes answer it alone: 25.8 s → 2.5 ms on a database of that size (built once at the start, a few seconds)

@@ -1,3 +1,7 @@
+## [0.22.8]
+
+- Eine Kamera, die nicht antwortet, wird einmal gemeldet, nicht jede Minute: die Aufnahme einer unerreichbaren Kamera schrieb die ganze Nacht jede Minute «stream ended (HTTP 500); retrying in 60s» (177 Warnungen pro Nacht, jede ein Ereignis des Systempanels). Ihr erstes Ende wird wie bisher gemeldet, dann einmal, dass die Kamera seit dann nicht antwortet und still jede Minute versucht wird, und dass sie wieder antwortet, wenn sie es tut. Eine zurückgekehrte Kamera nimmt wie bisher innerhalb einer Minute auf
+
 ## [0.22.7]
 
 - Der Suchindex hält die Aufnahme nicht mehr alle zwei Minuten an: seine Suche nach Ereignissen ohne Bildvektor ging über die Vektoren nach ihrem Modell und las für jedes Ereignis jeden Vektor (12,5 s bei den 4 097 Ereignissen des Prüfstands mit warmem Cache, Minuten auf seiner kalten Platte nach einem Start, die Nachrichten aller Kameras liefen derweil in die Zeitüberschreitung). Zwei Indizes beantworten sie allein: 25,8 s → 2,5 ms bei einer Datenbank dieser Größe (einmal beim Start gebaut, wenige Sekunden)
