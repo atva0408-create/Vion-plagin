@@ -16,7 +16,7 @@ import { NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
 import { PlaybackManager } from './playback.js';
-import { keyframeAtOrBefore, readFrames, readGop, readKeyframe } from './reader.js';
+import { keyframeAtOrBefore, readExact, readFrames, readKeyframe } from './reader.js';
 import { Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
 import { PersonIndex, personEmbeddings, routeOf } from './people.js';
@@ -1575,7 +1575,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!kf) return { ts: tsUs, videoCodec: '', noData: true };
     const meta = { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
     if (fine) {
-      const gop = await readGop(this.store.located(seg), kf, tsUs);
+      const gop = await readExact(this.store.located(seg), tsUs);
       if (!gop.length) return { ts: tsUs, videoCodec: '', noData: true };
       return { ...meta, ts: gop.at(-1)!.tsUs, frame: gop[0].data, frames: gop.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe })) };
     }
@@ -1665,9 +1665,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /**
    * Pictures for detection-trace ticks, from the recording. `keyframe`: the keyframe at or before each
-   * target (thumbnail strip); `exact`: the frame at the target, decoded from its keyframe. The trace
-   * times are the server's capture times and the recording is indexed by wall clock, so a picture is
-   * the recorded frame nearest in time, never marked exact.
+   * target (thumbnail strip); `exact`: the frame at the target, decoded from its keyframe (far from it,
+   * the nearest keyframe: readExact). The trace times are the server's capture times and the recording
+   * is indexed by wall clock, so a picture is the recorded frame nearest in time, never marked exact.
    */
   public async nvrTraceFrames(
     cameraId: string,
@@ -1696,7 +1696,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         chains.set(key, chain);
       }
       if (mode === 'exact') {
-        const gop = await readGop(this.store.located(seg), kf, tsUs);
+        const gop = await readExact(this.store.located(seg), tsUs);
         if (!gop.length) {
           missing.push(target);
           chains.delete(key);

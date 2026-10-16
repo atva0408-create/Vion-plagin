@@ -9,9 +9,11 @@ import type { ChildProcess } from 'node:child_process';
 
 import { PATCH } from './gone.js';
 import { OVERVIEW_H, OVERVIEW_W } from './place.js';
+import { keyframeAtOrBefore } from './reader.js';
+import { parseKeyframes } from './store.js';
 
 import type { Place } from './gone.js';
-import type { SegmentRow } from './store.js';
+import type { Keyframe, SegmentRow } from './store.js';
 
 /** A whole frame is made at most this wide: the finder works on 768 px, a small thing needs some of them. */
 const FRAME_MAX_WIDTH = 1280;
@@ -67,24 +69,56 @@ const masked = (mask: string | undefined, filter: string) => (mask ? `${mask},${
 const FILE_END_US = 500_000;
 
 /**
- * The whole picture of a file of the recording at a time in it (µs), as JPEG; undefined when there is none. `mask`:
- * the camera's privacy zones as ffmpeg's filter (privacyFilter), black in the picture.
+ * How far past the keyframe before it a time is decoded to. A camera that sends a keyframe a minute or less often (a
+ * Xiaomi file of 42 minutes had two, 2026-10-15) needs minutes decoded for one picture: farther, the nearest keyframe
+ * of the file is the picture of the time.
+ */
+export const FRAME_REACH_US = 30_000_000;
+
+/**
+ * Where ffmpeg decodes a time of a file from: the keyframe before it in the index of the recorder, and the time as
+ * ffmpeg's `-ss` lands on that keyframe (KEYFRAME_PAST_S). Asked for the time itself, ffmpeg's seek on MPEG-TS lands on
+ * the last packet before it, mostly not a keyframe, and the decoder drops all up to the next keyframe: a time was read
+ * as the picture of the keyframe after it (1-2 s late on most cameras; minutes, or nothing past the last keyframe of
+ * a file, on one that sends keyframes rarely).
+ */
+function seekOf(segment: Pick<SegmentRow, 'start_us'>, keyframe: Keyframe): number {
+  return Number(((keyframe.tsUs - segment.start_us) / 1e6 + KEYFRAME_PAST_S).toFixed(3));
+}
+
+/** The seconds from where `seek` lands to `atUs`, as ffmpeg's `-ss` after `-i` and `trim` count them (≤ 0: none). */
+const skipTo = (segment: Pick<SegmentRow, 'start_us'>, seek: number, atUs: number) => Math.floor(((atUs - segment.start_us) / 1e6 - seek) * 1000) / 1000;
+
+/**
+ * The whole picture of a file of the recording at a time in it (µs), as JPEG; undefined when there is none. Decoded
+ * from the keyframe before; farther from it than FRAME_REACH_US, the picture of the nearest keyframe of the file.
+ * `mask`: the camera's privacy zones as ffmpeg's filter (privacyFilter), black in the picture.
  */
 export async function frameAt(
   ffmpegPath: string,
-  segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>,
+  segment: Pick<SegmentRow, 'path' | 'start_us' | 'end_us' | 'keyframes'>,
   atUs: number,
   mask?: string,
 ): Promise<Uint8Array | undefined> {
-  const offset = Math.max(0, (Math.min(atUs, segment.end_us - FILE_END_US) - segment.start_us) / 1e6);
+  const target = Math.max(segment.start_us, Math.min(atUs, segment.end_us - FILE_END_US));
+  const before = keyframeAtOrBefore(segment, target);
+  const far = before !== undefined && target - before.tsUs > FRAME_REACH_US;
+  const after = far ? parseKeyframes(segment.keyframes).find((kf) => kf.tsUs > target) : undefined;
+  const from = after && after.tsUs - target < target - before!.tsUs ? after : before;
+  if (!from) return undefined;
+  const seek = seekOf(segment, from);
+  const skip = far ? 0 : skipTo(segment, seek, target);
   const jpeg = await capture(ffmpegPath, [
     '-hide_banner',
     '-loglevel',
     'error',
+    '-noaccurate_seek',
+    ...(far ? ['-skip_frame', 'nokey'] : []),
     '-ss',
-    offset.toFixed(3),
+    seek.toFixed(3),
     '-i',
     segment.path,
+    ...(skip > 0 ? ['-ss', skip.toFixed(3)] : []),
     '-frames:v',
     '1',
     '-vf',
@@ -240,11 +274,12 @@ export async function lookOf(
 
 /**
  * The gray patches of a region every `stepMs` from one time to another (µs), out of the files of the recording that
- * cover it (in time order), each with its time.
+ * cover it (in time order), each with its time. Decoded from the keyframe before the start (seekOf); farther from it
+ * than FRAME_REACH_US, from the next keyframe of the stretch, the patches before it left out.
  */
 export async function patchesOf(
   ffmpegPath: string,
-  segments: Pick<SegmentRow, 'path' | 'start_us' | 'end_us'>[],
+  segments: Pick<SegmentRow, 'path' | 'start_us' | 'end_us' | 'keyframes'>[],
   fromUs: number,
   toUs: number,
   region: Place,
@@ -257,24 +292,32 @@ export async function patchesOf(
     const startUs = Math.max(fromUs, segment.start_us);
     const endUs = Math.min(toUs, segment.end_us);
     if (endUs <= startUs) continue;
+    const before = keyframeAtOrBefore(segment, startUs);
+    const from = before && startUs - before.tsUs <= FRAME_REACH_US ? before : parseKeyframes(segment.keyframes).find((kf) => kf.tsUs >= startUs && kf.tsUs < endUs);
+    if (!from) continue;
+    const firstUs = Math.max(startUs, from.tsUs);
+    const seek = seekOf(segment, from);
+    const skip = skipTo(segment, seek, firstUs);
     const raw = await capture(ffmpegPath, [
       '-hide_banner',
       '-loglevel',
       'error',
+      '-noaccurate_seek',
       '-ss',
-      ((startUs - segment.start_us) / 1e6).toFixed(3),
+      seek.toFixed(3),
+      // before `-i`: the reading stops at the end of the stretch, on the clock `-ss` set (trim's too)
+      '-t',
+      ((endUs - segment.start_us) / 1e6 - seek).toFixed(3),
       '-i',
       segment.path,
-      '-t',
-      ((endUs - startUs) / 1e6).toFixed(3),
       '-vf',
-      masked(mask, `fps=${(1000 / stepMs).toFixed(3)},${PATCH_FILTER(region)}`),
+      `${skip > 0 ? `trim=start=${skip.toFixed(3)},` : ''}${masked(mask, `fps=${(1000 / stepMs).toFixed(3)},${PATCH_FILTER(region)}`)}`,
       '-f',
       'rawvideo',
       'pipe:1',
     ]);
     for (let i = 0; (i + 1) * size <= raw.length; i++) {
-      const atMs = Math.round(startUs / 1000 + i * stepMs);
+      const atMs = Math.round(firstUs / 1000 + i * stepMs);
       if (out.length && atMs <= out[out.length - 1].atMs) continue;
       out.push({ atMs, pixels: new Uint8Array(raw.subarray(i * size, (i + 1) * size)) });
     }

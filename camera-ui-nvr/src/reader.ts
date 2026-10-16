@@ -20,7 +20,7 @@ export interface Frame {
 const CHUNK = 256 * 1024;
 
 /** Latest keyframe at or before `tsUs` (or the first keyframe when `tsUs` precedes the segment). */
-export function keyframeAtOrBefore(segment: SegmentRow, tsUs: number): Keyframe | undefined {
+export function keyframeAtOrBefore(segment: Pick<SegmentRow, 'keyframes'>, tsUs: number): Keyframe | undefined {
   const kfs = parseKeyframes(segment.keyframes);
   let found: Keyframe | undefined;
   for (const kf of kfs) {
@@ -127,4 +127,20 @@ export async function readGop(segment: SegmentRow, kf: Keyframe, untilUs: number
     if (frame.tsUs >= untilUs || out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * The frames that make the picture of a time: the GOP from the keyframe before up to it, or, when that is more than
+ * `max` frames, the nearest keyframe of the file alone, with its own time. A camera that sends a keyframe a minute or
+ * less often (a Xiaomi file of 42 minutes had two, 2026-10-15) had the frames read stop short of the time, and the last
+ * of them was given as its picture.
+ */
+export async function readExact(segment: SegmentRow, tsUs: number, max = 300): Promise<Frame[]> {
+  const before = keyframeAtOrBefore(segment, tsUs);
+  if (!before) return [];
+  const gop = await readGop(segment, before, tsUs, max);
+  if (gop.length < max || gop.at(-1)!.tsUs >= tsUs) return gop;
+  const after = parseKeyframes(segment.keyframes).find((kf) => kf.tsUs > tsUs);
+  const nearer = after && after.tsUs - tsUs < tsUs - before.tsUs ? await readKeyframe(segment, after) : undefined;
+  return [nearer ?? gop[0]];
 }

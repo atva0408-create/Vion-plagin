@@ -18,6 +18,7 @@ import { NIGHT_COLOUR, OVERVIEW_H, OVERVIEW_W, placeHistory } from '../src/place
 import type { Place } from '../src/gone.js';
 
 const FFMPEG = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
+const FFPROBE = FFMPEG.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
 const dir = mkdtempSync(join(tmpdir(), 'nvr-frames-'));
 const T = Date.parse('2026-10-14T10:00:00Z') * 1000;
 const BOX = { x: 150 / 320, y: 150 / 240, width: 30 / 320, height: 20 / 240 };
@@ -51,9 +52,17 @@ function file(name: string, seconds: number, until?: number, colour = false): st
   assert.equal(made.status, 0, made.stderr?.toString());
   return path;
 }
+/** A file of the recording as its row has it: the keyframes indexed as the recorder does, each where it lies and its time. */
+function recorded(path: string, startUs: number, endUs: number) {
+  const probed = spawnSync(FFPROBE, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'format=start_time:packet=pos,pts_time,flags', '-of', 'json', path], { encoding: 'utf8' });
+  assert.equal(probed.status, 0, probed.stderr);
+  const { format, packets } = JSON.parse(probed.stdout) as { format: { start_time: string }; packets: { pos: string; pts_time: string; flags: string }[] };
+  const keyframes = packets.filter((p) => p.flags.startsWith('K')).map((p) => [Number(p.pos), startUs + Math.round((Number(p.pts_time) - Number(format.start_time)) * 1e6)]);
+  return { path, start_us: startUs, end_us: endUs, keyframes: JSON.stringify(keyframes) };
+}
 // the recording: 0-10 s with the box, 10-20 s with it for 2 s more
-const first = { path: file('a.ts', 10, 10), start_us: T, end_us: T + 10e6 };
-const second = { path: file('b.ts', 10, 2), start_us: T + 10e6, end_us: T + 20e6 };
+const first = recorded(file('a.ts', 10, 10), T, T + 10e6);
+const second = recorded(file('b.ts', 10, 2), T + 10e6, T + 20e6);
 const segments = [first, second];
 const segmentAt = (us: number) => segments.find((s) => us >= s.start_us && us < s.end_us) ?? segments[segments.length - 1];
 const region = widened(BOX);
@@ -130,7 +139,7 @@ for (const fps of [50, 60]) {
     path,
   ]);
   assert.equal(made.status, 0, made.stderr?.toString());
-  const fast = { path, start_us: T, end_us: T + 5e6 };
+  const fast = recorded(path, T, T + 5e6);
   const whole = { x: 0, y: 0, width: 1, height: 1 };
   for (let second = 0; second < 5; second++) {
     const look = await lookOf(FFMPEG, fast, T + second * 1e6, whole);
@@ -197,7 +206,7 @@ for (const fps of [50, 60]) {
 // ---- how coloured a whole picture is: gray (a night picture) under NIGHT_COLOUR, coloured above
 {
   const gray = (await colourOfPicture(FFMPEG, (await frameAt(FFMPEG, first, T + 5e6))!))!;
-  const coloured = (await colourOfPicture(FFMPEG, (await frameAt(FFMPEG, { path: file('colour.ts', 2, undefined, true), start_us: T, end_us: T + 2e6 }, T + 1e6))!))!;
+  const coloured = (await colourOfPicture(FFMPEG, (await frameAt(FFMPEG, recorded(file('colour.ts', 2, undefined, true), T, T + 2e6), T + 1e6))!))!;
   assert.ok(gray < NIGHT_COLOUR && coloured > NIGHT_COLOUR * 2, `gray ${gray}, coloured ${coloured}`);
 }
 
