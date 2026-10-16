@@ -170,5 +170,46 @@ function planOf(store: Store, run: () => unknown): string {
   store.close();
 }
 
-console.log('store.spec: event pages over equal start times, index for the oldest segment (new and old database), episode count — ok');
+// ------------------------------------------------------------------ «нет» is no type of an event (ViON 2.6.1)
+
+{
+  // events recorded before kept a question answered only «нет» among their types: taken out, a batch at a time
+  const store = new Store(join(dir, 'answers.db'));
+  const said = (...labels: string[]) => labels.map((label) => ({ type: label.slice(0, label.indexOf(': ')), label, confidence: 0.9 }));
+  const event = (id: string, types: string[], attributes: unknown[]) =>
+    ({ id, cameraId: 'kids', state: 'ended', startTime: 1000, endTime: 2000, lastUpdate: 2000, types, triggers: [], segments: [{ firstSeen: 1, lastSeen: 2, detections: [{ label: 'person', score: 0.9 }], attributes }] }) as unknown as RecordedEvent;
+  store.upsertEvent(event('only-no', ['motion', 'person', 'играет в компьютер'], said('играет в компьютер: нет', 'играет в компьютер: нет')));
+  store.upsertEvent(event('no-then-yes', ['motion', 'person', 'играет в компьютер'], said('играет в компьютер: нет', 'играет в компьютер: да')), true);
+  store.upsertEvent(event('posture', ['motion', 'person', 'поза'], said('поза: сидит')));
+  store.upsertEvent(event('no-and-posture', ['motion', 'person', 'падение', 'поза'], said('падение: нет', 'поза: лежит')));
+  // a class of a module named like a question is a class: its detection keeps it
+  store.upsertEvent({ ...event('class', ['motion', 'самокат'], said('самокат: нет')), segments: [{ firstSeen: 1, lastSeen: 2, detections: [{ label: 'самокат', score: 0.9 }], attributes: said('самокат: нет') }] } as unknown as RecordedEvent);
+  for (let i = 0; i < 7; i++) store.upsertEvent(event(`bulk-${i}`, ['motion', 'person', 'бег'], said('бег: нет')));
+  const types = (id: string) => (JSON.parse(store.event(id)!.data) as RecordedEvent).types;
+  let after: number | undefined = 0;
+  let batches = 0;
+  let changed = 0;
+  while (after !== undefined) {
+    const step = store.dropNoAnswerTypes(after, 3);
+    changed += step.changed;
+    after = step.next;
+    batches++;
+  }
+  assert.ok(batches >= 4, `${batches} batches of 3`);
+  assert.equal(changed, 9);
+  assert.deepEqual(types('only-no'), ['motion', 'person']);
+  assert.deepEqual(types('no-then-yes'), ['motion', 'person', 'играет в компьютер']);
+  assert.deepEqual(types('posture'), ['motion', 'person', 'поза']);
+  assert.deepEqual(types('no-and-posture'), ['motion', 'person', 'поза']);
+  assert.deepEqual(types('class'), ['motion', 'самокат']);
+  assert.deepEqual(types('bulk-6'), ['motion', 'person']);
+  // the rest of the event and its favorite stay as they were
+  assert.equal(store.event('no-then-yes')!.favorite, 1);
+  assert.deepEqual((JSON.parse(store.event('only-no')!.data) as RecordedEvent).segments[0].attributes, said('играет в компьютер: нет', 'играет в компьютер: нет'));
+  // again: nothing left to change
+  assert.deepEqual(store.dropNoAnswerTypes(0, 100), { changed: 0, next: undefined });
+  store.close();
+}
+
+console.log('store.spec: event pages over equal start times, index for the oldest segment (new and old database), episode count, «нет» out of old types — ok');
 process.exit(0);

@@ -89,6 +89,8 @@ const CROSSINGS_KEEP_MS = 400 * 86_400_000;
  */
 const TRACE_PRUNE_EVENTS = 100;
 const TRACE_PRUNE_ROUNDS = 2;
+/** The meta key of the one pass that took «нет» out of the types of older events (Store.dropNoAnswerTypes). */
+const NO_ANSWER_TYPES_KEY = 'types_without_no_answers';
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
@@ -366,6 +368,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly exporting = new Set<string>();
   /** Time zone names of clients that this server does not know, each reported once. */
   private readonly unknownZones = new Set<string>();
+  private stopping = false;
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<PluginStorageValues>) {
     super(logger, api, storage);
@@ -759,10 +762,32 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.staleTimer = setInterval(() => this.closeStaleEvents(Date.now()), STALE_SWEEP_MS);
     this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
     void this.enforceRetention();
+    void this.dropNoAnswerTypes();
     this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
   }
 
+  /** Once: «нет» out of the types of the events recorded before, a batch at a time between the other work. */
+  private async dropNoAnswerTypes(): Promise<void> {
+    if (this.store.meta(NO_ANSWER_TYPES_KEY) === 'done') return;
+    let after: number | undefined = 0;
+    let changed = 0;
+    try {
+      while (after !== undefined && !this.stopping) {
+        const step = this.store.dropNoAnswerTypes(after);
+        changed += step.changed;
+        after = step.next;
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      if (this.stopping) return;
+      this.store.setMeta(NO_ANSWER_TYPES_KEY, 'done');
+      if (changed) this.logger.log(`A question of a module answered only «нет» is out of the types of ${changed} older events`);
+    } catch (error) {
+      this.logger.warn(`The types of older events were not cleared of questions answered «нет», the next start goes on: ${(error as Error).message}`);
+    }
+  }
+
   private async stop(): Promise<void> {
+    this.stopping = true;
     this.describer?.stop();
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);

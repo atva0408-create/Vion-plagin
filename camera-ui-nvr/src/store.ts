@@ -410,6 +410,36 @@ export class Store {
       );
   }
 
+  /**
+   * Events recorded before ViON 2.6.1 kept a module's question among their types when it was answered only «нет»
+   * («играет в компьютер» on every event the module looked at): the filter by type, the search and the counts by type
+   * found the boy not playing too. Takes such a question out of the types of up to `limit` events after the rowid
+   * `after`; `next` is where to go on, undefined at the end. The answers stay on the segments.
+   */
+  public dropNoAnswerTypes(after: number, limit = 500): { changed: number; next: number | undefined } {
+    // only an event with a «нет» answer can have one to take out: the rest are not read
+    const rows = this.db
+      .prepare('SELECT rowid, data FROM events WHERE rowid > ? AND instr(data, ?) > 0 ORDER BY rowid LIMIT ?')
+      .all(after, ': нет"', limit) as { rowid: number; data: string }[];
+    const update = this.db.prepare('UPDATE events SET data = ? WHERE rowid = ?');
+    let changed = 0;
+    this.db.exec('BEGIN');
+    try {
+      for (const row of rows) {
+        const event = JSON.parse(row.data) as RecordedEvent;
+        const types = typesWithoutNo(event);
+        if (!types) continue;
+        update.run(JSON.stringify({ ...event, types }), row.rowid);
+        changed++;
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { changed, next: rows.length === limit ? rows[rows.length - 1].rowid : undefined };
+  }
+
   public event(id: string): EventRow | undefined {
     return (this.db.prepare('SELECT * FROM events WHERE id = ?').get(id) ?? undefined) as EventRow | undefined;
   }
@@ -678,6 +708,26 @@ export class Store {
 }
 
 /** Absolute on this system or the other one: an archive is also moved between a Windows and a Linux server. */
+/**
+ * The types of an event without a question answered there only «нет», as the server keeps them since ViON 2.6.1;
+ * undefined when none goes. A type a detection or a trigger gives stays whatever was answered.
+ */
+function typesWithoutNo(event: RecordedEvent): string[] | undefined {
+  const segments = event.segments ?? [];
+  const given = new Set<string>([...segments.flatMap((s) => (s.detections ?? []).map((d) => String(d.label))), ...(event.triggers ?? []).map((t) => String(t.type))]);
+  // per type: whether any answer of it was other than «нет»
+  const answered = new Map<string, boolean>();
+  for (const segment of segments) {
+    for (const { type, label } of segment.attributes ?? []) {
+      if (typeof type !== 'string' || !type || typeof label !== 'string') continue;
+      answered.set(type, (answered.get(type) ?? false) || label !== `${type}: нет`);
+    }
+  }
+  const types = event.types ?? [];
+  const kept = types.filter((type) => answered.get(type) !== false || given.has(type));
+  return kept.length === types.length ? undefined : kept;
+}
+
 function isAbsolutePath(path: string): boolean {
   return posix.isAbsolute(path) || win32.isAbsolute(path);
 }
