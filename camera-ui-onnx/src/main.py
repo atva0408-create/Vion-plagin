@@ -1545,14 +1545,21 @@ class ONNXPlugin(
     async def _preload_clip(self) -> None:
         try:
             encoder = await self.get_clip_encoder(self.clip_model())
-            self.logger.log("Модели CLIP предзагружены")
-            # Russian is searched in whatever the platform speaks: its translator is ready before the first search
-            if "multilingual" not in encoder.embedding_model:
+        except Exception as e:
+            self.logger.error(f"Не удалось предзагрузить модели CLIP: {str(e) or type(e).__name__}")
+            return
+        self.logger.log("Модели CLIP предзагружены")
+        # Russian is searched in whatever the platform speaks: its translator is ready before the first search. Its
+        # failure is its own: it was told as CLIP's, with no words (sentencepiece missing, 2026-10-14)
+        if "multilingual" not in encoder.embedding_model:
+            try:
                 task = self.translators.load("ru")
                 if task is not None:
                     await task
-        except Exception as e:
-            self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
+            except Exception as e:
+                self.logger.error(
+                    f"Не удалось загрузить переводчик для поиска по-русски: {str(e) or type(e).__name__}"
+                )
 
     async def _on_shutdown(self) -> None:
         if self._modules_watch:

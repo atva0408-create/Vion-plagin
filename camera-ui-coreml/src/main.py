@@ -831,7 +831,7 @@ class CoreMLPlugin(
             await self.get_clip_encoder(self.clip_model())
             self.logger.log("Модели CLIP предзагружены")
         except Exception as e:
-            self.logger.error(f"Не удалось предзагрузить модели CLIP: {e}")
+            self.logger.error(f"Не удалось предзагрузить модели CLIP: {str(e) or type(e).__name__}")
 
     async def _on_shutdown(self) -> None:
         for sensors in self._sensors.values():
