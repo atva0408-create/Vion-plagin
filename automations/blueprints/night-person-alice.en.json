@@ -1,0 +1,108 @@
+{
+  "version": 2,
+  "name": "Person at night — Alice and the phone",
+  "description": "Says it urgently on the Alice stations and sends a picture to the phone when the camera sees a person between 22:00 and 06:00; when neither got it, to Telegram. Urgent comes in the quiet hours too unless a channel is silent at night.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Camera"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "segment-start"
+        ],
+        "detectionLabels": [
+          "person"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "night",
+      "type": "condition-time",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "condition-time",
+        "startTime": "22:00",
+        "endTime": "06:00",
+        "days": []
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 864
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Person at night: {{event.cameraName}}",
+        "body": "The camera sees a person.",
+        "severity": "critical",
+        "deepLink": "",
+        "targets": [],
+        "route": {
+          "channels": [
+            "station",
+            "phone"
+          ],
+          "fallback": [
+            "telegram"
+          ]
+        },
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-night",
+      "source": "trigger",
+      "target": "night"
+    },
+    {
+      "id": "e-night-true-snapshot",
+      "source": "night",
+      "target": "snapshot",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

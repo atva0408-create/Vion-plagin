@@ -233,5 +233,100 @@
         "blueprint": "blueprints/plugin-error.de.json"
       }
     }
+  },
+  "night-person-alice": {
+    "title": "Person at night — Alice and the phone",
+    "description": "Says it urgently on the Alice stations and sends a picture to the phone when the camera sees a person between 22:00 and 06:00; when neither got it, to Telegram. Urgent comes in the quiet hours too unless a channel is silent at night.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "person",
+      "night",
+      "alice",
+      "snapshot"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/night-person-alice.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Человек ночью — Алиса и телефон",
+        "description": "Срочно говорит на станциях Алисы и присылает на телефон снимок, когда камера видит человека с 22:00 до 06:00; если ни туда, ни туда не дошло — в Telegram. Срочное проходит и в тихие часы, если канал ночью не молчит.",
+        "blueprint": "blueprints/night-person-alice.ru.json"
+      },
+      "de": {
+        "title": "Person in der Nacht — Alice und das Telefon",
+        "description": "Sagt es dringend auf den Alice-Stationen und schickt ein Bild aufs Telefon, wenn die Kamera zwischen 22:00 und 06:00 Uhr eine Person sieht; kam es nirgends an, an Telegram. Dringendes kommt auch in den Ruhezeiten, sofern der Kanal nachts nicht stumm ist.",
+        "blueprint": "blueprints/night-person-alice.de.json"
+      }
+    }
+  },
+  "nobody-home-person": {
+    "title": "Person while nobody is home",
+    "description": "Sends an urgent notification with a picture to the phone when the camera sees a person while nobody is at home (by the phones or as set by hand); when it did not get there, to Telegram.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "person",
+      "away",
+      "home",
+      "snapshot"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/nobody-home-person.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Человек, пока никого нет дома",
+        "description": "Присылает на телефон срочное уведомление со снимком, когда камера видит человека, а дома никого нет (по телефонам или как задано вручную); если не дошло — в Telegram.",
+        "blueprint": "blueprints/nobody-home-person.ru.json"
+      },
+      "de": {
+        "title": "Person, solange niemand zu Hause ist",
+        "description": "Schickt eine dringende Benachrichtigung mit Bild aufs Telefon, wenn die Kamera eine Person sieht, während niemand zu Hause ist (nach den Telefonen oder von Hand gesetzt); kam sie nicht an, an Telegram.",
+        "blueprint": "blueprints/nobody-home-person.de.json"
+      }
+    }
+  },
+  "camera-offline-telegram": {
+    "title": "Camera gone — to Telegram",
+    "description": "Writes to Telegram when a camera stops responding; when Telegram did not take it, to the phone.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "camera",
+      "offline",
+      "telegram"
+    ],
+    "blueprint": "blueprints/camera-offline-telegram.en.json",
+    "i18n": {
+      "ru": {
+        "title": "Камера пропала — в Telegram",
+        "description": "Пишет в Telegram, когда камера перестаёт отвечать; если Telegram не принял — на телефон.",
+        "blueprint": "blueprints/camera-offline-telegram.ru.json"
+      },
+      "de": {
+        "title": "Kamera weg — an Telegram",
+        "description": "Schreibt an Telegram, wenn eine Kamera nicht mehr antwortet; nahm Telegram es nicht an, aufs Telefon.",
+        "blueprint": "blueprints/camera-offline-telegram.de.json"
+      }
+    }
   }
 }

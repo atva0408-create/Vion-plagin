@@ -1,0 +1,105 @@
+{
+  "version": 2,
+  "name": "Person while nobody is home",
+  "description": "Sends an urgent notification with a picture to the phone when the camera sees a person while nobody is at home (by the phones or as set by hand); when it did not get there, to Telegram.",
+  "inputs": [
+    {
+      "key": "camera",
+      "type": "camera",
+      "label": "Camera"
+    }
+  ],
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-detection",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-detection",
+        "cameraId": "{{input:camera}}",
+        "eventPhase": [
+          "segment-start"
+        ],
+        "detectionLabels": [
+          "person"
+        ],
+        "confidenceThreshold": 0,
+        "audioLabels": [],
+        "faceFilter": [],
+        "licensePlateFilter": []
+      }
+    },
+    {
+      "id": "away",
+      "type": "condition-home",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "condition-home",
+        "expect": "away"
+      }
+    },
+    {
+      "id": "snapshot",
+      "type": "action-snapshot",
+      "position": {
+        "x": 320,
+        "y": 640
+      },
+      "data": {
+        "type": "action-snapshot",
+        "cameraId": "{{input:camera}}",
+        "forceNew": true
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 864
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Nobody home: a person at {{event.cameraName}}",
+        "body": "Nobody is at home and the camera sees a person.",
+        "severity": "critical",
+        "deepLink": "",
+        "targets": [],
+        "route": {
+          "channels": [
+            "phone"
+          ],
+          "fallback": [
+            "telegram"
+          ]
+        },
+        "image": "{{snapshot.base64}}"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-away",
+      "source": "trigger",
+      "target": "away"
+    },
+    {
+      "id": "e-away-true-snapshot",
+      "source": "away",
+      "target": "snapshot",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "e-snapshot-out-notify",
+      "source": "snapshot",
+      "target": "notify"
+    }
+  ]
+}

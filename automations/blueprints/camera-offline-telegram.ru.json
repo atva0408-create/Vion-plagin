@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "name": "Камера пропала — в Telegram",
+  "description": "Пишет в Telegram, когда камера перестаёт отвечать; если Telegram не принял — на телефон.",
+  "suppressDuplicates": true,
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "trigger-system",
+      "position": {
+        "x": 320,
+        "y": 192
+      },
+      "data": {
+        "type": "trigger-system",
+        "category": "camera",
+        "eventType": "camera:disconnected",
+        "targetId": ""
+      }
+    },
+    {
+      "id": "notify",
+      "type": "action-notification",
+      "position": {
+        "x": 320,
+        "y": 416
+      },
+      "data": {
+        "type": "action-notification",
+        "title": "Камера не отвечает: {{system.cameraName}}",
+        "body": "Проверьте питание и сеть камеры.",
+        "severity": "warn",
+        "deepLink": "",
+        "targets": [],
+        "route": {
+          "channels": [
+            "telegram"
+          ],
+          "fallback": [
+            "phone"
+          ]
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-out-notify",
+      "source": "trigger",
+      "target": "notify"
+    }
+  ]
+}
