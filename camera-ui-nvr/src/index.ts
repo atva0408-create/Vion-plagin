@@ -91,6 +91,8 @@ const TRACE_PRUNE_EVENTS = 100;
 const TRACE_PRUNE_ROUNDS = 2;
 /** The meta key of the one pass that took «нет» out of the types of older events (Store.dropNoAnswerTypes). */
 const NO_ANSWER_TYPES_KEY = 'types_without_no_answers';
+/** The meta key of how far each camera's traces were cleared behind its oldest video (enforceRetention). */
+const TRACES_CLEARED_KEY = 'traces_cleared_to';
 const MERGE_GAP_US = 2_000_000;
 /** The writer owns the newest minutes; deleting them is refused. */
 const PROTECTED_TAIL_US = 3 * 60_000_000;
@@ -291,6 +293,19 @@ export function inEventRange(row: EventRow, opts: GetEventsOptions): boolean {
   return true;
 }
 
+/** The progress of the clearing of traces as kept (TRACES_CLEARED_KEY): what does not read as a time is not kept. */
+function clearedTo(json: string | undefined): Map<string, number> {
+  let kept: unknown;
+  try {
+    kept = JSON.parse(json ?? '{}');
+  } catch {
+    // a broken value is no progress: the cameras are read from their first events, as before it was kept
+    return new Map();
+  }
+  if (!kept || typeof kept !== 'object') return new Map();
+  return new Map(Object.entries(kept).filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0));
+}
+
 export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private store!: Store;
   private semantic!: SemanticIndex;
@@ -299,7 +314,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private similarChain: Promise<unknown> = Promise.resolve();
   /** one search for a thing's going at a time (objectGone) */
   private goneChain: Promise<unknown> = Promise.resolve();
-  /** Up to when the traces of each camera were cleared behind its oldest video: a pass reads the events from there on. */
+  /**
+   * Up to when the traces of each camera were cleared behind its oldest video: a pass reads the events from there on.
+   * Kept in the database: kept in memory only, each start read every old event of each camera on a cold disk (1 818 on
+   * the bench, the recorder held for seconds while the engines loaded from the same disk, 2026-10-16)
+   */
   private tracesClearedTo = new Map<string, number>();
   /** finds by query and event, oldest first (findInEvents) */
   private finds = new Map<string, FoundInEvent>();
@@ -743,6 +762,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.store = new Store(join(this.dataDir, 'nvr.db'), this.recordingsDir);
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
+    this.tracesClearedTo = clearedTo(this.store.meta(TRACES_CLEARED_KEY));
     this.semantic = new SemanticIndex(this.store.sql);
     this.people = new PersonIndex(this.store.sql);
     // read into memory in the background, a portion at a time: the first search waits for it, the recording does not
@@ -1979,7 +1999,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         for (let n = 0; n < TRACE_PRUNE_ROUNDS; n++) {
           // fewer than a portion: the camera is cleared up to its oldest video, the next pass reads from there on
           if (this.store.pruneTracesBefore(cameraId, oldestMs, TRACE_PRUNE_EVENTS, since) < TRACE_PRUNE_EVENTS) {
-            this.tracesClearedTo.set(cameraId, oldestMs);
+            if (this.tracesClearedTo.get(cameraId) !== oldestMs) {
+              this.tracesClearedTo.set(cameraId, oldestMs);
+              this.store.setMeta(TRACES_CLEARED_KEY, JSON.stringify(Object.fromEntries(this.tracesClearedTo)));
+            }
             break;
           }
         }

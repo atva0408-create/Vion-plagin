@@ -112,5 +112,21 @@ const late = traced('late-a', 'a', T + 2 * HOUR);
 await internals.enforceRetention();
 assert.equal(store.traceCount(late), 3, 'what was cleared is not read again');
 
-console.log('trace-retention.spec: a trace older than the oldest video of its camera deleted, its event kept, the rest kept OK');
+// nor after a restart: the progress is kept in the database. It was in memory only, and each start read every old event
+// of each camera on a cold disk (1 818 on the bench, 4.7 s of a held recorder before the cache was warm, 2026-10-16)
+(store as unknown as { close(): void }).close();
+const restarted = new VionNvr(logger as never, api as never, storage as never) as unknown as typeof internals;
+await restarted.ready;
+await restarted.enforceRetention();
+assert.equal(restarted.store.traceCount(late), 3, 'what was cleared before the restart is not read again');
+// a progress that does not read as one is no progress: the camera is read from its first event
+const bad = restarted.store as unknown as { setMeta(key: string, value: string): void; close(): void };
+bad.setMeta('traces_cleared_to', '{"a": "soon", "b": -1}');
+bad.close();
+const again = new VionNvr(logger as never, api as never, storage as never) as unknown as typeof internals;
+await again.ready;
+await again.enforceRetention();
+assert.equal(again.store.traceCount(late), 0, 'a broken progress reads from the start');
+
+console.log('trace-retention.spec: a trace older than the oldest video of its camera deleted, its event kept, the rest kept, the progress kept over a restart OK');
 process.exit(0);
