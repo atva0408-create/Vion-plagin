@@ -1,3 +1,9 @@
+## [0.22.4]
+
+- The describer of events describes an event of a module's class too (a store module's bicycle: only a person, a vehicle or an animal was offered to the model), and is told what modules answered («Ответы модулей: играет в компьютер: нет, да; поза: сидит») as a hint beside the pictures
+- Episodes: a class of a module is a kind of its own, joined across cameras with the same class and not with a person, and names the episode («Самокат: Въезд → Входная дверь»; it was «Движение» with no link); what modules answered yes in its events is told in the description
+- With ViON 2.6.1 a question answered only «нет» names no event: at its first start the plugin takes such a question out of the types of the events recorded before, once, a batch at a time (the filter by type, the search and the counts found the child not playing)
+
 ## [0.22.3]
 
 - A person's route: a hop between cameras needs a likeness of at least 0.2 at the broadest precision (it went down to 0.1, where the most alike person of another camera minutes later is almost anyone: on the bench 75 % of the same minutes of other days passed 0.1, 42 % pass 0.2). The hops keep a threshold of their own under the one asked for the stays, moved by it: across cameras re-ID is weak (8 % of the bench's hops pass 0.6)

@@ -1,3 +1,9 @@
+## [0.22.4]
+
+- Der Beschreiber der Ereignisse beschreibt auch ein Ereignis der Klasse eines Moduls (das Fahrrad eines Moduls aus dem Store: dem Modell wurden nur Person, Fahrzeug und Tier angeboten), und ihm wird gesagt, was die Module antworteten («Ответы модулей: играет в компьютер: нет, да; поза: сидит»), als Hinweis neben den Bildern
+- Episoden: eine Klasse eines Moduls ist eine eigene Art, über Kameras mit derselben Klasse verbunden und nicht mit einer Person, und benennt die Episode («Самокат: Въезд → Входная дверь»; es war «Движение» ohne Verbindung); was Module in ihren Ereignissen mit ja beantworteten, steht in der Beschreibung
+- Mit ViON 2.6.1 benennt eine nur mit «нет» beantwortete Frage kein Ereignis: beim ersten Start nimmt das Plugin eine solche Frage einmal, stückweise, aus den Typen der früher aufgezeichneten Ereignisse (der Filter nach Typ, die Suche und die Zählungen fanden das Kind, das nicht spielt)
+
 ## [0.22.3]
 
 - Der Weg einer Person: ein Wechsel zwischen Kameras braucht bei der breitesten Genauigkeit eine Ähnlichkeit von mindestens 0,2 (die Schwelle sank auf 0,1, wo die ähnlichste Person einer anderen Kamera Minuten später fast jeder ist: auf dem Prüfstand passierten 75 % derselben Minuten anderer Tage 0,1, 42 % passieren 0,2). Die Wechsel behalten eine eigene Schwelle unter der für die Aufenthalte verlangten, von ihr verschoben: zwischen Kameras ist Re-ID schwach (0,6 passieren 8 % der Wechsel auf dem Prüfstand)
