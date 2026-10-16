@@ -875,16 +875,22 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (this.store.meta(SEGMENT_ENDS_KEY) === 'done') return;
     let after: number | undefined = 0;
     let ended = 0;
+    let unreadable = 0;
+    let problem: string | undefined;
     try {
       while (after !== undefined && !this.stopping) {
         const step = this.store.endingLate(after, LATE_END_US);
         for (const row of step.rows) {
           if (this.stopping) return;
           if (this.isLiveSegment(row.id)) continue;
-          const last = await lastFrameUs(this.store.located(row));
+          // a file that cannot be read (a bad sector) is left as it is: it stopped the pass at every start
+          const last = await lastFrameUs(this.store.located(row)).catch((error: Error) => {
+            unreadable++;
+            problem ??= error.message;
+            return undefined;
+          });
           if (last === undefined || last >= row.end_us) continue;
-          this.store.updateSegment(row.id, last, row.bytes, row.keyframes);
-          ended++;
+          if (this.store.endSegmentAt(row.id, last, row.end_us)) ended++;
         }
         after = step.next;
         await new Promise((resolve) => setImmediate(resolve));
@@ -892,6 +898,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (this.stopping) return;
       this.store.setMeta(SEGMENT_ENDS_KEY, 'done');
       if (ended) this.logger.log(`${ended} recorded files closed by the clock end at their last frame now`);
+      if (unreadable) this.logger.warn(`${unreadable} recorded file(s) could not be read for their last frame and keep their end: ${problem}`);
     } catch (error) {
       this.logger.warn(`The ends of older recorded files were not checked, the next start goes on: ${(error as Error).message}`);
     }
@@ -1562,11 +1569,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return result;
   }
 
-  /** The segments a delete of the range removes: wholly inside it, every stream, never the last minutes being written. */
+  /**
+   * The segments a delete of the range removes: wholly inside it, every stream, never the last minutes being written
+   * and never a file being written (it ends with its last frame, minutes back when its video stopped).
+   */
   private deletableSegments(cameraId: string, startUs: number, endUs: number): SegmentRow[] {
     const limit = Date.now() * 1000 - PROTECTED_TAIL_US;
     return ['high', 'mid', 'low'].flatMap((role) =>
-      this.store.segments(cameraId, role, startUs, Math.min(endUs, limit)).filter((seg) => seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit),
+      this.store
+        .segments(cameraId, role, startUs, Math.min(endUs, limit))
+        .filter((seg) => seg.start_us >= startUs && seg.end_us <= endUs && seg.end_us <= limit && !this.isLiveSegment(seg.id)),
     );
   }
 

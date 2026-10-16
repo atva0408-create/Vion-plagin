@@ -4,7 +4,7 @@
 // Needs ffmpeg with libx264 on PATH (or CAMERAUI_FFMPEG_PATH). Run: npx tsx spec/sparse-keyframes.spec.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -202,12 +202,16 @@ for (const [what, at, nearest, picture] of [
   const { id: _id, ...row } = segment;
   // two hundred files that end with their frames (a portion), then the same file once more as an older version left it
   for (let n = 0; n < 200; n++) internals.store.addSegment(row);
+  // a file that cannot be read (a directory here) before it: left as it is, and the pass goes on
+  const unreadable = join(dir, 'unreadable');
+  mkdirSync(unreadable);
+  const broken = internals.store.addSegment({ ...row, path: unreadable, end_us: segment.start_us + 42 * 60 * S });
   const later = internals.store.addSegment({ ...row, end_us: segment.start_us + 42 * 60 * S });
   const gone = internals.store.addSegment({ ...row, path: join(dir, 'gone.ts'), start_us: segment.start_us + 3600 * S, end_us: segment.start_us + 3600 * S + 42 * 60 * S, keyframes: JSON.stringify([[0, segment.start_us + 3600 * S]]) });
   // read in portions: the late rows of each
   const first = internals.store.endingLate(0, 60 * S, 201);
   const second = internals.store.endingLate(first.next!, 60 * S, 201);
-  assert.deepEqual([first.rows.map((r) => r.id), second.rows.map((r) => r.id)], [[segment.id], [later, gone]]);
+  assert.deepEqual([first.rows.map((r) => r.id), second.rows.map((r) => r.id)], [[segment.id], [broken, later, gone]]);
   assert.equal(second.next, undefined);
   // a file still being written is left to its recorder, which ends it at its last frame itself
   const recorders = internals.cameras.get('cam') as { recorders: Map<string, unknown> };
@@ -220,6 +224,12 @@ for (const [what, at, nearest, picture] of [
   assert.equal(internals.store.segment(segment.id)!.end_us, ended, 'the file ends at its last frame');
   assert.equal(internals.store.segment(later)!.end_us, ended, 'and so does the row after the first portion');
   assert.equal(internals.store.segment(gone)!.end_us, segment.start_us + 3600 * S + 42 * 60 * S, 'a file that is gone is left as it is');
+  assert.equal(internals.store.segment(broken)!.end_us, segment.start_us + 42 * 60 * S, 'a file that cannot be read too');
+  assert.ok(logged.some((m) => /^1 recorded file\(s\) could not be read for their last frame and keep their end: /.test(m)), logged.join(' | '));
+  assert.equal(internals.store.meta('segment_ends_at_last_frame'), 'done');
+  // a row its recorder wrote since it was read keeps what the recorder wrote
+  assert.equal(internals.store.endSegmentAt(later, segment.start_us, segment.start_us + 42 * 60 * S), false);
+  assert.equal(internals.store.segment(later)!.end_us, ended);
   // the row after the first portion in the pass that left the open file, the file itself in the next one
   assert.deepEqual(
     logged.filter((m) => m.includes('closed by the clock')),
@@ -229,6 +239,19 @@ for (const [what, at, nearest, picture] of [
   sql.prepare('UPDATE segments SET end_us = ? WHERE id = ?').run(segment.start_us + 42 * 60 * S, segment.id);
   await internals.endSegmentsAtLastFrame();
   assert.equal(internals.store.segment(segment.id)!.end_us, segment.start_us + 42 * 60 * S);
+}
+
+// a file still being written is not deleted with a range, though its end is minutes back (its video stopped)
+{
+  const { id: _id, ...row } = segment;
+  const old = internals.store.addSegment({ ...row, path: join(dir, 'old.ts'), start_us: segment.start_us - 7200 * S, end_us: segment.start_us - 7100 * S });
+  const recorders = internals.cameras.get('cam') as { recorders: Map<string, unknown> };
+  recorders.recorders.set('high', { liveSegmentId: old });
+  await nvr.nvrDeleteRange('cam', segment.start_us - 7300 * S, segment.start_us - 7000 * S);
+  assert.ok(internals.store.segment(old), 'the file being written stays');
+  recorders.recorders.clear();
+  await nvr.nvrDeleteRange('cam', segment.start_us - 7300 * S, segment.start_us - 7000 * S);
+  assert.equal(internals.store.segment(old), undefined, 'and goes once it is closed');
 }
 
 await internals.stop();

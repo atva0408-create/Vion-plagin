@@ -464,6 +464,11 @@ export class Store {
     return { rows, next: scanned.length === limit ? scanned[scanned.length - 1].id : undefined };
   }
 
+  /** Ends the row of a file at `endUs` if it still ends at `was` (its recorder may have written it since it was read). */
+  public endSegmentAt(id: number, endUs: number, was: number): boolean {
+    return Number(this.db.prepare('UPDATE segments SET end_us = ? WHERE id = ? AND end_us = ?').run(endUs, id, was).changes) > 0;
+  }
+
   public event(id: string): EventRow | undefined {
     return (this.db.prepare('SELECT * FROM events WHERE id = ?').get(id) ?? undefined) as EventRow | undefined;
   }
