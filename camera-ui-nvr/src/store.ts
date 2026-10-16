@@ -594,6 +594,24 @@ export class Store {
     return ids.length;
   }
 
+  /** The bytes of the pages in use, the free ones left out: two pragmas, not a count (cheap on any size). */
+  public usedBytes(): number {
+    const one = (sql: string) => Number(Object.values(this.db.prepare(sql).get() as Record<string, number>)[0]);
+    return (one('PRAGMA page_count') - one('PRAGMA freelist_count')) * one('PRAGMA page_size');
+  }
+
+  /** The ended events with a trace, oldest first (limit): from the index events_state_time and the trace's by event. */
+  public readonly oldestTracedSql =
+    "SELECT id FROM events e WHERE state = 'ended' AND EXISTS (SELECT 1 FROM event_trace t WHERE t.event_id = e.id) ORDER BY start_ms LIMIT ?";
+
+  /** Clears the traces of up to `limit` oldest events that have one; the events stay. Answers the events cleared. */
+  public pruneOldestTraces(limit: number): number {
+    const ids = (this.db.prepare(this.oldestTracedSql).all(limit) as { id: string }[]).map((row) => row.id);
+    if (!ids.length) return 0;
+    this.db.prepare(`DELETE FROM event_trace WHERE event_id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+    return ids.length;
+  }
+
   // --- detection trace ---
   public addTrace(eventId: string, ticks: { tMs: number }[]): void {
     const insert = this.db.prepare('INSERT INTO event_trace (event_id, t_ms, data) VALUES (?, ?, ?)');

@@ -89,6 +89,8 @@ const CROSSINGS_KEEP_MS = 400 * 86_400_000;
  */
 const TRACE_PRUNE_EVENTS = 100;
 const TRACE_PRUNE_ROUNDS = 2;
+/** The size of the database over which the traces of the oldest events go, unless set otherwise. */
+const TRACE_CAP_GB = 1;
 /** The meta key of the one pass that took «нет» out of the types of older events (Store.dropNoAnswerTypes). */
 const NO_ANSWER_TYPES_KEY = 'types_without_no_answers';
 /** The meta key of how far each camera's traces were cleared behind its oldest video (enforceRetention). */
@@ -441,6 +443,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       },
       {
         type: 'number',
+        key: 'traceCapGB',
+        title: 'Предел базы событий, ГБ',
+        description: 'Больше этого — стираются следы обнаружений (рамки поверх записи) самых старых событий. События и записи остаются. 0 — без предела.',
+        group: 'Storage',
+        defaultValue: TRACE_CAP_GB,
+        minimum: 0,
+        step: 0.5,
+        store: true,
+      },
+      {
+        type: 'number',
         key: 'minFreePercent',
         title: 'Минимум свободного места, %',
         description: 'Когда свободного места меньше, самые старые записи удаляются.',
@@ -680,6 +693,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       hopMs: num(v.routeHopMinutes, PERSON_HOP_MS / 60_000, 1, 15) * 60_000,
       hops: Math.round(num(v.routeHops, PERSON_ROUTE_HOPS, 0, 20)),
     };
+  }
+
+  /** The size of the database over which the oldest traces go (Storage); 0: no size. */
+  private traceCapBytes(): number {
+    const gb = Number(this.storage.values.traceCapGB ?? TRACE_CAP_GB);
+    return Number.isFinite(gb) && gb > 0 ? gb * 1e9 : 0;
   }
 
   private capRetention(days: number): number {
@@ -2006,6 +2025,19 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
             break;
           }
         }
+      }
+
+      // over the size set the traces of the oldest events go too, a portion a pass: they are most of the database (1.2
+      // of 1.41 GB on the bench) and those of events whose video is still there were never cleared
+      const capBytes = this.traceCapBytes();
+      if (capBytes > 0) {
+        let cleared = 0;
+        for (let n = 0; n < TRACE_PRUNE_ROUNDS && this.store.usedBytes() > capBytes; n++) {
+          const step = this.store.pruneOldestTraces(TRACE_PRUNE_EVENTS);
+          cleared += step;
+          if (!step) break;
+        }
+        if (cleared) this.logger.log(`The database is over ${capBytes / 1e9} GB: the traces of ${cleared} oldest events cleared`);
       }
 
       // the people of a moment are kept a shorter time, favourite events too: the event itself stays
