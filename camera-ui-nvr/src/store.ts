@@ -428,9 +428,10 @@ export class Store {
    */
   public dropNoAnswerTypes(after: number, limit = 500): { changed: number; next: number | undefined } {
     // only an event with a «нет» answer can have one to take out: the rest are not read
-    const rows = this.db
-      .prepare('SELECT rowid, data FROM events WHERE rowid > ? AND instr(data, ?) > 0 ORDER BY rowid LIMIT ?')
-      .all(after, ': нет"', limit) as { rowid: number; data: string }[];
+    const rows = this.db.prepare('SELECT rowid, data FROM events WHERE rowid > ? AND instr(data, ?) > 0 ORDER BY rowid LIMIT ?').all(after, ': нет"', limit) as {
+      rowid: number;
+      data: string;
+    }[];
     const update = this.db.prepare('UPDATE events SET data = ? WHERE rowid = ?');
     let changed = 0;
     this.db.exec('BEGIN');

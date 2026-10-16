@@ -221,7 +221,7 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
       "A thing the person marked on a frame of a camera's recording, followed by its outline (SAM 2 of a detection plugin, on the " +
       'processor): «когда пропала эта вещь» (carried false), «куда её унесли», «кто её взял» (carried true). The thing itself is compared, ' +
       'not the area around it, so what lies beside it, a lamp or someone passing do not count, and it works for any thing, also a small one ' +
-      'the search in pictures does not know. The camera, the moment and the area come with the person\'s message (a selection made in the ' +
+      "the search in pictures does not know. The camera, the moment and the area come with the person's message (a selection made in the " +
       'archive); without one ask them to open the recording, pause it and mark the thing. The answer: the last moment the thing was there ' +
       'and the first it was not (to a second); with carried: where it was seen after (followed twice a second up to 20 s), whether it left ' +
       'the picture, and the person it went with (event and person: person_route follows them over the cameras); the pictures of the thing ' +
@@ -2224,9 +2224,7 @@ async function markedThing(host: AssistantHost, input: Input, ctx: AssistantTool
   if (answer.state === 'no-outliner') return { error: `The thing could not be outlined: ${answer.problem}. place_history watches the place instead.` };
   if (answer.state === 'not-outlined') {
     return {
-      error:
-        'No thing was outlined in the area marked: ask the person to mark the thing itself, a little wider than it, or use place_history ' +
-        'to watch the place.',
+      error: 'No thing was outlined in the area marked: ask the person to mark the thing itself, a little wider than it, or use place_history ' + 'to watch the place.',
     };
   }
   if (answer.state === 'failed') return { error: `The thing could not be followed${answer.problem ? `: ${answer.problem}` : ''}.` };

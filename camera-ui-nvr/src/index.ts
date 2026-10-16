@@ -294,9 +294,7 @@ const EVENT_LONGEST_MS = 3_600_000;
 
 /** A detection plugin's outliner of a thing marked on a picture (sam.py outlineMarked). */
 interface Outliner {
-  outlineMarked?(
-    pictures: { image: Uint8Array; prompts: Prompt[] }[],
-  ): Promise<{ loading?: boolean; pictures: { answers: OutlinedReply[] }[] }>;
+  outlineMarked?(pictures: { image: Uint8Array; prompts: Prompt[] }[]): Promise<{ loading?: boolean; pictures: { answers: OutlinedReply[] }[] }>;
 }
 
 interface OutlinedReply {

@@ -223,10 +223,7 @@ function grid(box: Place, n: number): { x: number; y: number }[] {
   return points;
 }
 
-export async function followThing(
-  sources: ThingSources,
-  query: { place: Place; atMs: number; toMs: number; carried: boolean; budgetMs?: number },
-): Promise<ThingAnswer> {
+export async function followThing(sources: ThingSources, query: { place: Place; atMs: number; toMs: number; carried: boolean; budgetMs?: number }): Promise<ThingAnswer> {
   const { atMs } = query;
   const clock = () => (sources.now ? sources.now() : Date.now());
   const started = clock();
