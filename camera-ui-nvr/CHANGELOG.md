@@ -1,3 +1,9 @@
+## [0.22.12]
+
+- A continuous recording keeps the first GOP of every connection: the file began at the second keyframe (the codec is learned from the first one once it is whole), and a second or two was lost after every restart, 50 s on a camera that sends a keyframe that rarely
+- Older files that run on after a hole in their video end before it: a file of 155 minutes on the bench had 14 s of video and a few frames 2.5 hours on, and the hole showed as recorded. The one-time end of older files runs once more
+- The newest seconds of the archive are read from the file being written: the scrubber and the trace found nothing for the last seconds, though the file had them
+
 ## [0.22.11]
 
 - A recorded file is cut where its video stops: video that stops for 20 s ends its file at its last frame and what comes after is a file of its own, so a camera that stops sending video on an open connection is no longer shown recording, and the hours until it comes back are a gap on the timeline (a file of 155 minutes on the bench held 14 s of video at its start and a few frames at its end). Video that waited while the recorder was busy keeps its times and is no gap

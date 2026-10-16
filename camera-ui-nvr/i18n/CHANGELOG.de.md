@@ -1,3 +1,9 @@
+## [0.22.12]
+
+- Eine Daueraufnahme behält die erste Bildgruppe jeder Verbindung: die Datei begann mit dem zweiten Schlüsselbild (der Codec wird am ersten erkannt, wenn es vollständig ist), und nach jedem Neustart gingen ein bis zwei Sekunden verloren, bei einer Kamera mit seltenen Schlüsselbildern bis zu 50 s
+- Ältere Dateien, die nach einer Lücke im Video noch Bilder haben, enden vor der Lücke: eine Datei von 155 Minuten auf dem Prüfstand hatte 14 s Video und ein paar Bilder 2,5 Stunden später, und die Lücke erschien als aufgenommen. Das einmalige Beenden älterer Dateien läuft noch einmal
+- Die neuesten Sekunden des Archivs werden aus der Datei gelesen, die gerade geschrieben wird: Schieberegler und Spur fanden für die letzten Sekunden nichts, obwohl die Datei sie hatte
+
 ## [0.22.11]
 
 - Eine Aufnahmedatei wird geschnitten, wo ihr Video aufhört: Video, das 20 s ausbleibt, beendet seine Datei mit dem letzten Bild, und was danach kommt, ist eine eigene Datei. Eine Kamera, die bei offener Verbindung kein Video mehr schickt, wird nicht mehr als aufnehmend gezeigt, und die Stunden bis zu ihrer Rückkehr sind eine Lücke in der Zeitleiste (eine Datei von 155 Minuten auf dem Prüfstand hatte 14 s Video am Anfang und ein paar Bilder am Ende). Video, das wartete, während die Aufnahme beschäftigt war, behält seine Zeiten und ist keine Lücke
