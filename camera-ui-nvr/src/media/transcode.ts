@@ -301,6 +301,8 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
       // at the live tip, where the file grows as the camera sends it (0 would be its default, not none)
       '-analyzeduration',
       '500000',
+      // the input's PTS kept in the output (moved by the muxer's delay): the keyframes of the index are met by them
+      '-copyts',
       '-f',
       'mpegts',
       '-i',
@@ -342,33 +344,49 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     wake = undefined;
   };
   // the first frame out is the keyframe the file was read from: its time anchors the rest, and every keyframe of the
-  // index after it anchors the frames from it on. The recorder moves its clock in the middle of a file on a drift or a
-  // jump of the camera's PTS (recorder.ts), and frames made H.264 kept the first time for the whole file. The keyframes
-  // are found in what is fed, by their offsets; out of ffmpeg the PTS keep their distances (-fps_mode passthrough)
+  // index after it anchors the frames from it on, as readFrames does. The recorder moves its clock in the middle of a
+  // file on a drift or a jump of the camera's PTS (recorder.ts), and frames made H.264 kept the first time for the whole
+  // file. The keyframes are found in what is fed, by their offsets, and met in the output in their order by their PTS:
+  // with -copyts those are the input's moved by the muxer's delay, a jump of the camera's clock included (a few ms off
+  // after a jump back), while ffmpeg's own correction of a jump made them continuous and no longer theirs
   let base: { pts: number; us: number } | undefined;
   const index = new Map((opts.keyframes ?? []).map((kf) => [kf.offset, kf.tsUs]));
   let fedFirst: number | undefined;
-  const anchors: { d: number; us: number }[] = [];
+  const anchors: { pts: number; us: number }[] = [];
   const tap = index.size
     ? new TsDemuxer((au) => {
         if (!au.keyframe) return;
         fedFirst ??= au.pts;
         const us = index.get(au.offset);
-        if (us !== undefined) anchors.push({ d: ptsDelta(fedFirst, au.pts), us });
+        if (us !== undefined) anchors.push({ pts: au.pts, us });
       })
     : undefined;
-  const at = (pts: number) => {
-    const d = ptsDelta(base!.pts, pts);
-    let anchor = { d: 0, us: base!.us };
-    for (const next of anchors) {
-      if (next.d > d) break;
-      anchor = next;
-    }
-    return anchor.us + Math.round(((d - anchor.d) / 90) * 1000);
-  };
+  // the output PTS less the input's, the next keyframe of the index to meet, the PTS of the frame before and the
+  // distance between two frames (not over a jump of the clock)
+  let shift: number | undefined;
+  let next = 0;
+  let previous: number | undefined;
+  let interval = 0;
+  const at = (pts: number) => base!.us + Math.round((ptsDelta(base!.pts, pts) / 90) * 1000);
   const demux = new TsDemuxer(
     (au) => {
-      base ??= { pts: au.pts, us: from.tsUs };
+      if (!base) {
+        base = { pts: au.pts, us: from.tsUs };
+        if (fedFirst !== undefined) shift = au.pts - fedFirst;
+        while (next < anchors.length && anchors[next].pts === fedFirst) next++;
+      } else if (shift !== undefined) {
+        // within half a frame: a keyframe is met where it is, not at a neighbour. 20 ms at least: after a jump of the
+        // camera's clock back ffmpeg moves the PTS by 18 ms (1592 of 90 kHz) all the same
+        const step = ptsDelta(previous ?? au.pts, au.pts);
+        if (step > 0 && step <= 2 * 90_000) interval = step;
+        const near = Math.max(1800, interval / 2);
+        while (next < anchors.length && Math.abs(ptsDelta(anchors[next].pts + shift, au.pts)) <= near) {
+          base = { pts: au.pts, us: anchors[next].us };
+          shift = au.pts - anchors[next].pts;
+          next++;
+        }
+      }
+      previous = au.pts;
       queue.push({ data: au.data, tsUs: at(au.pts), keyframe: au.keyframe });
     },
     undefined,

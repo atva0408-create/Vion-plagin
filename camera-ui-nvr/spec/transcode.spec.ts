@@ -153,6 +153,64 @@ async function main(): Promise<void> {
   );
   assert.ok(asRead.at(-1)!.tsUs - recorded.at(-1)!.tsUs === 5_000_000, 'the move is in the times');
 
+  // ---- the camera's clock jumped inside the file (it restarted behind go2rtc): the recorder takes a new anchor where
+  // the PTS break by more than 5 s (recorder.ts frameTime) and the time goes on. Frames made H.264 take those times as
+  // readFrames does, backwards and forwards: after a jump back they were 93 s late in the review, and the playback
+  // waited that long
+  const part = (offsetS: number) => {
+    const partPath = join(dir, `part-${offsetS}.ts`);
+    const madePart = spawnSync(
+      FFMPEG,
+      [
+        ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '3', '-c:v', 'libx265'],
+        ...['-x265-params', 'keyint=10:min-keyint=10:bframes=0:log-level=error', '-output_ts_offset', String(offsetS), '-f', 'mpegts', partPath],
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(madePart.status, 0, madePart.stderr);
+    return readFileSync(partPath);
+  };
+  // the last: a jump back and, later in the same file, the recorder's clock moved by 5 s on a drift
+  for (const [before, after, movedAfter] of [
+    [100, 10, false],
+    [10, 100, false],
+    [100, 10, true],
+  ] as const) {
+    const joined = Buffer.concat([part(before), part(after)]);
+    const kept: Buffer[] = [];
+    let tablesKept = 0;
+    for (let at = 0; at + 188 <= joined.length; at += 188) {
+      const packet = joined.subarray(at, at + 188);
+      const pid = ((packet[1]! & 0x1f) << 8) | packet[2]!;
+      if ((pid === 0 || pid === 0x1000) && tablesKept++ >= 2) continue;
+      kept.push(packet);
+    }
+    const jumpPath = join(dir, `jump-${before}-${after}.ts`);
+    writeFileSync(jumpPath, Buffer.concat(kept));
+    // the index as the recorder makes it
+    const jumpIndex: [number, number][] = [];
+    let anchor: { pts: number; us: number } | undefined;
+    let last: { pts: number; us: number } | undefined;
+    const jumpScan = new TsDemuxer((au) => {
+      if (last && Math.abs(ptsDelta(last.pts, au.pts)) > 5 * 90_000) anchor = { pts: au.pts, us: last.us + 100_000 };
+      anchor ??= { pts: au.pts, us: 0 };
+      const us = anchor.us + Math.round((ptsDelta(anchor.pts, au.pts) / 90) * 1000);
+      last = { pts: au.pts, us };
+      if (au.keyframe) jumpIndex.push([au.offset, us]);
+    });
+    jumpScan.push(readFileSync(jumpPath), 0);
+    jumpScan.flush();
+    if (movedAfter) for (let i = 4; i < jumpIndex.length; i++) jumpIndex[i]![1] += 5_000_000;
+    const jumpSegment = { path: jumpPath, codec: 'h265', video_pid: jumpScan.videoPid, audio_pid: -1, keyframes: JSON.stringify(jumpIndex) } as unknown as SegmentRow;
+    const jumpStart = { offset: jumpIndex[0]![0], tsUs: jumpIndex[0]![1] };
+    const read = video(await collect(readFrames(jumpSegment, jumpStart))).map((frame) => frame.tsUs);
+    const madeTimes = video(
+      await collect(readFramesAsH264(jumpPath, jumpStart, { ffmpegPath: FFMPEG, encoder: LIBX264, keyframes: jumpIndex.map(([offset, tsUs]) => ({ offset, tsUs })) })),
+    ).map((frame) => frame.tsUs);
+    assert.equal(read.length, 60);
+    assert.deepEqual(madeTimes, read, `a jump of the camera's clock from ${before} s to ${after} s${movedAfter ? ', then a move' : ''}: the times readFrames gives`);
+  }
+
   // ---- the file being written, from a keyframe in its middle, as the recorder lays it out: the first frame comes at
   // once. Without the tables ffmpeg looked through 5 MB for the streams first: about a minute of a camera's recording
   // at the live tip (39 s at 1.1 Mbit/s in the review)
