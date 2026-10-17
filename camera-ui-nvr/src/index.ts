@@ -1648,7 +1648,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   public nvrPlayback(cameraId: string, tsUs: number, videoOnly: boolean, sourceRole: string, callbacks: NvrPlaybackCallbacks): AsyncGenerator<void> {
     const { role, asH264 } = this.readRole(cameraId, sourceRole, tsUs);
-    return this.playback.play(cameraId, tsUs, role, callbacks, { audio: !videoOnly, asH264 });
+    // a lighter recording of the time (the H.264 copy the recorder kept before) ends where its recorder stopped: the
+    // playback goes on with the stream recorded now, made H.264 for a client without H.265 as well
+    const now = sourceRole === 'low' || sourceRole === 'scrub' ? this.resolveRole(cameraId, sourceRole) : role;
+    const then = now === role ? undefined : { role: now, asH264: sourceRole === 'low' };
+    return this.playback.play(cameraId, tsUs, role, callbacks, { audio: !videoOnly, asH264, then });
   }
 
   /**

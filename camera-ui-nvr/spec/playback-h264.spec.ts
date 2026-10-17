@@ -31,10 +31,10 @@ const FFMPEG = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
 const noop = () => undefined;
 const realNow = Date.now;
 
-function stream(codec: 'libx264' | 'libx265', size = '640x360'): Buffer {
-  const path = join(dir, `${codec}-${size}.ts`);
+function stream(codec: 'libx264' | 'libx265', size = '640x360', seconds = 3): Buffer {
+  const path = join(dir, `${codec}-${size}-${seconds}.ts`);
   const params = codec === 'libx265' ? ['-x265-params', 'keyint=10:min-keyint=10:bframes=0:log-level=error'] : ['-g', '10', '-bf', '0'];
-  const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${size}:rate=10`, '-t', '3', '-c:v', codec, ...params, '-f', 'mpegts', path], {
+  const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${size}:rate=10`, '-t', String(seconds), '-c:v', codec, ...params, '-f', 'mpegts', path], {
     encoding: 'utf8',
   });
   assert.equal(made.status, 0, `ffmpeg could not make a stream: ${made.stderr}`);
@@ -59,13 +59,13 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
 
 /** Three seconds recorded by a real recorder at `atMs`, in pieces as from a camera. */
-async function record(camera: string, role: string, data: Buffer, atMs: number): Promise<SegmentRow> {
+async function record(camera: string, role: string, data: Buffer, atMs: number, seconds = 3): Promise<SegmentRow> {
   const rec = new Recorder({
     cameraId: camera,
     role,
@@ -81,7 +81,7 @@ async function record(camera: string, role: string, data: Buffer, atMs: number):
     onStateChange: noop,
     onSegment: noop,
   });
-  const pieces = 30;
+  const pieces = seconds * 10;
   const size = Math.ceil(data.length / 188 / pieces) * 188;
   try {
     for (let i = 0; i < pieces; i++) {
@@ -92,7 +92,7 @@ async function record(camera: string, role: string, data: Buffer, atMs: number):
   } finally {
     Date.now = realNow;
   }
-  const row = internals.store.segments(camera, role, atMs * 1000, (atMs + 3000) * 1000).at(-1);
+  const row = internals.store.segments(camera, role, atMs * 1000, (atMs + seconds * 1000) * 1000).at(-1);
   assert.ok(row, `${camera} ${role} recorded`);
   return row;
 }
@@ -231,6 +231,35 @@ async function main(): Promise<void> {
     kept.frames.map((frame) => frame.ts),
     await times(oldLow),
   );
+
+  // ---- the old low recording ends where the recorder stopped keeping the copy, the high one goes on: so does the
+  // playback, made H.264. It stopped there with «no data»
+  const switchHigh = await record('switch', 'high', hevc, at + 80_000);
+  const switchHigh2 = await record('switch', 'high', hevc, at + 83_000);
+  const switchLow = await record('switch', 'low', avc, at + 80_000);
+  const crossing = await play('switch', switchLow.start_us, 'low');
+  assert.equal(crossing.ready[0]!.role, 'low', 'the recorded copy first');
+  const lowEnd = (await times(switchLow)).at(-1)!;
+  assert.ok(crossing.ready.some((ready) => ready.role === 'high' && ready.videoCodec === 'h264'), 'then the high one, made H.264, told as such');
+  assert.equal(crossing.frames.at(-1)!.ts, (await times(switchHigh2)).at(-1), 'on to the end of the high recording');
+  assert.ok(crossing.frames.filter((frame) => frame.ts > lowEnd).length >= 30, 'past the end of the low one');
+  assert.equal(crossing.order.filter((step) => step === 'end').length, 1, 'no «no data» where the low one ends');
+  void switchHigh;
+  // the high file going on through that moment, as it does: from its keyframe before it, on to its end
+  const throughHigh = await record('through', 'high', stream('libx265', '640x360', 6), at + 90_000, 6);
+  const throughLow = await record('through', 'low', avc, at + 90_000);
+  const throughLowEnd = (await times(throughLow)).at(-1)!;
+  const through = await play('through', throughLow.start_us, 'low');
+  const throughTimes = await times(throughHigh);
+  assert.equal(through.frames.at(-1)!.ts, throughTimes.at(-1), 'to the end of the high file');
+  assert.deepEqual(
+    through.frames.filter((frame) => frame.ts > throughLowEnd).map((frame) => frame.ts),
+    throughTimes.filter((ts) => ts > throughLowEnd),
+    'every frame of it past the moment, once',
+  );
+  const lowCount = (await times(throughLow)).length;
+  const primed = through.frames.filter((frame) => frame.ts <= throughLowEnd).length - lowCount;
+  assert.ok(primed >= 0 && primed <= 10, `from its keyframe before the moment, not from the start of the file: ${primed} sent again`);
 
   // ---- a lighter stream recorded in H.265 too (a camera recording its high and mid streams, both H.265): that one,
   // made H.264. It went as H.265 and the player had nothing left to fall back to

@@ -85,8 +85,20 @@ export class PlaybackManager {
     this.sessions.clear();
   }
 
-  /** `asH264`: the H.265 recordings go out as H.264, made while they are played (a client that cannot decode H.265). */
-  public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks, opts: { audio?: boolean; asH264?: boolean } = {}): AsyncGenerator<void> {
+  /**
+   * `asH264`: the H.265 recordings go out as H.264, made while they are played (a client that cannot decode H.265).
+   * `then`: the stream to go on with where the recordings of `role` end and it goes on (a lighter recording of before,
+   * whose recorder stopped keeping it: the H.264 copy of an H.265 camera).
+   */
+  public async *play(
+    cameraId: string,
+    tsUs: number,
+    role: string,
+    cb: NvrPlaybackCallbacks,
+    opts: { audio?: boolean; asH264?: boolean; then?: { role: string; asH264: boolean } } = {},
+  ): AsyncGenerator<void> {
+    let asH264 = opts.asH264;
+    let then = opts.then;
     const sessionId = randomUUID();
     const session: Session = { paused: false, speed: 1, clock: undefined, skippedUs: 0, abort: new AbortController() };
     this.sessions.set(sessionId, session);
@@ -126,7 +138,7 @@ export class PlaybackManager {
         const current = segment;
         const file = this.store.located(current);
         const reading = { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio };
-        const made = opts.asH264 && current.codec === 'h265' && this.h264 ? await this.h264() : undefined;
+        const made = asH264 && current.codec === 'h265' && this.h264 ? await this.h264() : undefined;
         // an H.264 recording is told as it is; one made H.264 by what its first keyframe says, as it comes
         if (!made) ready({ videoCodec: current.codec, codecString: current.codec_string, width: current.width, height: current.height });
         const frames = made ? readFramesAsH264(file.path, from, { ...made, ...reading }) : readFrames(file, from, reading);
@@ -147,11 +159,20 @@ export class PlaybackManager {
           if (++sent % YIELD_EVERY === 0) yield;
         }
 
-        const next = this.store.nextSegment(cameraId, role, current.id, current.start_us);
+        let next = this.store.nextSegment(cameraId, role, current.id, current.start_us);
+        let fromUs = next?.start_us;
+        if (!next && then) {
+          // on with the stream recorded now where it has more than was sent, from its keyframe before the last frame
+          // sent: the player shows the newest frame up to its position, so the ones before it only prime its decoder
+          next = this.store.segmentAt(cameraId, then.role, lastTs + 1);
+          fromUs = next ? Math.max(next.start_us, lastTs) : undefined;
+          ({ role, asH264 } = then);
+          then = undefined;
+        }
         if (!next) break;
         if (next.start_us - lastTs > GAP_US) call('onNoData', { ts: lastTs });
         segment = next;
-        from = keyframeAtOrBefore(next, next.start_us);
+        from = keyframeAtOrBefore(next, fromUs!);
         // The player does not walk through a hole of the archive: when it gets there it goes on with the next
         // recording (a hole it would need more than 3 s for at its speed). Its position leaves the hole out the
         // same way, so the frames behind it are sent as far ahead as any other; starting the pacing anew at the
