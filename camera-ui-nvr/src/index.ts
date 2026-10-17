@@ -1003,8 +1003,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const mode = effectiveMode(rs?.mode);
     if (licensed && rs?.enabled && !disabled && mode) {
       const roles: Role[] = rs.sources?.length ? rs.sources : ['high'];
+      const sourceOf = (role: Role) =>
+        role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
+      const recorded = new Set(roles.map((role) => sourceOf(role)?._id));
       for (const role of roles) {
-        const source = role === 'high' ? (device.highResolutionSource ?? device.streamSource) : role === 'mid' ? device.midResolutionSource : device.lowResolutionSource;
+        const source = sourceOf(role);
+        // a copy the server makes of another recorded stream (an H.265 camera made H.264 for browsers, told as copyOf
+        // by the server) is not kept: it holds nothing the original does not, at 3.6 times its size (bench, 2026-10-17).
+        // A client without H.265 gets the original made H.264 as it reads it (readRole, media/transcode.ts).
+        const copyOf = (source as { copyOf?: string } | undefined)?.copyOf;
+        if (copyOf && recorded.has(copyOf)) continue;
         if (source)
           wanted.set(role, {
             rtspUrl: source.generateRTSPUrl({ video: true, audio: this.storage.values.recordAudio === true, timeout: 15 }),
