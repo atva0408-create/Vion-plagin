@@ -233,6 +233,19 @@ assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam14'], slices: fiveMinu
 seg('high', 300_000_000, 'cam15', 1_300_000_000);
 seg('low', 6_000_000, 'cam15', 1_300_000_000, 1_120_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam15'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 300_000_000, 'smallest: the whole of the high');
+// a stream with most of the slice missing inside it (the main stream dropped for 50 of 60 minutes, the sub stream went
+// on) is passed over too: «best» was the 10 minutes of the main one
+const hour = [{ day: '1970-01-01', startUs: 1_000_000_000, endUs: 4_600_000_000 }];
+seg('high', 300_000_000, 'cam16', 1_300_000_000);
+seg('high', 300_000_000, 'cam16', 4_600_000_000, 4_300_000_000);
+seg('low', 36_000_000, 'cam16', 4_600_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam16'], slices: hour, quality: 'best' })).totalBytes, 36_000_000, 'best: the hour of the low one');
+// a third missing inside the low stream, its first part's row twice: counted once, it is passed over
+seg('high', 300_000_000, 'cam17', 1_300_000_000);
+seg('low', 2_000_000, 'cam17', 1_100_000_000);
+seg('low', 2_000_000, 'cam17', 1_100_000_000);
+seg('low', 2_000_000, 'cam17', 1_300_000_000, 1_200_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam17'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 300_000_000, 'a row twice is counted once');
 
 // ---------------------------------------------------------------- feature flags
 assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true });

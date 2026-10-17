@@ -2112,7 +2112,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * stream exports that stream either way. A stream that begins or ends inside the slice where another one goes on is
    * passed over: the low copy the recorder kept before ends where it stopped keeping it, a stream added to the
    * recording begins where it was, and only that part was exported. The file is one stream (copied, not encoded), so
-   * it is the whole slice of the other one instead. A gap inside a stream (a reconnect) is no edge of it.
+   * it is the whole slice of the other one instead. A gap inside a stream (a reconnect) is no edge of it, but one with
+   * more than a tenth of the slice missing against another is passed over too (the main stream dropped for most of
+   * an hour while the sub stream went on). Rows of one file twice are counted once.
    */
   private exportSegments(cameraId: string, startUs: number, endUs: number, quality: ExportQuality = 'best'): SegmentRow[] {
     const order = quality === 'smallest' ? ['low', 'mid', 'high'] : ['high', 'mid', 'low'];
@@ -2124,9 +2126,22 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }));
     const from = Math.min(...spans.map((span) => span.from));
     const to = Math.max(...spans.map((span) => span.to));
+    const covered = found.map((segments) => {
+      let sum = 0;
+      let reached = startUs;
+      for (const seg of [...segments].sort((a, b) => a.start_us - b.start_us)) {
+        const segFrom = Math.max(reached, seg.start_us);
+        const segTo = Math.min(endUs, seg.end_us);
+        if (segTo > segFrom) sum += segTo - segFrom;
+        reached = Math.max(reached, segTo);
+      }
+      return sum;
+    });
+    const most = Math.max(...covered);
     // the streams of one camera begin and end their files a little apart (each at its own keyframe)
     const edge = Math.max(2_000_000, Math.min(60_000_000, (endUs - startUs) / 10));
-    return found.find((_, i) => spans[i].from - from <= edge && to - spans[i].to <= edge) ?? found[0];
+    const lessBy = Math.max(2_000_000, (endUs - startUs) / 10);
+    return found.find((_, i) => spans[i].from - from <= edge && to - spans[i].to <= edge && most - covered[i] <= lessBy) ?? found[0];
   }
 
   // ----------------------------------------------------------------- storage
