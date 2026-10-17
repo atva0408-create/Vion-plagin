@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -247,6 +248,28 @@ async function main(): Promise<void> {
   await nextFirst;
   await next.return(undefined);
   setH264Slots(machineSlots);
+
+  // ---- a client that stops while the file is being read (a slow disk): it ends, and its place is free. The feeding
+  // wrote into ffmpeg's closed input and waited for a 'drain' that never came: the read never ended and kept its place
+  // (2 of 8 on a disk taking 10 ms a read, 4 of 4 at 40 ms, in the review), and a few took every place
+  const probe = await open(noisy, 'r');
+  const fileHandle = Object.getPrototypeOf(probe) as { read: (...args: unknown[]) => Promise<unknown> };
+  await probe.close();
+  const realRead = fileHandle.read;
+  fileHandle.read = async function (this: unknown, ...args: unknown[]) {
+    await sleep(40);
+    return realRead.apply(this, args);
+  };
+  try {
+    for (let i = 0; i < h264Slots() + 2; i++) {
+      const stopped = readFramesAsH264(noisy, { offset: 0, tsUs: 0 }, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+      assert.equal((await stopped.next()).done, false);
+      const ended = await Promise.race([stopped.return(undefined).then(() => 'ended'), sleep(10_000).then(() => 'hung')]);
+      assert.equal(ended, 'ended', `a read stopped while the file is read ends (${i})`);
+    }
+  } finally {
+    fileHandle.read = realRead;
+  }
 
   // ---- a client gone after a few frames: it ends at once
   const abort = new AbortController();

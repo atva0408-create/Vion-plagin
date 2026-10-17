@@ -221,6 +221,9 @@ async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264R
   for (;;) {
     if (opts.signal?.aborted || input.destroyed) return;
     const { bytesRead } = await fh.read(buf, 0, CHUNK, position);
+    // the client stopped while the file was read: ffmpeg's input is closed, and a write to it would wait for a 'drain'
+    // or a 'close' that never comes again (the read never ended and kept its place)
+    if (input.destroyed || input.writableEnded) return;
     if (bytesRead === 0) {
       if (opts.follow?.()) {
         await sleep(250);
