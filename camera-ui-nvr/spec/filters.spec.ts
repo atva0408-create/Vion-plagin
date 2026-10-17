@@ -213,7 +213,7 @@ seg('low', 5_900_000, 'cam11', 1_059_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam11'], slices, quality: 'smallest' })).totalBytes, 5_900_000, 'a second less is the same');
 
 // ---------------------------------------------------------------- feature flags
-assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true });
+assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true });
 
 console.log('filters.spec: event filters, trace, export quality and features OK');
 process.exit(0);

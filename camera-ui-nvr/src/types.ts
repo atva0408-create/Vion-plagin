@@ -74,6 +74,11 @@ export interface TraceChain {
 
 /** Optional features of this NVR, so the UI offers only what works. */
 export interface NvrFeatures {
+  /**
+   * H.265 recordings made H.264 for a client that cannot decode H.265, asking the role 'h264' (playback, scrub, trace)
+   * or `h264Only` (hover preview); 'low' is the lightest recording as it is.
+   */
+  h264: boolean;
   /** Cross-camera episodes (Записи → Показать → Эпизоды). */
   episodes: boolean;
   /** Export honours «Качество» (best/smallest stream). */

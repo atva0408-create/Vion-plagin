@@ -1653,31 +1653,32 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const { role, asH264 } = this.readRole(cameraId, sourceRole, tsUs);
     // a lighter recording of the time (the H.264 copy the recorder kept before) ends where its recorder stopped: the
     // playback goes on with the stream recorded now, made H.264 for a client without H.265 as well
-    const now = sourceRole === 'low' || sourceRole === 'scrub' ? this.resolveRole(cameraId, sourceRole) : role;
-    const then = now === role ? undefined : { role: now, asH264: sourceRole === 'low' };
+    const now = sourceRole === 'low' || sourceRole === 'scrub' || sourceRole === 'h264' ? this.resolveRole(cameraId, 'low') : role;
+    const then = now === role ? undefined : { role: now, asH264: sourceRole === 'h264' };
     return this.playback.play(cameraId, tsUs, role, callbacks, { audio: !videoOnly, asH264, then });
   }
 
   /**
-   * What a read of the archive takes (playback, scrub, trace, preview). 'scrub' and 'low' take the lightest recording
-   * at the time, a low or mid one where there is one. A client that cannot decode H.265 asks for 'low' (the player
-   * falls back to it, ui/src/nvr/playback.ts recover): an H.265 recording goes to it made H.264 as it is read
-   * (media/transcode.ts), the recorder no longer keeping an H.264 copy of an H.265 camera for it. 'scrub' alone says
-   * nothing of the client: it got every scrub made H.264 in a browser that decodes H.265 too (100 ms a frame, not 10).
+   * What a read of the archive takes (playback, scrub, trace, preview). 'scrub', 'low' and 'h264' take the lightest
+   * recording at the time, a low or mid one where there is one. A client that cannot decode H.265 asks for 'h264' (the
+   * player falls back to it, ui/src/nvr/playback.ts recover): an H.265 recording goes to it made H.264 as it is read
+   * (media/transcode.ts), the recorder no longer keeping an H.264 copy of an H.265 camera for it. 'scrub' and 'low'
+   * say nothing of the client ('low' is also what a camera is set to play): as they are.
    */
   private readRole(cameraId: string, sourceRole: string | undefined, tsUs: number): { role: string; asH264: boolean } {
-    if (sourceRole !== 'low' && sourceRole !== 'scrub') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
+    if (sourceRole !== 'low' && sourceRole !== 'scrub' && sourceRole !== 'h264') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
     // the file being written too, past what its index says yet (written every 4 s), as the reads find it
     const at = (role: string) => {
       const segment = this.segmentAt(cameraId, role, tsUs);
       return segment && segment.start_us - tsUs <= START_GAP_US ? segment : undefined;
     };
     // a lighter recording in H.265 (a camera recording its high and mid streams, both H.265) is made H.264 as well
-    const made = (segment: SegmentRow | undefined) => sourceRole === 'low' && segment?.codec === 'h265';
+    const made = (segment: SegmentRow | undefined) => sourceRole === 'h264' && segment?.codec === 'h265';
     for (const lighter of ['low', 'mid']) {
       const segment = at(lighter);
       if (segment) return { role: lighter, asH264: made(segment) };
     }
+    // no lighter recording at the time: 'h264' takes the main one (made H.264), not a low one empty at the time
     const role = this.resolveRole(cameraId, sourceRole);
     return { role, asH264: made(at(role)) };
   }
@@ -2324,7 +2325,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** What this NVR supports beyond the basics; the UI hides the rest. */
   public async getNvrFeatures(): Promise<NvrFeatures> {
-    return { episodes: true, exportQuality: true, manualRecording: true, personSearch: true };
+    return { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true };
   }
 
   // ------------------------------------------------------------ people search

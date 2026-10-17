@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   const recorded = await times(cam);
 
   // ---- only the H.265 recording, asked for the low stream: made H.264, told so before the first frame
-  const low = await play('cam', cam.start_us, 'low');
+  const low = await play('cam', cam.start_us, 'h264');
   assert.equal(low.order[0], 'ready', 'told before any frame');
   assert.equal(low.ready[0]!.videoCodec, 'h264');
   assert.match(low.ready[0]!.codecString, /^avc1\./);
@@ -160,13 +160,13 @@ async function main(): Promise<void> {
   // ---- scrub, the trace and the hover preview of a client without H.265: made H.264 the same way
   const target = recorded[15]!;
   const keyframeBefore = parseKeyframes(cam.keyframes).filter((kf) => kf.tsUs <= target).at(-1)!.tsUs;
-  const coarse = await nvr.nvrScrub('cam', target, false, 'low');
+  const coarse = await nvr.nvrScrub('cam', target, false, 'h264');
   assert.equal(coarse.videoCodec, 'h264');
   assert.match(coarse.codecString!, /^avc1\./);
   assert.equal(coarse.ts, keyframeBefore, 'the keyframe before the time');
   assert.ok(probeCodec(Buffer.from(coarse.frame!), 'h264'));
   // the frames from the keyframe to the time are decoded, not made: the frame of the time alone, made a keyframe
-  const fine = await nvr.nvrScrub('cam', target, true, 'low');
+  const fine = await nvr.nvrScrub('cam', target, true, 'h264');
   assert.equal(fine.videoCodec, 'h264');
   assert.deepEqual(
     fine.frames!.map((frame) => [frame.ts, frame.keyframe]),
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   );
   assert.equal((await nvr.nvrScrub('cam', target, true, 'high')).videoCodec, 'h265', 'asked as it is: as it is');
 
-  const trace = await nvr.nvrTraceFrames('cam', [{ tMs: target / 1000, src: 'low' } as never], 'exact');
+  const trace = await nvr.nvrTraceFrames('cam', [{ tMs: target / 1000, src: 'h264' } as never], 'exact');
   assert.equal(trace.chains.length, 1);
   assert.equal(trace.chains[0]!.videoCodec, 'h264');
   assert.deepEqual(
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
   // ffmpeg runs of the same keyframe)
   const strip3 = await nvr.nvrTraceFrames(
     'cam',
-    [recorded[11]!, recorded[13]!, recorded[15]!].map((ts) => ({ tMs: ts / 1000, src: 'low' }) as never),
+    [recorded[11]!, recorded[13]!, recorded[15]!].map((ts) => ({ tMs: ts / 1000, src: 'h264' }) as never),
     'keyframe',
   );
   assert.equal(strip3.chains.length, 1, 'one picture for the three');
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   );
   assert.equal(strip3.chains[0]!.frames[0]!.ts, keyframeBefore);
   // a playback from the middle of a GOP begins with the frame of the time: the ones before it are not made and sent
-  const seek = await play('cam', target, 'low');
+  const seek = await play('cam', target, 'h264');
   assert.deepEqual([seek.frames[0]!.ts, seek.frames[0]!.keyframe], [target, true], 'from the time, a keyframe');
   assert.deepEqual(
     seek.frames.map((frame) => frame.ts),
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
   const machineSlots = h264Slots();
   setH264Slots(1);
   const order: string[] = [];
-  const playing = play('two', one.start_us, 'low').then(() => order.push('playback'));
+  const playing = play('two', one.start_us, 'h264').then(() => order.push('playback'));
   await sleep(1000);
   const reading = (async () => {
     for await (const _ of readFramesAsH264(internals.store.located(two).path, parseKeyframes(two.keyframes)[0]!, { ffmpegPath: FFMPEG, encoder: LIBX264 }));
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
   ]();
   await busyReading.next();
   const scrubAsked = Date.now();
-  const waitedScrub = await Promise.race([nvr.nvrScrub('two', two.start_us + 500_000, false, 'low'), sleep(20_000).then(() => undefined)]);
+  const waitedScrub = await Promise.race([nvr.nvrScrub('two', two.start_us + 500_000, false, 'h264'), sleep(20_000).then(() => undefined)]);
   assert.ok(waitedScrub?.noData, 'no picture while every place is taken');
   assert.ok(Date.now() - scrubAsked >= 9000, 'after waiting for one');
   await busyReading.return(undefined);
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
   assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
 
   // ---- 'scrub' asks for the lightest recording, not for H.264: a browser with H.265 got every scrub and every
-  // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'low' itself
+  // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'h264' itself
   // (ui/src/nvr/playback.ts recover)
   assert.equal((await nvr.nvrScrub('cam', target, false, 'scrub')).videoCodec, 'h265', 'a coarse scrub as it is');
   assert.equal((await nvr.nvrScrub('cam', target, true, 'scrub')).videoCodec, 'h265', 'a fine scrub as it is');
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
   // ---- a time with a low recording (the archive of before, when the recorder kept the H.264 copy): that one
   const old = await record('old', 'high', hevc, at);
   const oldLow = await record('old', 'low', avc, at);
-  const kept = await play('old', old.start_us, 'low');
+  const kept = await play('old', old.start_us, 'h264');
   assert.equal(kept.ready[0]!.role, 'low');
   assert.equal(kept.ready[0]!.codecString, oldLow.codec_string, 'the recorded copy, not one made now');
   assert.deepEqual(
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
   const switchHigh = await record('switch', 'high', hevc, at + 80_000);
   const switchHigh2 = await record('switch', 'high', hevc, at + 83_000);
   const switchLow = await record('switch', 'low', avc, at + 80_000);
-  const crossing = await play('switch', switchLow.start_us, 'low');
+  const crossing = await play('switch', switchLow.start_us, 'h264');
   assert.equal(crossing.ready[0]!.role, 'low', 'the recorded copy first');
   const lowEnd = (await times(switchLow)).at(-1)!;
   assert.ok(crossing.ready.some((ready) => ready.role === 'high' && ready.videoCodec === 'h264'), 'then the high one, made H.264, told as such');
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
   const throughHigh = await record('through', 'high', stream('libx265', '640x360', 6), at + 90_000, 6);
   const throughLow = await record('through', 'low', avc, at + 90_000);
   const throughLowEnd = (await times(throughLow)).at(-1)!;
-  const through = await play('through', throughLow.start_us, 'low');
+  const through = await play('through', throughLow.start_us, 'h264');
   const throughTimes = await times(throughHigh);
   assert.equal(through.frames.at(-1)!.ts, throughTimes.at(-1), 'to the end of the high file');
   assert.deepEqual(
@@ -323,7 +323,7 @@ async function main(): Promise<void> {
   assert.equal(sparseKeyframes.length, 2, 'a keyframe at the start and one 35 s on');
   const farTarget = sparseKeyframes[0]!.tsUs + 31_000_000;
   const asIs = await nvr.nvrScrub('sparse', farTarget, true, 'high');
-  const madeFar = await nvr.nvrScrub('sparse', farTarget, true, 'low');
+  const madeFar = await nvr.nvrScrub('sparse', farTarget, true, 'h264');
   assert.equal(madeFar.videoCodec, 'h264');
   assert.deepEqual(
     madeFar.frames!.map((frame) => frame.ts),
@@ -331,7 +331,7 @@ async function main(): Promise<void> {
     'the frame the recording as it is gives',
   );
   assert.deepEqual(asIs.frames!.map((frame) => frame.ts), [sparseKeyframes[1]!.tsUs], 'the nearer keyframe, 4 s on');
-  const farTrace = await nvr.nvrTraceFrames('sparse', [{ tMs: farTarget / 1000, src: 'low' } as never], 'exact');
+  const farTrace = await nvr.nvrTraceFrames('sparse', [{ tMs: farTarget / 1000, src: 'h264' } as never], 'exact');
   assert.equal(farTrace.chains[0]!.frames.at(-1)!.ts, sparseKeyframes[1]!.tsUs, 'the trace frame too');
 
   // ---- the recorder moved its clock in the middle of a file (recorder.ts): playback, scrub and the hover excerpt made
@@ -341,9 +341,9 @@ async function main(): Promise<void> {
   internals.store.updateSegment(movedRow.id, movedRow.end_us + 5_000_000, movedRow.bytes, JSON.stringify(movedIndex));
   const movedTimes = await times(internals.store.segment(movedRow.id)!);
   assert.ok(movedTimes.at(-1)! - (await times(movedRow)).at(-1)! === 5_000_000, 'the move is in the index');
-  assert.deepEqual((await play('moved', movedRow.start_us, 'low')).frames.map((frame) => frame.ts), movedTimes, 'a playback');
+  assert.deepEqual((await play('moved', movedRow.start_us, 'h264')).frames.map((frame) => frame.ts), movedTimes, 'a playback');
   const movedTarget = movedTimes[25]!;
-  const movedFine = await nvr.nvrScrub('moved', movedTarget, true, 'low');
+  const movedFine = await nvr.nvrScrub('moved', movedTarget, true, 'h264');
   assert.equal(movedFine.frames!.at(-1)!.ts, movedTarget, 'a fine scrub');
   const movedHover = await nvr.nvrPreviewFrames('moved', movedRow.start_us, movedTimes.at(-1)!, 12, 'motion', 4_000_000, true);
   assert.ok(
@@ -355,15 +355,21 @@ async function main(): Promise<void> {
   // made H.264. It went as H.265 and the player had nothing left to fall back to
   await record('subs', 'high', hevc, at);
   const subsMid = await record('subs', 'mid', hevc, at);
-  const sub = await play('subs', subsMid.start_us, 'low');
+  const sub = await play('subs', subsMid.start_us, 'h264');
   assert.equal(sub.ready[0]!.role, 'mid', 'the lighter recording');
   assert.equal(sub.ready[0]!.videoCodec, 'h264', 'made H.264');
   assert.deepEqual(
     sub.frames.map((frame) => frame.ts),
     await times(subsMid),
   );
-  assert.equal((await nvr.nvrScrub('subs', target, false, 'low')).videoCodec, 'h264');
+  assert.equal((await nvr.nvrScrub('subs', target, false, 'h264')).videoCodec, 'h264');
   assert.equal((await nvr.nvrScrub('subs', target, false, 'scrub')).videoCodec, 'h265', 'a scrub as it is');
+  // 'low' is also what a camera is set to play (its playback source): the lighter recording as it is, H.265 too. It
+  // had every playback and scrub of such a camera made H.264 in a browser that decodes H.265
+  const lowAsSet = await play('subs', subsMid.start_us, 'low');
+  assert.deepEqual([lowAsSet.ready[0]!.role, lowAsSet.ready[0]!.videoCodec], ['mid', 'h265'], 'the mid recording as it is');
+  assert.equal((await nvr.nvrScrub('subs', target, true, 'low')).videoCodec, 'h265');
+  assert.equal((await play('cam', cam.start_us, 'low')).ready[0]!.videoCodec, 'h265', 'an H.265 camera recorded alone: as it is');
 
   // ---- the newest seconds, in the file being written past what its index says yet (it is written every 4 s): made
   // H.264 too. They went as H.265, the time found in the file but not in the index
@@ -397,7 +403,7 @@ async function main(): Promise<void> {
   const liveRow = internals.store.segment(liveRec.liveSegmentId!)!;
   const tail = liveRow.start_us + 1_200_000;
   assert.ok(liveRow.end_us < tail, 'the index of the file being written ends before the time asked for');
-  assert.equal((await nvr.nvrScrub('live', tail, false, 'low')).videoCodec, 'h264', 'the newest seconds made H.264');
+  assert.equal((await nvr.nvrScrub('live', tail, false, 'h264')).videoCodec, 'h264', 'the newest seconds made H.264');
   await liveRec.stop();
 
   console.log('playback-h264.spec: H.265 made H.264 for a low stream, told first, every frame at its time; H.265 as it is; an old copy played — ok');
