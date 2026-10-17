@@ -114,9 +114,16 @@ export async function exportClip(opts: {
     try {
       await run(opts.ffmpegPath, argsWith(madeBy));
     } catch (error) {
-      // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it
-      if (!madeBy || madeBy.name === LIBX264.name) throw error;
-      await run(opts.ffmpegPath, argsWith(LIBX264));
+      // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it. Only a
+      // failure before much was written: one later (a full disk, a file the retention removed) would fail again after
+      // as long, and what the hardware encoder said is kept with what libx264 says
+      const written = await stat(out).then((file) => file.size, () => 0);
+      if (!madeBy || madeBy.name === LIBX264.name || written > 1024 * 1024) throw error;
+      try {
+        await run(opts.ffmpegPath, argsWith(LIBX264));
+      } catch (again) {
+        throw new Error(`${(again as Error).message} (${madeBy.name} first: ${(error as Error).message})`);
+      }
     }
   } catch (error) {
     // what ffmpeg wrote before it failed (an empty file when it could not start the MP4) is not a clip, and nothing

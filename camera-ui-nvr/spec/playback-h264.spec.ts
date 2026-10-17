@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import VionNvr from '../src/index.js';
+import { exportClip } from '../src/export.js';
 import { probeCodec } from '../src/media/codec.js';
 import { h264Slots, LIBX264, readFramesAsH264, setH264Idle, setH264Slots } from '../src/media/transcode.js';
 import { readFrames } from '../src/reader.js';
@@ -308,6 +309,19 @@ async function main(): Promise<void> {
   const rescuedMp4 = await exported('h264');
   assert.ok(rescuedMp4.includes('avcC'), 'made by libx264 instead');
   internals.h264Encoder = Promise.resolve(LIBX264);
+  // both failing (a file gone meanwhile): said with what the hardware encoder said first, not that one lost
+  await assert.rejects(
+    exportClip({
+      ffmpegPath: FFMPEG,
+      segments: [{ ...cam, path: join(dir, 'gone.ts') }],
+      startUs: cam.start_us,
+      endUs: cam.end_us,
+      outDir: join(dir, 'exports-failing'),
+      filename: 'failing.mp4',
+      h264: { name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'no_such_encoder'] },
+    }),
+    /nvenc first/,
+  );
 
   // ---- 'scrub' asks for the lightest recording, not for H.264: a browser with H.265 got every scrub and every
   // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'h264' itself
