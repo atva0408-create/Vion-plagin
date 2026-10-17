@@ -86,10 +86,23 @@ async function main(): Promise<void> {
 
   for (const camera of internals.cameras.values()) await Promise.all([...camera.recorders.values()].map((r) => r.stop()));
   console.log('record-copy.spec: a copy of a recorded stream is not recorded, a copy alone and own streams are — ok');
+  finished = true;
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+// a wait nothing ends empties Node's loop and the process ended with 0 without its checks: that is a failure
+let finished = false;
+process.on('exit', (code) => {
+  if (!finished && code === 0) {
+    console.error('the spec ended before its last check: something waits for what never comes');
+    process.exitCode = 1;
+  }
 });
+main()
+  .then(() => {
+    finished = true;
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

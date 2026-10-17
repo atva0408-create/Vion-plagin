@@ -50,10 +50,23 @@ async function main(): Promise<void> {
   await internals.h264();
   assert.equal(tried.length, 1, 'once');
   console.log('h264-encoder.spec: the encoder is found with the host ffmpeg, once — ok');
+  finished = true;
   process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+// a wait nothing ends empties Node's loop and the process ended with 0 without its checks: that is a failure
+let finished = false;
+process.on('exit', (code) => {
+  if (!finished && code === 0) {
+    console.error('the spec ended before its last check: something waits for what never comes');
+    process.exitCode = 1;
+  }
 });
+main()
+  .then(() => {
+    finished = true;
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
