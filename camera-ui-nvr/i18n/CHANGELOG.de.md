@@ -1,3 +1,7 @@
+## [0.24.1]
+
+- Eine zu H.264 gemachte Aufnahme, die ihr Client beendet (ein Sprung, ein Spulen, das weiterging, eine Wiedergabe, die mit ihrem Tab geschlossen wurde), beendet ihr ffmpeg mit. Der Prozess blieb für immer hängen, einer für jeden Sprung eines Browsers ohne H.265 (auf dem Testrechner war einer Minuten nach dem Schließen des Tabs noch da)
+
 ## [0.24.0]
 
 - Das Archiv einer H.265-Kamera behält nur ihr eigenes H.265. Ein Browser ohne H.265 bekommt die Aufnahmen beim Ansehen zu H.264 gemacht: Wiedergabe, Spulen, die Bilder der Spur, die Vorschau beim Überfahren und der Export eines Abschnitts, erfragt mit der Rolle `h264` (getNvrFeatures `h264`; `low` ist die leichteste Aufnahme, wie sie ist). Die H.264-Kopie, die ViON aus dem Stream einer solchen Kamera macht (eine Quelle, die der Server als `copyOf` meldet), wird nicht mehr aufgezeichnet, wenn das Original aufgezeichnet wird: auf dem Testrechner belegte sie 20,8 GB am Tag neben 5,7 GB eigenem H.265 der Kamera. Die früher aufgezeichnete Kopie spielt für ihre Zeit, und eine Wiedergabe geht dort, wo sie endet, mit dem Original weiter

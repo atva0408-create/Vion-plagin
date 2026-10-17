@@ -1,3 +1,7 @@
+## [0.24.1]
+
+- A recording made H.264 that its client ends (a seek, a scrub that moved on, a playback ended as its tab was closed) ends its ffmpeg with it. The process stayed held on what it had made for good, one for every seek of a browser without H.265 (on the test machine one was still there minutes after the tab was closed)
+
 ## [0.24.0]
 
 - The archive of an H.265 camera keeps its own H.265 only. A browser that cannot decode H.265 gets the recordings made H.264 while it watches them: playback, scrubbing, the trace pictures, the hover preview and the trim export, asked with the role `h264` (getNvrFeatures `h264`; `low` is the lightest recording as it is). The recorder no longer keeps the H.264 copy ViON makes of such a camera's stream (a source the server tells as `copyOf`) when it records the original: on the test machine it took 20.8 GB a day beside 5.7 GB of the camera's own H.265. The copy recorded before still plays for its time, and a playback goes on with the original where it ends

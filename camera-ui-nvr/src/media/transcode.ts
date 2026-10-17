@@ -351,8 +351,8 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
       await fh.close();
     };
     let idle = false;
+    const frames = madeFrames(fh, path, start, { ...opts, startUs, audioFromUs })[Symbol.asyncIterator]();
     try {
-      const frames = madeFrames(fh, path, start, { ...opts, startUs, audioFromUs })[Symbol.asyncIterator]();
       for (;;) {
         const step = await frames.next();
         if (step.done) return;
@@ -371,7 +371,14 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
         if (idle) break;
       }
     } finally {
-      await release();
+      // ended by its client (a seek, a playback cancelled as its tab closed): ffmpeg ends here, with the frames. Read by
+      // hand, they are not closed with the reading as a for-await would close them, and ffmpeg stayed held on its full
+      // output for good, the feeding waiting for a 'drain' (one still there minutes after the tab closed, bench)
+      try {
+        await frames.return(undefined);
+      } finally {
+        await release();
+      }
     }
     // the client is back: on from the keyframe before the last frame it took, the ones before decoded only (a
     // millisecond on: the start is found to half of one, and frames are further apart than that), and the sound from

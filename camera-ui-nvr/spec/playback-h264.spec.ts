@@ -60,7 +60,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse', 'moved', 'mixed']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse', 'moved', 'mixed', 'ended']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -479,6 +479,22 @@ async function main(): Promise<void> {
   assert.ok(liveRow.end_us < tail, 'the index of the file being written ends before the time asked for');
   assert.equal((await nvr.nvrScrub('live', tail, false, 'h264')).videoCodec, 'h264', 'the newest seconds made H.264');
   await liveRec.stop();
+
+  // ---- a playback its client ends (the RPC cancels it as the tab is closed, a seek starts another): its ffmpeg ends
+  // with it. It stayed held on its full output for good, one still there minutes after the tab was closed (bench)
+  const long = await record('ended', 'high', stream('libx265', '640x360', 20), at + 200_000, 20);
+  const processes = () => process.getActiveResourcesInfo().filter((resource) => resource === 'ProcessWrap').length;
+  for (const until = realNow() + 10_000; processes() > 0 && realNow() < until; ) await sleep(50);
+  const runningBefore = processes();
+  const ended = nvr.nvrPlayback('ended', long.start_us, true, 'h264', { onReady: noop, onVideo: noop, onNoData: noop } as never)[Symbol.asyncIterator]();
+  assert.equal((await ended.next()).done, false);
+  // paced as it is watched: ffmpeg fills what the playback holds and is held
+  await sleep(1500);
+  assert.equal(processes(), runningBefore + 1, 'its ffmpeg runs');
+  await ended.return(undefined);
+  let running = processes();
+  for (const until = realNow() + 5000; running > runningBefore && realNow() < until; running = processes()) await sleep(50);
+  assert.equal(running, runningBefore, 'its ffmpeg ended with the playback');
 
   console.log('playback-h264.spec: H.265 made H.264 for a low stream, told first, every frame at its time; H.265 as it is; an old copy played — ok');
   finished = true;

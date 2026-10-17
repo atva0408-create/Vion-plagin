@@ -558,6 +558,30 @@ async function main(): Promise<void> {
     fileHandle.read = realRead;
   }
 
+  // ---- a reading its client ends (a seek, a scrub that moved on, a playback the RPC cancels as its tab closed): its
+  // ffmpeg ends with it. The reading closed its file and freed its place but left ffmpeg held on its full output, the
+  // feeding waiting for a 'drain' that never came: a process for good for every seek of a viewer without H.265 (one
+  // still there minutes after the tab was closed, bench)
+  const processes = () => process.getActiveResourcesInfo().filter((resource) => resource === 'ProcessWrap').length;
+  // the readings stopped above end their ffmpeg as their feeding finds the file closed: after a while
+  for (const until = Date.now() + 10_000; processes() > 0 && Date.now() < until; ) await sleep(50);
+  const runningBefore = processes();
+  for (const [name, options] of [
+    ['a short read', {}],
+    ['a playback, its place kept for its next file', { place: new H264Place() }],
+  ] as const) {
+    const ended = readFramesAsH264(noisy, { offset: 0, tsUs: 0 }, { ffmpegPath: FFMPEG, encoder: LIBX264, ...options })[Symbol.asyncIterator]();
+    for (let i = 0; i < 3; i++) assert.equal((await ended.next()).done, false);
+    // ffmpeg fills what the reading holds and is held
+    await sleep(1500);
+    assert.equal(processes(), runningBefore + 1, `${name}: its ffmpeg runs`);
+    await ended.return(undefined);
+    let running = processes();
+    for (const until = Date.now() + 5000; running > runningBefore && Date.now() < until; running = processes()) await sleep(50);
+    assert.equal(running, runningBefore, `${name}: its ffmpeg ended with it`);
+    options.place?.release();
+  }
+
   // ---- a client gone after a few frames: it ends at once
   const abort = new AbortController();
   const startedAt = Date.now();
