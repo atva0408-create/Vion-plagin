@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { open } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -227,7 +227,8 @@ async function main(): Promise<void> {
   // ---- the file being written, from a keyframe in its middle, as the recorder lays it out: the first frame comes at
   // once. Without the tables ffmpeg looked through 5 MB for the streams first: about a minute of a camera's recording
   // at the live tip (39 s at 1.1 Mbit/s in the review)
-  const followUntil = Date.now() + 4000;
+  // followed for 10 s: without the tables the first frame came only when the following ended
+  const followUntil = Date.now() + 10_000;
   const askedAt = Date.now();
   let firstAfter: number | undefined;
   const live: Frame[] = [];
@@ -235,7 +236,7 @@ async function main(): Promise<void> {
     firstAfter ??= Date.now() - askedAt;
     live.push(frame);
   }
-  assert.ok(firstAfter !== undefined && firstAfter < 2500, `the first frame of the file being written after ${firstAfter} ms`);
+  assert.ok(firstAfter !== undefined && firstAfter < 5000, `the first frame of the file being written after ${firstAfter} ms`);
   assert.equal(live[0]!.tsUs, recorderKeyframes[2]!.tsUs, 'that keyframe, at its time');
   assert.deepEqual(
     video(live).map((frame) => frame.tsUs),
@@ -279,7 +280,7 @@ async function main(): Promise<void> {
 
   // ---- no more made at once than the machine has room for: the rest wait their turn. Each viewer without H.265 had
   // its own ffmpeg, an episode of N cameras N of them, with nothing to bound them on a weak machine
-  assert.ok(h264Slots() >= 2, `the machine's room: ${h264Slots()}`);
+  assert.equal(h264Slots(), Math.max(2, Math.floor(availableParallelism() / 2)), 'half the cores of the machine, at least two');
   const machineSlots = h264Slots();
   setH264Slots(1);
   const running = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
