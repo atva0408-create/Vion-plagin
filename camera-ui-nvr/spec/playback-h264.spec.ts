@@ -295,6 +295,11 @@ async function main(): Promise<void> {
   assert.ok(madeMp4.includes('avcC') && !madeMp4.includes('hvcC'), 'an H.264 MP4');
   const asIsMp4 = await exported();
   assert.ok(asIsMp4.includes('hvcC'), 'asked as it is: the H.265 recording, copied');
+  // the hardware encoder found fails now (NVENC's sessions taken): libx264 makes the export
+  internals.h264Encoder = Promise.resolve({ name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'no_such_encoder'] });
+  const rescuedMp4 = await exported('h264');
+  assert.ok(rescuedMp4.includes('avcC'), 'made by libx264 instead');
+  internals.h264Encoder = Promise.resolve(LIBX264);
 
   // ---- 'scrub' asks for the lightest recording, not for H.264: a browser with H.265 got every scrub and every
   // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'h264' itself

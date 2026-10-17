@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 
+import { LIBX264 } from './media/transcode.js';
+
 import type { H264Encoder } from './media/transcode.js';
 import type { SegmentRow } from './store.js';
 
@@ -85,29 +87,37 @@ export async function exportClip(opts: {
   // inside it (it does that for MPEG-TS, not for a list). The whitelist lets the list name `concat:` inputs (a list
   // read from a file may open only files by default).
   const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
-  const timelapseAsked = opts.timelapseIntervalSec !== undefined && opts.timelapseIntervalSec > 0;
-  const made = !timelapseAsked ? opts.h264 : undefined;
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...(made?.input ?? []), ...input];
   const timelapse = opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0 ? opts.timelapseIntervalSec : 0;
-  if (timelapse) {
+  const madeBy = !timelapse ? opts.h264 : undefined;
+  const argsWith = (made: H264Encoder | undefined) => {
+    const args = ['-hide_banner', '-loglevel', 'error', '-y', ...(made?.input ?? []), ...input];
+    if (timelapse) {
     // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
     // of a second of what is left. The range is cut by `trim`, in front of that: `-ss`/`-t` of the output count the
     // compressed time, so a range starting 10 s into a file skipped the first 10 s of the timelapse (all of it, for
     // a short one) and no range ended where it was asked to. `eof_action=pass`: a range shorter than the interval
     // still gives its one picture.
-    const range = `trim=start=${offsetSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`;
-    args.push('-vf', `${range},setpts=(PTS-STARTPTS)/${30 * timelapse},fps=30:eof_action=pass`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
-  } else {
+      const range = `trim=start=${offsetSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`;
+      args.push('-vf', `${range},setpts=(PTS-STARTPTS)/${30 * timelapse},fps=30:eof_action=pass`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
+    } else {
     // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
-    args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
-    // made H.264 at the size it was recorded, the frames at their times
-    if (made) args.push(...(made.upload ? ['-vf', made.upload.replace(/^,/, '')] : []), '-fps_mode', 'passthrough', ...made.codec);
-  }
-  args.push('-movflags', '+faststart', out);
+      args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
+      // made H.264 at the size it was recorded, the frames at their times
+      if (made) args.push(...(made.upload ? ['-vf', made.upload.replace(/^,/, '')] : []), '-fps_mode', 'passthrough', ...made.codec);
+    }
+    args.push('-movflags', '+faststart', out);
+    return args;
+  };
 
   try {
     if (runs.length > 1) await writeFile(list, concatList(runs));
-    await run(opts.ffmpegPath, args);
+    try {
+      await run(opts.ffmpegPath, argsWith(madeBy));
+    } catch (error) {
+      // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it
+      if (!madeBy || madeBy.name === LIBX264.name) throw error;
+      await run(opts.ffmpegPath, argsWith(LIBX264));
+    }
   } catch (error) {
     // what ffmpeg wrote before it failed (an empty file when it could not start the MP4) is not a clip, and nothing
     // removes it later: the download that cleans up an export is only made for a finished one
