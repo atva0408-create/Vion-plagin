@@ -200,7 +200,18 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
     throw error;
   }
   try {
-    yield* framesOf(fh, path, from, opts);
+    let made = false;
+    try {
+      for await (const frame of framesOf(fh, path, from, opts)) {
+        made = true;
+        yield frame;
+      }
+    } catch (error) {
+      // a hardware encoder that worked at the start can fail later (NVENC counts its sessions, and go2rtc's copies take
+      // some): before its first frame, libx264 makes it instead. Past it the client has frames of that one already
+      if (made || opts.encoder.name === LIBX264.name || opts.signal?.aborted) throw error;
+      yield* framesOf(fh, path, from, { ...opts, encoder: LIBX264 });
+    }
   } finally {
     await fh.close();
   }

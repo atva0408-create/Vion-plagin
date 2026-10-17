@@ -206,6 +206,15 @@ async function main(): Promise<void> {
     /ffmpeg made no H\.264 of .*hevc\.ts/,
   );
   await assert.rejects(collect(readFramesAsH264(path, start, { ffmpegPath: join(dir, 'no-ffmpeg'), encoder: LIBX264 })));
+  // a hardware encoder that fails now though it worked at the start (NVENC's sessions are counted, and go2rtc's copies
+  // take some): libx264 makes it instead. libx264 failing itself is said, as above
+  const failingCard = { name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'no_such_encoder'] };
+  const rescued = video(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: failingCard })));
+  assert.deepEqual(
+    rescued.map((frame) => frame.tsUs),
+    recorded.map((frame) => frame.tsUs),
+    'every frame, made by libx264',
+  );
   // a file the retention removed meanwhile ends without frames, as readFrames does: the playback goes on with the next
   assert.deepEqual(await collect(readFramesAsH264(join(dir, 'removed.ts'), start, { ffmpegPath: FFMPEG, encoder: LIBX264 })), []);
 
