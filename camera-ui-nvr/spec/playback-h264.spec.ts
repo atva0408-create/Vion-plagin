@@ -59,7 +59,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse', 'moved']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse', 'moved', 'mixed']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -361,6 +361,25 @@ async function main(): Promise<void> {
     movedHover.frames.every((frame) => movedTimes.includes(frame.ts)),
     'a hover excerpt',
   );
+
+  // ---- a camera switched to H.265 in the middle of a playback: its H.265 files are made H.264 as well. Decided at the
+  // start, on its H.264 file, they went as H.265 and the player had nothing left to fall back to
+  const mixedFirst = await record('mixed', 'high', avc, at + 160_000);
+  await record('mixed', 'high', hevc, at + 163_000);
+  const mixed = await play('mixed', mixedFirst.start_us, 'h264');
+  assert.ok(mixed.ready.length >= 2, 'told again when the file changes');
+  assert.ok(
+    mixed.ready.every((ready) => ready.videoCodec === 'h264'),
+    'every file H.264',
+  );
+  // a trim export asked 'h264' over the moment the old low copy ends: the whole slice, of the stream that covers it,
+  // made H.264. It was the copy alone, cut where it ended; and one that began 45 s before the recording was H.265
+  const acrossCopyEnd = await nvr.nvrExport('switch', switchLow.start_us, switchHigh2.end_us, { sourceRole: 'h264' });
+  assert.ok(acrossCopyEnd.durationMs >= 5000, `the whole slice: ${acrossCopyEnd.durationMs} ms`);
+  const exportedFile = (name: string) => readFileSync(join((internals as unknown as { dataDir: string }).dataDir, 'exports', name)).toString('latin1');
+  assert.ok(exportedFile(acrossCopyEnd.filename).includes('avcC'));
+  const early = await nvr.nvrExport('cam', cam.start_us - 45_000_000, cam.end_us, { sourceRole: 'h264' });
+  assert.ok(exportedFile(early.filename).includes('avcC') && !exportedFile(early.filename).includes('hvcC'), 'begun before the recording: H.264');
 
   // ---- a lighter stream recorded in H.265 too (a camera recording its high and mid streams, both H.265): that one,
   // made H.264. It went as H.265 and the player had nothing left to fall back to

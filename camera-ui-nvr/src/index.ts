@@ -1672,15 +1672,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const segment = this.segmentAt(cameraId, role, tsUs);
       return segment && segment.start_us - tsUs <= START_GAP_US ? segment : undefined;
     };
-    // a lighter recording in H.265 (a camera recording its high and mid streams, both H.265) is made H.264 as well
-    const made = (segment: SegmentRow | undefined) => sourceRole === 'h264' && segment?.codec === 'h265';
-    for (const lighter of ['low', 'mid']) {
-      const segment = at(lighter);
-      if (segment) return { role: lighter, asH264: made(segment) };
-    }
+    // 'h264': every H.265 file read is made H.264, a lighter one too (a camera recording its high and mid streams,
+    // both H.265), and a file after the first (a camera switched to H.265 meanwhile); the readers look at each file
+    const asH264 = sourceRole === 'h264';
+    for (const lighter of ['low', 'mid']) if (at(lighter)) return { role: lighter, asH264 };
     // no lighter recording at the time: 'h264' takes the main one (made H.264), not a low one empty at the time
-    const role = this.resolveRole(cameraId, sourceRole);
-    return { role, asH264: made(at(role)) };
+    return { role: this.resolveRole(cameraId, sourceRole), asH264 };
   }
 
   /**
@@ -1959,11 +1956,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     options: { timelapseIntervalSec?: number; sourceRole?: string; timeZone?: string } = {},
   ): Promise<{ url: string; filename: string; size: number; durationMs: number }> {
     await this.ready;
-    // a browser that played it made H.264 ('h264') exports it so: the stream it watched, its H.265 made H.264
-    const { role, asH264 } =
-      options.sourceRole === 'h264' ? this.readRole(cameraId, 'h264', startUs) : { role: this.resolveRole(cameraId, options.sourceRole), asH264: false };
-    const segments = this.store.segments(cameraId, role, startUs, endUs);
-    const made = asH264 && segments.some((s) => s.codec === 'h265') ? (await this.h264()).encoder : undefined;
+    // a browser that played it made H.264 ('h264') exports it so: the lightest stream that covers the slice (not the
+    // old low copy cut where it ended, exportSegments), its H.265 made H.264
+    const asked264 = options.sourceRole === 'h264';
+    const segments = asked264
+      ? this.exportSegments(cameraId, startUs, endUs, 'smallest')
+      : this.store.segments(cameraId, this.resolveRole(cameraId, options.sourceRole), startUs, endUs);
+    const made = asked264 && segments.some((s) => s.codec === 'h265') ? (await this.h264()).encoder : undefined;
     const filename = `${this.cameraSlug(cameraId)}_${fileStamp(startUs, this.zoneFormat(options.timeZone))}.mp4`;
     const res = await exportClip({
       ffmpegPath: this.ffmpegPath,
