@@ -1959,16 +1959,21 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     options: { timelapseIntervalSec?: number; sourceRole?: string; timeZone?: string } = {},
   ): Promise<{ url: string; filename: string; size: number; durationMs: number }> {
     await this.ready;
-    const role = this.resolveRole(cameraId, options.sourceRole);
+    // a browser that played it made H.264 ('h264') exports it so: the stream it watched, its H.265 made H.264
+    const { role, asH264 } =
+      options.sourceRole === 'h264' ? this.readRole(cameraId, 'h264', startUs) : { role: this.resolveRole(cameraId, options.sourceRole), asH264: false };
+    const segments = this.store.segments(cameraId, role, startUs, endUs);
+    const made = asH264 && segments.some((s) => s.codec === 'h265') ? (await this.h264()).encoder : undefined;
     const filename = `${this.cameraSlug(cameraId)}_${fileStamp(startUs, this.zoneFormat(options.timeZone))}.mp4`;
     const res = await exportClip({
       ffmpegPath: this.ffmpegPath,
-      segments: this.store.segments(cameraId, role, startUs, endUs).map((s) => this.store.located(s)),
+      segments: segments.map((s) => this.store.located(s)),
       startUs,
       endUs,
       outDir: join(this.dataDir, 'exports'),
       filename,
       timelapseIntervalSec: options.timelapseIntervalSec,
+      h264: made,
     });
     try {
       const dl = await this.api.downloadManager.createDownload({ filePath: res.path, filename, mimeType: 'video/mp4', ttlMs: 3 * 3600_000, cleanup: 'on-expiry' });

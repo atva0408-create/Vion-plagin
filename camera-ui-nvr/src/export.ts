@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 
+import type { H264Encoder } from './media/transcode.js';
 import type { SegmentRow } from './store.js';
 
 /** Segments at most this far apart are one stretch of recording (the timeline joins them the same way). */
@@ -65,6 +66,11 @@ export async function exportClip(opts: {
   outDir: string;
   filename: string;
   timelapseIntervalSec?: number;
+  /**
+   * The video made H.264 by this encoder instead of copied: the export of a browser that played the H.265 recording
+   * made H.264 (an H.265 MP4 does not open in the player of Windows without a paid extension)
+   */
+  h264?: H264Encoder;
 }): Promise<{ path: string; size: number; durationMs: number }> {
   const segments = opts.segments.filter((s) => s.end_us > opts.startUs && s.start_us < opts.endUs);
   if (!segments.length) throw new Error('No recordings in the selected range');
@@ -79,7 +85,9 @@ export async function exportClip(opts: {
   // inside it (it does that for MPEG-TS, not for a list). The whitelist lets the list name `concat:` inputs (a list
   // read from a file may open only files by default).
   const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...input];
+  const timelapseAsked = opts.timelapseIntervalSec !== undefined && opts.timelapseIntervalSec > 0;
+  const made = !timelapseAsked ? opts.h264 : undefined;
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', ...(made?.input ?? []), ...input];
   const timelapse = opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0 ? opts.timelapseIntervalSec : 0;
   if (timelapse) {
     // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
@@ -92,6 +100,8 @@ export async function exportClip(opts: {
   } else {
     // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
     args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
+    // made H.264 at the size it was recorded, the frames at their times
+    if (made) args.push(...(made.upload ? ['-vf', made.upload.replace(/^,/, '')] : []), '-fps_mode', 'passthrough', ...made.codec);
   }
   args.push('-movflags', '+faststart', out);
 

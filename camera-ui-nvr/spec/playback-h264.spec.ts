@@ -268,6 +268,17 @@ async function main(): Promise<void> {
   assert.equal(strip.videoCodec, 'h264');
   assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
 
+  // ---- a trim export of a browser that plays it made H.264 is H.264 too: as it is, an H.265 MP4 the player of Windows
+  // does not open without a paid extension (the H.264 copy was exported before)
+  const exported = async (sourceRole?: string) => {
+    const result = await nvr.nvrExport('cam', cam.start_us, cam.end_us, { sourceRole });
+    return readFileSync(join((internals as unknown as { dataDir: string }).dataDir, 'exports', result.filename)).toString('latin1');
+  };
+  const madeMp4 = await exported('h264');
+  assert.ok(madeMp4.includes('avcC') && !madeMp4.includes('hvcC'), 'an H.264 MP4');
+  const asIsMp4 = await exported();
+  assert.ok(asIsMp4.includes('hvcC'), 'asked as it is: the H.265 recording, copied');
+
   // ---- 'scrub' asks for the lightest recording, not for H.264: a browser with H.265 got every scrub and every
   // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'h264' itself
   // (ui/src/nvr/playback.ts recover)
