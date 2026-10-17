@@ -15,7 +15,8 @@ import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPict
 import { NIGHT_COLOUR, NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
-import { findH264Encoder } from './media/transcode.js';
+import { probeCodec } from './media/codec.js';
+import { findH264Encoder, readFramesAsH264 } from './media/transcode.js';
 import { PlaybackManager, START_GAP_US } from './playback.js';
 import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
 import { FRAME_GAP_US, Recorder } from './recorder.js';
@@ -49,6 +50,7 @@ import type { Outlined, PersonThere, Prompt, ThingAnswer } from './thing.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type { IndexFilter } from './vector-index.js';
 import type { H264Encoder } from './media/transcode.js';
+import type { Frame } from './reader.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
@@ -1637,16 +1639,16 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   // ---------------------------------------------------------------- playback
 
   public nvrPlayback(cameraId: string, tsUs: number, videoOnly: boolean, sourceRole: string, callbacks: NvrPlaybackCallbacks): AsyncGenerator<void> {
-    const { role, asH264 } = this.playbackRole(cameraId, sourceRole, tsUs);
+    const { role, asH264 } = this.readRole(cameraId, sourceRole, tsUs);
     return this.playback.play(cameraId, tsUs, role, callbacks, { audio: !videoOnly, asH264 });
   }
 
   /**
-   * What a playback reads. A client that cannot decode H.265 asks for the low stream; at a time with a low (or mid)
-   * recording it gets that, as before, and else the H.265 recording made H.264 while it plays (media/transcode.ts):
-   * the recorder no longer keeps an H.264 copy of an H.265 camera for it.
+   * What a read of the archive takes (playback, scrub, trace, preview). A client that cannot decode H.265 asks for the
+   * low stream; at a time with a low (or mid) recording it gets that, as before, and else the H.265 recording made
+   * H.264 as it is read (media/transcode.ts): the recorder no longer keeps an H.264 copy of an H.265 camera for it.
    */
-  private playbackRole(cameraId: string, sourceRole: string, tsUs: number): { role: string; asH264: boolean } {
+  private readRole(cameraId: string, sourceRole: string | undefined, tsUs: number): { role: string; asH264: boolean } {
     if (sourceRole !== 'low' && sourceRole !== 'scrub') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
     const at = (role: string) => {
       const segment = this.store.segmentAt(cameraId, role, tsUs);
@@ -1655,6 +1657,25 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const lighter of ['low', 'mid']) if (at(lighter)) return { role: lighter, asH264: false };
     const role = this.resolveRole(cameraId, sourceRole);
     return { role, asH264: at(role)?.codec === 'h265' };
+  }
+
+  /** The frames of a recording from `kf` up to the one at `untilUs` (at most `max`), made H.264. */
+  private async framesAsH264(seg: SegmentRow, kf: Keyframe, untilUs: number, max = 300): Promise<Frame[]> {
+    const out: Frame[] = [];
+    // leaving the loop ends ffmpeg: only as much is encoded as is asked for
+    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, await this.h264())) {
+      if (frame.audio) continue;
+      out.push(frame);
+      if (frame.tsUs >= untilUs || out.length >= max) break;
+    }
+    return out;
+  }
+
+  /** What a client is told of frames made H.264, from their first keyframe. */
+  private static h264Meta(frames: Frame[]): { videoCodec: string; codecString: string; width: number; height: number } | undefined {
+    const first = frames.find((frame) => frame.keyframe);
+    const info = first ? probeCodec(first.data, 'h264') : undefined;
+    return info ? { videoCodec: 'h264', codecString: info.codecString, width: info.width, height: info.height } : undefined;
   }
 
   /** ffmpeg and the H.264 encoder of this machine, found once by an encode (media/transcode.ts). */
@@ -1677,11 +1698,19 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     sourceRole?: string,
   ): Promise<{ frame?: Uint8Array; ts: number; videoCodec: string; noData?: boolean; codecString?: string; width?: number; height?: number; frames?: NvrFrame[] }> {
     await this.ready;
-    const role = this.resolveRole(cameraId, sourceRole);
+    const { role, asH264 } = this.readRole(cameraId, sourceRole, tsUs);
     const seg = this.segmentAt(cameraId, role, tsUs);
     if (!seg || seg.start_us > tsUs + 2_000_000) return { ts: tsUs, videoCodec: '', noData: true };
     const kf = keyframeAtOrBefore(seg, tsUs);
     if (!kf) return { ts: tsUs, videoCodec: '', noData: true };
+    if (asH264 && seg.codec === 'h265') {
+      const made = await this.framesAsH264(seg, kf, fine ? tsUs : kf.tsUs);
+      const made264 = VionNvr.h264Meta(made);
+      if (!made.length || !made264) return { ts: tsUs, videoCodec: '', noData: true };
+      return fine
+        ? { ...made264, ts: made.at(-1)!.tsUs, frame: made[0].data, frames: made.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe })) }
+        : { ...made264, ts: made[0].tsUs, frame: made[0].data };
+    }
     const meta = { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
     if (fine) {
       const gop = await readExact(this.store.located(seg), tsUs);
@@ -1699,9 +1728,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     count = 12,
     mode: 'keyframes' | 'motion' = 'keyframes',
     spanUs = 4_000_000,
+    /** the client cannot decode H.265: H.265 recordings come made H.264 where no low one was recorded */
+    h264Only = false,
   ): Promise<{ frames: NvrFrame[]; videoCodec: string; codecString?: string; width?: number; height?: number; noData?: boolean }> {
     await this.ready;
-    const role = this.resolveRole(cameraId, 'low');
+    const { role, asH264: readAs } = this.readRole(cameraId, 'low', startUs);
+    const asH264 = h264Only && readAs;
     const frames: NvrFrame[] = [];
     let meta: { videoCodec: string; codecString: string; width: number; height: number } | undefined;
     if (!Number.isFinite(startUs) || !Number.isFinite(endUs) || endUs <= startUs) return { frames, videoCodec: '', noData: true };
@@ -1740,8 +1772,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         if (meta && (meta.codecString !== seg.codec_string || meta.width !== seg.width || meta.height !== seg.height)) break;
         const at = i === 0 ? from : keyframeAtOrBefore(seg, seg.start_us);
         if (!at) continue;
-        meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
-        for await (const frame of readFrames(this.store.located(seg), at)) {
+        const made = asH264 && seg.codec === 'h265' ? await this.h264() : undefined;
+        if (!made) meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
+        for await (const frame of made ? readFramesAsH264(this.store.located(seg).path, at, made) : readFrames(this.store.located(seg), at)) {
+          if (frame.audio) continue;
+          if (made && !meta) meta = VionNvr.h264Meta([frame]);
           if (frame.tsUs > until) break;
           if (frames.length >= 360 || bytes + frame.data.byteLength > 12 * 1024 * 1024) {
             budgetReached = true;
@@ -1764,9 +1799,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const kf = keyframeAtOrBefore(seg, t);
       if (!kf || seen.has(`${seg.id}:${kf.offset}`)) continue;
       seen.add(`${seg.id}:${kf.offset}`);
-      const frame = await readKeyframe(this.store.located(seg), kf);
+      const made = asH264 && seg.codec === 'h265';
+      const frame = made ? (await this.framesAsH264(seg, kf, kf.tsUs, 1))[0] : await readKeyframe(this.store.located(seg), kf);
       if (!frame) continue;
-      meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
+      meta ??= made ? VionNvr.h264Meta([frame]) : { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
       frames.push({ frame: frame.data, ts: frame.tsUs, keyframe: true });
     }
     return meta ? { ...meta, frames } : { frames: [], videoCodec: '', noData: true };
@@ -1790,11 +1826,27 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const list = (targets ?? []).slice(0, TRACE_MAX_TARGETS);
     for (let target = 0; target < list.length; target++) {
       const tsUs = Math.round(Number(list[target].tMs) * 1000);
-      const role = this.resolveRole(cameraId, list[target].src);
+      const { role, asH264 } = this.readRole(cameraId, list[target].src, tsUs);
       const seg = Number.isFinite(tsUs) ? this.segmentAt(cameraId, role, tsUs) : undefined;
       const kf = seg && seg.start_us <= tsUs + 2_000_000 ? keyframeAtOrBefore(seg, tsUs) : undefined;
       if (!seg || !kf) {
         missing.push(target);
+        continue;
+      }
+      if (asH264 && seg.codec === 'h265') {
+        // made H.264: the frames up to the target (exact) or its keyframe, in a chain of their own
+        const made = await this.framesAsH264(seg, kf, mode === 'exact' ? tsUs : kf.tsUs, mode === 'exact' ? 300 : 1);
+        const made264 = VionNvr.h264Meta(made);
+        if (!made.length || !made264) {
+          missing.push(target);
+          continue;
+        }
+        chains.set(`h264|${target}`, {
+          role,
+          ...made264,
+          frames: made.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe })),
+          keep: [{ target, index: made.length - 1, exact: false }],
+        });
         continue;
       }
       // exact: one chain per target (each GOP decodes on its own); keyframes share one chain per stream

@@ -156,6 +156,38 @@ async function main(): Promise<void> {
     recorded,
   );
 
+  // ---- scrub, the trace and the hover preview of a client without H.265: made H.264 the same way
+  const target = recorded[15]!;
+  const keyframeBefore = parseKeyframes(cam.keyframes).filter((kf) => kf.tsUs <= target).at(-1)!.tsUs;
+  const coarse = await nvr.nvrScrub('cam', target, false, 'low');
+  assert.equal(coarse.videoCodec, 'h264');
+  assert.match(coarse.codecString!, /^avc1\./);
+  assert.equal(coarse.ts, keyframeBefore, 'the keyframe before the time');
+  assert.ok(probeCodec(Buffer.from(coarse.frame!), 'h264'));
+  const fine = await nvr.nvrScrub('cam', target, true, 'low');
+  assert.equal(fine.videoCodec, 'h264');
+  assert.deepEqual(
+    fine.frames!.map((frame) => frame.ts),
+    recorded.filter((ts) => ts >= keyframeBefore && ts <= target),
+    'from the keyframe up to the time',
+  );
+  assert.equal((await nvr.nvrScrub('cam', target, true, 'high')).videoCodec, 'h265', 'asked as it is: as it is');
+
+  const trace = await nvr.nvrTraceFrames('cam', [{ tMs: target / 1000, src: 'low' } as never], 'exact');
+  assert.equal(trace.chains.length, 1);
+  assert.equal(trace.chains[0]!.videoCodec, 'h264');
+  assert.equal(trace.chains[0]!.frames.at(-1)!.ts, target);
+  assert.equal(trace.chains[0]!.keep[0]!.index, trace.chains[0]!.frames.length - 1);
+
+  const hover = await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 12, 'motion', 2_000_000, true);
+  assert.equal(hover.videoCodec, 'h264');
+  assert.ok(hover.frames.length >= 15, `hover frames ${hover.frames.length}`);
+  assert.ok(hover.frames.every((frame) => recorded.includes(frame.ts)), 'at recorded times');
+  assert.equal((await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 12, 'motion', 2_000_000)).videoCodec, 'h265', 'a client with H.265: as it is');
+  const strip = await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 4, 'keyframes', 4_000_000, true);
+  assert.equal(strip.videoCodec, 'h264');
+  assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
+
   // ---- a time with a low recording (the archive of before, when the recorder kept the H.264 copy): that one
   const old = await record('old', 'high', hevc, at);
   const oldLow = await record('old', 'low', avc, at);
