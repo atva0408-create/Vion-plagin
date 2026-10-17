@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec } from '../src/media/codec.js';
-import { findH264Encoder, h264Slots, LIBX264, readFramesAsH264, setH264Slots } from '../src/media/transcode.js';
+import { findH264Encoder, h264Slots, LIBX264, readFramesAsH264, setH264Idle, setH264Slots } from '../src/media/transcode.js';
 import { ptsDelta, TsDemuxer } from '../src/media/ts-demux.js';
 import { readFrames } from '../src/reader.js';
 
@@ -318,6 +318,38 @@ async function main(): Promise<void> {
   await again.return(undefined);
   await nextFirst;
   await next.return(undefined);
+  setH264Slots(machineSlots);
+
+  // ---- a client that takes no frame for a while (a paused playback; a tab closed without a word, whose reading is
+  // never ended) leaves its place to others: its ffmpeg ends. Back, it goes on where it was, every frame once
+  setH264Slots(1);
+  setH264Idle(200);
+  const index = keyframes.map(([offset, tsUs]) => ({ offset, tsUs }));
+  const pausing = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, keyframes: index })[Symbol.asyncIterator]();
+  const pausedTimes: number[] = [];
+  for (let i = 0; i < 25; i++) pausedTimes.push(((await pausing.next()).value as Frame).tsUs);
+  await sleep(600);
+  const meanwhile = await Promise.race([
+    collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })).then((frames) => frames.length),
+    sleep(15_000).then(() => -1),
+  ]);
+  assert.ok(meanwhile > 0, 'another reads while the paused one waits');
+  for (;;) {
+    const step = await pausing.next();
+    if (step.done) break;
+    pausedTimes.push((step.value as Frame).tsUs);
+  }
+  assert.deepEqual(
+    pausedTimes,
+    recorded.map((frame) => frame.tsUs),
+    'back, every frame once, at its time',
+  );
+  // one never taken again keeps no place
+  const abandoned = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  await abandoned.next();
+  await sleep(600);
+  assert.ok((await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 }))).length > 0, 'a reading left for good keeps no place');
+  setH264Idle(30_000);
   setH264Slots(machineSlots);
 
   // ---- a client that stops while the file is being read (a slow disk): it ends, and its place is free. The feeding

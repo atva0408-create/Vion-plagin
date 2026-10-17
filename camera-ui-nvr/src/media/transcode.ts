@@ -61,6 +61,16 @@ export function setH264Slots(count: number): void {
   waiting.shift()?.();
 }
 
+/**
+ * How long a reading may wait for its client to take a frame before its ffmpeg ends and its place is freed: a paused
+ * playback, or a tab closed or a phone gone without a word, whose reading is never ended (the RPC has no timeout).
+ */
+let idleMs = 30_000;
+
+export function setH264Idle(ms: number): void {
+  idleMs = ms;
+}
+
 /** A place to make H.264 in, waited for; false when the client gave up meanwhile. */
 async function takeSlot(signal?: AbortSignal): Promise<boolean> {
   while (busy >= slots) {
@@ -274,35 +284,76 @@ async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264R
  * made decodable for a client without H.265.
  */
 export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
-  let fh: FileHandle;
-  try {
-    fh = await open(path, 'r');
-  } catch (error) {
-    // removed by the retention between the index lookup and the read: no frames, as readFrames says, and the playback
-    // goes on with the next file instead of failing
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw error;
-  }
-  if (!(await takeSlot(opts.signal))) {
-    await fh.close();
-    return;
-  }
-  try {
-    let made = false;
+  let start = from;
+  let startUs = opts.startUs;
+  let lastVideo: number | undefined;
+  for (;;) {
+    let fh: FileHandle;
     try {
-      for await (const frame of framesOf(fh, path, from, opts)) {
-        made = true;
-        yield frame;
-      }
+      fh = await open(path, 'r');
     } catch (error) {
-      // a hardware encoder that worked at the start can fail later (NVENC counts its sessions, and go2rtc's copies take
-      // some): before its first frame, libx264 makes it instead. Past it the client has frames of that one already
-      if (made || opts.encoder.name === LIBX264.name || opts.signal?.aborted) throw error;
-      yield* framesOf(fh, path, from, { ...opts, encoder: LIBX264 });
+      // removed by the retention between the index lookup and the read: no frames, as readFrames says, and the playback
+      // goes on with the next file instead of failing
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
     }
-  } finally {
-    freeSlot();
-    await fh.close();
+    if (!(await takeSlot(opts.signal))) {
+      await fh.close();
+      return;
+    }
+    let held = true;
+    const release = async () => {
+      if (!held) return;
+      held = false;
+      freeSlot();
+      await fh.close();
+    };
+    let idle = false;
+    try {
+      const frames = madeFrames(fh, path, start, { ...opts, startUs })[Symbol.asyncIterator]();
+      for (;;) {
+        const step = await frames.next();
+        if (step.done) return;
+        // no frame taken for a while: ffmpeg ends and the place and the file are freed while the client waits
+        const timer = setTimeout(() => {
+          idle = true;
+          void frames.return(undefined).finally(release);
+        }, idleMs);
+        try {
+          yield step.value;
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!step.value.audio) lastVideo = step.value.tsUs;
+        if (idle) break;
+      }
+    } finally {
+      await release();
+    }
+    // the client is back: on from the keyframe before the last frame it took, the ones before decoded only (a
+    // millisecond on: the start is found to half of one, and frames are further apart than that)
+    if (lastVideo === undefined) {
+      startUs = opts.startUs;
+      continue;
+    }
+    start = (opts.keyframes ?? []).filter((kf) => kf.tsUs <= lastVideo!).at(-1) ?? from;
+    startUs = lastVideo + 1000;
+  }
+}
+
+/** The frames made H.264 by the encoder found, or by libx264 where that one fails before its first frame. */
+async function *madeFrames(fh: FileHandle, path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
+  let made = false;
+  try {
+    for await (const frame of framesOf(fh, path, from, opts)) {
+      made = true;
+      yield frame;
+    }
+  } catch (error) {
+    // a hardware encoder that worked at the start can fail later (NVENC counts its sessions, and go2rtc's copies take
+    // some): before its first frame, libx264 makes it instead. Past it the client has frames of that one already
+    if (made || opts.encoder.name === LIBX264.name || opts.signal?.aborted) throw error;
+    yield* framesOf(fh, path, from, { ...opts, encoder: LIBX264 });
   }
 }
 
