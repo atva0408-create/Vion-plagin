@@ -1,3 +1,8 @@
+## [0.2.4]
+
+- Zwei Texte im Abstand weniger Sekunden an eine Station, deren gehaltene Verbindung tot ist, öffnen keine zwei neuen Verbindungen mehr, von denen eine für immer offen blieb; Abmelden oder geänderte Einstellungen während der Prüfung der Verbindung schicken nichts mehr
+- Mit der Stimme nur im Heimnetz wird eine Station, die einen Text nicht bestätigte, bei der nächsten Benachrichtigung wieder versucht statt 3 Minuten abgewiesen
+
 ## [0.2.3]
 
 - ViON erfährt, ob jede Station eine Benachrichtigung gesprochen hat: eine ausgeschaltete, nicht verbundene, nicht angemeldete oder eine, für die Yandex nicht antwortete, wird zurückgemeldet, und ViON 2.6.5 schickt die Benachrichtigung anders (eine Zonenregel an Telegram). Bisher galt eine stumme Station als eine, die gesprochen hat

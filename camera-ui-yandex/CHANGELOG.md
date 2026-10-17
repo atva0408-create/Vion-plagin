@@ -1,3 +1,8 @@
+## [0.2.4]
+
+- Two texts a few seconds apart to a station whose kept connection died no longer open two new connections, one of them left open for good; signing out or changing the settings while the connection is checked sends nothing more
+- With the voice in the home network only, a station that did not confirm a text is tried again at the next notification instead of being refused for 3 minutes
+
 ## [0.2.3]
 
 - ViON learns whether each station said a notification: one that is off, offline, not signed in or that Yandex did not answer is told back, and ViON 2.6.5 sends the notification another way (a zone rule's notice to Telegram). Before, a station that did not speak was counted as one that did
