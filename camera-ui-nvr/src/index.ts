@@ -1890,14 +1890,21 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         continue;
       }
       if (asH264 && seg.codec === 'h265') {
-        // made H.264: the frames up to the target (exact) or its keyframe, in a chain of their own
+        // made H.264, in a chain of its own: the frame of the target (exact), or its keyframe made once for every
+        // target on it (a strip of 40 ticks on a Xiaomi GOP of 60-80 s is on one or two)
+        const madeKey = mode === 'exact' ? `h264|${target}` : `h264|${seg.id}:${kf.offset}`;
+        const shared = chains.get(madeKey);
+        if (shared) {
+          shared.keep.push({ target, index: 0, exact: false });
+          continue;
+        }
         const made = mode === 'exact' ? await this.exactAsH264(seg, kf, tsUs) : await this.framesAsH264(seg, kf, kf.tsUs, 1);
         const made264 = VionNvr.h264Meta(made);
         if (!made.length || !made264) {
           missing.push(target);
           continue;
         }
-        chains.set(`h264|${target}`, {
+        chains.set(madeKey, {
           role,
           ...made264,
           frames: made.map((f) => ({ frame: f.data, ts: f.tsUs, keyframe: f.keyframe })),

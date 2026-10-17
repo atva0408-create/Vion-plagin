@@ -183,6 +183,23 @@ async function main(): Promise<void> {
     [target],
   );
   assert.equal(trace.chains[0]!.keep[0]!.index, 0);
+  // the strip: the ticks on one keyframe share one picture made once (a strip of 40 ticks on a Xiaomi GOP was 40
+  // ffmpeg runs of the same keyframe)
+  const strip3 = await nvr.nvrTraceFrames(
+    'cam',
+    [recorded[11]!, recorded[13]!, recorded[15]!].map((ts) => ({ tMs: ts / 1000, src: 'low' }) as never),
+    'keyframe',
+  );
+  assert.equal(strip3.chains.length, 1, 'one picture for the three');
+  assert.deepEqual(
+    strip3.chains[0]!.keep.map((keep) => [keep.target, keep.index]),
+    [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ],
+  );
+  assert.equal(strip3.chains[0]!.frames[0]!.ts, keyframeBefore);
   // a playback from the middle of a GOP begins with the frame of the time: the ones before it are not made and sent
   const seek = await play('cam', target, 'low');
   assert.deepEqual([seek.frames[0]!.ts, seek.frames[0]!.keyframe], [target, true], 'from the time, a keyframe');
