@@ -235,6 +235,14 @@ async function main(): Promise<void> {
     order.push('other');
   })();
   await Promise.all([playing, reading]);
+  // the wait of a request counts the time in the queue for a place, not the time making frames: a strip of 40 pictures
+  // that took its 10 s encoding gave up on every one left the moment another reading took the place
+  type Wait = { leftMs: number };
+  const waitOf = internals as unknown as { framesAsH264(seg: SegmentRow, kf: unknown, untilUs: number, max: number, skip: undefined, wait: Wait): Promise<unknown[]> };
+  const budget: Wait = { leftMs: 10_000 };
+  const slowRead = parseKeyframes(two.keyframes)[0]!;
+  assert.ok((await waitOf.framesAsH264(two, slowRead, two.end_us, 300, undefined, budget)).length > 0, 'a whole file made');
+  assert.ok(budget.leftMs > 9_900, `nothing of the wait spent on making it: ${budget.leftMs} ms left`);
   // a scrub picture waits 10 s for a place at most, then there is none: nobody waits for one longer. The reading that
   // takes the place keeps it here: its client stands longer than a reading may wait before it is freed
   setH264Idle(600_000);

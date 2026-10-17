@@ -136,6 +136,15 @@ const TRACE_MAX_TARGETS = 60;
 /** How long a short read (a scrub picture, a trace strip, a hover excerpt) waits for a place to make H.264 in. */
 const SHORT_READ_WAIT_MS = 10_000;
 
+/** What is left of a request's wait for places: only the time in the queue counts, not the time making frames. */
+interface ShortReadWait {
+  leftMs: number;
+}
+
+function waiting(wait: ShortReadWait): { waitMs: number; waited: (ms: number) => void } {
+  return { waitMs: wait.leftMs, waited: (ms) => (wait.leftMs = Math.max(0, wait.leftMs - ms)) };
+}
+
 interface ManagedCamera {
   device: CameraDevice;
   recorders: Map<Role, Recorder>;
@@ -1692,13 +1701,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     untilUs: number,
     max = 300,
     skip?: { startUs: number; maxBefore: number },
-    deadline = Date.now() + SHORT_READ_WAIT_MS,
+    wait: ShortReadWait = { leftMs: SHORT_READ_WAIT_MS },
   ): Promise<Frame[]> {
     const out: Frame[] = [];
-    // leaving the loop ends ffmpeg: only as much is encoded as is asked for. A short read waits for a place until the
-    // deadline of its request at most: nobody waits for a scrub picture longer
-    const waitMs = Math.max(0, deadline - Date.now());
-    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, { ...(await this.h264()), ...skip, waitMs })) {
+    // leaving the loop ends ffmpeg: only as much is encoded as is asked for. A short read waits for a place what is left
+    // of its request's wait at most: nobody waits for a scrub picture longer
+    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, { ...(await this.h264()), ...skip, ...waiting(wait) })) {
       if (frame.audio) continue;
       out.push(frame);
       if (frame.tsUs >= untilUs || out.length >= max) break;
@@ -1711,13 +1719,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * than 300 are before it (keyframes far apart: 60-80 s on the Xiaomi), the nearer keyframe alone, the one after it or
    * `kf`, as readExact gives the recording as it is.
    */
-  private async exactAsH264(seg: SegmentRow, kf: Keyframe, tsUs: number, max = 300, deadline = Date.now() + SHORT_READ_WAIT_MS): Promise<Frame[]> {
-    if (tsUs <= kf.tsUs) return this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, deadline);
-    const exact = await this.framesAsH264(seg, kf, tsUs, 1, { startUs: tsUs, maxBefore: max }, deadline);
+  private async exactAsH264(seg: SegmentRow, kf: Keyframe, tsUs: number, max = 300, wait: ShortReadWait = { leftMs: SHORT_READ_WAIT_MS }): Promise<Frame[]> {
+    if (tsUs <= kf.tsUs) return this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, wait);
+    const exact = await this.framesAsH264(seg, kf, tsUs, 1, { startUs: tsUs, maxBefore: max }, wait);
     if (exact.length) return exact;
     const after = parseKeyframes(seg.keyframes).find((next) => next.tsUs > tsUs);
     const nearer = after && after.tsUs - tsUs < tsUs - kf.tsUs ? after : kf;
-    return this.framesAsH264(seg, nearer, nearer.tsUs, 1, undefined, deadline);
+    return this.framesAsH264(seg, nearer, nearer.tsUs, 1, undefined, wait);
   }
 
   /** What a client is told of frames made H.264, from their first keyframe. */
@@ -1782,8 +1790,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     h264Only = false,
   ): Promise<{ frames: NvrFrame[]; videoCodec: string; codecString?: string; width?: number; height?: number; noData?: boolean }> {
     await this.ready;
-    // one wait for a place for the whole request: every frame of it waiting its own 10 s was 400 s for a strip of 40
-    const deadline = Date.now() + SHORT_READ_WAIT_MS;
+    // one wait for places for the whole request: every frame of it waiting its own 10 s was 400 s for a strip of 40
+    const wait: ShortReadWait = { leftMs: SHORT_READ_WAIT_MS };
     const { role } = this.readRole(cameraId, 'low', startUs);
     // asked of each file read, not of the event's start: a recording made by events can begin long after it
     const madeOf = (seg: SegmentRow) => h264Only && seg.codec === 'h265';
@@ -1835,7 +1843,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         const reading = made
           ? readFramesAsH264(this.store.located(seg).path, at, {
               ...made,
-              waitMs: Math.max(0, deadline - Date.now()),
+              ...waiting(wait),
               keyframes: parseKeyframes(seg.keyframes),
               ...(i === 0 ? { startUs: Math.max(startUs, seg.start_us) } : {}),
             })
@@ -1866,7 +1874,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (!kf || seen.has(`${seg.id}:${kf.offset}`)) continue;
       seen.add(`${seg.id}:${kf.offset}`);
       const made = madeOf(seg);
-      const frame = made ? (await this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, deadline))[0] : await readKeyframe(this.store.located(seg), kf);
+      const frame = made ? (await this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, wait))[0] : await readKeyframe(this.store.located(seg), kf);
       if (!frame) continue;
       meta ??= made ? VionNvr.h264Meta([frame]) : { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
       frames.push({ frame: frame.data, ts: frame.tsUs, keyframe: true });
@@ -1886,8 +1894,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     mode: 'exact' | 'keyframe' = 'keyframe',
   ): Promise<{ chains: TraceChain[]; missing?: number[]; noData?: boolean }> {
     await this.ready;
-    // one wait for a place for the whole request: every frame of it waiting its own 10 s was 400 s for a strip of 40
-    const deadline = Date.now() + SHORT_READ_WAIT_MS;
+    // one wait for places for the whole request: every frame of it waiting its own 10 s was 400 s for a strip of 40
+    const wait: ShortReadWait = { leftMs: SHORT_READ_WAIT_MS };
     const chains = new Map<string, TraceChain>();
     const missing: number[] = [];
     const seen = new Map<string, number>();
@@ -1910,7 +1918,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           shared.keep.push({ target, index: 0, exact: false });
           continue;
         }
-        const made = mode === 'exact' ? await this.exactAsH264(seg, kf, tsUs, 300, deadline) : await this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, deadline);
+        const made = mode === 'exact' ? await this.exactAsH264(seg, kf, tsUs, 300, wait) : await this.framesAsH264(seg, kf, kf.tsUs, 1, undefined, wait);
         const made264 = VionNvr.h264Meta(made);
         if (!made.length || !made264) {
           missing.push(target);

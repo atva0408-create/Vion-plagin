@@ -231,6 +231,8 @@ export interface H264ReadOptions {
   place?: H264Place;
   /** how long to wait for a place at most (a short read nobody waits for long); no frames past it */
   waitMs?: number;
+  /** told how long the wait for a place took */
+  waited?: (ms: number) => void;
 }
 
 /**
@@ -333,7 +335,10 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
       throw error;
     }
     const place = opts.place ?? new H264Place();
-    if (!(await place.take(opts.signal, opts.waitMs))) {
+    const asked = Date.now();
+    const got = await place.take(opts.signal, opts.waitMs);
+    opts.waited?.(Date.now() - asked);
+    if (!got) {
       await fh.close();
       return;
     }
