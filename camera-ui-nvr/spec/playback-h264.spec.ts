@@ -31,9 +31,9 @@ const FFMPEG = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
 const noop = () => undefined;
 const realNow = Date.now;
 
-function stream(codec: 'libx264' | 'libx265', size = '640x360', seconds = 3): Buffer {
-  const path = join(dir, `${codec}-${size}-${seconds}.ts`);
-  const params = codec === 'libx265' ? ['-x265-params', 'keyint=10:min-keyint=10:bframes=0:log-level=error'] : ['-g', '10', '-bf', '0'];
+function stream(codec: 'libx264' | 'libx265', size = '640x360', seconds = 3, keyint = 10): Buffer {
+  const path = join(dir, `${codec}-${size}-${seconds}-${keyint}.ts`);
+  const params = codec === 'libx265' ? ['-x265-params', `keyint=${keyint}:min-keyint=${keyint}:bframes=0:log-level=error`] : ['-g', '10', '-bf', '0'];
   const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${size}:rate=10`, '-t', String(seconds), '-c:v', codec, ...params, '-f', 'mpegts', path], {
     encoding: 'utf8',
   });
@@ -59,7 +59,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -260,6 +260,25 @@ async function main(): Promise<void> {
   const lowCount = (await times(throughLow)).length;
   const primed = through.frames.filter((frame) => frame.ts <= throughLowEnd).length - lowCount;
   assert.ok(primed >= 0 && primed <= 10, `from its keyframe before the moment, not from the start of the file: ${primed} sent again`);
+
+  // ---- keyframes far apart (seen: 60-80 s on the Xiaomi): a fine scrub or an exact trace frame past 300 frames from
+  // its keyframe gets the nearer keyframe, as the H.265 recording gives it (readExact). It got the 300th frame, 15 s
+  // from the time asked for in the review, and 300 frames encoded for it
+  const sparse = await record('sparse', 'high', stream('libx265', '640x360', 40, 350), at + 100_000, 40);
+  const sparseKeyframes = parseKeyframes(sparse.keyframes);
+  assert.equal(sparseKeyframes.length, 2, 'a keyframe at the start and one 35 s on');
+  const farTarget = sparseKeyframes[0]!.tsUs + 31_000_000;
+  const asIs = await nvr.nvrScrub('sparse', farTarget, true, 'high');
+  const madeFar = await nvr.nvrScrub('sparse', farTarget, true, 'low');
+  assert.equal(madeFar.videoCodec, 'h264');
+  assert.deepEqual(
+    madeFar.frames!.map((frame) => frame.ts),
+    asIs.frames!.map((frame) => frame.ts),
+    'the frame the recording as it is gives',
+  );
+  assert.deepEqual(asIs.frames!.map((frame) => frame.ts), [sparseKeyframes[1]!.tsUs], 'the nearer keyframe, 4 s on');
+  const farTrace = await nvr.nvrTraceFrames('sparse', [{ tMs: farTarget / 1000, src: 'low' } as never], 'exact');
+  assert.equal(farTrace.chains[0]!.frames.at(-1)!.ts, sparseKeyframes[1]!.tsUs, 'the trace frame too');
 
   // ---- a lighter stream recorded in H.265 too (a camera recording its high and mid streams, both H.265): that one,
   // made H.264. It went as H.265 and the player had nothing left to fall back to

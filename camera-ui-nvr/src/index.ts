@@ -1694,6 +1694,18 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return out;
   }
 
+  /**
+   * The frames from `kf` up to the one at `tsUs` made H.264, as readExact reads them: when 300 frames do not reach it
+   * (keyframes far apart: 60-80 s on the Xiaomi), the nearer keyframe alone, the one after it or `kf`.
+   */
+  private async exactAsH264(seg: SegmentRow, kf: Keyframe, tsUs: number, max = 300): Promise<Frame[]> {
+    const gop = await this.framesAsH264(seg, kf, tsUs, max);
+    if (gop.length < max || gop.at(-1)!.tsUs >= tsUs) return gop;
+    const after = parseKeyframes(seg.keyframes).find((next) => next.tsUs > tsUs);
+    const nearer = after && after.tsUs - tsUs < tsUs - kf.tsUs ? await this.framesAsH264(seg, after, after.tsUs, 1) : [];
+    return nearer.length ? nearer : [gop[0]];
+  }
+
   /** What a client is told of frames made H.264, from their first keyframe. */
   private static h264Meta(frames: Frame[]): { videoCodec: string; codecString: string; width: number; height: number } | undefined {
     const first = frames.find((frame) => frame.keyframe);
@@ -1728,7 +1740,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const kf = keyframeAtOrBefore(seg, tsUs);
     if (!kf) return { ts: tsUs, videoCodec: '', noData: true };
     if (asH264 && seg.codec === 'h265') {
-      const made = await this.framesAsH264(seg, kf, fine ? tsUs : kf.tsUs);
+      const made = fine ? await this.exactAsH264(seg, kf, tsUs) : await this.framesAsH264(seg, kf, kf.tsUs, 1);
       const made264 = VionNvr.h264Meta(made);
       if (!made.length || !made264) return { ts: tsUs, videoCodec: '', noData: true };
       return fine
@@ -1864,7 +1876,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       }
       if (asH264 && seg.codec === 'h265') {
         // made H.264: the frames up to the target (exact) or its keyframe, in a chain of their own
-        const made = await this.framesAsH264(seg, kf, mode === 'exact' ? tsUs : kf.tsUs, mode === 'exact' ? 300 : 1);
+        const made = mode === 'exact' ? await this.exactAsH264(seg, kf, tsUs) : await this.framesAsH264(seg, kf, kf.tsUs, 1);
         const made264 = VionNvr.h264Meta(made);
         if (!made.length || !made264) {
           missing.push(target);
