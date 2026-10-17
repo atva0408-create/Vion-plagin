@@ -14,7 +14,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import VionNvr from '../src/index.js';
 import { probeCodec } from '../src/media/codec.js';
-import { h264Slots, LIBX264, readFramesAsH264, setH264Slots } from '../src/media/transcode.js';
+import { h264Slots, LIBX264, readFramesAsH264, setH264Idle, setH264Slots } from '../src/media/transcode.js';
 import { readFrames } from '../src/reader.js';
 import { parseKeyframes } from '../src/store.js';
 import { Recorder } from '../src/recorder.js';
@@ -235,7 +235,9 @@ async function main(): Promise<void> {
     order.push('other');
   })();
   await Promise.all([playing, reading]);
-  // a scrub picture waits 10 s for a place at most, then there is none: nobody waits for one longer
+  // a scrub picture waits 10 s for a place at most, then there is none: nobody waits for one longer. The reading that
+  // takes the place keeps it here: its client stands longer than a reading may wait before it is freed
+  setH264Idle(600_000);
   const busyReading = readFramesAsH264(internals.store.located(two).path, parseKeyframes(two.keyframes)[0]!, { ffmpegPath: FFMPEG, encoder: LIBX264 })[
     Symbol.asyncIterator
   ]();
@@ -244,7 +246,22 @@ async function main(): Promise<void> {
   const waitedScrub = await Promise.race([nvr.nvrScrub('two', two.start_us + 500_000, false, 'h264'), sleep(20_000).then(() => undefined)]);
   assert.ok(waitedScrub?.noData, 'no picture while every place is taken');
   assert.ok(Date.now() - scrubAsked >= 9000, 'after waiting for one');
+  // one wait for a whole request: a strip of ticks on three keyframes, or an exact frame, is given up after 10 s, not
+  // 10 s a tick (400 s for a strip of 40) or twice for an exact one
+  const twoKeyframes = parseKeyframes(two.keyframes);
+  const stripAsked = Date.now();
+  const waitedStrip = await nvr.nvrTraceFrames(
+    'two',
+    twoKeyframes.slice(0, 3).map((kf) => ({ tMs: kf.tsUs / 1000, src: 'h264' }) as never),
+    'keyframe',
+  );
+  assert.ok(waitedStrip.noData, 'no pictures while every place is taken');
+  assert.ok(Date.now() - stripAsked < 15_000, `the strip gave up once: ${Date.now() - stripAsked} ms`);
+  const exactAsked = Date.now();
+  await nvr.nvrTraceFrames('two', [{ tMs: (twoKeyframes[0]!.tsUs + 500_000) / 1000, src: 'h264' } as never], 'exact');
+  assert.ok(Date.now() - exactAsked < 15_000, `an exact frame too: ${Date.now() - exactAsked} ms`);
   await busyReading.return(undefined);
+  setH264Idle(30_000);
   setH264Slots(machineSlots);
   assert.deepEqual(order, ['playback', 'other'], 'the playback was not cut at the end of its first file');
   const across = await nvr.nvrPreviewFrames('two', one.end_us - 1_000_000, two.end_us, 12, 'motion', 3_000_000, true);
