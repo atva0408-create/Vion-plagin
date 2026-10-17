@@ -1748,8 +1748,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     h264Only = false,
   ): Promise<{ frames: NvrFrame[]; videoCodec: string; codecString?: string; width?: number; height?: number; noData?: boolean }> {
     await this.ready;
-    const { role, asH264: readAs } = this.readRole(cameraId, 'low', startUs);
-    const asH264 = h264Only && readAs;
+    const { role } = this.readRole(cameraId, 'low', startUs);
+    // asked of each file read, not of the event's start: a recording made by events can begin long after it
+    const madeOf = (seg: SegmentRow) => h264Only && seg.codec === 'h265';
     const frames: NvrFrame[] = [];
     let meta: { videoCodec: string; codecString: string; width: number; height: number } | undefined;
     if (!Number.isFinite(startUs) || !Number.isFinite(endUs) || endUs <= startUs) return { frames, videoCodec: '', noData: true };
@@ -1788,7 +1789,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         if (meta && (meta.codecString !== seg.codec_string || meta.width !== seg.width || meta.height !== seg.height)) break;
         const at = i === 0 ? from : keyframeAtOrBefore(seg, seg.start_us);
         if (!at) continue;
-        const made = asH264 && seg.codec === 'h265' ? await this.h264() : undefined;
+        const made = madeOf(seg) ? await this.h264() : undefined;
         if (!made) meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
         for await (const frame of made ? readFramesAsH264(this.store.located(seg).path, at, made) : readFrames(this.store.located(seg), at)) {
           if (frame.audio) continue;
@@ -1815,7 +1816,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const kf = keyframeAtOrBefore(seg, t);
       if (!kf || seen.has(`${seg.id}:${kf.offset}`)) continue;
       seen.add(`${seg.id}:${kf.offset}`);
-      const made = asH264 && seg.codec === 'h265';
+      const made = madeOf(seg);
       const frame = made ? (await this.framesAsH264(seg, kf, kf.tsUs, 1))[0] : await readKeyframe(this.store.located(seg), kf);
       if (!frame) continue;
       meta ??= made ? VionNvr.h264Meta([frame]) : { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };

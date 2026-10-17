@@ -185,6 +185,10 @@ async function main(): Promise<void> {
   assert.ok(hover.frames.length >= 15, `hover frames ${hover.frames.length}`);
   assert.ok(hover.frames.every((frame) => recorded.includes(frame.ts)), 'at recorded times');
   assert.equal((await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 12, 'motion', 2_000_000)).videoCodec, 'h265', 'a client with H.265: as it is');
+  // an event whose recording begins 40 s after it (a recording made by events): the excerpt found later is made too
+  const lateEvent = await nvr.nvrPreviewFrames('cam', cam.start_us - 40_000_000, cam.end_us, 12, 'motion', 2_000_000, true);
+  assert.equal(lateEvent.videoCodec, 'h264', 'the excerpt of a recording that begins after the event, made H.264');
+  assert.ok(lateEvent.frames.length > 0);
   const strip = await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 4, 'keyframes', 4_000_000, true);
   assert.equal(strip.videoCodec, 'h264');
   assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
