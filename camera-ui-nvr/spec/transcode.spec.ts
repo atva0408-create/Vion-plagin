@@ -4,7 +4,7 @@
 // Needs ffmpeg with libx265 and libx264 on PATH (or CAMERAUI_FFMPEG_PATH). Run: npx tsx spec/transcode.spec.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -65,6 +65,31 @@ const segment = { path, codec: 'h265', video_pid: scan.videoPid, audio_pid: scan
 assert.equal(scan.codec, 'h265');
 assert.ok(keyframes.length >= 4, `keyframes ${keyframes.length}`);
 
+// the same as the recorder lays it out: the stream tables (PAT, PMT) once at the start of the file, not before every
+// keyframe as ffmpeg writes them (recorder.ts writes them when it opens a file)
+const recorderPath = join(dir, 'recorder-layout.ts');
+const packets: Buffer[] = [];
+let tables = 0;
+const whole = readFileSync(path);
+for (let at = 0; at + 188 <= whole.length; at += 188) {
+  const packet = whole.subarray(at, at + 188);
+  const pid = ((packet[1]! & 0x1f) << 8) | packet[2]!;
+  // PID 0 is the PAT; the PMT is the other table ffmpeg writes, 0x1000
+  if (pid === 0 || pid === 0x1000) {
+    if (tables++ >= 2) continue;
+  }
+  packets.push(packet);
+}
+writeFileSync(recorderPath, Buffer.concat(packets));
+const recorderKeyframes: { offset: number; tsUs: number }[] = [];
+const recorderScan = new TsDemuxer((au) => {
+  if (au.keyframe) recorderKeyframes.push({ offset: au.offset, tsUs: keyframes[recorderKeyframes.length]![1] });
+});
+recorderScan.push(readFileSync(recorderPath), 0);
+recorderScan.flush();
+assert.equal(recorderKeyframes.length, keyframes.length);
+assert.ok(tables > 4, 'ffmpeg wrote the tables again in the file, the test file has them once');
+
 const collect = async (frames: AsyncIterable<Frame>) => {
   const out: Frame[] = [];
   for await (const frame of frames) out.push(frame);
@@ -103,6 +128,25 @@ async function main(): Promise<void> {
   assert.deepEqual(
     fromMiddle.map((frame) => frame.tsUs),
     recorded.filter((frame) => frame.tsUs >= middle.tsUs).map((frame) => frame.tsUs),
+  );
+
+  // ---- the file being written, from a keyframe in its middle, as the recorder lays it out: the first frame comes at
+  // once. Without the tables ffmpeg looked through 5 MB for the streams first: about a minute of a camera's recording
+  // at the live tip (39 s at 1.1 Mbit/s in the review)
+  const followUntil = Date.now() + 4000;
+  const askedAt = Date.now();
+  let firstAfter: number | undefined;
+  const live: Frame[] = [];
+  for await (const frame of readFramesAsH264(recorderPath, recorderKeyframes[2]!, { ffmpegPath: FFMPEG, encoder: LIBX264, follow: () => Date.now() < followUntil })) {
+    firstAfter ??= Date.now() - askedAt;
+    live.push(frame);
+  }
+  assert.ok(firstAfter !== undefined && firstAfter < 2500, `the first frame of the file being written after ${firstAfter} ms`);
+  assert.equal(live[0]!.tsUs, recorderKeyframes[2]!.tsUs, 'that keyframe, at its time');
+  assert.deepEqual(
+    video(live).map((frame) => frame.tsUs),
+    recorded.filter((frame) => frame.tsUs >= recorderKeyframes[2]!.tsUs).map((frame) => frame.tsUs),
+    'and every frame after it',
   );
 
   // ---- a client gone after a few frames: it ends at once
