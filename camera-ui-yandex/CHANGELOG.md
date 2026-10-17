@@ -1,3 +1,14 @@
+## [0.2.3]
+
+- ViON learns whether each station said a notification: one that is off, offline, not signed in or that Yandex did not answer is told back, and ViON 2.6.5 sends the notification another way (a zone rule's notice to Telegram). Before, a station that did not speak was counted as one that did
+- A station Yandex counts as offline is not asked: it took 5 s at home and 15 s in the cloud to fail
+- A text the station got in the home network and did not confirm is not said again through the cloud: the station could say it twice
+- A station that did not confirm a text is not asked in the home network for 3 minutes: the next notifications go through the cloud, which tells whether it spoke
+- A connection to a station kept from before is checked with a ping first: a dead one (the station restarted, the Wi-Fi dropped) no longer swallows every notification until it closes
+- A station offline in a list read over a minute ago is looked up again before a notification is refused to it
+- The network failing before the cloud scenario ran («fetch failed: other side closed») is tried once more after 2 s; after the scenario was asked to run, never
+- ViON's assistant sees whether a station is online
+
 ## [0.2.2]
 
 - A station speaks notifications again. Through the home network: a station that names its link-local address (169.254.x.x) first is reached on its home network address, the link-local one timed out. Through the cloud: the token of the Smart Home is read from yandex.ru/iot, yandex.ru/quasar hangs up without an answer

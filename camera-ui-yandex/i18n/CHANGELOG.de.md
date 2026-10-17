@@ -1,3 +1,14 @@
+## [0.2.3]
+
+- ViON erfährt, ob jede Station eine Benachrichtigung gesprochen hat: eine ausgeschaltete, nicht verbundene, nicht angemeldete oder eine, für die Yandex nicht antwortete, wird zurückgemeldet, und ViON 2.6.5 schickt die Benachrichtigung anders (eine Zonenregel an Telegram). Bisher galt eine stumme Station als eine, die gesprochen hat
+- Eine Station, die Yandex als offline führt, wird nicht gefragt: bis zum Fehler vergingen 5 s im Heimnetz und 15 s über die Cloud
+- Ein Text, den die Station im Heimnetz bekam und nicht bestätigte, wird nicht noch einmal über die Cloud gesagt: die Station konnte ihn zweimal sagen
+- Eine Station, die einen Text nicht bestätigte, wird 3 Minuten lang nicht im Heimnetz gefragt: die nächsten Benachrichtigungen gehen über die Cloud, die meldet, ob sie gesprochen hat
+- Eine Verbindung zur Station von früher wird zuerst mit einem Ping geprüft: eine tote (Station neu gestartet, WLAN weg) verschluckt nicht mehr jede Benachrichtigung, bis sie schließt
+- Eine Station, die in einer über eine Minute alten Liste offline ist, wird vor einer Absage neu nachgeschlagen
+- Ein Netzwerkfehler, bevor das Cloud-Szenario lief («fetch failed: other side closed»), wird einmal nach 2 s wiederholt; nach der Bitte um den Start nie
+- Der Assistent von ViON sieht, ob eine Station verbunden ist
+
 ## [0.2.2]
 
 - Eine Station spricht Benachrichtigungen wieder. Über das Heimnetz: eine Station, die zuerst ihre Link-Local-Adresse (169.254.x.x) nennt, wird über ihre Heimnetzadresse erreicht, an der Link-Local-Adresse lief die Wartezeit ab. Über die Cloud: das Token des Smart Home wird von yandex.ru/iot gelesen, yandex.ru/quasar legt ohne Antwort auf

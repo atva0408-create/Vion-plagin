@@ -1,3 +1,8 @@
+## [0.5.3]
+
+- ViON learns whether each camera speaker said a notification: speaking off, the quiet hours of VOICE, a text too long, no talk channel, busy or failed is told back, and ViON 2.6.5 sends the notification another way
+- Each speaker is listed with its camera: ViON 2.6.5 tells the speaker of the camera a notification is about when its route names the camera speakers
+
 ## [0.5.2]
 
 - At its start VOICE no longer says a camera cannot speak before the server has looked at the camera's stream: the talk channel is known only then, a while after a restart, and the screen time switched on at once but the warning «cannot speak here» stood alone in the log. A camera whose stream has no talk channel is still told

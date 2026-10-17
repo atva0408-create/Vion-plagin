@@ -1,3 +1,8 @@
+## [0.5.3]
+
+- ViON erfährt, ob jeder Kameralautsprecher eine Benachrichtigung gesprochen hat: ausgeschaltet, Ruhezeiten von VOICE, zu langer Text, kein Sprechkanal, belegt oder fehlgeschlagen wird zurückgemeldet, und ViON 2.6.5 schickt die Benachrichtigung anders
+- Jeder Lautsprecher wird mit seiner Kamera gelistet: ViON 2.6.5 sagt die Benachrichtigung auf dem Lautsprecher der Kamera, um die es geht, wenn ihr Weg die Kameralautsprecher nennt
+
 ## [0.5.2]
 
 - Beim Start sagt VOICE nicht mehr, dass eine Kamera nicht sprechen kann, bevor der Server ihren Stream geprüft hat: der Sprechkanal ist erst danach bekannt, eine Weile nach einem Neustart. Die Bildschirmzeit schaltete sich dann sofort ein, die Warnung «cannot speak here» stand aber unerklärt im Protokoll. Für eine Kamera, deren Stream keinen Sprechkanal hat, warnt VOICE weiterhin
