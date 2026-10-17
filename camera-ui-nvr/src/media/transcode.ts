@@ -10,7 +10,7 @@ import { open } from 'node:fs/promises';
 import { availableParallelism, setPriority } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { ptsDelta, TS_PACKET, TsDemuxer } from './ts-demux.js';
+import { ptsDelta, readTimestamp, TS_PACKET, TsDemuxer } from './ts-demux.js';
 
 import type { FileHandle } from 'node:fs/promises';
 import type { Writable } from 'node:stream';
@@ -181,6 +181,13 @@ export interface H264ReadOptions {
   maxWidth?: number;
   /** the file's keyframe index: the times of its frames are anchored on each entry, as readFrames does */
   keyframes?: Keyframe[];
+  /**
+   * The frames before this time are decoded, not made, and none is given: the first is the frame of the time, made a
+   * keyframe. A seek far into a GOP had every frame from its keyframe made first (1600 for 80 s of a Xiaomi GOP).
+   */
+  startUs?: number;
+  /** more frames than this before `startUs`: no frames at all (the caller takes a nearer keyframe, as readExact does) */
+  maxBefore?: number;
 }
 
 /**
@@ -208,6 +215,16 @@ async function streamTables(fh: FileHandle): Promise<Buffer[]> {
   return packets.length === 2 ? packets : [];
 }
 
+/** The PTS of the access unit that begins at `offset` (a keyframe of the index), read from its PES header. */
+async function ptsAt(fh: FileHandle, offset: number): Promise<number | undefined> {
+  const packet = Buffer.alloc(TS_PACKET);
+  const { bytesRead } = await fh.read(packet, 0, TS_PACKET, offset);
+  if (bytesRead < TS_PACKET || packet[0] !== 0x47 || !(packet[1] & 0x40)) return undefined;
+  const at = 4 + (packet[3] & 0x20 ? 1 + packet[4] : 0);
+  if (at + 14 > TS_PACKET || packet[at] !== 0 || packet[at + 1] !== 0 || packet[at + 2] !== 1 || !(packet[at + 7] & 0x80)) return undefined;
+  return readTimestamp(packet, at + 9);
+}
+
 /** The file from a keyframe on into ffmpeg's input, at its pace; the end of the file ends it unless it is followed. */
 async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264ReadOptions, tap?: TsDemuxer): Promise<void> {
   let position = from.offset;
@@ -229,6 +246,7 @@ async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264R
         await sleep(250);
         continue;
       }
+      tap?.flush();
       input.end();
       return;
     }
@@ -290,6 +308,11 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
 
 async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
   const width = opts.maxWidth ?? MAX_WIDTH;
+  // the PTS of the frame to begin with: the frames before it go through the decoder only (ffmpeg's select drops them)
+  const fromPts = opts.startUs !== undefined && opts.startUs > from.tsUs ? await ptsAt(fh, from.offset) : undefined;
+  const startPts = fromPts === undefined ? undefined : fromPts + Math.round(((opts.startUs! - from.tsUs) * 90) / 1000);
+  // half a millisecond short of it: the time of a frame is its PTS rounded to the microsecond
+  const select = startPts !== undefined && startPts - 45 < 2 ** 33 ? `select=gte(pts\\,${startPts - 45}),` : '';
   const proc = spawn(
     opts.ffmpegPath,
     [
@@ -311,7 +334,7 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
       '0:v:0',
       ...(opts.audio ? ['-map', '0:a:0?', '-c:a', 'copy'] : ['-an']),
       '-vf',
-      `scale='min(${width},iw)':-2:flags=fast_bilinear${opts.encoder.upload}`,
+      `${select}scale='min(${width},iw)':-2:flags=fast_bilinear${opts.encoder.upload}`,
       // the frames as they come: one out for every one in, at its own time
       '-fps_mode',
       'passthrough',
@@ -349,39 +372,60 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
   // file. The keyframes are found in what is fed, by their offsets, and met in the output in their order by their PTS:
   // with -copyts those are the input's moved by the muxer's delay, a jump of the camera's clock included (a few ms off
   // after a jump back), while ffmpeg's own correction of a jump made them continuous and no longer theirs
-  let base: { pts: number; us: number } | undefined;
   const index = new Map((opts.keyframes ?? []).map((kf) => [kf.offset, kf.tsUs]));
+  // what is fed, as it is fed: the PTS of the keyframe fed first, of the frame given first (the one of `startUs`), the
+  // keyframes of the index with their times, and how many of them came up to the frame given first
   let fedFirst: number | undefined;
+  let startIn: number | undefined;
   const anchors: { pts: number; us: number }[] = [];
-  const tap = index.size
-    ? new TsDemuxer((au) => {
-        if (!au.keyframe) return;
-        fedFirst ??= au.pts;
-        const us = index.get(au.offset);
-        if (us !== undefined) anchors.push({ pts: au.pts, us });
-      })
-    : undefined;
+  let passed = 0;
+  let before = 0;
+  let tooFar = false;
+  const tap = new TsDemuxer((au) => {
+    if (fedFirst === undefined) {
+      if (!au.keyframe) return;
+      fedFirst = au.pts;
+    }
+    const us = au.keyframe ? index.get(au.offset) : undefined;
+    if (us !== undefined) anchors.push({ pts: au.pts, us });
+    if (startIn !== undefined) return;
+    if (startPts === undefined || ptsDelta(startPts - 45, au.pts) >= 0) {
+      startIn = au.pts;
+      passed = anchors.length;
+    } else if (opts.maxBefore !== undefined && ++before > opts.maxBefore) {
+      tooFar = true;
+      proc.kill('SIGKILL');
+    }
+  });
+  // The time of a frame is that of the keyframe it was decoded from, the one fed first or a later keyframe of the
+  // index, and its PTS distance from it, as readFrames does. The recorder moves its clock in the middle of a file on a
+  // drift or a jump of the camera's PTS (recorder.ts), and frames made H.264 kept the first time for the whole file.
+  // The keyframes are met in the output in their order by their PTS: with -copyts those are the input's moved by the
+  // muxer's delay, a jump of the camera's clock included (a few ms off after a jump back), while ffmpeg's own
+  // correction of a jump made them continuous and no longer theirs.
+  let anchor: { pts: number; us: number } | undefined;
   // the output PTS less the input's, the next keyframe of the index to meet, the PTS of the frame before and the
   // distance between two frames (not over a jump of the clock)
   let shift: number | undefined;
   let next = 0;
   let previous: number | undefined;
   let interval = 0;
-  const at = (pts: number) => base!.us + Math.round((ptsDelta(base!.pts, pts) / 90) * 1000);
+  const at = (pts: number) => anchor!.us + Math.round((ptsDelta(anchor!.pts, pts - shift!) / 90) * 1000);
   const demux = new TsDemuxer(
     (au) => {
-      if (!base) {
-        base = { pts: au.pts, us: from.tsUs };
-        if (fedFirst !== undefined) shift = au.pts - fedFirst;
-        while (next < anchors.length && anchors[next].pts === fedFirst) next++;
-      } else if (shift !== undefined) {
+      if (shift === undefined) {
+        const first = startIn ?? fedFirst ?? au.pts;
+        shift = au.pts - first;
+        next = passed;
+        anchor = passed > 0 ? anchors[passed - 1] : { pts: fedFirst ?? au.pts, us: from.tsUs };
+      } else {
         // within half a frame: a keyframe is met where it is, not at a neighbour. 20 ms at least: after a jump of the
         // camera's clock back ffmpeg moves the PTS by 18 ms (1592 of 90 kHz) all the same
         const step = ptsDelta(previous ?? au.pts, au.pts);
         if (step > 0 && step <= 2 * 90_000) interval = step;
         const near = Math.max(1800, interval / 2);
         while (next < anchors.length && Math.abs(ptsDelta(anchors[next].pts + shift, au.pts)) <= near) {
-          base = { pts: au.pts, us: anchors[next].us };
+          anchor = anchors[next];
           shift = au.pts - anchors[next].pts;
           next++;
         }
@@ -392,9 +436,9 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     undefined,
     opts.audio
       ? (au) => {
-          if (!base) return;
+          if (shift === undefined) return;
           const tsUs = at(au.pts);
-          if (tsUs >= from.tsUs) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+          if (tsUs >= (opts.startUs ?? from.tsUs)) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
         }
       : undefined,
   );
@@ -417,7 +461,10 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
   });
   proc.once('close', (code) => {
     demux.flush();
-    if (code !== 0 && !opts.signal?.aborted && !failure) failure = new Error(`ffmpeg made no H.264 of ${path} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`);
+    // too far from the keyframe: ended here on purpose, no frames and no failure
+    if (code !== 0 && !opts.signal?.aborted && !failure && !tooFar) {
+      failure = new Error(`ffmpeg made no H.264 of ${path} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`);
+    }
     ended = true;
     notify();
   });

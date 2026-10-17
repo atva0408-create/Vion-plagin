@@ -165,21 +165,35 @@ async function main(): Promise<void> {
   assert.match(coarse.codecString!, /^avc1\./);
   assert.equal(coarse.ts, keyframeBefore, 'the keyframe before the time');
   assert.ok(probeCodec(Buffer.from(coarse.frame!), 'h264'));
+  // the frames from the keyframe to the time are decoded, not made: the frame of the time alone, made a keyframe
   const fine = await nvr.nvrScrub('cam', target, true, 'low');
   assert.equal(fine.videoCodec, 'h264');
   assert.deepEqual(
-    fine.frames!.map((frame) => frame.ts),
-    recorded.filter((ts) => ts >= keyframeBefore && ts <= target),
-    'from the keyframe up to the time',
+    fine.frames!.map((frame) => [frame.ts, frame.keyframe]),
+    [[target, true]],
+    'the frame of the time alone',
   );
   assert.equal((await nvr.nvrScrub('cam', target, true, 'high')).videoCodec, 'h265', 'asked as it is: as it is');
 
   const trace = await nvr.nvrTraceFrames('cam', [{ tMs: target / 1000, src: 'low' } as never], 'exact');
   assert.equal(trace.chains.length, 1);
   assert.equal(trace.chains[0]!.videoCodec, 'h264');
-  assert.equal(trace.chains[0]!.frames.at(-1)!.ts, target);
-  assert.equal(trace.chains[0]!.keep[0]!.index, trace.chains[0]!.frames.length - 1);
+  assert.deepEqual(
+    trace.chains[0]!.frames.map((frame) => frame.ts),
+    [target],
+  );
+  assert.equal(trace.chains[0]!.keep[0]!.index, 0);
+  // a playback from the middle of a GOP begins with the frame of the time: the ones before it are not made and sent
+  const seek = await play('cam', target, 'low');
+  assert.deepEqual([seek.frames[0]!.ts, seek.frames[0]!.keyframe], [target, true], 'from the time, a keyframe');
+  assert.deepEqual(
+    seek.frames.map((frame) => frame.ts),
+    recorded.filter((ts) => ts >= target),
+  );
 
+  // an excerpt from the middle of a GOP begins with the frame of the event's start, the pre-roll decoded only
+  const midHover = await nvr.nvrPreviewFrames('cam', target, cam.end_us, 12, 'motion', 1_000_000, true);
+  assert.deepEqual([midHover.frames[0]!.ts, midHover.frames[0]!.keyframe], [target, true], 'the excerpt begins at the event');
   const hover = await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 12, 'motion', 2_000_000, true);
   assert.equal(hover.videoCodec, 'h264');
   assert.ok(hover.frames.length >= 15, `hover frames ${hover.frames.length}`);
@@ -259,7 +273,7 @@ async function main(): Promise<void> {
   );
   const lowCount = (await times(throughLow)).length;
   const primed = through.frames.filter((frame) => frame.ts <= throughLowEnd).length - lowCount;
-  assert.ok(primed >= 0 && primed <= 10, `from its keyframe before the moment, not from the start of the file: ${primed} sent again`);
+  assert.equal(primed, 0, 'none of the frames sent before is sent again');
 
   // ---- keyframes far apart (seen: 60-80 s on the Xiaomi): a fine scrub or an exact trace frame past 300 frames from
   // its keyframe gets the nearer keyframe, as the H.265 recording gives it (readExact). It got the 300th frame, 15 s

@@ -1682,11 +1682,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return { role, asH264: made(at(role)) };
   }
 
-  /** The frames of a recording from `kf` up to the one at `untilUs` (at most `max`), made H.264. */
-  private async framesAsH264(seg: SegmentRow, kf: Keyframe, untilUs: number, max = 300): Promise<Frame[]> {
+  /**
+   * The frames of a recording from `kf` up to the one at `untilUs` (at most `max`), made H.264; with `skip`, from the
+   * frame of its `startUs` on, the ones before it decoded only (none when more than its `maxBefore`).
+   */
+  private async framesAsH264(seg: SegmentRow, kf: Keyframe, untilUs: number, max = 300, skip?: { startUs: number; maxBefore: number }): Promise<Frame[]> {
     const out: Frame[] = [];
     // leaving the loop ends ffmpeg: only as much is encoded as is asked for
-    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, await this.h264())) {
+    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, { ...(await this.h264()), ...skip })) {
       if (frame.audio) continue;
       out.push(frame);
       if (frame.tsUs >= untilUs || out.length >= max) break;
@@ -1695,15 +1698,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /**
-   * The frames from `kf` up to the one at `tsUs` made H.264, as readExact reads them: when 300 frames do not reach it
-   * (keyframes far apart: 60-80 s on the Xiaomi), the nearer keyframe alone, the one after it or `kf`.
+   * The frame at `tsUs` made H.264, alone and a keyframe: the frames from `kf` to it are decoded, not made. When more
+   * than 300 are before it (keyframes far apart: 60-80 s on the Xiaomi), the nearer keyframe alone, the one after it or
+   * `kf`, as readExact gives the recording as it is.
    */
   private async exactAsH264(seg: SegmentRow, kf: Keyframe, tsUs: number, max = 300): Promise<Frame[]> {
-    const gop = await this.framesAsH264(seg, kf, tsUs, max);
-    if (gop.length < max || gop.at(-1)!.tsUs >= tsUs) return gop;
+    if (tsUs <= kf.tsUs) return this.framesAsH264(seg, kf, kf.tsUs, 1);
+    const exact = await this.framesAsH264(seg, kf, tsUs, 1, { startUs: tsUs, maxBefore: max });
+    if (exact.length) return exact;
     const after = parseKeyframes(seg.keyframes).find((next) => next.tsUs > tsUs);
-    const nearer = after && after.tsUs - tsUs < tsUs - kf.tsUs ? await this.framesAsH264(seg, after, after.tsUs, 1) : [];
-    return nearer.length ? nearer : [gop[0]];
+    const nearer = after && after.tsUs - tsUs < tsUs - kf.tsUs ? after : kf;
+    return this.framesAsH264(seg, nearer, nearer.tsUs, 1);
   }
 
   /** What a client is told of frames made H.264, from their first keyframe. */
@@ -1815,8 +1820,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         previous = seg;
         const made = madeOf(seg) ? await this.h264() : undefined;
         if (!made) meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
+        // made H.264, the frames before the event (the keyframe's pre-roll) are decoded, not made
         const reading = made
-          ? readFramesAsH264(this.store.located(seg).path, at, { ...made, keyframes: parseKeyframes(seg.keyframes) })
+          ? readFramesAsH264(this.store.located(seg).path, at, {
+              ...made,
+              keyframes: parseKeyframes(seg.keyframes),
+              ...(i === 0 ? { startUs: Math.max(startUs, seg.start_us) } : {}),
+            })
           : readFrames(this.store.located(seg), at);
         for await (const frame of reading) {
           if (frame.audio) continue;

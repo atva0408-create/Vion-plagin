@@ -123,6 +123,9 @@ export class PlaybackManager {
       let sent = 0;
       let lastTs = tsUs;
       let from = keyframeAtOrBefore(segment, tsUs);
+      // made H.264, the frames before it are decoded, not made: the time asked for, then where the stream recorded now
+      // goes on past the last frame sent
+      let startUs: number | undefined = tsUs;
 
       while (segment && from && !session.abort.signal.aborted) {
         // `recorded` tells the client the archive has sound (so it can offer the switch); the frames themselves
@@ -142,7 +145,9 @@ export class PlaybackManager {
         const made = asH264 && current.codec === 'h265' && this.h264 ? await this.h264() : undefined;
         // an H.264 recording is told as it is; one made H.264 by what its first keyframe says, as it comes
         if (!made) ready({ videoCodec: current.codec, codecString: current.codec_string, width: current.width, height: current.height });
-        const frames = made ? readFramesAsH264(file.path, from, { ...made, ...reading, keyframes: parseKeyframes(current.keyframes) }) : readFrames(file, from, reading);
+        const frames = made
+          ? readFramesAsH264(file.path, from, { ...made, ...reading, keyframes: parseKeyframes(current.keyframes), startUs })
+          : readFrames(file, from, reading);
         for await (const frame of frames) {
           if (made && frame.keyframe && !frame.audio) {
             const info = probeCodec(frame.data, 'h264');
@@ -162,11 +167,14 @@ export class PlaybackManager {
 
         let next = this.store.nextSegment(cameraId, role, current.id, current.start_us);
         let fromUs = next?.start_us;
+        startUs = undefined;
         if (!next && then) {
           // on with the stream recorded now where it has more than was sent, from its keyframe before the last frame
           // sent: the player shows the newest frame up to its position, so the ones before it only prime its decoder
           next = this.store.segmentAt(cameraId, then.role, lastTs + 1);
           fromUs = next ? Math.max(next.start_us, lastTs) : undefined;
+          // a millisecond on: the start is found to half of one, and frames are further apart than that
+          startUs = lastTs + 1000;
           ({ role, asH264 } = then);
           then = undefined;
         }

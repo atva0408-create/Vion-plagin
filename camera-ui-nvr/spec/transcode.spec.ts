@@ -138,6 +138,19 @@ async function main(): Promise<void> {
     recorded.filter((frame) => frame.tsUs >= middle.tsUs).map((frame) => frame.tsUs),
   );
 
+  // ---- from a time in the middle of a GOP: the frames before it are decoded, not made, and none is given; the first is
+  // the frame of the time, made a keyframe. A seek 80 s into a Xiaomi GOP had 1600 frames made first
+  const seekTo = recorded[25]!.tsUs;
+  const fromTime = video(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo })));
+  assert.deepEqual([fromTime[0]!.tsUs, fromTime[0]!.keyframe], [seekTo, true]);
+  assert.deepEqual(
+    fromTime.map((frame) => frame.tsUs),
+    recorded.filter((frame) => frame.tsUs >= seekTo).map((frame) => frame.tsUs),
+  );
+  // more frames before it than the caller would decode: none, the caller takes a nearer keyframe
+  assert.deepEqual(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo, maxBefore: 10 })), []);
+  assert.equal(video(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo, maxBefore: 30 })))[0]!.tsUs, seekTo);
+
   // ---- the recorder moved its clock in the middle of the file (a drift, a jump of the camera's PTS: recorder.ts):
   // the index has the new times from that keyframe on, and the frames made H.264 take them, as readFrames does. They
   // kept the time of the first keyframe for the whole file, 5 s off after the move

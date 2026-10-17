@@ -197,7 +197,7 @@ export class TsDemuxer {
   }
 }
 
-function readTimestamp(b: Buffer, i: number): number {
+export function readTimestamp(b: Buffer, i: number): number {
   return (
     (b[i] & 0x0e) * 536870912 + // << 29
     (b[i + 1] << 22) +
