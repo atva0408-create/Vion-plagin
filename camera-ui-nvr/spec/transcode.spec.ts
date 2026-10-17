@@ -99,6 +99,12 @@ const collect = async (frames: AsyncIterable<Frame>) => {
 const start = { offset: keyframes[0]![0], tsUs: keyframes[0]![1] };
 const video = (list: Frame[]) => list.filter((frame) => !frame.audio);
 
+// a wait for ffmpeg to take more of the file left a listener behind every time (11 on one socket in the review)
+const warnings: string[] = [];
+process.on('warning', (warning) => {
+  if (warning.name === 'MaxListenersExceededWarning') warnings.push(warning.message);
+});
+
 async function main(): Promise<void> {
   const recorded = video(await collect(readFrames(segment, start)));
   const made264 = await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true }));
@@ -181,6 +187,8 @@ async function main(): Promise<void> {
   while (!(await reading.next()).done) heldFrames++;
   assert.equal(heldFrames, 300, 'and every frame comes when it reads on');
   assert.ok(fedToTheEnd);
+  await sleep(10);
+  assert.deepEqual(warnings, [], 'no listener left behind by the waits for ffmpeg');
 
   // ---- a client gone after a few frames: it ends at once
   const abort = new AbortController();

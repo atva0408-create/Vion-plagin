@@ -173,8 +173,14 @@ async function feed(path: string, from: Keyframe, input: Writable, opts: H264Rea
       position += bytesRead;
       if (!input.write(Buffer.from(buf.subarray(0, bytesRead)))) {
         await new Promise<void>((resolve) => {
-          input.once('drain', resolve);
-          input.once('close', resolve);
+          // whichever comes, the other is taken off: a wait for each chunk ffmpeg holds back left one behind
+          const done = () => {
+            input.off('drain', done);
+            input.off('close', done);
+            resolve();
+          };
+          input.once('drain', done);
+          input.once('close', done);
         });
       }
     }
