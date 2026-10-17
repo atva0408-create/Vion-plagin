@@ -122,8 +122,10 @@ export class StationVoice {
     } catch (error) {
       // a station that answered is in reach, and a token Yandex did not give says nothing of the station; one that
       // did not answer is skipped for a while, and so is one that took a text without confirming it: the next
-      // notifications go through the cloud, which says whether the station spoke, not into it again
-      const reached = error instanceof GlagolAnswerError || error instanceof GlagolTokenError;
+      // notifications go through the cloud, which says whether the station spoke, not into it again. With the home
+      // network only there is no cloud to go through: skipped, it was refused every notification for minutes
+      const unconfirmed = error instanceof GlagolSentError && this.settings().mode === 'local';
+      const reached = error instanceof GlagolAnswerError || error instanceof GlagolTokenError || unconfirmed;
       if (!reached && !(error instanceof YandexApiError) && !(error instanceof YandexAuthError)) this.unreachable.set(address, Date.now() + UNREACHABLE_MS);
       throw error;
     }

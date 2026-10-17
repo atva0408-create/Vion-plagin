@@ -501,6 +501,13 @@ async function main(): Promise<void> {
     assert.equal(await unconfirmed.say(station, 'Следующий'), 'cloud');
     assert.equal(mute.received.length, 1, 'the station that did not confirm is skipped for a while');
     unconfirmed.close();
+    // with the home network only there is no other way: the next notification is tried on the station again, not
+    // refused for minutes
+    const localOnly = voiceFor(mute.port, 'local');
+    await assert.rejects(localOnly.say(station, 'Раз'), GlagolSentError);
+    await assert.rejects(localOnly.say(station, 'Два'), GlagolSentError);
+    assert.equal(mute.received.length, 3, 'both went to the station');
+    localOnly.close();
     mute.server.close();
 
     // a connection kept from before that died without a close (the station restarted, the Wi-Fi dropped): the text
