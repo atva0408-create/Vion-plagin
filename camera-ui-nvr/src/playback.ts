@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { probeCodec } from './media/codec.js';
+import { readFramesAsH264 } from './media/transcode.js';
 import { keyframeAtOrBefore, readFrames } from './reader.js';
 
+import type { H264Encoder } from './media/transcode.js';
 import type { Store } from './store.js';
 import type { NvrPlaybackCallbacks } from './types.js';
 
@@ -14,7 +17,7 @@ const GAP_US = 3_000_000;
  * Playback asked for a moment just before the recording (an event that starts while the camera is
  * still connecting, a long keyframe interval) starts at the first recorded frame instead.
  */
-const START_GAP_US = 30_000_000;
+export const START_GAP_US = 30_000_000;
 const YIELD_EVERY = 8;
 
 interface Session {
@@ -43,6 +46,8 @@ export class PlaybackManager {
   constructor(
     private readonly store: Store,
     private readonly isLive: (segmentId: number) => boolean,
+    /** ffmpeg and the H.264 encoder of this machine, for a client that cannot decode H.265 (media/transcode.ts) */
+    private readonly h264?: () => Promise<{ ffmpegPath: string; encoder: H264Encoder }>,
   ) {}
 
   public command(sessionId: string, cmd: { cmd: 'pause' | 'resume' | 'speed'; speed?: number }): void {
@@ -80,7 +85,8 @@ export class PlaybackManager {
     this.sessions.clear();
   }
 
-  public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks, opts: { audio?: boolean } = {}): AsyncGenerator<void> {
+  /** `asH264`: the H.265 recordings go out as H.264, made while they are played (a client that cannot decode H.265). */
+  public async *play(cameraId: string, tsUs: number, role: string, cb: NvrPlaybackCallbacks, opts: { audio?: boolean; asH264?: boolean } = {}): AsyncGenerator<void> {
     const sessionId = randomUUID();
     const session: Session = { paused: false, speed: 1, clock: undefined, skippedUs: 0, abort: new AbortController() };
     this.sessions.set(sessionId, session);
@@ -110,23 +116,25 @@ export class PlaybackManager {
         // go only to a client that asked for them, a wall of cameras would throw them away
         const recorded = segment.audio_pid >= 0;
         const sendAudio = recorded && opts.audio !== false;
-        const key = `${segment.codec_string}|${segment.width}x${segment.height}|${recorded}`;
-        if (key !== readyKey) {
+        const ready = (meta: { videoCodec: string; codecString: string; width: number; height: number }) => {
+          const key = `${meta.codecString}|${meta.width}x${meta.height}|${recorded}`;
+          if (key === readyKey) return;
           readyKey = key;
-          call('onReady', {
-            sessionId,
-            videoCodec: segment.codec,
-            codecString: segment.codec_string,
-            width: segment.width,
-            height: segment.height,
-            role,
-            audio: recorded,
-          });
-        }
+          call('onReady', { sessionId, ...meta, role, audio: recorded });
+        };
 
         const current = segment;
         const file = this.store.located(current);
-        for await (const frame of readFrames(file, from, { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio })) {
+        const reading = { follow: () => this.isLive(current.id), signal: session.abort.signal, audio: sendAudio };
+        const made = opts.asH264 && current.codec === 'h265' && this.h264 ? await this.h264() : undefined;
+        // an H.264 recording is told as it is; one made H.264 by what its first keyframe says, as it comes
+        if (!made) ready({ videoCodec: current.codec, codecString: current.codec_string, width: current.width, height: current.height });
+        const frames = made ? readFramesAsH264(file.path, from, { ...made, ...reading }) : readFrames(file, from, reading);
+        for await (const frame of frames) {
+          if (made && frame.keyframe && !frame.audio) {
+            const info = probeCodec(frame.data, 'h264');
+            if (info) ready({ videoCodec: 'h264', codecString: info.codecString, width: info.width, height: info.height });
+          }
           // frames before the target only prime the decoder: send them without pacing
           if (frame.tsUs >= tsUs) await this.pace(session, frame.tsUs - session.skippedUs);
           if (session.abort.signal.aborted) return;

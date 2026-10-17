@@ -15,7 +15,8 @@ import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPict
 import { NIGHT_COLOUR, NO_FINDER, whenGone, widened } from './gone.js';
 import { insidePicture, placeHistory } from './place.js';
 import { privacyFilter } from './privacy.js';
-import { PlaybackManager } from './playback.js';
+import { findH264Encoder } from './media/transcode.js';
+import { PlaybackManager, START_GAP_US } from './playback.js';
 import { keyframeAtOrBefore, lastFrameUs, readExact, readFrames, readKeyframe } from './reader.js';
 import { FRAME_GAP_US, Recorder } from './recorder.js';
 import { SemanticIndex } from './semantic.js';
@@ -47,6 +48,7 @@ import type { PlaceHistoryAnswer, PlaceLook, PlaceMode } from './place.js';
 import type { Outlined, PersonThere, Prompt, ThingAnswer } from './thing.js';
 import type { EventRow, Keyframe, SegmentRow } from './store.js';
 import type { IndexFilter } from './vector-index.js';
+import type { H264Encoder } from './media/transcode.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
@@ -395,6 +397,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private readonly rescanListeners = new Set<(s: FacesRescanStatus) => void>();
   private playback!: PlaybackManager;
   private ffmpegPath = 'ffmpeg';
+  /** Found at the first playback that needs it. */
+  private h264Encoder?: Promise<H264Encoder>;
   private readonly cameras = new Map<string, ManagedCamera>();
   private retentionTimer: NodeJS.Timeout | undefined;
   private entitlementsTimer: NodeJS.Timeout | undefined;
@@ -841,7 +845,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const row = this.store.event(eventId);
       return row ? (JSON.parse(row.data) as RecordedEvent) : undefined;
     });
-    this.playback = new PlaybackManager(this.store, (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)));
+    this.playback = new PlaybackManager(
+      this.store,
+      (id) => [...this.cameras.values()].some((c) => [...c.recorders.values()].some((r) => r.liveSegmentId === id)),
+      () => this.h264(),
+    );
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
     void Promise.race([this.api.coreManager.getFFmpegPath(), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 15_000))])
@@ -1629,7 +1637,33 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   // ---------------------------------------------------------------- playback
 
   public nvrPlayback(cameraId: string, tsUs: number, videoOnly: boolean, sourceRole: string, callbacks: NvrPlaybackCallbacks): AsyncGenerator<void> {
-    return this.playback.play(cameraId, tsUs, this.resolveRole(cameraId, sourceRole), callbacks, { audio: !videoOnly });
+    const { role, asH264 } = this.playbackRole(cameraId, sourceRole, tsUs);
+    return this.playback.play(cameraId, tsUs, role, callbacks, { audio: !videoOnly, asH264 });
+  }
+
+  /**
+   * What a playback reads. A client that cannot decode H.265 asks for the low stream; at a time with a low (or mid)
+   * recording it gets that, as before, and else the H.265 recording made H.264 while it plays (media/transcode.ts):
+   * the recorder no longer keeps an H.264 copy of an H.265 camera for it.
+   */
+  private playbackRole(cameraId: string, sourceRole: string, tsUs: number): { role: string; asH264: boolean } {
+    if (sourceRole !== 'low' && sourceRole !== 'scrub') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
+    const at = (role: string) => {
+      const segment = this.store.segmentAt(cameraId, role, tsUs);
+      return segment && segment.start_us - tsUs <= START_GAP_US ? segment : undefined;
+    };
+    for (const lighter of ['low', 'mid']) if (at(lighter)) return { role: lighter, asH264: false };
+    const role = this.resolveRole(cameraId, sourceRole);
+    return { role, asH264: at(role)?.codec === 'h265' };
+  }
+
+  /** ffmpeg and the H.264 encoder of this machine, found once by an encode (media/transcode.ts). */
+  private h264(): Promise<{ ffmpegPath: string; encoder: H264Encoder }> {
+    this.h264Encoder ??= findH264Encoder(this.ffmpegPath).then((encoder) => {
+      this.logger.log(`Recordings of H.265 cameras are made H.264 for browsers without H.265 by ${encoder.name}`);
+      return encoder;
+    });
+    return this.h264Encoder.then((encoder) => ({ ffmpegPath: this.ffmpegPath, encoder }));
   }
 
   public async nvrPlaybackCmd(sessionId: string, cmd: { cmd: 'pause' | 'resume' | 'speed'; speed?: number }): Promise<void> {
