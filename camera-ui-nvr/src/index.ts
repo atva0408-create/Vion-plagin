@@ -2085,15 +2085,21 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /**
    * Recorded files for an export slice in the chosen quality: «best» takes the highest-resolution
    * stream that has recordings in the slice, «smallest» the lowest. A camera recording only one
-   * stream exports that stream either way.
+   * stream exports that stream either way. A stream that covers less of the slice than another is passed over: the
+   * low copy the recorder kept before ends where it stopped keeping it, and «smallest» exported only that part. The
+   * file is one stream (copied, not encoded), so it is the whole slice of the other one instead.
    */
   private exportSegments(cameraId: string, startUs: number, endUs: number, quality: ExportQuality = 'best'): SegmentRow[] {
     const order = quality === 'smallest' ? ['low', 'mid', 'high'] : ['high', 'mid', 'low'];
-    for (const role of order) {
+    const found = order.map((role) => {
       const segments = this.store.segments(cameraId, role, startUs, endUs);
-      if (segments.length) return segments;
-    }
-    return [];
+      const covered = segments.reduce((sum, seg) => sum + Math.max(0, Math.min(seg.end_us, endUs) - Math.max(seg.start_us, startUs)), 0);
+      return { segments, covered };
+    });
+    const most = Math.max(0, ...found.map((f) => f.covered));
+    // streams of one camera begin and end their files a little apart: two seconds, or 1 % of the slice, is the same
+    const enough = most - Math.max(2_000_000, (endUs - startUs) / 100);
+    return found.find((f) => f.segments.length && f.covered >= enough)?.segments ?? [];
   }
 
   // ----------------------------------------------------------------- storage

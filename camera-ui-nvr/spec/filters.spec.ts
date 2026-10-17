@@ -178,12 +178,12 @@ assert.equal((await nvr.getEventTrace('traced')).total, 0, 'the trace goes with 
 
 // --------------------------------------------------------------- export quality
 const store = (nvr as unknown as { store: { addSegment(row: Record<string, unknown>): number } }).store;
-const seg = (role: string, bytes: number) =>
+const seg = (role: string, bytes: number, camera = 'cam9', endUs = 1_060_000_000) =>
   store.addSegment({
-    camera_id: 'cam9',
+    camera_id: camera,
     role,
     start_us: 1_000_000_000,
-    end_us: 1_060_000_000,
+    end_us: endUs,
     path: join(dir, `${role}.ts`),
     bytes,
     codec: 'h264',
@@ -200,6 +200,17 @@ const slices = [{ day: '1970-01-01', startUs: 1_000_000_000, endUs: 1_060_000_00
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam9'], slices, quality: 'best' })).totalBytes, 60_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam9'], slices, quality: 'smallest' })).totalBytes, 6_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam9'], slices })).totalBytes, 60_000_000, 'default: best');
+// the low copy the recorder kept before ends in the slice (it stopped keeping it): «smallest» is the whole slice of the
+// high one, not the half the copy has. It exported the half and said nothing of the rest
+seg('high', 60_000_000, 'cam10');
+seg('low', 3_000_000, 'cam10', 1_030_000_000);
+const halfCopy = await nvr.nvrExportEstimate({ cameras: ['cam10'], slices, quality: 'smallest' });
+assert.equal(halfCopy.totalBytes, 60_000_000, 'the whole slice');
+assert.equal(halfCopy.durationMs, 60_000);
+// a stream whose file ends a second before the other one's is the same slice: still the small one
+seg('high', 60_000_000, 'cam11');
+seg('low', 5_900_000, 'cam11', 1_059_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam11'], slices, quality: 'smallest' })).totalBytes, 5_900_000, 'a second less is the same');
 
 // ---------------------------------------------------------------- feature flags
 assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true });
