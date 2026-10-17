@@ -92,15 +92,15 @@ export async function exportClip(opts: {
   const argsWith = (made: H264Encoder | undefined) => {
     const args = ['-hide_banner', '-loglevel', 'error', '-y', ...(made?.input ?? []), ...input];
     if (timelapse) {
-    // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
-    // of a second of what is left. The range is cut by `trim`, in front of that: `-ss`/`-t` of the output count the
-    // compressed time, so a range starting 10 s into a file skipped the first 10 s of the timelapse (all of it, for
-    // a short one) and no range ended where it was asked to. `eof_action=pass`: a range shorter than the interval
-    // still gives its one picture.
+      // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
+      // of a second of what is left. The range is cut by `trim`, in front of that: `-ss`/`-t` of the output count the
+      // compressed time, so a range starting 10 s into a file skipped the first 10 s of the timelapse (all of it, for
+      // a short one) and no range ended where it was asked to. `eof_action=pass`: a range shorter than the interval
+      // still gives its one picture.
       const range = `trim=start=${offsetSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`;
       args.push('-vf', `${range},setpts=(PTS-STARTPTS)/${30 * timelapse},fps=30:eof_action=pass`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
     } else {
-    // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
+      // sound is copied when the segments have it; `?` keeps the clip valid for older recordings without any
       args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy');
       // made H.264 at the size it was recorded, the frames at their times
       if (made) args.push(...(made.upload ? ['-vf', made.upload.replace(/^,/, '')] : []), '-fps_mode', 'passthrough', ...made.codec);
@@ -117,7 +117,10 @@ export async function exportClip(opts: {
       // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it. Only a
       // failure before much was written: one later (a full disk, a file the retention removed) would fail again after
       // as long, and what the hardware encoder said is kept with what libx264 says
-      const written = await stat(out).then((file) => file.size, () => 0);
+      const written = await stat(out).then(
+        (file) => file.size,
+        () => 0,
+      );
       if (!madeBy || madeBy.name === LIBX264.name || written > 1024 * 1024) throw error;
       try {
         await run(opts.ffmpegPath, argsWith(LIBX264));

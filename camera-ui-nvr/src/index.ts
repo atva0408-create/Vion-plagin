@@ -1738,10 +1738,12 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /** ffmpeg and the H.264 encoder of this machine, found once by an encode (media/transcode.ts). */
   private h264(): Promise<{ ffmpegPath: string; encoder: H264Encoder }> {
     // tried with the host's ffmpeg: one asked for before it came used another (on PATH, or none) and kept libx264 for good
-    this.h264Encoder ??= this.ffmpegFound.then(() => this.probeH264Encoder(this.ffmpegPath)).then((encoder) => {
-      this.logger.log(`Recordings of H.265 cameras are made H.264 for browsers without H.265 by ${encoder.name}`);
-      return encoder;
-    });
+    this.h264Encoder ??= this.ffmpegFound
+      .then(() => this.probeH264Encoder(this.ffmpegPath))
+      .then((encoder) => {
+        this.logger.log(`Recordings of H.265 cameras are made H.264 for browsers without H.265 by ${encoder.name}`);
+        return encoder;
+      });
     return this.h264Encoder.then((encoder) => ({ ffmpegPath: this.ffmpegPath, encoder }));
   }
 

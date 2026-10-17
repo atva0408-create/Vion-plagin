@@ -419,8 +419,7 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
       : undefined;
   const refPts = ref ? await ptsAt(fh, ref.offset) : undefined;
   const startPts = refPts === undefined ? undefined : (refPts + Math.round(((opts.startUs! - ref!.tsUs) * 90) / 1000)) % 2 ** 33;
-  const select =
-    startPts !== undefined ? `select=gte(mod(pts-${startPts - 45}+${2 ** 34 + 2 ** 32}\\,${2 ** 33})-${2 ** 32}\\,0),` : '';
+  const select = startPts !== undefined ? `select=gte(mod(pts-${startPts - 45}+${2 ** 34 + 2 ** 32}\\,${2 ** 33})-${2 ** 32}\\,0),` : '';
   const proc = spawn(
     opts.ffmpegPath,
     [
