@@ -58,7 +58,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -205,6 +205,20 @@ async function main(): Promise<void> {
     kept.frames.map((frame) => frame.ts),
     await times(oldLow),
   );
+
+  // ---- a lighter stream recorded in H.265 too (a camera recording its high and mid streams, both H.265): that one,
+  // made H.264. It went as H.265 and the player had nothing left to fall back to
+  await record('subs', 'high', hevc, at);
+  const subsMid = await record('subs', 'mid', hevc, at);
+  const sub = await play('subs', subsMid.start_us, 'low');
+  assert.equal(sub.ready[0]!.role, 'mid', 'the lighter recording');
+  assert.equal(sub.ready[0]!.videoCodec, 'h264', 'made H.264');
+  assert.deepEqual(
+    sub.frames.map((frame) => frame.ts),
+    await times(subsMid),
+  );
+  assert.equal((await nvr.nvrScrub('subs', target, false, 'low')).videoCodec, 'h264');
+  assert.equal((await nvr.nvrScrub('subs', target, false, 'scrub')).videoCodec, 'h265', 'a scrub as it is');
 
   console.log('playback-h264.spec: H.265 made H.264 for a low stream, told first, every frame at its time; H.265 as it is; an old copy played — ok');
   process.exit(0);

@@ -1664,9 +1664,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const segment = this.store.segmentAt(cameraId, role, tsUs);
       return segment && segment.start_us - tsUs <= START_GAP_US ? segment : undefined;
     };
-    for (const lighter of ['low', 'mid']) if (at(lighter)) return { role: lighter, asH264: false };
+    // a lighter recording in H.265 (a camera recording its high and mid streams, both H.265) is made H.264 as well
+    const made = (segment: SegmentRow | undefined) => sourceRole === 'low' && segment?.codec === 'h265';
+    for (const lighter of ['low', 'mid']) {
+      const segment = at(lighter);
+      if (segment) return { role: lighter, asH264: made(segment) };
+    }
     const role = this.resolveRole(cameraId, sourceRole);
-    return { role, asH264: sourceRole === 'low' && at(role)?.codec === 'h265' };
+    return { role, asH264: made(at(role)) };
   }
 
   /** The frames of a recording from `kf` up to the one at `untilUs` (at most `max`), made H.264. */
