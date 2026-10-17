@@ -405,6 +405,51 @@ async function main(): Promise<void> {
     assert.ok(tokenCalls >= 1);
   }
 
+  // ---- a kept connection that died, texts a second apart: the second one takes the new connection the first opened
+  // (it opened one more and left the other open for good); a close while the ping waits sends nothing
+  {
+    const sockets: import('ws').WebSocket[] = [];
+    const said: string[] = [];
+    const server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise((resolve) => server.once('listening', resolve));
+    server.on('connection', (socket) => {
+      sockets.push(socket);
+      const n = sockets.length;
+      socket.on('message', (data) => {
+        const message = JSON.parse(String(data));
+        said.push(`${n}:${message.payload.say}`);
+        socket.send(JSON.stringify({ requestId: message.id, status: 'SUCCESS' }));
+        // the first connection of each client goes dead after its first answer
+        if (n === 1 || n === 3) socket.pause();
+      });
+    });
+    const port = (server.address() as AddressInfo).port;
+    const client = new GlagolClient({ host: '127.0.0.1', port, secure: false }, async () => 'conv-ST100');
+    await client.send({ say: 'first' });
+    const a = client.send({ say: 'A' });
+    await sleep(1000);
+    const b = client.send({ say: 'B' });
+    await Promise.all([a, b]);
+    assert.equal(sockets.length, 2, 'one new connection for both texts');
+    assert.deepEqual(said, ['1:first', '2:A', '2:B']);
+    client.close();
+    // the dead one reads nothing, its close neither: the live one is what the client must not leave open
+    await until(() => sockets[1]!.readyState !== sockets[1]!.OPEN, 'the new connection closed with the client');
+
+    const closing = new GlagolClient({ host: '127.0.0.1', port, secure: false }, async () => 'conv-ST100');
+    await closing.send({ say: 'second' });
+    const pending = closing.send({ say: 'C' });
+    await sleep(500);
+    // signed out or the settings changed while the ping waits
+    closing.close();
+    await assert.rejects(pending, (error: Error) => !(error instanceof GlagolSentError), 'refused before it went out');
+    await sleep(300);
+    assert.equal(sockets.length, 3, 'no new connection after the close');
+    assert.deepEqual(said.slice(3), ['3:second'], 'and the text was not said');
+    for (const socket of sockets) socket.terminate();
+    server.close();
+  }
+
   // ---- a client closed while it connects: the socket does not open afterwards and stay open for good
   {
     const server = new WebSocketServer({ port: 0, host: '127.0.0.1', verifyClient: (_info, done) => void setTimeout(() => done(true), 300) });

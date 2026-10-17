@@ -89,6 +89,8 @@ export class GlagolClient {
   private opening?: Promise<WebSocket>;
   private waiters = new Map<string, Waiter>();
   private idleTimer?: NodeJS.Timeout;
+  /** Counts the closes: a send that waited on a ping meanwhile does not go out after one. */
+  private closes = 0;
 
   constructor(
     private target: GlagolTarget,
@@ -141,6 +143,7 @@ export class GlagolClient {
   }
 
   close(): void {
+    this.closes++;
     clearTimeout(this.idleTimer);
     const sockets = [this.socket, this.connecting];
     this.socket = undefined;
@@ -156,9 +159,15 @@ export class GlagolClient {
       // a connection kept from before may be dead without a close (the station restarted, the Wi-Fi dropped): a text
       // sent on it gets no answer, and one with no answer may have been said, so it is said no other way. A ping goes
       // first: with no pong a new connection takes the text, which has not gone out yet
-      if (await answersPing(kept)) return kept;
+      const closes = this.closes;
+      const alive = await answersPing(kept);
+      // closed meanwhile (signed out, the settings changed): a connection opened now would be no one's and stay open
+      if (closes !== this.closes) throw new Error(`The connection to the station ${this.address} was closed`);
+      if (alive) return kept;
       if (this.socket === kept) this.socket = undefined;
       kept.terminate();
+      // another text found it dead first and has a new one already: one more would be left open for good
+      if (this.socket?.readyState === WebSocket.OPEN) return this.socket;
     }
     this.opening ??= new Promise<WebSocket>((resolve, reject) => {
       const scheme = this.target.secure === false ? 'ws' : 'wss';
