@@ -1,0 +1,260 @@
+// The recording of an H.265 camera as H.264, made while a client watches it: a browser that cannot decode H.265
+// (Firefox; Chrome without the hardware for it) asks for the 'low' stream, and that was an H.264 copy the server made
+// and the recorder kept all day — 20.8 GB a day of the bench's Xiaomi beside 5.7 GB of the camera's own H.265, and an
+// encoder busy all day for it (2026-10-17). The TS bytes of the recording go through ffmpeg from a keyframe on and come
+// out as TS again for the recorder's own demuxer, their times anchored on that keyframe's. A hardware encoder makes it
+// when one works on this machine (tried by an encode), else libx264.
+import { spawn } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { open } from 'node:fs/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+import { ptsDelta, TsDemuxer } from './ts-demux.js';
+
+import type { Writable } from 'node:stream';
+import type { Frame } from '../reader.js';
+import type { Keyframe } from '../store.js';
+
+export interface H264Encoder {
+  name: string;
+  /** before the input: the device of the encoder */
+  input: string[];
+  /** the end of the filter chain that hands the frame to the encoder */
+  upload: string;
+  codec: string[];
+}
+
+export const LIBX264: H264Encoder = {
+  name: 'libx264',
+  input: [],
+  upload: '',
+  codec: ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p'],
+};
+
+/** The width of the copy at most, as the copy the server made: a browser that cannot decode H.265 is often a weak one. */
+export const MAX_WIDTH = 1280;
+const CHUNK = 256 * 1024;
+
+function candidates(platform: NodeJS.Platform, nodes: string[]): H264Encoder[] {
+  const list: H264Encoder[] = [{ name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'h264_nvenc', '-preset', 'p2', '-tune', 'll'] }];
+  if (platform === 'linux') {
+    for (const device of nodes) {
+      list.push({
+        name: `vaapi ${device}`,
+        input: ['-init_hw_device', `vaapi=va:${device}`, '-filter_hw_device', 'va'],
+        upload: ',format=nv12,hwupload',
+        codec: ['-c:v', 'h264_vaapi'],
+      });
+    }
+  }
+  if (platform === 'darwin') list.unshift({ name: 'videotoolbox', input: [], upload: '', codec: ['-c:v', 'h264_videotoolbox', '-realtime', '1'] });
+  return list;
+}
+
+export function renderNodes(): string[] {
+  try {
+    return existsSync('/dev/dri')
+      ? readdirSync('/dev/dri')
+          .filter((name) => name.startsWith('renderD'))
+          .sort()
+          .map((name) => `/dev/dri/${name}`)
+      : [];
+  } catch {
+    // a container without the device: no VA-API, which is what an empty list says
+    return [];
+  }
+}
+
+/** Runs ffmpeg; true when it ended well within `timeoutMs`. */
+export function ranWell(ffmpegPath: string, args: string[], timeoutMs = 15_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn(ffmpegPath, args, { stdio: 'ignore' });
+    const timer = setTimeout(() => proc.kill('SIGKILL'), timeoutMs);
+    proc.once('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    proc.once('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0);
+    });
+  });
+}
+
+/** The first hardware H.264 encoder that encodes a second of a test picture here, else libx264. */
+export async function findH264Encoder(
+  ffmpegPath: string,
+  deps: { platform?: NodeJS.Platform; nodes?: () => string[]; run?: (args: string[]) => Promise<boolean> } = {},
+): Promise<H264Encoder> {
+  const run = deps.run ?? ((args) => ranWell(ffmpegPath, args));
+  for (const encoder of candidates(deps.platform ?? process.platform, (deps.nodes ?? renderNodes)())) {
+    const args = [
+      '-hide_banner',
+      '-v',
+      'error',
+      ...encoder.input,
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=640x360:rate=10',
+      '-t',
+      '1',
+      '-vf',
+      `scale=320:180${encoder.upload}`,
+      ...encoder.codec,
+      '-f',
+      'null',
+      '-',
+    ];
+    if (await run(args)) return encoder;
+  }
+  return LIBX264;
+}
+
+export interface H264ReadOptions {
+  ffmpegPath: string;
+  encoder: H264Encoder;
+  /** keeps tailing the file while it is written (the live tip) */
+  follow?: () => boolean;
+  signal?: AbortSignal;
+  audio?: boolean;
+  maxWidth?: number;
+}
+
+/** The file from a keyframe on into ffmpeg's input, at its pace; the end of the file ends it unless it is followed. */
+async function feed(path: string, from: Keyframe, input: Writable, opts: H264ReadOptions): Promise<void> {
+  const fh = await open(path, 'r');
+  try {
+    let position = from.offset;
+    const buf = Buffer.alloc(CHUNK);
+    for (;;) {
+      if (opts.signal?.aborted || input.destroyed) return;
+      const { bytesRead } = await fh.read(buf, 0, CHUNK, position);
+      if (bytesRead === 0) {
+        if (opts.follow?.()) {
+          await sleep(250);
+          continue;
+        }
+        input.end();
+        return;
+      }
+      position += bytesRead;
+      if (!input.write(Buffer.from(buf.subarray(0, bytesRead)))) {
+        await new Promise<void>((resolve) => {
+          input.once('drain', resolve);
+          input.once('close', resolve);
+        });
+      }
+    }
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
+ * The frames of a recorded file from `from` on as H.264, the times those of the recording: what `readFrames` gives,
+ * made decodable for a client without H.265.
+ */
+export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
+  const width = opts.maxWidth ?? MAX_WIDTH;
+  const proc = spawn(
+    opts.ffmpegPath,
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      ...opts.encoder.input,
+      '-f',
+      'mpegts',
+      '-i',
+      'pipe:0',
+      '-map',
+      '0:v:0',
+      ...(opts.audio ? ['-map', '0:a:0?', '-c:a', 'copy'] : ['-an']),
+      '-vf',
+      `scale='min(${width},iw)':-2:flags=fast_bilinear${opts.encoder.upload}`,
+      // the frames as they come: one out for every one in, at its own time
+      '-fps_mode',
+      'passthrough',
+      ...opts.encoder.codec,
+      '-g',
+      '50',
+      '-bf',
+      '0',
+      '-f',
+      'mpegts',
+      'pipe:1',
+    ],
+    { stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+  const queue: Frame[] = [];
+  let stderr = '';
+  let ended = false;
+  let failure: Error | undefined;
+  let wake: (() => void) | undefined;
+  const notify = () => {
+    wake?.();
+    wake = undefined;
+  };
+  // the first frame out is the keyframe the file was read from: its time anchors the rest
+  let base: { pts: number; us: number } | undefined;
+  const at = (pts: number) => base!.us + Math.round((ptsDelta(base!.pts, pts) / 90) * 1000);
+  const demux = new TsDemuxer(
+    (au) => {
+      base ??= { pts: au.pts, us: from.tsUs };
+      queue.push({ data: au.data, tsUs: at(au.pts), keyframe: au.keyframe });
+    },
+    undefined,
+    opts.audio
+      ? (au) => {
+          if (!base) return;
+          const tsUs = at(au.pts);
+          if (tsUs >= from.tsUs) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+        }
+      : undefined,
+  );
+  proc.stderr.on('data', (chunk: Buffer) => {
+    stderr = (stderr + chunk.toString()).slice(-2000);
+  });
+  proc.stdout.on('data', (chunk: Buffer) => {
+    demux.push(chunk);
+    notify();
+  });
+  proc.once('error', (error) => {
+    failure = error;
+    ended = true;
+    notify();
+  });
+  proc.once('close', (code) => {
+    demux.flush();
+    if (code !== 0 && !opts.signal?.aborted && !failure) failure = new Error(`ffmpeg made no H.264 of ${path} (${code}): ${stderr.trim().split('\n').pop() ?? ''}`);
+    ended = true;
+    notify();
+  });
+  // a client gone, or ffmpeg gone, ends the feeding: its failure is ffmpeg's, said when the frames end
+  proc.stdin.on('error', () => {});
+  const feeding = feed(path, from, proc.stdin, opts).catch((error: unknown) => {
+    failure ??= error instanceof Error ? error : new Error(String(error));
+    proc.kill('SIGKILL');
+  });
+  const stop = () => notify();
+  opts.signal?.addEventListener('abort', stop, { once: true });
+  try {
+    for (;;) {
+      if (queue.length) {
+        yield* queue.splice(0);
+        continue;
+      }
+      if (ended || opts.signal?.aborted) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+    }
+    if (failure && !opts.signal?.aborted) throw failure;
+  } finally {
+    opts.signal?.removeEventListener('abort', stop);
+    if (proc.exitCode === null) proc.kill('SIGKILL');
+    proc.stdin.destroy();
+    await feeding;
+  }
+}
