@@ -202,6 +202,7 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
     [['voice:kids', false]],
     'listed as inactive: the server sends general notifications only to active devices',
   );
+  assert.equal(devices[0]!.metadata?.cameraId, 'kids', 'with its camera: a route naming the speakers tells that camera’s');
   assert.equal(await s.plugin.getDevice('voice:door'), null, 'a camera without a speaker is no device');
   assert.equal(await s.plugin.getDevice('yandex:1'), null);
 

@@ -1060,7 +1060,8 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   private device(cameraId: string, name: string): NotifierDevice {
     const speaks = (this.values().channelSpeakers ?? []).includes(cameraId);
-    return { id: `${DEVICE_PREFIX}${cameraId}`, ownerUserId: '', name: `${name} (VOICE)`, active: false, metadata: { speaks } };
+    // the camera: ViON tells the speaker of the camera a notification is about when its route names the speakers
+    return { id: `${DEVICE_PREFIX}${cameraId}`, ownerUserId: '', name: `${name} (VOICE)`, active: false, metadata: { speaks, cameraId } };
   }
 
   private async setChannel(deviceId: string, on: boolean): Promise<void> {
