@@ -1784,11 +1784,15 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const until = Math.min(endUs, Math.max(startUs, segments[first].start_us, from.tsUs) + span);
       let bytes = 0;
       let budgetReached = false;
+      // the next file goes on the excerpt when it was recorded as the one before: compared with that file, not with
+      // what is told of the frames, which a file made H.264 tells as H.264 and the next file's row as H.265
+      let previous: SegmentRow | undefined;
       for (const [i, seg] of segments.slice(first, first + 3).entries()) {
         if (seg.start_us > until) break;
-        if (meta && (meta.codecString !== seg.codec_string || meta.width !== seg.width || meta.height !== seg.height)) break;
+        if (previous && (previous.codec_string !== seg.codec_string || previous.width !== seg.width || previous.height !== seg.height)) break;
         const at = i === 0 ? from : keyframeAtOrBefore(seg, seg.start_us);
         if (!at) continue;
+        previous = seg;
         const made = madeOf(seg) ? await this.h264() : undefined;
         if (!made) meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
         for await (const frame of made ? readFramesAsH264(this.store.located(seg).path, at, made) : readFrames(this.store.located(seg), at)) {

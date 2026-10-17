@@ -31,10 +31,10 @@ const FFMPEG = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
 const noop = () => undefined;
 const realNow = Date.now;
 
-function stream(codec: 'libx264' | 'libx265'): Buffer {
-  const path = join(dir, `${codec}.ts`);
+function stream(codec: 'libx264' | 'libx265', size = '640x360'): Buffer {
+  const path = join(dir, `${codec}-${size}.ts`);
   const params = codec === 'libx265' ? ['-x265-params', 'keyint=10:min-keyint=10:bframes=0:log-level=error'] : ['-g', '10', '-bf', '0'];
-  const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '3', '-c:v', codec, ...params, '-f', 'mpegts', path], {
+  const made = spawnSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${size}:rate=10`, '-t', '3', '-c:v', codec, ...params, '-f', 'mpegts', path], {
     encoding: 'utf8',
   });
   assert.equal(made.status, 0, `ffmpeg could not make a stream: ${made.stderr}`);
@@ -59,7 +59,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -189,6 +189,27 @@ async function main(): Promise<void> {
   const lateEvent = await nvr.nvrPreviewFrames('cam', cam.start_us - 40_000_000, cam.end_us, 12, 'motion', 2_000_000, true);
   assert.equal(lateEvent.videoCodec, 'h264', 'the excerpt of a recording that begins after the event, made H.264');
   assert.ok(lateEvent.frames.length > 0);
+  // an excerpt across the end of a file goes on in the next one, made H.264 as well: it stopped at the end of the first
+  const one = await record('two', 'high', hevc, at + 60_000);
+  const two = await record('two', 'high', hevc, at + 63_000);
+  assert.ok(two.start_us > one.start_us && one.id !== two.id, 'two files one after the other');
+  const across = await nvr.nvrPreviewFrames('two', one.end_us - 1_000_000, two.end_us, 12, 'motion', 3_000_000, true);
+  assert.equal(across.videoCodec, 'h264');
+  assert.ok(
+    across.frames.some((frame) => frame.ts >= two.start_us),
+    `the excerpt goes on into the next file (last ${across.frames.at(-1)?.ts}, next file from ${two.start_us})`,
+  );
+  // but not into a file recorded another way (the camera's picture changed size): one decoder setup for the excerpt
+  const before = await record('resized', 'high', hevc, at + 70_000);
+  const after = await record('resized', 'high', stream('libx265', '320x180'), at + 73_000);
+  for (const h264Only of [false, true]) {
+    const cut = await nvr.nvrPreviewFrames('resized', before.end_us - 1_000_000, after.end_us, 12, 'motion', 3_000_000, h264Only);
+    assert.ok(cut.frames.length > 0);
+    assert.ok(
+      cut.frames.every((frame) => frame.ts < after.start_us),
+      `${h264Only ? 'made H.264' : 'as it is'}: not into the file of another size`,
+    );
+  }
   const strip = await nvr.nvrPreviewFrames('cam', cam.start_us, cam.end_us, 4, 'keyframes', 4_000_000, true);
   assert.equal(strip.videoCodec, 'h264');
   assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
