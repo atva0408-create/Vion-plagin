@@ -4,9 +4,10 @@
 // Needs ffmpeg with libx265 and libx264 on PATH (or CAMERAUI_FFMPEG_PATH). Run: npx tsx spec/transcode.spec.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec } from '../src/media/codec.js';
 import { findH264Encoder, LIBX264, readFramesAsH264 } from '../src/media/transcode.js';
@@ -148,6 +149,38 @@ async function main(): Promise<void> {
     recorded.filter((frame) => frame.tsUs >= recorderKeyframes[2]!.tsUs).map((frame) => frame.tsUs),
     'and every frame after it',
   );
+
+  // ---- a client that waits (a paused playback) holds ffmpeg back: it made the whole file at once into memory, a
+  // process running flat out for every viewer (1199 frames / 32 MB of a 2-minute file during a 20 s pause in the review)
+  const noisy = join(dir, 'noisy.ts');
+  const noise = spawnSync(
+    FFMPEG,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '30'],
+      ...['-vf', 'noise=alls=60:allf=t', '-c:v', 'libx265', '-preset', 'ultrafast', '-x265-params', 'keyint=50:bframes=0:log-level=error'],
+      ...['-f', 'mpegts', noisy],
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(noise.status, 0, noise.stderr);
+  assert.ok(statSync(noisy).size > 4_000_000, `a file larger than the pipes hold: ${statSync(noisy).size}`);
+  let fedToTheEnd = false;
+  const held = readFramesAsH264(noisy, { offset: 0, tsUs: 0 }, {
+    ffmpegPath: FFMPEG,
+    encoder: LIBX264,
+    follow: () => {
+      fedToTheEnd = true;
+      return false;
+    },
+  });
+  const reading = held[Symbol.asyncIterator]();
+  assert.equal((await reading.next()).done, false);
+  await sleep(4000);
+  assert.equal(fedToTheEnd, false, 'while the client waits the file is not read to its end');
+  let heldFrames = 1;
+  while (!(await reading.next()).done) heldFrames++;
+  assert.equal(heldFrames, 300, 'and every frame comes when it reads on');
+  assert.ok(fedToTheEnd);
 
   // ---- a client gone after a few frames: it ends at once
   const abort = new AbortController();

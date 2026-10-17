@@ -34,6 +34,12 @@ export const LIBX264: H264Encoder = {
 /** The width of the copy at most, as the copy the server made: a browser that cannot decode H.265 is often a weak one. */
 export const MAX_WIDTH = 1280;
 const CHUNK = 256 * 1024;
+/**
+ * Frames made and not yet taken that stop ffmpeg's output being read: a client that waits (a paused playback) holds
+ * ffmpeg back through the pipes, which made the whole file at once into memory otherwise.
+ */
+const QUEUE_HIGH = 30;
+const QUEUE_LOW = 10;
 
 function candidates(platform: NodeJS.Platform, nodes: string[]): H264Encoder[] {
   const list: H264Encoder[] = [{ name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'h264_nvenc', '-preset', 'p2', '-tune', 'll'] }];
@@ -246,8 +252,13 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
   proc.stderr.on('data', (chunk: Buffer) => {
     stderr = (stderr + chunk.toString()).slice(-2000);
   });
+  let held = false;
   proc.stdout.on('data', (chunk: Buffer) => {
     demux.push(chunk);
+    if (queue.length >= QUEUE_HIGH && !held) {
+      held = true;
+      proc.stdout.pause();
+    }
     notify();
   });
   proc.once('error', (error) => {
@@ -271,8 +282,13 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
   opts.signal?.addEventListener('abort', stop, { once: true });
   try {
     for (;;) {
-      if (queue.length) {
-        yield* queue.splice(0);
+      const next = queue.shift();
+      if (next) {
+        if (held && queue.length <= QUEUE_LOW) {
+          held = false;
+          proc.stdout.resume();
+        }
+        yield next;
         continue;
       }
       if (ended || opts.signal?.aborted) break;
