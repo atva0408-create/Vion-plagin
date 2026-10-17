@@ -188,6 +188,13 @@ async function main(): Promise<void> {
   assert.equal(strip.videoCodec, 'h264');
   assert.ok(strip.frames.length >= 2 && strip.frames.every((frame) => frame.keyframe && probeCodec(Buffer.from(frame.frame), 'h264')), 'keyframes, each H.264');
 
+  // ---- 'scrub' asks for the lightest recording, not for H.264: a browser with H.265 got every scrub and every
+  // picture-in-picture playback made H.264 (100 ms instead of 10 a frame). One without H.265 falls back to 'low' itself
+  // (ui/src/nvr/playback.ts recover)
+  assert.equal((await nvr.nvrScrub('cam', target, false, 'scrub')).videoCodec, 'h265', 'a coarse scrub as it is');
+  assert.equal((await nvr.nvrScrub('cam', target, true, 'scrub')).videoCodec, 'h265', 'a fine scrub as it is');
+  assert.equal((await play('cam', cam.start_us, 'scrub')).ready[0]!.videoCodec, 'h265', 'a playback as it is');
+
   // ---- a time with a low recording (the archive of before, when the recorder kept the H.264 copy): that one
   const old = await record('old', 'high', hevc, at);
   const oldLow = await record('old', 'low', avc, at);

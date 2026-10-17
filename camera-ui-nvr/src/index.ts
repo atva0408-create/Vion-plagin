@@ -1652,9 +1652,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   /**
-   * What a read of the archive takes (playback, scrub, trace, preview). A client that cannot decode H.265 asks for the
-   * low stream; at a time with a low (or mid) recording it gets that, as before, and else the H.265 recording made
-   * H.264 as it is read (media/transcode.ts): the recorder no longer keeps an H.264 copy of an H.265 camera for it.
+   * What a read of the archive takes (playback, scrub, trace, preview). 'scrub' and 'low' take the lightest recording
+   * at the time, a low or mid one where there is one. A client that cannot decode H.265 asks for 'low' (the player
+   * falls back to it, ui/src/nvr/playback.ts recover): an H.265 recording goes to it made H.264 as it is read
+   * (media/transcode.ts), the recorder no longer keeping an H.264 copy of an H.265 camera for it. 'scrub' alone says
+   * nothing of the client: it got every scrub made H.264 in a browser that decodes H.265 too (100 ms a frame, not 10).
    */
   private readRole(cameraId: string, sourceRole: string | undefined, tsUs: number): { role: string; asH264: boolean } {
     if (sourceRole !== 'low' && sourceRole !== 'scrub') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
@@ -1664,7 +1666,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     };
     for (const lighter of ['low', 'mid']) if (at(lighter)) return { role: lighter, asH264: false };
     const role = this.resolveRole(cameraId, sourceRole);
-    return { role, asH264: at(role)?.codec === 'h265' };
+    return { role, asH264: sourceRole === 'low' && at(role)?.codec === 'h265' };
   }
 
   /** The frames of a recording from `kf` up to the one at `untilUs` (at most `max`), made H.264. */
