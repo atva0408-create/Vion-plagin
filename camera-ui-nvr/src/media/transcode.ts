@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { open } from 'node:fs/promises';
+import { availableParallelism, setPriority } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { ptsDelta, TS_PACKET, TsDemuxer } from './ts-demux.js';
@@ -41,6 +42,49 @@ const CHUNK = 256 * 1024;
  */
 const QUEUE_HIGH = 30;
 const QUEUE_LOW = 10;
+
+/**
+ * How many recordings are made H.264 at once: each is a decode of the camera's picture and an encode on this machine,
+ * one for every viewer without H.265 (an episode of N cameras is N). Half the machine's cores, at least two; past that
+ * a viewer waits for a place instead of every viewer and the analysis slowing down.
+ */
+let slots = Math.max(2, Math.floor(availableParallelism() / 2));
+let busy = 0;
+const waiting: (() => void)[] = [];
+
+export function h264Slots(): number {
+  return slots;
+}
+
+export function setH264Slots(count: number): void {
+  slots = Math.max(1, count);
+  waiting.shift()?.();
+}
+
+/** A place to make H.264 in, waited for; false when the client gave up meanwhile. */
+async function takeSlot(signal?: AbortSignal): Promise<boolean> {
+  while (busy >= slots) {
+    if (signal?.aborted) return false;
+    await new Promise<void>((resolve) => {
+      const go = () => {
+        signal?.removeEventListener('abort', go);
+        const at = waiting.indexOf(go);
+        if (at >= 0) waiting.splice(at, 1);
+        resolve();
+      };
+      waiting.push(go);
+      signal?.addEventListener('abort', go, { once: true });
+    });
+  }
+  if (signal?.aborted) return false;
+  busy++;
+  return true;
+}
+
+function freeSlot(): void {
+  busy--;
+  waiting.shift()?.();
+}
 
 function candidates(platform: NodeJS.Platform, nodes: string[]): H264Encoder[] {
   const list: H264Encoder[] = [{ name: 'nvenc', input: [], upload: '', codec: ['-c:v', 'h264_nvenc', '-preset', 'p2', '-tune', 'll'] }];
@@ -208,6 +252,10 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
+  if (!(await takeSlot(opts.signal))) {
+    await fh.close();
+    return;
+  }
   try {
     let made = false;
     try {
@@ -222,6 +270,7 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
       yield* framesOf(fh, path, from, { ...opts, encoder: LIBX264 });
     }
   } finally {
+    freeSlot();
     await fh.close();
   }
 }
@@ -262,6 +311,14 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     ],
     { stdio: ['pipe', 'pipe', 'pipe'] },
   );
+  // below the recording and the analysis: under load a viewer's picture waits, not the archive or a detection
+  if (proc.pid !== undefined) {
+    try {
+      setPriority(proc.pid, 10);
+    } catch {
+      // a system that refuses it (or a process already gone) runs it at the normal priority, as it ran before
+    }
+  }
   const queue: Frame[] = [];
   let stderr = '';
   let ended = false;

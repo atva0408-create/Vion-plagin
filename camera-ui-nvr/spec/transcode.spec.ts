@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec } from '../src/media/codec.js';
-import { findH264Encoder, LIBX264, readFramesAsH264 } from '../src/media/transcode.js';
+import { findH264Encoder, h264Slots, LIBX264, readFramesAsH264, setH264Slots } from '../src/media/transcode.js';
 import { ptsDelta, TsDemuxer } from '../src/media/ts-demux.js';
 import { readFrames } from '../src/reader.js';
 
@@ -190,6 +190,49 @@ async function main(): Promise<void> {
   await sleep(10);
   assert.deepEqual(warnings, [], 'no listener left behind by the waits for ffmpeg');
 
+  // ---- no more made at once than the machine has room for: the rest wait their turn. Each viewer without H.265 had
+  // its own ffmpeg, an episode of N cameras N of them, with nothing to bound them on a weak machine
+  assert.ok(h264Slots() >= 2, `the machine's room: ${h264Slots()}`);
+  const machineSlots = h264Slots();
+  setH264Slots(1);
+  const running = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  assert.equal((await running.next()).done, false);
+  const waiting = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  let waited = true;
+  const waitingFirst = waiting.next().then((result) => {
+    waited = false;
+    return result;
+  });
+  await sleep(1500);
+  assert.equal(waited, true, 'a second one waits while the first runs');
+  await running.return(undefined);
+  assert.equal((await waitingFirst).done, false, 'and goes once the first ends');
+  await waiting.return(undefined);
+  // one that waits and is given up ends without a frame, and keeps no place
+  const blocker = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  await blocker.next();
+  const given = new AbortController();
+  const givenUp = collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, signal: given.signal }));
+  await sleep(300);
+  given.abort();
+  assert.deepEqual(await givenUp, []);
+  await blocker.return(undefined);
+  assert.ok((await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 }))).length > 0, 'the place is free again');
+  // and the count is right after it: one running still makes the next wait
+  const again = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  await again.next();
+  let stillWaits = true;
+  const next = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  const nextFirst = next.next().then(() => {
+    stillWaits = false;
+  });
+  await sleep(1000);
+  assert.equal(stillWaits, true, 'one given up while waiting leaves the count as it was');
+  await again.return(undefined);
+  await nextFirst;
+  await next.return(undefined);
+  setH264Slots(machineSlots);
+
   // ---- a client gone after a few frames: it ends at once
   const abort = new AbortController();
   const startedAt = Date.now();
@@ -243,7 +286,19 @@ async function main(): Promise<void> {
   console.log('transcode.spec: every frame at its time as H.264 ≤1280, from a middle keyframe, sound, abort, failures, encoder — ok');
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+// a wait nothing ends empties Node's loop and the process ended with 0 without its checks: that is a failure
+let finished = false;
+process.on('exit', (code) => {
+  if (!finished && code === 0) {
+    console.error('the spec ended before its last check: something waits for what never comes');
+    process.exitCode = 1;
+  }
 });
+main()
+  .then(() => {
+    finished = true;
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
