@@ -1815,7 +1815,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         previous = seg;
         const made = madeOf(seg) ? await this.h264() : undefined;
         if (!made) meta ??= { videoCodec: seg.codec, codecString: seg.codec_string, width: seg.width, height: seg.height };
-        for await (const frame of made ? readFramesAsH264(this.store.located(seg).path, at, made) : readFrames(this.store.located(seg), at)) {
+        const reading = made
+          ? readFramesAsH264(this.store.located(seg).path, at, { ...made, keyframes: parseKeyframes(seg.keyframes) })
+          : readFrames(this.store.located(seg), at);
+        for await (const frame of reading) {
           if (frame.audio) continue;
           if (made && !meta) meta = VionNvr.h264Meta([frame]);
           if (frame.tsUs > until) break;

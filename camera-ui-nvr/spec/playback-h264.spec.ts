@@ -59,7 +59,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live', 'two', 'resized', 'switch', 'through', 'sparse', 'moved']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -279,6 +279,23 @@ async function main(): Promise<void> {
   assert.deepEqual(asIs.frames!.map((frame) => frame.ts), [sparseKeyframes[1]!.tsUs], 'the nearer keyframe, 4 s on');
   const farTrace = await nvr.nvrTraceFrames('sparse', [{ tMs: farTarget / 1000, src: 'low' } as never], 'exact');
   assert.equal(farTrace.chains[0]!.frames.at(-1)!.ts, sparseKeyframes[1]!.tsUs, 'the trace frame too');
+
+  // ---- the recorder moved its clock in the middle of a file (recorder.ts): playback, scrub and the hover excerpt made
+  // H.264 take the times of its index from that keyframe on, as the recording as it is gives them
+  const movedRow = await record('moved', 'high', hevc, at + 150_000);
+  const movedIndex = parseKeyframes(movedRow.keyframes).map((kf, i) => [kf.offset, i >= 1 ? kf.tsUs + 5_000_000 : kf.tsUs]);
+  internals.store.updateSegment(movedRow.id, movedRow.end_us + 5_000_000, movedRow.bytes, JSON.stringify(movedIndex));
+  const movedTimes = await times(internals.store.segment(movedRow.id)!);
+  assert.ok(movedTimes.at(-1)! - (await times(movedRow)).at(-1)! === 5_000_000, 'the move is in the index');
+  assert.deepEqual((await play('moved', movedRow.start_us, 'low')).frames.map((frame) => frame.ts), movedTimes, 'a playback');
+  const movedTarget = movedTimes[25]!;
+  const movedFine = await nvr.nvrScrub('moved', movedTarget, true, 'low');
+  assert.equal(movedFine.frames!.at(-1)!.ts, movedTarget, 'a fine scrub');
+  const movedHover = await nvr.nvrPreviewFrames('moved', movedRow.start_us, movedTimes.at(-1)!, 12, 'motion', 4_000_000, true);
+  assert.ok(
+    movedHover.frames.every((frame) => movedTimes.includes(frame.ts)),
+    'a hover excerpt',
+  );
 
   // ---- a lighter stream recorded in H.265 too (a camera recording its high and mid streams, both H.265): that one,
   // made H.264. It went as H.265 and the player had nothing left to fall back to

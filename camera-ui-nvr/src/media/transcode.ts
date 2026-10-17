@@ -179,6 +179,8 @@ export interface H264ReadOptions {
   signal?: AbortSignal;
   audio?: boolean;
   maxWidth?: number;
+  /** the file's keyframe index: the times of its frames are anchored on each entry, as readFrames does */
+  keyframes?: Keyframe[];
 }
 
 /**
@@ -207,9 +209,14 @@ async function streamTables(fh: FileHandle): Promise<Buffer[]> {
 }
 
 /** The file from a keyframe on into ffmpeg's input, at its pace; the end of the file ends it unless it is followed. */
-async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264ReadOptions): Promise<void> {
+async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264ReadOptions, tap?: TsDemuxer): Promise<void> {
   let position = from.offset;
-  if (position > 0) for (const table of await streamTables(fh)) input.write(table);
+  if (position > 0) {
+    const tables = await streamTables(fh);
+    for (const table of tables) input.write(table);
+    if (tables.length) tap?.push(Buffer.concat(tables), 0);
+  }
+  let first = true;
   const buf = Buffer.alloc(CHUNK);
   for (;;) {
     if (opts.signal?.aborted || input.destroyed) return;
@@ -222,8 +229,11 @@ async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264R
       input.end();
       return;
     }
+    const chunk = Buffer.from(buf.subarray(0, bytesRead));
+    tap?.push(chunk, first ? position : undefined);
+    first = false;
     position += bytesRead;
-    if (!input.write(Buffer.from(buf.subarray(0, bytesRead)))) {
+    if (!input.write(chunk)) {
       await new Promise<void>((resolve) => {
         // whichever comes, the other is taken off: a wait for each chunk ffmpeg holds back left one behind
         const done = () => {
@@ -328,9 +338,31 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     wake?.();
     wake = undefined;
   };
-  // the first frame out is the keyframe the file was read from: its time anchors the rest
+  // the first frame out is the keyframe the file was read from: its time anchors the rest, and every keyframe of the
+  // index after it anchors the frames from it on. The recorder moves its clock in the middle of a file on a drift or a
+  // jump of the camera's PTS (recorder.ts), and frames made H.264 kept the first time for the whole file. The keyframes
+  // are found in what is fed, by their offsets; out of ffmpeg the PTS keep their distances (-fps_mode passthrough)
   let base: { pts: number; us: number } | undefined;
-  const at = (pts: number) => base!.us + Math.round((ptsDelta(base!.pts, pts) / 90) * 1000);
+  const index = new Map((opts.keyframes ?? []).map((kf) => [kf.offset, kf.tsUs]));
+  let fedFirst: number | undefined;
+  const anchors: { d: number; us: number }[] = [];
+  const tap = index.size
+    ? new TsDemuxer((au) => {
+        if (!au.keyframe) return;
+        fedFirst ??= au.pts;
+        const us = index.get(au.offset);
+        if (us !== undefined) anchors.push({ d: ptsDelta(fedFirst, au.pts), us });
+      })
+    : undefined;
+  const at = (pts: number) => {
+    const d = ptsDelta(base!.pts, pts);
+    let anchor = { d: 0, us: base!.us };
+    for (const next of anchors) {
+      if (next.d > d) break;
+      anchor = next;
+    }
+    return anchor.us + Math.round(((d - anchor.d) / 90) * 1000);
+  };
   const demux = new TsDemuxer(
     (au) => {
       base ??= { pts: au.pts, us: from.tsUs };
@@ -370,7 +402,7 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
   });
   // a client gone, or ffmpeg gone, ends the feeding: its failure is ffmpeg's, said when the frames end
   proc.stdin.on('error', () => {});
-  const feeding = feed(fh, from, proc.stdin, opts).catch((error: unknown) => {
+  const feeding = feed(fh, from, proc.stdin, opts, tap).catch((error: unknown) => {
     failure ??= error instanceof Error ? error : new Error(String(error));
     proc.kill('SIGKILL');
   });

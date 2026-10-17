@@ -137,6 +137,21 @@ async function main(): Promise<void> {
     recorded.filter((frame) => frame.tsUs >= middle.tsUs).map((frame) => frame.tsUs),
   );
 
+  // ---- the recorder moved its clock in the middle of the file (a drift, a jump of the camera's PTS: recorder.ts):
+  // the index has the new times from that keyframe on, and the frames made H.264 take them, as readFrames does. They
+  // kept the time of the first keyframe for the whole file, 5 s off after the move
+  const moved = keyframes.map(([offset, tsUs], i) => [offset, i >= 2 ? tsUs + 5_000_000 : tsUs] as [number, number]);
+  const movedSegment = { ...segment, keyframes: JSON.stringify(moved) } as SegmentRow;
+  const movedIndex = moved.map(([offset, tsUs]) => ({ offset, tsUs }));
+  const asRead = video(await collect(readFrames(movedSegment, start)));
+  const asMade = video(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, keyframes: movedIndex })));
+  assert.deepEqual(
+    asMade.map((frame) => frame.tsUs),
+    asRead.map((frame) => frame.tsUs),
+    'the times readFrames gives, the move included',
+  );
+  assert.ok(asRead.at(-1)!.tsUs - recorded.at(-1)!.tsUs === 5_000_000, 'the move is in the times');
+
   // ---- the file being written, from a keyframe in its middle, as the recorder lays it out: the first frame comes at
   // once. Without the tables ffmpeg looked through 5 MB for the streams first: about a minute of a camera's recording
   // at the live tip (39 s at 1.1 Mbit/s in the review)
