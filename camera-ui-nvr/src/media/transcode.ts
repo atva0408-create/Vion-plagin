@@ -223,6 +223,8 @@ export interface H264ReadOptions {
   startUs?: number;
   /** more frames than this before `startUs`: no frames at all (the caller takes a nearer keyframe, as readExact does) */
   maxBefore?: number;
+  /** the sound from this time on (else from `startUs`): it runs behind the picture */
+  audioFromUs?: number;
   /** the place of a playback, kept from one of its files to the next; without it the reading takes its own */
   place?: H264Place;
   /** how long to wait for a place at most (a short read nobody waits for long); no frames past it */
@@ -315,7 +317,9 @@ async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264R
 export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
   let start = from;
   let startUs = opts.startUs;
+  let audioFromUs = opts.audioFromUs;
   let lastVideo: number | undefined;
+  let lastAudio: number | undefined;
   for (;;) {
     let fh: FileHandle;
     try {
@@ -341,7 +345,7 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
     };
     let idle = false;
     try {
-      const frames = madeFrames(fh, path, start, { ...opts, startUs })[Symbol.asyncIterator]();
+      const frames = madeFrames(fh, path, start, { ...opts, startUs, audioFromUs })[Symbol.asyncIterator]();
       for (;;) {
         const step = await frames.next();
         if (step.done) return;
@@ -355,20 +359,24 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
         } finally {
           clearTimeout(timer);
         }
-        if (!step.value.audio) lastVideo = step.value.tsUs;
+        if (step.value.audio) lastAudio = step.value.tsUs;
+        else lastVideo = step.value.tsUs;
         if (idle) break;
       }
     } finally {
       await release();
     }
     // the client is back: on from the keyframe before the last frame it took, the ones before decoded only (a
-    // millisecond on: the start is found to half of one, and frames are further apart than that)
+    // millisecond on: the start is found to half of one, and frames are further apart than that), and the sound from
+    // the last sound frame it took (behind the picture: the keyframe is the one before that too)
     if (lastVideo === undefined) {
       startUs = opts.startUs;
       continue;
     }
-    start = (opts.keyframes ?? []).filter((kf) => kf.tsUs <= lastVideo!).at(-1) ?? from;
+    const back = Math.min(lastVideo, lastAudio ?? lastVideo);
+    start = (opts.keyframes ?? []).filter((kf) => kf.tsUs <= back).at(-1) ?? from;
     startUs = lastVideo + 1000;
+    if (lastAudio !== undefined) audioFromUs = lastAudio + 1;
   }
 }
 
@@ -393,8 +401,10 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
   // the PTS of the frame to begin with: the frames before it go through the decoder only (ffmpeg's select drops them)
   const fromPts = opts.startUs !== undefined && opts.startUs > from.tsUs ? await ptsAt(fh, from.offset) : undefined;
   const startPts = fromPts === undefined ? undefined : fromPts + Math.round(((opts.startUs! - from.tsUs) * 90) / 1000);
-  // half a millisecond short of it: the time of a frame is its PTS rounded to the microsecond
-  const select = startPts !== undefined && startPts - 45 < 2 ** 33 ? `select=gte(pts\\,${startPts - 45}),` : '';
+  // by its distance from the first frame, half a millisecond short of it (the time of a frame is its PTS rounded to the
+  // microsecond): ffmpeg makes the PTS of a GOP over the 33-bit wrap continuous, below zero or past 2^33, and a frame
+  // looked for by its own PTS was never found there
+  const select = startPts !== undefined ? `select=gte(t-start_t\\,${((opts.startUs! - from.tsUs - 500) / 1e6).toFixed(6)}),` : '';
   const proc = spawn(
     opts.ffmpegPath,
     [
@@ -470,11 +480,20 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     }
     const us = au.keyframe ? index.get(au.offset) : undefined;
     if (us !== undefined) anchors.push({ pts: au.pts, us });
-    if (startIn !== undefined) return;
-    if (startPts === undefined || ptsDelta(startPts - 45, au.pts) >= 0) {
-      startIn = au.pts;
-      passed = anchors.length;
-    } else if (opts.maxBefore !== undefined && ++before > opts.maxBefore) {
+    // the first frame out fixes it
+    if (shift !== undefined) return;
+    if (startPts === undefined) {
+      if (startIn === undefined) {
+        startIn = au.pts;
+        passed = anchors.length;
+      }
+      return;
+    }
+    if (ptsDelta(startPts - 45, au.pts) >= 0) {
+      // with B-frames the first frame shown at or after the time comes after a later one: the lowest PTS so far
+      if (startIn === undefined) passed = anchors.length;
+      if (startIn === undefined || ptsDelta(startIn, au.pts) < 0) startIn = au.pts;
+    } else if (startIn === undefined && opts.maxBefore !== undefined && ++before > opts.maxBefore) {
       tooFar = true;
       proc.kill('SIGKILL');
     }
@@ -520,7 +539,7 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
       ? (au) => {
           if (shift === undefined) return;
           const tsUs = at(au.pts);
-          if (tsUs >= (opts.startUs ?? from.tsUs)) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+          if (tsUs >= (opts.audioFromUs ?? opts.startUs ?? from.tsUs)) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
         }
       : undefined,
   );

@@ -151,6 +151,76 @@ async function main(): Promise<void> {
   assert.deepEqual(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo, maxBefore: 10 })), []);
   assert.equal(video(await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo, maxBefore: 30 })))[0]!.tsUs, seekTo);
 
+  // ---- a seek into the GOP over the wrap of the 33-bit PTS (every 26.5 h of a camera's clock): the frame of the time
+  // and on, at their times. ffmpeg makes the PTS before the wrap negative: the frame looked for by its PTS was never
+  // found (no frames) or the start was not looked for at all (every frame from the keyframe, all late)
+  const wrapPath = join(dir, 'wrap.ts');
+  const wrapMade = spawnSync(
+    FFMPEG,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '4', '-c:v', 'libx265'],
+      ...['-x265-params', 'keyint=10:min-keyint=10:bframes=0:log-level=error', '-output_ts_offset', String(2 ** 33 / 90_000 - 2.9), '-f', 'mpegts', wrapPath],
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(wrapMade.status, 0, wrapMade.stderr);
+  const wrapIndex: [number, number][] = [];
+  let wrapFirst: number | undefined;
+  let wrapped = false;
+  const wrapScan = new TsDemuxer((au) => {
+    if (wrapFirst !== undefined && au.pts < wrapFirst) wrapped = true;
+    wrapFirst ??= au.pts;
+    if (au.keyframe) wrapIndex.push([au.offset, Math.round((ptsDelta(wrapFirst, au.pts) / 90) * 1000)]);
+  });
+  wrapScan.push(readFileSync(wrapPath), 0);
+  wrapScan.flush();
+  assert.ok(wrapped, 'the PTS wrap inside the file');
+  const wrapSegment = { path: wrapPath, codec: 'h265', video_pid: wrapScan.videoPid, audio_pid: -1, keyframes: JSON.stringify(wrapIndex) } as unknown as SegmentRow;
+  // the keyframe 1 s in, the wrap 1.5 s in
+  const wrapKeyframe = { offset: wrapIndex[1]![0], tsUs: wrapIndex[1]![1] };
+  const wrapTimes = video(await collect(readFrames(wrapSegment, wrapKeyframe))).map((frame) => frame.tsUs);
+  for (const seekTo of [wrapTimes[3]!, wrapTimes[7]!]) {
+    const fromSeek = video(await collect(readFramesAsH264(wrapPath, wrapKeyframe, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: seekTo }))).map((frame) => frame.tsUs);
+    assert.deepEqual(fromSeek, wrapTimes.filter((ts) => ts >= seekTo), `a seek ${seekTo - wrapKeyframe.tsUs} us into the GOP over the wrap`);
+  }
+
+  // ---- a camera that sends B-frames: a seek inside a GOP begins with the frame of the time, the times those of the
+  // recording. The first frame after the time in the order they are sent was taken for it, not the first shown, and
+  // every time after was off by the reorder
+  const bPath = join(dir, 'bframes.ts');
+  const bMade = spawnSync(
+    FFMPEG,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '4', '-c:v', 'libx265'],
+      ...['-x265-params', 'keyint=20:min-keyint=20:bframes=2:b-adapt=0:open-gop=0:log-level=error', '-f', 'mpegts', bPath],
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(bMade.status, 0, bMade.stderr);
+  const bIndex: [number, number][] = [];
+  let bFirst: number | undefined;
+  let reordered = false;
+  let bLast: number | undefined;
+  const bScan = new TsDemuxer((au) => {
+    if (bLast !== undefined && au.pts < bLast) reordered = true;
+    bLast = au.pts;
+    bFirst ??= au.pts;
+    if (au.keyframe) bIndex.push([au.offset, Math.round((ptsDelta(bFirst, au.pts) / 90) * 1000)]);
+  });
+  bScan.push(readFileSync(bPath), 0);
+  bScan.flush();
+  assert.ok(reordered, 'frames sent in another order than shown');
+  const bSegment = { path: bPath, codec: 'h265', video_pid: bScan.videoPid, audio_pid: -1, keyframes: JSON.stringify(bIndex) } as unknown as SegmentRow;
+  const bStart = { offset: bIndex[0]![0], tsUs: bIndex[0]![1] };
+  const bTimes = video(await collect(readFrames(bSegment, bStart)))
+    .map((frame) => frame.tsUs)
+    .sort((a, b) => a - b);
+  // a B-frame of the time (sent after the P-frame shown later)
+  for (const bSeek of [bTimes[13]!, bTimes[14]!]) {
+    const bMadeTimes = video(await collect(readFramesAsH264(bPath, bStart, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: bSeek }))).map((frame) => frame.tsUs);
+    assert.deepEqual(bMadeTimes, bTimes.filter((ts) => ts >= bSeek), `from the frame of ${bSeek}, at the times of the recording`);
+  }
+
   // ---- the recorder moved its clock in the middle of the file (a drift, a jump of the camera's PTS: recorder.ts):
   // the index has the new times from that keyframe on, and the frames made H.264 take them, as readFrames does. They
   // kept the time of the first keyframe for the whole file, 5 s off after the move
@@ -345,6 +415,26 @@ async function main(): Promise<void> {
     recorded.map((frame) => frame.tsUs),
     'back, every frame once, at its time',
   );
+  // with the sound: every sound frame once too (the sound runs behind the picture in the output, and the part between
+  // the last sound given and the last picture was lost)
+  const allSound = (await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index })))
+    .filter((frame) => frame.audio)
+    .map((frame) => frame.tsUs);
+  const pausingSound = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index })[Symbol.asyncIterator]();
+  const soundTimes: number[] = [];
+  const pictureTimes: number[] = [];
+  const take = (frame: Frame) => (frame.audio ? soundTimes : pictureTimes).push(frame.tsUs);
+  // paused right on a keyframe: the sound taken last is before it, and goes on from the keyframe before
+  while (!pictureTimes.includes(keyframes[2]![1])) take((await pausingSound.next()).value as Frame);
+  assert.ok(soundTimes.at(-1)! < keyframes[2]![1], 'the sound behind the picture');
+  await sleep(600);
+  for (;;) {
+    const step = await pausingSound.next();
+    if (step.done) break;
+    take(step.value as Frame);
+  }
+  assert.deepEqual(soundTimes, allSound, 'back, every sound frame once');
+  assert.deepEqual(pictureTimes, recorded.map((frame) => frame.tsUs), 'and every picture once');
   // one never taken again keeps no place
   const abandoned = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
   await abandoned.next();
