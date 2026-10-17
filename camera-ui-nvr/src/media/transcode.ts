@@ -54,6 +54,15 @@ function candidates(platform: NodeJS.Platform, nodes: string[]): H264Encoder[] {
       });
     }
   }
+  // Intel graphics without VA-API (Windows): Quick Sync, last, as the server's copies (go2rtc/hardware-transcode.ts)
+  if (platform !== 'darwin') {
+    list.push({
+      name: 'qsv',
+      input: ['-init_hw_device', 'qsv=qs', '-filter_hw_device', 'qs'],
+      upload: ',format=nv12,hwupload=extra_hw_frames=64',
+      codec: ['-c:v', 'h264_qsv'],
+    });
+  }
   if (platform === 'darwin') list.unshift({ name: 'videotoolbox', input: [], upload: '', codec: ['-c:v', 'h264_videotoolbox', '-realtime', '1'] });
   return list;
 }

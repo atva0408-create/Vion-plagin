@@ -220,8 +220,8 @@ async function main(): Promise<void> {
 
   // ---- the encoder: the first hardware one that encodes, else libx264
   const asked: string[] = [];
-  const machine = (works: string[]) => ({
-    platform: 'linux' as NodeJS.Platform,
+  const machine = (works: string[], platform: NodeJS.Platform = 'linux') => ({
+    platform,
     nodes: () => ['/dev/dri/renderD128'],
     run: async (args: string[]) => {
       const codec = args[args.indexOf('-c:v') + 1]!;
@@ -233,6 +233,12 @@ async function main(): Promise<void> {
   assert.deepEqual(asked, ['h264_nvenc', 'h264_vaapi']);
   assert.equal((await findH264Encoder(FFMPEG, machine(['h264_nvenc']))).name, 'nvenc');
   assert.equal(await findH264Encoder(FFMPEG, machine([])), LIBX264);
+  // Intel graphics on Windows: Quick Sync, as the server's copies (go2rtc/hardware-transcode.ts)
+  asked.length = 0;
+  const quickSync = await findH264Encoder(FFMPEG, machine(['h264_qsv'], 'win32'));
+  assert.equal(quickSync.name, 'qsv');
+  assert.deepEqual(asked, ['h264_nvenc', 'h264_qsv'], 'NVIDIA first, then Quick Sync');
+  assert.ok(quickSync.input.includes('qsv=qs') && quickSync.upload.includes('hwupload'), 'the device and the upload to it');
 
   console.log('transcode.spec: every frame at its time as H.264 ≤1280, from a middle keyframe, sound, abort, failures, encoder — ok');
 }
