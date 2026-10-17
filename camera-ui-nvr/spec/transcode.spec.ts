@@ -206,6 +206,8 @@ async function main(): Promise<void> {
     /ffmpeg made no H\.264 of .*hevc\.ts/,
   );
   await assert.rejects(collect(readFramesAsH264(path, start, { ffmpegPath: join(dir, 'no-ffmpeg'), encoder: LIBX264 })));
+  // a file the retention removed meanwhile ends without frames, as readFrames does: the playback goes on with the next
+  assert.deepEqual(await collect(readFramesAsH264(join(dir, 'removed.ts'), start, { ffmpegPath: FFMPEG, encoder: LIBX264 })), []);
 
   // ---- the encoder: the first hardware one that encodes, else libx264
   const asked: string[] = [];

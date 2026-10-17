@@ -11,6 +11,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { ptsDelta, TS_PACKET, TsDemuxer } from './ts-demux.js';
 
+import type { FileHandle } from 'node:fs/promises';
 import type { Writable } from 'node:stream';
 import type { Frame } from '../reader.js';
 import type { Keyframe } from '../store.js';
@@ -132,7 +133,7 @@ export interface H264ReadOptions {
  * and ffmpeg fed from a keyframe further on looked through 5 MB for the streams without them, a minute of a camera's
  * recording at the live tip.
  */
-async function streamTables(fh: Awaited<ReturnType<typeof open>>): Promise<Buffer[]> {
+async function streamTables(fh: FileHandle): Promise<Buffer[]> {
   const head = Buffer.alloc(TS_PACKET * 8);
   const { bytesRead } = await fh.read(head, 0, head.length, 0);
   const packets: Buffer[] = [];
@@ -153,39 +154,34 @@ async function streamTables(fh: Awaited<ReturnType<typeof open>>): Promise<Buffe
 }
 
 /** The file from a keyframe on into ffmpeg's input, at its pace; the end of the file ends it unless it is followed. */
-async function feed(path: string, from: Keyframe, input: Writable, opts: H264ReadOptions): Promise<void> {
-  const fh = await open(path, 'r');
-  try {
-    let position = from.offset;
-    if (position > 0) for (const table of await streamTables(fh)) input.write(table);
-    const buf = Buffer.alloc(CHUNK);
-    for (;;) {
-      if (opts.signal?.aborted || input.destroyed) return;
-      const { bytesRead } = await fh.read(buf, 0, CHUNK, position);
-      if (bytesRead === 0) {
-        if (opts.follow?.()) {
-          await sleep(250);
-          continue;
-        }
-        input.end();
-        return;
+async function feed(fh: FileHandle, from: Keyframe, input: Writable, opts: H264ReadOptions): Promise<void> {
+  let position = from.offset;
+  if (position > 0) for (const table of await streamTables(fh)) input.write(table);
+  const buf = Buffer.alloc(CHUNK);
+  for (;;) {
+    if (opts.signal?.aborted || input.destroyed) return;
+    const { bytesRead } = await fh.read(buf, 0, CHUNK, position);
+    if (bytesRead === 0) {
+      if (opts.follow?.()) {
+        await sleep(250);
+        continue;
       }
-      position += bytesRead;
-      if (!input.write(Buffer.from(buf.subarray(0, bytesRead)))) {
-        await new Promise<void>((resolve) => {
-          // whichever comes, the other is taken off: a wait for each chunk ffmpeg holds back left one behind
-          const done = () => {
-            input.off('drain', done);
-            input.off('close', done);
-            resolve();
-          };
-          input.once('drain', done);
-          input.once('close', done);
-        });
-      }
+      input.end();
+      return;
     }
-  } finally {
-    await fh.close();
+    position += bytesRead;
+    if (!input.write(Buffer.from(buf.subarray(0, bytesRead)))) {
+      await new Promise<void>((resolve) => {
+        // whichever comes, the other is taken off: a wait for each chunk ffmpeg holds back left one behind
+        const done = () => {
+          input.off('drain', done);
+          input.off('close', done);
+          resolve();
+        };
+        input.once('drain', done);
+        input.once('close', done);
+      });
+    }
   }
 }
 
@@ -194,6 +190,23 @@ async function feed(path: string, from: Keyframe, input: Writable, opts: H264Rea
  * made decodable for a client without H.265.
  */
 export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
+  let fh: FileHandle;
+  try {
+    fh = await open(path, 'r');
+  } catch (error) {
+    // removed by the retention between the index lookup and the read: no frames, as readFrames says, and the playback
+    // goes on with the next file instead of failing
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  try {
+    yield* framesOf(fh, path, from, opts);
+  } finally {
+    await fh.close();
+  }
+}
+
+async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
   const width = opts.maxWidth ?? MAX_WIDTH;
   const proc = spawn(
     opts.ffmpegPath,
@@ -280,7 +293,7 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
   });
   // a client gone, or ffmpeg gone, ends the feeding: its failure is ffmpeg's, said when the frames end
   proc.stdin.on('error', () => {});
-  const feeding = feed(path, from, proc.stdin, opts).catch((error: unknown) => {
+  const feeding = feed(fh, from, proc.stdin, opts).catch((error: unknown) => {
     failure ??= error instanceof Error ? error : new Error(String(error));
     proc.kill('SIGKILL');
   });
