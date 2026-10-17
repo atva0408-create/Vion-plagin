@@ -10,6 +10,7 @@ import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import VionNvr from '../src/index.js';
 import { probeCodec } from '../src/media/codec.js';
@@ -58,7 +59,7 @@ const api = {
 const storage = { values: {} as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
 const internals = nvr as unknown as Internals;
-for (const id of ['cam', 'old', 'subs']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
+for (const id of ['cam', 'old', 'subs', 'live']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
 internals.ffmpegPath = FFMPEG;
 // libx264 here whatever the machine has: the hardware ones are the encoder spec's
 internals.h264Encoder = Promise.resolve(LIBX264);
@@ -219,6 +220,41 @@ async function main(): Promise<void> {
   );
   assert.equal((await nvr.nvrScrub('subs', target, false, 'low')).videoCodec, 'h264');
   assert.equal((await nvr.nvrScrub('subs', target, false, 'scrub')).videoCodec, 'h265', 'a scrub as it is');
+
+  // ---- the newest seconds, in the file being written past what its index says yet (it is written every 4 s): made
+  // H.264 too. They went as H.265, the time found in the file but not in the index
+  const liveAt = realNow() - 300_000;
+  const liveRec = new Recorder({
+    cameraId: 'live',
+    role: 'high',
+    rtspUrl: 'rtsp://unused',
+    ffmpegPath: FFMPEG,
+    dir: join(dir, 'recordings', 'live'),
+    store: internals.store,
+    mode: 'continuous',
+    preBufferSec: 0,
+    postBufferSec: 0,
+    segmentSec: 600,
+    log: noop,
+    onStateChange: noop,
+    onSegment: noop,
+  });
+  const piece = Math.ceil(hevc.length / 188 / 30) * 188;
+  try {
+    for (let i = 0; i < 25; i++) {
+      Date.now = () => liveAt + i * 100;
+      (liveRec as unknown as { onData(c: Buffer): void }).onData(Buffer.from(hevc.subarray(i * piece, (i + 1) * piece)));
+    }
+  } finally {
+    Date.now = realNow;
+  }
+  (internals.cameras.get('live') as { recorders: Map<string, unknown> }).recorders.set('high', liveRec);
+  await sleep(300);
+  const liveRow = internals.store.segment(liveRec.liveSegmentId!)!;
+  const tail = liveRow.start_us + 1_200_000;
+  assert.ok(liveRow.end_us < tail, 'the index of the file being written ends before the time asked for');
+  assert.equal((await nvr.nvrScrub('live', tail, false, 'low')).videoCodec, 'h264', 'the newest seconds made H.264');
+  await liveRec.stop();
 
   console.log('playback-h264.spec: H.265 made H.264 for a low stream, told first, every frame at its time; H.265 as it is; an old copy played — ok');
   process.exit(0);

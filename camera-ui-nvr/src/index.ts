@@ -1660,8 +1660,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    */
   private readRole(cameraId: string, sourceRole: string | undefined, tsUs: number): { role: string; asH264: boolean } {
     if (sourceRole !== 'low' && sourceRole !== 'scrub') return { role: this.resolveRole(cameraId, sourceRole), asH264: false };
+    // the file being written too, past what its index says yet (written every 4 s), as the reads find it
     const at = (role: string) => {
-      const segment = this.store.segmentAt(cameraId, role, tsUs);
+      const segment = this.segmentAt(cameraId, role, tsUs);
       return segment && segment.start_us - tsUs <= START_GAP_US ? segment : undefined;
     };
     // a lighter recording in H.265 (a camera recording its high and mid streams, both H.265) is made H.264 as well
