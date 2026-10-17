@@ -221,6 +221,38 @@ async function main(): Promise<void> {
     assert.deepEqual(bMadeTimes, bTimes.filter((ts) => ts >= bSeek), `from the frame of ${bSeek}, at the times of the recording`);
   }
 
+  // ---- leading pictures shown before their keyframe (RADL): a seek begins with the frame of the time, the times those
+  // of the recording. Looked for by the distance from the first frame decoded (a leading one), it began 0.2 s early
+  const radlPath = join(dir, 'radl.ts');
+  const radlMade = spawnSync(
+    FFMPEG,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=10', '-t', '4', '-c:v', 'libx265'],
+      ...['-x265-params', 'keyint=10:min-keyint=10:bframes=3:b-adapt=0:open-gop=0:radl=2:log-level=error', '-f', 'mpegts', radlPath],
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(radlMade.status, 0, radlMade.stderr);
+  const radlIndex: [number, number][] = [];
+  let radlFirst: number | undefined;
+  const radlScan = new TsDemuxer((au) => {
+    radlFirst ??= au.pts;
+    if (au.keyframe) radlIndex.push([au.offset, Math.round((ptsDelta(radlFirst, au.pts) / 90) * 1000)]);
+  });
+  radlScan.push(readFileSync(radlPath), 0);
+  radlScan.flush();
+  const radlSegment = { path: radlPath, codec: 'h265', video_pid: radlScan.videoPid, audio_pid: -1, keyframes: JSON.stringify(radlIndex) } as unknown as SegmentRow;
+  const radlKeyframe = { offset: radlIndex[1]![0], tsUs: radlIndex[1]![1] };
+  const radlTimes = video(await collect(readFrames(radlSegment, radlKeyframe)))
+    .map((frame) => frame.tsUs)
+    .sort((a, b) => a - b);
+  const radlSeek = radlKeyframe.tsUs + 200_000;
+  assert.deepEqual(
+    video(await collect(readFramesAsH264(radlPath, radlKeyframe, { ffmpegPath: FFMPEG, encoder: LIBX264, startUs: radlSeek }))).map((frame) => frame.tsUs),
+    radlTimes.filter((ts) => ts >= radlSeek),
+    'with leading pictures: from the frame of the time',
+  );
+
   // ---- the recorder moved its clock in the middle of the file (a drift, a jump of the camera's PTS: recorder.ts):
   // the index has the new times from that keyframe on, and the frames made H.264 take them, as readFrames does. They
   // kept the time of the first keyframe for the whole file, 5 s off after the move
@@ -420,21 +452,60 @@ async function main(): Promise<void> {
   const allSound = (await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index })))
     .filter((frame) => frame.audio)
     .map((frame) => frame.tsUs);
-  const pausingSound = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index })[Symbol.asyncIterator]();
-  const soundTimes: number[] = [];
-  const pictureTimes: number[] = [];
-  const take = (frame: Frame) => (frame.audio ? soundTimes : pictureTimes).push(frame.tsUs);
-  // paused right on a keyframe: the sound taken last is before it, and goes on from the keyframe before
-  while (!pictureTimes.includes(keyframes[2]![1])) take((await pausingSound.next()).value as Frame);
-  assert.ok(soundTimes.at(-1)! < keyframes[2]![1], 'the sound behind the picture');
+  // paused before any sound was taken, in the middle of a GOP, and right on a keyframe (the sound taken last is before
+  // it): every sound frame once all the same. The sound that came out of ffmpeg before the first picture was dropped
+  for (const pausedAt of [3, 13, 20, 27]) {
+    const pausingSound = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index })[Symbol.asyncIterator]();
+    const soundTimes: number[] = [];
+    const pictureTimes: number[] = [];
+    const take = (frame: Frame) => (frame.audio ? soundTimes : pictureTimes).push(frame.tsUs);
+    while (pictureTimes.length < pausedAt) take((await pausingSound.next()).value as Frame);
+    await sleep(600);
+    for (;;) {
+      const step = await pausingSound.next();
+      if (step.done) break;
+      take(step.value as Frame);
+    }
+    assert.deepEqual(soundTimes, allSound, `paused after ${pausedAt} pictures: back, every sound frame once`);
+    assert.deepEqual(pictureTimes, recorded.map((frame) => frame.tsUs), `paused after ${pausedAt} pictures: every picture once`);
+  }
+  // a camera of 25 fps and 48 kHz sound: the sound comes out of ffmpeg ahead of the first new picture after a pause,
+  // and was dropped there (8 frames, 170 ms)
+  const sound25 = join(dir, 'sound25.ts');
+  const sound25Made = spawnSync(
+    FFMPEG,
+    [
+      ...['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000'],
+      ...['-t', '5', '-c:v', 'libx265', '-x265-params', 'keyint=25:min-keyint=25:bframes=0:log-level=error', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-f', 'mpegts', sound25],
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(sound25Made.status, 0, sound25Made.stderr);
+  const index25: { offset: number; tsUs: number }[] = [];
+  let first25: number | undefined;
+  const scan25 = new TsDemuxer((au) => {
+    first25 ??= au.pts;
+    if (au.keyframe) index25.push({ offset: au.offset, tsUs: Math.round((ptsDelta(first25, au.pts) / 90) * 1000) });
+  });
+  scan25.push(readFileSync(sound25), 0);
+  scan25.flush();
+  const read25 = (signal?: AbortSignal) => readFramesAsH264(sound25, index25[0]!, { ffmpegPath: FFMPEG, encoder: LIBX264, audio: true, keyframes: index25, signal });
+  const all25 = (await collect(read25())).filter((frame) => frame.audio).map((frame) => frame.tsUs);
+  const paused25 = read25()[Symbol.asyncIterator]();
+  const sound25Times: number[] = [];
+  let pictures25 = 0;
+  while (pictures25 < 37) {
+    const frame = (await paused25.next()).value as Frame;
+    if (frame.audio) sound25Times.push(frame.tsUs);
+    else pictures25++;
+  }
   await sleep(600);
   for (;;) {
-    const step = await pausingSound.next();
+    const step = await paused25.next();
     if (step.done) break;
-    take(step.value as Frame);
+    if ((step.value as Frame).audio) sound25Times.push((step.value as Frame).tsUs);
   }
-  assert.deepEqual(soundTimes, allSound, 'back, every sound frame once');
-  assert.deepEqual(pictureTimes, recorded.map((frame) => frame.tsUs), 'and every picture once');
+  assert.deepEqual(sound25Times, all25, '25 fps, 48 kHz: back, every sound frame once');
   // one never taken again keeps no place
   const abandoned = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
   await abandoned.next();

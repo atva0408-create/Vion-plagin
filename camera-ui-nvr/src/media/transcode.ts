@@ -12,6 +12,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { ptsDelta, readTimestamp, TS_PACKET, TsDemuxer } from './ts-demux.js';
 
+import type { AudioUnit } from './ts-demux.js';
+
 import type { FileHandle } from 'node:fs/promises';
 import type { Writable } from 'node:stream';
 import type { Frame } from '../reader.js';
@@ -373,10 +375,13 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
       startUs = opts.startUs;
       continue;
     }
-    const back = Math.min(lastVideo, lastAudio ?? lastVideo);
+    // back to the sound (behind the picture; the sound from the start when none was taken yet), 10 s at most: a stream
+    // whose sound stopped is not decoded from far back at every resume
+    const soundFrom = opts.audioFromUs ?? opts.startUs ?? from.tsUs;
+    const back = Math.max(Math.min(lastVideo, opts.audio ? (lastAudio ?? soundFrom) : lastVideo), lastVideo - 10_000_000);
     start = (opts.keyframes ?? []).filter((kf) => kf.tsUs <= back).at(-1) ?? from;
     startUs = lastVideo + 1000;
-    if (lastAudio !== undefined) audioFromUs = lastAudio + 1;
+    audioFromUs = lastAudio !== undefined ? lastAudio + 1 : soundFrom;
   }
 }
 
@@ -398,13 +403,19 @@ async function *madeFrames(fh: FileHandle, path: string, from: Keyframe, opts: H
 
 async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H264ReadOptions): AsyncGenerator<Frame> {
   const width = opts.maxWidth ?? MAX_WIDTH;
-  // the PTS of the frame to begin with: the frames before it go through the decoder only (ffmpeg's select drops them)
-  const fromPts = opts.startUs !== undefined && opts.startUs > from.tsUs ? await ptsAt(fh, from.offset) : undefined;
-  const startPts = fromPts === undefined ? undefined : fromPts + Math.round(((opts.startUs! - from.tsUs) * 90) / 1000);
-  // by its distance from the first frame, half a millisecond short of it (the time of a frame is its PTS rounded to the
-  // microsecond): ffmpeg makes the PTS of a GOP over the 33-bit wrap continuous, below zero or past 2^33, and a frame
-  // looked for by its own PTS was never found there
-  const select = startPts !== undefined ? `select=gte(t-start_t\\,${((opts.startUs! - from.tsUs - 500) / 1e6).toFixed(6)}),` : '';
+  // The PTS of the frame to begin with: the frames before it go through the decoder only (ffmpeg's select drops them).
+  // Measured from the last keyframe of the index at or before the time (the recorder's clock may have moved at a
+  // keyframe in between), half a millisecond short of it (the time of a frame is its PTS rounded to the microsecond).
+  // Compared modulo the 33-bit wrap: ffmpeg makes the PTS of a GOP over it continuous, below zero or past 2^33. Not by
+  // the distance from the first frame decoded: with leading pictures (RADL) that one is shown before the keyframe
+  const ref =
+    opts.startUs !== undefined && opts.startUs > from.tsUs
+      ? ((opts.keyframes ?? []).filter((kf) => kf.offset >= from.offset && kf.tsUs <= opts.startUs!).at(-1) ?? from)
+      : undefined;
+  const refPts = ref ? await ptsAt(fh, ref.offset) : undefined;
+  const startPts = refPts === undefined ? undefined : (refPts + Math.round(((opts.startUs! - ref!.tsUs) * 90) / 1000)) % 2 ** 33;
+  const select =
+    startPts !== undefined ? `select=gte(mod(pts-${startPts - 45}+${2 ** 34 + 2 ** 32}\\,${2 ** 33})-${2 ** 32}\\,0),` : '';
   const proc = spawn(
     opts.ffmpegPath,
     [
@@ -512,6 +523,11 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
   let previous: number | undefined;
   let interval = 0;
   const at = (pts: number) => anchor!.us + Math.round((ptsDelta(anchor!.pts, pts - shift!) / 90) * 1000);
+  const soundBefore: AudioUnit[] = [];
+  const takeSound = (au: AudioUnit) => {
+    const tsUs = at(au.pts);
+    if (tsUs >= (opts.audioFromUs ?? opts.startUs ?? from.tsUs)) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+  };
   const demux = new TsDemuxer(
     (au) => {
       if (shift === undefined) {
@@ -519,6 +535,7 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
         shift = au.pts - first;
         next = passed;
         anchor = passed > 0 ? anchors[passed - 1] : { pts: fedFirst ?? au.pts, us: from.tsUs };
+        for (const sound of soundBefore.splice(0)) takeSound(sound);
       } else {
         // within half a frame: a keyframe is met where it is, not at a neighbour. 20 ms at least: after a jump of the
         // camera's clock back ffmpeg moves the PTS by 18 ms (1592 of 90 kHz) all the same
@@ -537,9 +554,13 @@ async function *framesOf(fh: FileHandle, path: string, from: Keyframe, opts: H26
     undefined,
     opts.audio
       ? (au) => {
-          if (shift === undefined) return;
-          const tsUs = at(au.pts);
-          if (tsUs >= (opts.audioFromUs ?? opts.startUs ?? from.tsUs)) queue.push({ data: au.data, tsUs, keyframe: false, audio: true });
+          // the sound out of ffmpeg before the first picture waits for it: the picture fixes the times. Dropped, the sound
+          // between the last frame a paused client took and the first new picture was lost
+          if (shift === undefined) {
+            if (soundBefore.length < 500) soundBefore.push(au);
+            return;
+          }
+          takeSound(au);
         }
       : undefined,
   );
