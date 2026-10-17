@@ -401,6 +401,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private ffmpegPath = 'ffmpeg';
   /** Found at the first playback that needs it. */
   private h264Encoder?: Promise<H264Encoder>;
+  /** Settles when the host's ffmpeg is known (or not coming): the encoder is tried with the ffmpeg that will make it. */
+  private ffmpegFound: Promise<void> = Promise.resolve();
+  private probeH264Encoder: (ffmpegPath: string) => Promise<H264Encoder> = (ffmpegPath) => findH264Encoder(ffmpegPath);
   private readonly cameras = new Map<string, ManagedCamera>();
   private retentionTimer: NodeJS.Timeout | undefined;
   private entitlementsTimer: NodeJS.Timeout | undefined;
@@ -854,7 +857,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     );
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
-    void Promise.race([this.api.coreManager.getFFmpegPath(), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 15_000))])
+    this.ffmpegFound = Promise.race([this.api.coreManager.getFFmpegPath(), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 15_000))])
       .then((path) => {
         if (path) {
           this.ffmpegPath = path;
@@ -1700,7 +1703,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** ffmpeg and the H.264 encoder of this machine, found once by an encode (media/transcode.ts). */
   private h264(): Promise<{ ffmpegPath: string; encoder: H264Encoder }> {
-    this.h264Encoder ??= findH264Encoder(this.ffmpegPath).then((encoder) => {
+    // tried with the host's ffmpeg: one asked for before it came used another (on PATH, or none) and kept libx264 for good
+    this.h264Encoder ??= this.ffmpegFound.then(() => this.probeH264Encoder(this.ffmpegPath)).then((encoder) => {
       this.logger.log(`Recordings of H.265 cameras are made H.264 for browsers without H.265 by ${encoder.name}`);
       return encoder;
     });
