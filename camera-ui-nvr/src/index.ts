@@ -1689,7 +1689,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private async framesAsH264(seg: SegmentRow, kf: Keyframe, untilUs: number, max = 300, skip?: { startUs: number; maxBefore: number }): Promise<Frame[]> {
     const out: Frame[] = [];
     // leaving the loop ends ffmpeg: only as much is encoded as is asked for
-    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, { ...(await this.h264()), ...skip })) {
+    // a short read: 10 s for a place at most, nobody waits for a scrub picture longer
+    for await (const frame of readFramesAsH264(this.store.located(seg).path, kf, { ...(await this.h264()), ...skip, waitMs: 10_000 })) {
       if (frame.audio) continue;
       out.push(frame);
       if (frame.tsUs >= untilUs || out.length >= max) break;
@@ -1824,6 +1825,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         const reading = made
           ? readFramesAsH264(this.store.located(seg).path, at, {
               ...made,
+              waitMs: 10_000,
               keyframes: parseKeyframes(seg.keyframes),
               ...(i === 0 ? { startUs: Math.max(startUs, seg.start_us) } : {}),
             })

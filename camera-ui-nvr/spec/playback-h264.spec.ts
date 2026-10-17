@@ -14,7 +14,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import VionNvr from '../src/index.js';
 import { probeCodec } from '../src/media/codec.js';
-import { LIBX264 } from '../src/media/transcode.js';
+import { h264Slots, LIBX264, readFramesAsH264, setH264Slots } from '../src/media/transcode.js';
 import { readFrames } from '../src/reader.js';
 import { parseKeyframes } from '../src/store.js';
 import { Recorder } from '../src/recorder.js';
@@ -207,6 +207,29 @@ async function main(): Promise<void> {
   const one = await record('two', 'high', hevc, at + 60_000);
   const two = await record('two', 'high', hevc, at + 63_000);
   assert.ok(two.start_us > one.start_us && one.id !== two.id, 'two files one after the other');
+  // a playback keeps its place from the first file to the next: with one place, another reading waits for its end
+  const machineSlots = h264Slots();
+  setH264Slots(1);
+  const order: string[] = [];
+  const playing = play('two', one.start_us, 'low').then(() => order.push('playback'));
+  await sleep(1000);
+  const reading = (async () => {
+    for await (const _ of readFramesAsH264(internals.store.located(two).path, parseKeyframes(two.keyframes)[0]!, { ffmpegPath: FFMPEG, encoder: LIBX264 }));
+    order.push('other');
+  })();
+  await Promise.all([playing, reading]);
+  // a scrub picture waits 10 s for a place at most, then there is none: nobody waits for one longer
+  const busyReading = readFramesAsH264(internals.store.located(two).path, parseKeyframes(two.keyframes)[0]!, { ffmpegPath: FFMPEG, encoder: LIBX264 })[
+    Symbol.asyncIterator
+  ]();
+  await busyReading.next();
+  const scrubAsked = Date.now();
+  const waitedScrub = await Promise.race([nvr.nvrScrub('two', two.start_us + 500_000, false, 'low'), sleep(20_000).then(() => undefined)]);
+  assert.ok(waitedScrub?.noData, 'no picture while every place is taken');
+  assert.ok(Date.now() - scrubAsked >= 9000, 'after waiting for one');
+  await busyReading.return(undefined);
+  setH264Slots(machineSlots);
+  assert.deepEqual(order, ['playback', 'other'], 'the playback was not cut at the end of its first file');
   const across = await nvr.nvrPreviewFrames('two', one.end_us - 1_000_000, two.end_us, 12, 'motion', 3_000_000, true);
   assert.equal(across.videoCodec, 'h264');
   assert.ok(

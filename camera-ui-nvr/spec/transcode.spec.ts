@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec } from '../src/media/codec.js';
-import { findH264Encoder, h264Slots, LIBX264, readFramesAsH264, setH264Idle, setH264Slots } from '../src/media/transcode.js';
+import { findH264Encoder, H264Place, h264Slots, LIBX264, readFramesAsH264, setH264Idle, setH264Slots } from '../src/media/transcode.js';
 import { ptsDelta, TsDemuxer } from '../src/media/ts-demux.js';
 import { readFrames } from '../src/reader.js';
 
@@ -349,7 +349,29 @@ async function main(): Promise<void> {
   await abandoned.next();
   await sleep(600);
   assert.ok((await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 }))).length > 0, 'a reading left for good keeps no place');
+  // a playback keeps its place from one file to the next: the cameras of an episode took turns at every file's end
+  const place = new H264Place();
+  assert.ok((await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, place }))).length > 0, 'one file of a playback');
+  let otherWaits = true;
+  const other = collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })).then((frames) => {
+    otherWaits = false;
+    return frames;
+  });
+  await sleep(300);
+  const nextFile = await Promise.race([collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, place })).then((frames) => frames.length), sleep(10_000).then(() => -1)]);
+  assert.ok(nextFile > 0, 'its next file goes on in the place it has');
+  assert.equal(otherWaits, true, 'while another waits');
+  place.release();
+  assert.ok((await other).length > 0, 'the place is the other one’s once the playback ends');
+  // a short read (a scrub, a trace picture, a hover excerpt) waits 10 s at most, then gives no frames: a hover asked
+  // again every 10 s piled up readings nobody wanted any more
   setH264Idle(30_000);
+  const holder = readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264 })[Symbol.asyncIterator]();
+  await holder.next();
+  const waitedAt = Date.now();
+  assert.equal((await collect(readFramesAsH264(path, start, { ffmpegPath: FFMPEG, encoder: LIBX264, waitMs: 300 }))).length, 0);
+  assert.ok(Date.now() - waitedAt < 5000, 'given up after its wait');
+  await holder.return(undefined);
   setH264Slots(machineSlots);
 
   // ---- a client that stops while the file is being read (a slow disk): it ends, and its place is free. The feeding

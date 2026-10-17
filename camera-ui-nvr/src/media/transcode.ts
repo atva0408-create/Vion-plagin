@@ -71,17 +71,20 @@ export function setH264Idle(ms: number): void {
   idleMs = ms;
 }
 
-/** A place to make H.264 in, waited for; false when the client gave up meanwhile. */
-async function takeSlot(signal?: AbortSignal): Promise<boolean> {
+/** A place to make H.264 in, waited for; false when the client gave up meanwhile, or after `waitMs`. */
+async function takeSlot(signal?: AbortSignal, waitMs?: number): Promise<boolean> {
+  const until = waitMs === undefined ? undefined : Date.now() + waitMs;
   while (busy >= slots) {
-    if (signal?.aborted) return false;
+    if (signal?.aborted || (until !== undefined && Date.now() >= until)) return false;
     await new Promise<void>((resolve) => {
       const go = () => {
+        clearTimeout(timer);
         signal?.removeEventListener('abort', go);
         const at = waiting.indexOf(go);
         if (at >= 0) waiting.splice(at, 1);
         resolve();
       };
+      const timer = until === undefined ? undefined : setTimeout(go, until - Date.now());
       waiting.push(go);
       signal?.addEventListener('abort', go, { once: true });
     });
@@ -89,6 +92,28 @@ async function takeSlot(signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return false;
   busy++;
   return true;
+}
+
+/**
+ * A place held across the files of one playback: it went back at every file's end, and the cameras of an episode
+ * with more of them than places took turns, each standing until another's file ended. The playback releases it when
+ * it ends; a reading whose client stands frees it meanwhile (idle) and takes it again when the client is back.
+ */
+export class H264Place {
+  private held = false;
+
+  public async take(signal?: AbortSignal, waitMs?: number): Promise<boolean> {
+    if (this.held) return true;
+    if (!(await takeSlot(signal, waitMs))) return false;
+    this.held = true;
+    return true;
+  }
+
+  public release(): void {
+    if (!this.held) return;
+    this.held = false;
+    freeSlot();
+  }
 }
 
 function freeSlot(): void {
@@ -198,6 +223,10 @@ export interface H264ReadOptions {
   startUs?: number;
   /** more frames than this before `startUs`: no frames at all (the caller takes a nearer keyframe, as readExact does) */
   maxBefore?: number;
+  /** the place of a playback, kept from one of its files to the next; without it the reading takes its own */
+  place?: H264Place;
+  /** how long to wait for a place at most (a short read nobody waits for long); no frames past it */
+  waitMs?: number;
 }
 
 /**
@@ -297,15 +326,17 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw error;
     }
-    if (!(await takeSlot(opts.signal))) {
+    const place = opts.place ?? new H264Place();
+    if (!(await place.take(opts.signal, opts.waitMs))) {
       await fh.close();
       return;
     }
     let held = true;
-    const release = async () => {
+    // the reading's own place goes back when it ends; a playback's is kept for its next file
+    const release = async (idleToo = false) => {
       if (!held) return;
       held = false;
-      freeSlot();
+      if (idleToo || !opts.place) place.release();
       await fh.close();
     };
     let idle = false;
@@ -317,7 +348,7 @@ export async function *readFramesAsH264(path: string, from: Keyframe, opts: H264
         // no frame taken for a while: ffmpeg ends and the place and the file are freed while the client waits
         const timer = setTimeout(() => {
           idle = true;
-          void frames.return(undefined).finally(release);
+          void frames.return(undefined).finally(() => release(true));
         }, idleMs);
         try {
           yield step.value;

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec } from './media/codec.js';
-import { readFramesAsH264 } from './media/transcode.js';
+import { H264Place, readFramesAsH264 } from './media/transcode.js';
 import { keyframeAtOrBefore, readFrames } from './reader.js';
 import { parseKeyframes } from './store.js';
 
@@ -126,6 +126,9 @@ export class PlaybackManager {
       // made H.264, the frames before it are decoded, not made: the time asked for, then where the stream recorded now
       // goes on past the last frame sent
       let startUs: number | undefined = tsUs;
+      // one place to make H.264 in for the whole playback, kept from one file to the next
+      const place = new H264Place();
+      session.abort.signal.addEventListener('abort', () => place.release(), { once: true });
 
       while (segment && from && !session.abort.signal.aborted) {
         // `recorded` tells the client the archive has sound (so it can offer the switch); the frames themselves
@@ -146,7 +149,7 @@ export class PlaybackManager {
         // an H.264 recording is told as it is; one made H.264 by what its first keyframe says, as it comes
         if (!made) ready({ videoCodec: current.codec, codecString: current.codec_string, width: current.width, height: current.height });
         const frames = made
-          ? readFramesAsH264(file.path, from, { ...made, ...reading, keyframes: parseKeyframes(current.keyframes), startUs })
+          ? readFramesAsH264(file.path, from, { ...made, ...reading, keyframes: parseKeyframes(current.keyframes), startUs, place })
           : readFrames(file, from, reading);
         for await (const frame of frames) {
           if (made && frame.keyframe && !frame.audio) {
