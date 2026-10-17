@@ -2105,21 +2105,24 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   /**
    * Recorded files for an export slice in the chosen quality: «best» takes the highest-resolution
    * stream that has recordings in the slice, «smallest» the lowest. A camera recording only one
-   * stream exports that stream either way. A stream that covers less of the slice than another is passed over: the
-   * low copy the recorder kept before ends where it stopped keeping it, and «smallest» exported only that part. The
-   * file is one stream (copied, not encoded), so it is the whole slice of the other one instead.
+   * stream exports that stream either way. A stream that begins or ends inside the slice where another one goes on is
+   * passed over: the low copy the recorder kept before ends where it stopped keeping it, a stream added to the
+   * recording begins where it was, and only that part was exported. The file is one stream (copied, not encoded), so
+   * it is the whole slice of the other one instead. A gap inside a stream (a reconnect) is no edge of it.
    */
   private exportSegments(cameraId: string, startUs: number, endUs: number, quality: ExportQuality = 'best'): SegmentRow[] {
     const order = quality === 'smallest' ? ['low', 'mid', 'high'] : ['high', 'mid', 'low'];
-    const found = order.map((role) => {
-      const segments = this.store.segments(cameraId, role, startUs, endUs);
-      const covered = segments.reduce((sum, seg) => sum + Math.max(0, Math.min(seg.end_us, endUs) - Math.max(seg.start_us, startUs)), 0);
-      return { segments, covered };
-    });
-    const most = Math.max(0, ...found.map((f) => f.covered));
-    // streams of one camera begin and end their files a little apart: two seconds, or 1 % of the slice, is the same
-    const enough = most - Math.max(2_000_000, (endUs - startUs) / 100);
-    return found.find((f) => f.segments.length && f.covered >= enough)?.segments ?? [];
+    const found = order.map((role) => this.store.segments(cameraId, role, startUs, endUs)).filter((segments) => segments.length);
+    if (found.length < 2) return found[0] ?? [];
+    const spans = found.map((segments) => ({
+      from: Math.max(startUs, Math.min(...segments.map((seg) => seg.start_us))),
+      to: Math.min(endUs, Math.max(...segments.map((seg) => seg.end_us))),
+    }));
+    const from = Math.min(...spans.map((span) => span.from));
+    const to = Math.max(...spans.map((span) => span.to));
+    // the streams of one camera begin and end their files a little apart (each at its own keyframe)
+    const edge = Math.max(2_000_000, Math.min(60_000_000, (endUs - startUs) / 10));
+    return found.find((_, i) => spans[i].from - from <= edge && to - spans[i].to <= edge) ?? found[0];
   }
 
   // ----------------------------------------------------------------- storage

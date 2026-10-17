@@ -178,11 +178,11 @@ assert.equal((await nvr.getEventTrace('traced')).total, 0, 'the trace goes with 
 
 // --------------------------------------------------------------- export quality
 const store = (nvr as unknown as { store: { addSegment(row: Record<string, unknown>): number } }).store;
-const seg = (role: string, bytes: number, camera = 'cam9', endUs = 1_060_000_000) =>
+const seg = (role: string, bytes: number, camera = 'cam9', endUs = 1_060_000_000, startUs = 1_000_000_000) =>
   store.addSegment({
     camera_id: camera,
     role,
-    start_us: 1_000_000_000,
+    start_us: startUs,
     end_us: endUs,
     path: join(dir, `${role}.ts`),
     bytes,
@@ -211,6 +211,28 @@ assert.equal(halfCopy.durationMs, 60_000);
 seg('high', 60_000_000, 'cam11');
 seg('low', 5_900_000, 'cam11', 1_059_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam11'], slices, quality: 'smallest' })).totalBytes, 5_900_000, 'a second less is the same');
+// a gap inside a stream (a reconnect) is no edge of it: «best» stays the main stream, «smallest» the low one. «Best»
+// had gone to the sub-stream for a 5 s gap in 5 minutes
+const fiveMinutes = [{ day: '1970-01-01', startUs: 1_000_000_000, endUs: 1_300_000_000 }];
+seg('high', 140_000_000, 'cam12', 1_140_000_000);
+seg('high', 150_000_000, 'cam12', 1_300_000_000, 1_145_000_000);
+seg('mid', 30_000_000, 'cam12', 1_300_000_000);
+seg('low', 7_000_000, 'cam12', 1_140_000_000);
+seg('low', 7_500_000, 'cam12', 1_300_000_000, 1_145_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam12'], slices: fiveMinutes, quality: 'best' })).totalBytes, 290_000_000, 'best: the main stream');
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam12'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 14_500_000, 'smallest: the low one');
+// rows of one file twice (a re-index) count once in the comparison: the low copy that ended is still passed over
+seg('high', 300_000_000, 'cam13', 1_300_000_000);
+seg('low', 3_000_000, 'cam13', 1_100_000_000);
+seg('low', 3_000_000, 'cam13', 1_100_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam13'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 300_000_000);
+// a stream that begins two minutes in (added to the recording then) is passed over too, in either quality
+seg('high', 180_000_000, 'cam14', 1_300_000_000, 1_120_000_000);
+seg('low', 9_000_000, 'cam14', 1_300_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam14'], slices: fiveMinutes, quality: 'best' })).totalBytes, 9_000_000, 'best: the whole slice of the low');
+seg('high', 300_000_000, 'cam15', 1_300_000_000);
+seg('low', 6_000_000, 'cam15', 1_300_000_000, 1_120_000_000);
+assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam15'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 300_000_000, 'smallest: the whole of the high');
 
 // ---------------------------------------------------------------- feature flags
 assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true });
