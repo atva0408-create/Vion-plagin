@@ -125,7 +125,12 @@ def test_the_loss_ends_the_process_once_and_says_why(plugin: str, tmp_path: Path
     logger = Logger()
     exits: list[int] = []
     lost = gf.DeviceLoss(faults, logger, lambda: exits.append(1))
-    threads = [threading.Thread(target=lost, args=(RuntimeError(BENCH_ERROR),)) for _ in range(8)]
+    threads = [
+        threading.Thread(
+            target=lost, args=(RuntimeError(BENCH_ERROR), "yolo-v9-s-320, вызовов одновременно: 2")
+        )
+        for _ in range(8)
+    ]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -134,6 +139,8 @@ def test_the_loss_ends_the_process_once_and_says_why(plugin: str, tmp_path: Path
     assert len(faults.recent()) == 1
     assert [level for level, _ in logger.lines] == ["error"]
     assert "CUDA failure 700" in logger.lines[0][1]
+    # the model and the calls under way: what the next fault is to tell (two on the bench, 2026-10-18, model unknown)
+    assert "yolo-v9-s-320, вызовов одновременно: 2" in logger.lines[0][1]
 
 
 class Session:
@@ -156,15 +163,20 @@ def test_a_model_call_that_loses_the_gpu_hands_it_on_and_still_fails(plugin: str
         {"threading": threading, "Any": Any, "Outputs": Any, "is_device_lost": gf.is_device_lost},
     )
     for error, handed in [(RuntimeError(BENCH_ERROR), True), (RuntimeError(OOM_ERROR), False)]:
-        seen: list[BaseException] = []
+        seen: list[tuple[BaseException, str]] = []
         backend = backend_cls()
         backend._sessions = [Session(error)]
         backend._by_thread = {}
         backend._input_names = ["images"]
-        backend._on_device_lost = seen.append
+        backend._label = "yolo-v9-s-320"
+        backend._inflight = 1
+        backend._inflight_lock = threading.Lock()
+        backend._on_device_lost = lambda lost, where, seen=seen: seen.append((lost, where))
         with pytest.raises(RuntimeError):
             backend._run([0])
-        assert seen == ([error] if handed else []), error
+        # another call was under way: two with this one
+        assert seen == ([(error, "yolo-v9-s-320, вызовов одновременно: 2")] if handed else []), error
+        assert backend._inflight == 1, "the count goes back when the call fails"
     # a call that works is untouched
     backend._sessions = [Session()]
     assert backend._run([0]) == ["boxes"]

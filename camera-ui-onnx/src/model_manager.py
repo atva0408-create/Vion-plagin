@@ -91,7 +91,7 @@ class OnnxModelManager(BaseModelManager):
         self.logger.success(
             f"Модель загружена: {model_name} ({active[0] if active else 'CPUExecutionProvider'})"
         )
-        return OnnxBackend(sessions, on_device_lost=self._device_lost)
+        return OnnxBackend(sessions, on_device_lost=self._device_lost, label=model_name)
 
     def _build_sessions(self, path: str) -> list[Any]:
         provider_lists = self._get_provider_lists() or [["CPUExecutionProvider"]]

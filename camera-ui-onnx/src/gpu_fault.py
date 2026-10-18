@@ -74,14 +74,15 @@ class DeviceLoss:
         self._lock = threading.Lock()
         self._lost = False
 
-    def __call__(self, error: BaseException) -> None:
+    def __call__(self, error: BaseException, where: str = "") -> None:
         with self._lock:
             if self._lost:
                 return
             self._lost = True
         self._faults.record()
+        at = f" на модели {where}" if where else ""
         self._logger.error(
-            f"Видеокарта перестала работать в этом процессе ({error}): все модели на ней отвечают ошибкой. "
+            f"Видеокарта перестала работать в этом процессе{at} ({error}): все модели на ней отвечают ошибкой. "
             "Плагин перезапускается, чтобы получить её заново"
         )
         self._exit_process()

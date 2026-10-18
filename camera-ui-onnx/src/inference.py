@@ -25,11 +25,18 @@ _PROVIDER_LABELS = {
 
 class OnnxBackend(InferenceBackend):
     def __init__(
-        self, sessions: list[Any], on_device_lost: Callable[[BaseException], None] | None = None
+        self,
+        sessions: list[Any],
+        on_device_lost: Callable[[BaseException, str], None] | None = None,
+        label: str = "",
     ) -> None:
         self._sessions = sessions
-        # the call that lost the GPU for the process (gpu_fault.py): the plugin is restarted
+        # the call that lost the GPU for the process (gpu_fault.py): the plugin is restarted, told the model and the
+        # calls under way (two GPU faults on the bench in one day, 2026-10-18, and nothing said which model ran)
         self._on_device_lost = on_device_lost
+        self._label = label
+        self._inflight = 0
+        self._inflight_lock = threading.Lock()
         self._by_thread: dict[str, Any] = {}
         self._counter = itertools.count()
         self._input_names: list[str] = [str(inp.name) for inp in sessions[0].get_inputs()]
@@ -77,12 +84,18 @@ class OnnxBackend(InferenceBackend):
     def _run(self, inputs: list[Any]) -> Outputs:
         session = self._by_thread.get(threading.current_thread().name, self._sessions[0])
         feed = dict(zip(self._input_names, inputs, strict=False))
+        with self._inflight_lock:
+            self._inflight += 1
+            together = self._inflight
         try:
             outputs: list[Any] = session.run(None, feed)
         except Exception as error:
             if self._on_device_lost is not None and is_device_lost(error):
-                self._on_device_lost(error)
+                self._on_device_lost(error, f"{self._label}, вызовов одновременно: {together}")
             raise
+        finally:
+            with self._inflight_lock:
+                self._inflight -= 1
         return outputs
 
 
