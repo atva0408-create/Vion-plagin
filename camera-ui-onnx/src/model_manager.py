@@ -18,6 +18,7 @@ from defaults import (
     MODULE_BACKENDS,
     model_version,
 )
+from gpu_fault import DeviceLoss, GpuFaults, exit_soon
 from inference import OnnxBackend
 from modules import installed_modules, is_module
 from textfind import model_file
@@ -47,6 +48,9 @@ class OnnxModelManager(BaseModelManager):
         super().__init__(storage_path, logger, model_version)
         self._get_provider_lists = get_provider_lists
         self._hinted_legacy = False
+        # the GPU lost for the process, over its restarts (gpu_fault.py)
+        self.gpu_faults = GpuFaults(os.path.join(storage_path, "gpu-faults.json"))
+        self._device_lost = DeviceLoss(self.gpu_faults, logger, exit_soon)
 
     def forget(self, model_name: str) -> None:
         """The files of the model changed under the same name, or it is given out no more: the next
@@ -81,7 +85,7 @@ class OnnxModelManager(BaseModelManager):
         self.logger.success(
             f"Модель загружена: {model_name} ({active[0] if active else 'CPUExecutionProvider'})"
         )
-        return OnnxBackend(sessions)
+        return OnnxBackend(sessions, on_device_lost=self._device_lost)
 
     def _build_sessions(self, path: str) -> list[Any]:
         provider_lists = self._get_provider_lists() or [["CPUExecutionProvider"]]

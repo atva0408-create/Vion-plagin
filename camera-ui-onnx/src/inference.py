@@ -4,12 +4,14 @@ import asyncio
 import itertools
 import threading
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import onnxruntime as ort
 from camera_ui_ml import InferenceBackend, Outputs
+
+from gpu_fault import is_device_lost
 
 _PROVIDER_LABELS = {
     "CUDAExecutionProvider": "CUDA",
@@ -22,8 +24,12 @@ _PROVIDER_LABELS = {
 
 
 class OnnxBackend(InferenceBackend):
-    def __init__(self, sessions: list[Any]) -> None:
+    def __init__(
+        self, sessions: list[Any], on_device_lost: Callable[[BaseException], None] | None = None
+    ) -> None:
         self._sessions = sessions
+        # the call that lost the GPU for the process (gpu_fault.py): the plugin is restarted
+        self._on_device_lost = on_device_lost
         self._by_thread: dict[str, Any] = {}
         self._counter = itertools.count()
         self._input_names: list[str] = [str(inp.name) for inp in sessions[0].get_inputs()]
@@ -71,7 +77,12 @@ class OnnxBackend(InferenceBackend):
     def _run(self, inputs: list[Any]) -> Outputs:
         session = self._by_thread.get(threading.current_thread().name, self._sessions[0])
         feed = dict(zip(self._input_names, inputs, strict=False))
-        outputs: list[Any] = session.run(None, feed)
+        try:
+            outputs: list[Any] = session.run(None, feed)
+        except Exception as error:
+            if self._on_device_lost is not None and is_device_lost(error):
+                self._on_device_lost(error)
+            raise
         return outputs
 
 

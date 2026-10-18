@@ -91,6 +91,7 @@ from defaults import (
     clip_text_for,
     resolve_model,
 )
+from gpu_fault import LIMIT as GPU_FAULT_LIMIT
 from model_manager import OnnxModelManager, ProviderList
 from modules import installed_modules, is_module, usable_choice
 from pose import POSE_MODEL, PoseEstimator
@@ -182,6 +183,7 @@ class ONNXPlugin(
 
         self._sensors: dict[str, dict[str, Any]] = {}
         self._warned_provider: str | None = None
+        self._warned_gpu_faults = False
 
         self.api.on(API_EVENT.FINISH_LAUNCHING, self._on_start)
         self.api.on(API_EVENT.SHUTDOWN, self._on_shutdown)
@@ -1250,6 +1252,16 @@ class ONNXPlugin(
         }
 
     def _resolve_provider_lists(self) -> list[ProviderList]:
+        if self.model_manager.gpu_faults.too_many():
+            # lost again and again (gpu_fault.py): the models run on the CPU, slower, instead of a plugin restarted
+            # for good and running nothing
+            if not self._warned_gpu_faults:
+                self._warned_gpu_faults = True
+                self.logger.error(
+                    f"Видеокарта отказала {GPU_FAULT_LIMIT} раз(а) за последний час: модели работают на процессоре. "
+                    "На видеокарту плагин вернётся после перезапуска, когда последний отказ станет старше часа"
+                )
+            return [["CPUExecutionProvider"]]
         pref = self.storage.values.get("execution_provider", DEFAULT_EXECUTION_PROVIDER)
         system = platform.system()
         machine = platform.machine()
