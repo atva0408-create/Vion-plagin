@@ -1,3 +1,8 @@
+## [1.7.5]
+
+- A GPU lost for the process restarts the plugin: after a CUDA fault (NVIDIA Xid 31, «CUDA failure 700: an illegal memory access») every model call failed the same way until a restart by hand, 3.5 hours without detection and search index on the test machine. The first call that loses the GPU (CUDA errors 700, 714-719) now says so and ends the process, which the server starts again. A GPU that fails 3 times within an hour sends the models to the CPU instead of restarting the plugin for good
+- A model the GPU has no memory for is said as such («не хватило памяти видеокарты», per model), not as missing CUDA libraries
+
 ## [1.7.4]
 
 - The outline of a thing marked on a picture, for ViON NVR 0.23.0's «when did it go, who carried it off» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB from the models mirror) outlines what a box or a point on a picture shows. It loads with the first question and leaves memory after five minutes without one. Always on the processor, whatever the plugin's device: a quarter of the cores (two at least), one picture at a time, 3-5 s a picture on the bench, about 0.6 GB while loaded. While it loads the answer says so; a picture that cannot be read gets no outline and the others are outlined. Never in the background

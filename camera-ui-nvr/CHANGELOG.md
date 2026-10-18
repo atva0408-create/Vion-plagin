@@ -1,3 +1,7 @@
+## [0.24.2]
+
+- A playback whose client is gone ends and closes its recording: the RPC never tells the plugin that a browser went away (a closed tab, a killed app, a lost network), and the playback kept its file and session open until the NVR restarted (one still open 25 minutes after the tab was closed on the test machine). A client that pulls nothing for 5 minutes ends its playback; a paused player keeps it
+
 ## [0.24.1]
 
 - A recording made H.264 that its client ends (a seek, a scrub that moved on, a playback ended as its tab was closed) ends its ffmpeg with it. The process stayed held on what it had made for good, one for every seek of a browser without H.265 (on the test machine one was still there minutes after the tab was closed)

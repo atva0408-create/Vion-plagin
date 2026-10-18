@@ -1,3 +1,8 @@
+## [1.7.5]
+
+- Eine für den Prozess verlorene GPU startet das Plugin neu: nach einem CUDA-Fehler (NVIDIA Xid 31, «CUDA failure 700: an illegal memory access») schlug jeder Modellaufruf gleich fehl, bis zum Neustart von Hand — auf dem Testrechner 3,5 Stunden ohne Erkennung und ohne Suchindex. Der erste Aufruf, der die GPU verliert (CUDA-Fehler 700, 714–719), sagt das nun und beendet den Prozess, den der Server neu startet. Eine GPU, die 3-mal in einer Stunde versagt, schickt die Modelle auf die CPU, statt das Plugin endlos neu zu starten
+- Ein Modell, für das der GPU-Speicher nicht reicht, wird als solches gemeldet (pro Modell), nicht als fehlende CUDA-Bibliotheken
+
 ## [1.7.4]
 
 - Der Umriss eines auf einem Bild markierten Gegenstands für die Frage von ViON NVR 0.23.0 «wann ist er verschwunden, wer hat ihn weggetragen» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB vom Modellspiegel) umreißt, was ein Rahmen oder ein Punkt auf einem Bild zeigt. Es lädt mit der ersten Frage und verlässt den Speicher nach fünf Minuten ohne Frage. Immer auf dem Prozessor, unabhängig vom Gerät des Plugins: ein Viertel der Kerne (mindestens zwei), ein Bild nach dem anderen, 3-5 s pro Bild auf dem Prüfstand, etwa 0,6 GB solange geladen. Während es lädt, sagt die Antwort das; ein unlesbares Bild bekommt keinen Umriss, die anderen werden umrissen. Nie im Hintergrund

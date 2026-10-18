@@ -1,3 +1,7 @@
+## [0.24.2]
+
+- Eine Wiedergabe, deren Client weg ist, endet und schließt ihre Aufnahme: das RPC meldet dem Plugin nie, dass ein Browser gegangen ist (ein geschlossener Tab, eine beendete App, ein Netzausfall), und die Wiedergabe hielt Datei und Sitzung bis zum Neustart des NVR offen (auf dem Testrechner noch 25 Minuten nach dem Schließen des Tabs). Ein Client, der 5 Minuten nichts abholt, beendet seine Wiedergabe; ein pausierter Player behält sie
+
 ## [0.24.1]
 
 - Eine zu H.264 gemachte Aufnahme, die ihr Client beendet (ein Sprung, ein Spulen, das weiterging, eine Wiedergabe, die mit ihrem Tab geschlossen wurde), beendet ihr ffmpeg mit. Der Prozess blieb für immer hängen, einer für jeden Sprung eines Browsers ohne H.265 (auf dem Testrechner war einer Minuten nach dem Schließen des Tabs noch da)
