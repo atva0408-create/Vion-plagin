@@ -1,3 +1,7 @@
+## [1.7.7]
+
+- Detections on the GPU no longer go wrong and no longer lose the GPU when two calls of one model run at once: each call of a model took a CUDA stream of its own and one call's buffers were used by the other — boxes off by hundreds of pixels, and in the end «CUDA failure 700/716» in a Conv (the GPU was lost three times in one day on the test machine). Every call of a model now runs on one stream: 0 wrong answers in 34,000 calls, as fast as before
+
 ## [1.7.6]
 
 - A GPU lost for the process names the model of the failing call and how many calls ran at that moment («на модели yolo-v9-s-320, вызовов одновременно: 2»): two faults on the test machine in one day said nothing of what ran into them

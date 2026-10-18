@@ -1,3 +1,7 @@
+## [1.5.8]
+
+- Erkennungen auf der GPU gehen nicht mehr schief und verlieren die GPU nicht mehr, wenn zwei Aufrufe eines Modells gleichzeitig laufen: jeder Aufruf nahm einen eigenen CUDA-Stream, und die Puffer des einen wurden vom anderen benutzt — Rahmen um Hunderte Pixel daneben und am Ende «CUDA failure 700/716» in einer Conv (dreimal an einem Tag auf dem Testrechner). Alle Aufrufe eines Modells laufen jetzt auf einem Stream: 0 falsche Antworten bei 34.000 Aufrufen, so schnell wie zuvor
+
 ## [1.5.7]
 
 - Eine für den Prozess verlorene GPU nennt das Modell des fehlgeschlagenen Aufrufs und wie viele Aufrufe gerade liefen («на модели yolo-v9-s-320, вызовов одновременно: 2»): zwei Ausfälle auf dem Testrechner an einem Tag sagten nicht, woran sie geschahen

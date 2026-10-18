@@ -1249,6 +1249,11 @@ class ONNXPlugin(
             "device_id": device_id,
             "cudnn_conv_algo_search": "HEURISTIC",
             "cudnn_conv_use_max_workspace": "1",
+            # one CUDA stream for every call of a session: inference.py runs two calls of a GPU session at once, and
+            # with a stream per call one call's buffers were used by the other: wrong boxes within a minute and, in
+            # the end, «CUDA failure 700/716» in a Conv (the GPU lost three times on the bench, 2026-10-18).
+            # tests/test_gpu_streams.py
+            "use_ep_level_unified_stream": "1",
         }
 
     def _resolve_provider_lists(self) -> list[ProviderList]:
