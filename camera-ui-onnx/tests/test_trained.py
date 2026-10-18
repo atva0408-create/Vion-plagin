@@ -145,12 +145,21 @@ class FakeDetector:
         return self.found
 
 
+def fresh_ml(monkeypatch: pytest.MonkeyPatch) -> None:
+    """camera_ui_ml and camera_ui_sdk from packages/ (prepended above), not the ones an earlier test of the run
+    imported: older ones in site-packages lack model_runtime and FaceEmbeddingResult, and these tests failed in the full
+    run but passed alone."""
+    for name in [name for name in sys.modules if name.split(".")[0] in ("camera_ui_ml", "camera_ui_sdk")]:
+        monkeypatch.delitem(sys.modules, name)
+
+
 def test_the_object_sensor_adds_the_boxes_of_the_modules_of_its_camera(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.syspath_prepend(str(ONNX_SRC))
     monkeypatch.syspath_prepend(str(SDK))
     monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    fresh_ml(monkeypatch)
     for name in ("trained", "defaults", "modules", "sensors.object_sensor"):
         sys.modules.pop(name, None)
     object_sensor = importlib.import_module("sensors.object_sensor")
@@ -204,6 +213,7 @@ def test_the_attribute_sensor_runs_the_classifiers_of_its_camera(
     monkeypatch.syspath_prepend(str(ONNX_SRC))
     monkeypatch.syspath_prepend(str(SDK))
     monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    fresh_ml(monkeypatch)
     for name in ("trained", "sensors.attribute_sensor"):
         sys.modules.pop(name, None)
     attribute_sensor = importlib.import_module("sensors.attribute_sensor")
@@ -253,6 +263,7 @@ def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
     monkeypatch.syspath_prepend(str(ONNX_SRC))
     monkeypatch.syspath_prepend(str(SDK))
     monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    fresh_ml(monkeypatch)
     for name in ("trained", "pose", "sensors.attribute_sensor"):
         sys.modules.pop(name, None)
     attribute_sensor = importlib.import_module("sensors.attribute_sensor")
@@ -389,6 +400,7 @@ def test_turning_the_pose_on_tells_the_server_and_loads_the_model(monkeypatch: p
     monkeypatch.syspath_prepend(str(ONNX_SRC))
     monkeypatch.syspath_prepend(str(SDK))
     monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    fresh_ml(monkeypatch)
     for name in ("trained", "pose", "sensors.attribute_sensor"):
         sys.modules.pop(name, None)
     attribute_sensor = importlib.import_module("sensors.attribute_sensor")

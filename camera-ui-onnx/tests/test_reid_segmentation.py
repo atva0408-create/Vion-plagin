@@ -24,10 +24,16 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 ONNX_SRC = ROOT / "camera-ui-onnx" / "src"
 OPENVINO_SRC = ROOT / "camera-ui-openvino" / "src"
-SDK = os.environ.get("CAMERA_UI_SDK_PYTHON")
-if SDK:
+# the SDK and camera_ui_ml of the repo, as test_trained.py takes them: an older camera_ui_ml in site-packages has no
+# model_runtime, and this file did not even load
+SDK = os.environ.get("CAMERA_UI_SDK_PYTHON", str(ROOT.parent / "VIONN-" / "externals" / "sdk" / "python"))
+if Path(SDK).is_dir():
     sys.path.insert(0, SDK)
+sys.path.insert(0, str(ROOT / "packages" / "camera_ui_ml"))
 sys.path.insert(0, str(ONNX_SRC))
+# loaded from site-packages by a test collected before this one: taken again from the paths above
+for _name in [name for name in sys.modules if name.split(".")[0] in ("camera_ui_ml", "camera_ui_sdk")]:
+    del sys.modules[_name]
 
 import reid  # noqa: E402
 from sensors.person_embedder_sensor import ONNXPersonEmbedderSensor  # noqa: E402
