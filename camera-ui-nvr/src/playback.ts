@@ -21,6 +21,38 @@ const GAP_US = 3_000_000;
 export const START_GAP_US = 30_000_000;
 const YIELD_EVERY = 8;
 
+/** A client that pulls nothing for this long is gone: its playback ends. */
+let clientGoneMs = 5 * 60 * 1000;
+
+/** For the tests: how long a playback waits for its client's next pull. */
+export function setPlaybackClientGone(ms: number): void {
+  clientGoneMs = ms;
+}
+
+/**
+ * The playback as its client pulls it, ended when the client pulls nothing for clientGoneMs. The RPC never tells the
+ * plugin that a browser went away (a closed tab, a killed app, a lost network): the playback waited for the next pull
+ * for good, its recording open (on the bench 25 minutes after the tab was closed). A paused player still pulls: its
+ * playback waits in the pace, not here.
+ */
+async function *untilClientGone<T>(inner: AsyncGenerator<T>): AsyncGenerator<T> {
+  try {
+    for (;;) {
+      // ended meanwhile, the playback is done for a client that pulls again after all
+      const step = await inner.next();
+      if (step.done) return;
+      const timer = setTimeout(() => void inner.return(undefined), clientGoneMs);
+      try {
+        yield step.value;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  } finally {
+    await inner.return(undefined);
+  }
+}
+
 interface Session {
   paused: boolean;
   speed: number;
@@ -91,12 +123,22 @@ export class PlaybackManager {
    * `then`: the stream to go on with where the recordings of `role` end and it goes on (a lighter recording of before,
    * whose recorder stopped keeping it: the H.264 copy of an H.265 camera).
    */
-  public async *play(
+  public play(
     cameraId: string,
     tsUs: number,
     role: string,
     cb: NvrPlaybackCallbacks,
     opts: { audio?: boolean; asH264?: boolean; then?: { role: string; asH264: boolean } } = {},
+  ): AsyncGenerator<void> {
+    return untilClientGone(this.stream(cameraId, tsUs, role, cb, opts));
+  }
+
+  private async *stream(
+    cameraId: string,
+    tsUs: number,
+    role: string,
+    cb: NvrPlaybackCallbacks,
+    opts: { audio?: boolean; asH264?: boolean; then?: { role: string; asH264: boolean } },
   ): AsyncGenerator<void> {
     let asH264 = opts.asH264;
     let then = opts.then;
