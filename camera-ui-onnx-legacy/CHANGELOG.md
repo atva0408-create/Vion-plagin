@@ -1,3 +1,7 @@
+## [1.5.7]
+
+- A GPU lost for the process names the model of the failing call and how many calls ran at that moment («на модели yolo-v9-s-320, вызовов одновременно: 2»): two faults on the test machine in one day said nothing of what ran into them
+
 ## [1.5.6]
 
 - A GPU lost for the process restarts the plugin: after a CUDA fault (NVIDIA Xid 31, «CUDA failure 700: an illegal memory access») every model call failed the same way until a restart by hand, 3.5 hours without detection and search index on the test machine. The first call that loses the GPU (CUDA errors 700, 714-719) now says so and ends the process, which the server starts again. A GPU that fails 3 times within an hour sends the models to the CPU instead of restarting the plugin for good

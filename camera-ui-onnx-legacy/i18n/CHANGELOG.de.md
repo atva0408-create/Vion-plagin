@@ -1,3 +1,7 @@
+## [1.5.7]
+
+- Eine für den Prozess verlorene GPU nennt das Modell des fehlgeschlagenen Aufrufs und wie viele Aufrufe gerade liefen («на модели yolo-v9-s-320, вызовов одновременно: 2»): zwei Ausfälle auf dem Testrechner an einem Tag sagten nicht, woran sie geschahen
+
 ## [1.5.6]
 
 - Eine für den Prozess verlorene GPU startet das Plugin neu: nach einem CUDA-Fehler (NVIDIA Xid 31, «CUDA failure 700: an illegal memory access») schlug jeder Modellaufruf gleich fehl, bis zum Neustart von Hand — auf dem Testrechner 3,5 Stunden ohne Erkennung und ohne Suchindex. Der erste Aufruf, der die GPU verliert (CUDA-Fehler 700, 714–719), sagt das nun und beendet den Prozess, den der Server neu startet. Eine GPU, die 3-mal in einer Stunde versagt, schickt die Modelle auf die CPU, statt das Plugin endlos neu zu starten
