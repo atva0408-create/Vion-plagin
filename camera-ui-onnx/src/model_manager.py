@@ -38,6 +38,12 @@ _ORT_TO_NP: dict[str, Any] = {
 }
 
 
+def _out_of_memory(error: BaseException) -> bool:
+    """An allocation the GPU had no room for (onnxruntime's arena, CUDA, cuDNN), not a provider that does not start."""
+    text = str(error)
+    return "Failed to allocate memory" in text or "out of memory" in text.lower() or "ALLOC_FAILED" in text
+
+
 class OnnxModelManager(BaseModelManager):
     def __init__(
         self,
@@ -101,6 +107,15 @@ class OnnxModelManager(BaseModelManager):
         except Exception as error:
             if providers == ["CPUExecutionProvider"]:
                 raise
+            if _out_of_memory(error):
+                # the GPU is there and works, it has no room for this model: said so, per model. The advice on the
+                # CUDA libraries sent the bench's owner after libraries the plugin had (the GPU was full, 2026-10-18)
+                name = os.path.splitext(os.path.basename(path))[0]
+                self.logger.warn(
+                    f"Модели {name} не хватило памяти видеокарты: она работает на процессоре. Освободите "
+                    "видеокарту (меньше моделей или камер на ней) и перезагрузите модели"
+                )
+                return self._create_cpu_session(path)
             self.logger.warn(f"Ускоренный провайдер недоступен ({error}); переключение на CPU")
             self._hint_legacy(providers)
             return self._create_cpu_session(path)
