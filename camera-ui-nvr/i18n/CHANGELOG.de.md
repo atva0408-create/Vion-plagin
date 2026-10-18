@@ -1,3 +1,8 @@
+## [0.24.3]
+
+- Ein Export über einen Codecwechsel (eine Kamera im gewählten Zeitraum von H.264 auf H.265 umgestellt) spielt jetzt ganz: die Dateien wurden Byte für Byte verbunden und die H.265-Hälfte lag in der H.264-Spur, im Testclip wurden 199 von 400 Bildern dekodiert, der Rest stand still. Ein Clip aus mehreren Codecs wird jetzt zu H.264, seine Abschnitte nacheinander gelesen, in der Größe der ersten Datei, mit Ton, wenn alle Teile welchen haben
+- Die Dateien des Exportdialogs können als H.264 kommen (`h264` von nvrExportBatch): ein H.265-MP4 öffnet sich im Windows-Player ohne kostenpflichtige Erweiterung nicht. Die Schätzung meldet `h265`, wenn die Auswahl H.265 enthält, damit der Dialog es anbietet
+
 ## [0.24.2]
 
 - Eine Wiedergabe, deren Client weg ist, endet und schließt ihre Aufnahme: das RPC meldet dem Plugin nie, dass ein Browser gegangen ist (ein geschlossener Tab, eine beendete App, ein Netzausfall), und die Wiedergabe hielt Datei und Sitzung bis zum Neustart des NVR offen (auf dem Testrechner noch 25 Minuten nach dem Schließen des Tabs). Ein Client, der 5 Minuten nichts abholt, beendet seine Wiedergabe; ein pausierter Player behält sie

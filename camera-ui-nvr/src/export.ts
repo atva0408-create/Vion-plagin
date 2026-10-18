@@ -25,7 +25,8 @@ export function clipPlan(segments: SegmentRow[], startUs: number, endUs: number)
   const runs: SegmentRow[][] = [];
   const ends: number[] = [];
   for (const segment of segments) {
-    if (!runs.length || segment.start_us - ends[ends.length - 1] > RUN_GAP_US) {
+    // a codec change starts a stretch too: its files joined byte by byte put the H.265 half into the H.264 track
+    if (!runs.length || segment.start_us - ends[ends.length - 1] > RUN_GAP_US || segment.codec !== runs[runs.length - 1][0].codec) {
       runs.push([segment]);
       ends.push(segment.end_us);
     } else {
@@ -52,6 +53,33 @@ function concatList(runs: SegmentRow[][]): string {
 
 function concatUrl(run: SegmentRow[]): string {
   return `concat:${run.map((s) => s.path).join('|')}`;
+}
+
+/**
+ * Whether the clip of these segments is made H.264: asked for by a client without H.265 and some of it is H.265, or
+ * more than one codec in it (a camera set from H.264 to H.265 inside the range), which one MP4 track cannot hold.
+ */
+export function madeH264(segments: SegmentRow[], asked: boolean): boolean {
+  const codecs = new Set(segments.map((s) => s.codec));
+  return codecs.size > 1 || (asked && codecs.has('h265'));
+}
+
+/**
+ * The stretches of a clip of more than one codec, each its own input with its own decoder, joined by the concat
+ * filter into one picture of the first file's size (the camera may have changed its size with its codec). Sound only
+ * when every stretch has it: a stretch without would leave the filter waiting for its sound.
+ */
+function joinedInputs(runs: SegmentRow[][], made: H264Encoder): { input: string[]; graph: string; audio: boolean } {
+  const { width, height } = runs[0][0];
+  const audio = runs.every((run) => run.every((s) => s.audio_pid >= 0));
+  const fit = width > 0 && height > 0 ? `scale=${width}:${height},` : '';
+  const parts = runs.map((_, i) => `[${i}:v:0]${fit}setsar=1,format=yuv420p[v${i}]`);
+  const joined = runs.map((_, i) => `[v${i}]${audio ? `[${i}:a:0]` : ''}`).join('');
+  return {
+    input: [...made.input, ...runs.flatMap((run) => ['-i', concatUrl(run)])],
+    graph: [...parts, `${joined}concat=n=${runs.length}:v=1:a=${audio ? 1 : 0}[joined]${audio ? '[sound]' : ''}`].join(';'),
+    audio,
+  };
 }
 
 export function zipTooLarge(bytes: number): Error {
@@ -88,8 +116,27 @@ export async function exportClip(opts: {
   // read from a file may open only files by default).
   const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
   const timelapse = opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0 ? opts.timelapseIntervalSec : 0;
-  const madeBy = !timelapse ? opts.h264 : undefined;
+  // more than one codec cannot be copied into one track (madeH264): made H.264, by libx264 when nobody said by what
+  const mixed = new Set(segments.map((s) => s.codec)).size > 1;
+  const madeBy = !timelapse ? (opts.h264 ?? (mixed ? LIBX264 : undefined)) : undefined;
+  const joinedArgs = (made: H264Encoder) => {
+    const joined = joinedInputs(runs, timelapse ? LIBX264 : made);
+    const args = ['-hide_banner', '-loglevel', 'error', '-y', ...joined.input];
+    if (timelapse) {
+      const range = `trim=start=${offsetSec.toFixed(3)}:duration=${durationSec.toFixed(3)}`;
+      const lapse = `[joined]${range},setpts=(PTS-STARTPTS)/${30 * timelapse},fps=30:eof_action=pass[out]`;
+      args.push('-filter_complex', `${joined.graph};${lapse}`, '-map', '[out]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-an');
+    } else {
+      // the stretches start one after the other from 0, so the range is cut where it is in the plan
+      const upload = made.upload.replace(/^,/, '') || 'null';
+      args.push('-filter_complex', `${joined.graph};[joined]${upload}[out]`, '-map', '[out]', ...(joined.audio ? ['-map', '[sound]', '-c:a', 'aac'] : ['-an']));
+      args.push('-ss', offsetSec.toFixed(3), '-t', durationSec.toFixed(3), '-fps_mode', 'passthrough', ...made.codec);
+    }
+    args.push('-movflags', '+faststart', out);
+    return args;
+  };
   const argsWith = (made: H264Encoder | undefined) => {
+    if (mixed) return joinedArgs(made ?? LIBX264);
     const args = ['-hide_banner', '-loglevel', 'error', '-y', ...(made?.input ?? []), ...input];
     if (timelapse) {
       // One frame per interval, played at 30 fps: the time is compressed and `fps` keeps a frame for every thirtieth
@@ -110,7 +157,7 @@ export async function exportClip(opts: {
   };
 
   try {
-    if (runs.length > 1) await writeFile(list, concatList(runs));
+    if (runs.length > 1 && !mixed) await writeFile(list, concatList(runs));
     try {
       await run(opts.ffmpegPath, argsWith(madeBy));
     } catch (error) {

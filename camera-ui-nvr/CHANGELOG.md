@@ -1,3 +1,8 @@
+## [0.24.3]
+
+- An export over a codec change (a camera set from H.264 to H.265 inside the range) plays all of it: its files were joined byte by byte and the H.265 half lay in the H.264 track, 199 of 400 pictures decoded in a test clip and the rest stood still. A clip of more than one codec is made H.264 now, its stretches read one by one, at the size of its first file, with its sound when every part has some
+- The export dialog's files can be made H.264 (`h264` of nvrExportBatch): an H.265 MP4 does not open in the player of Windows without a paid extension. The estimate says `h265` when the selection has H.265, for the dialog to offer it
+
 ## [0.24.2]
 
 - A playback whose client is gone ends and closes its recording: the RPC never tells the plugin that a browser went away (a closed tab, a killed app, a lost network), and the playback kept its file and session open until the NVR restarted (one still open 25 minutes after the tab was closed on the test machine). A client that pulls nothing for 5 minutes ends its playback; a paused player keeps it

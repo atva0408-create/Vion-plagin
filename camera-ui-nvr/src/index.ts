@@ -8,7 +8,7 @@ import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
 import { checkExternalEvent } from './external.js';
 import { Episodes } from './episodes.js';
-import { exportClip, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
+import { exportClip, madeH264, mosaic, writeZip, ZIP_MAX_BYTES, zipTooLarge } from './export.js';
 import { FaceStore } from './faces.js';
 import { matchesEvent } from './filter.js';
 import { colourOfPicture, cropOfPicture, frameAt, lookOf, patchesOf, patchOfPicture, rgbPatchOfPicture } from './frames.js';
@@ -1986,7 +1986,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const segments = asked264
       ? this.exportSegments(cameraId, startUs, endUs, 'smallest')
       : this.store.segments(cameraId, this.resolveRole(cameraId, options.sourceRole), startUs, endUs);
-    const made = asked264 && segments.some((s) => s.codec === 'h265') ? (await this.h264()).encoder : undefined;
+    const made = madeH264(segments, asked264) ? (await this.h264()).encoder : undefined;
     const filename = `${this.cameraSlug(cameraId)}_${fileStamp(startUs, this.zoneFormat(options.timeZone))}.mp4`;
     const res = await exportClip({
       ffmpegPath: this.ffmpegPath,
@@ -2023,14 +2023,18 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     totalBytes: number;
     durationMs: number;
     tooLarge?: { bytes: number; limitBytes: number };
+    /** some of it is H.265: the dialog offers to make it H.264 (nvrExportBatch `h264`) */
+    h265?: boolean;
   }> {
     await this.ready;
     const files: { cameraId: string; day: string; startUs: number; endUs: number; bytes: number }[] = [];
     let durationMs = 0;
+    let h265 = false;
     for (const cameraId of request.cameras) {
       for (const slice of request.slices) {
         let bytes = 0;
         for (const seg of this.exportSegments(cameraId, slice.startUs, slice.endUs, request.quality)) {
+          if (seg.codec === 'h265') h265 = true;
           const span = Math.max(1, seg.end_us - seg.start_us);
           const overlap = Math.max(0, Math.min(seg.end_us, slice.endUs) - Math.max(seg.start_us, slice.startUs));
           bytes += Math.round((seg.bytes * overlap) / span);
@@ -2041,7 +2045,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }
     const totalBytes = files.reduce((n, f) => n + f.bytes, 0);
     const tooLarge = !request.timelapse && files.length > 1 && totalBytes >= ZIP_MAX_BYTES;
-    return { files, totalBytes, durationMs: Math.round(durationMs), ...(tooLarge ? { tooLarge: { bytes: totalBytes, limitBytes: ZIP_MAX_BYTES } } : {}) };
+    return {
+      files,
+      totalBytes,
+      durationMs: Math.round(durationMs),
+      ...(tooLarge ? { tooLarge: { bytes: totalBytes, limitBytes: ZIP_MAX_BYTES } } : {}),
+      ...(h265 ? { h265 } : {}),
+    };
   }
 
   public async nvrExportBatch(request: {
@@ -2050,6 +2060,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     quality?: ExportQuality;
     timelapseIntervalSec?: number;
     timeZone?: string;
+    /**
+     * The files of H.265 recordings made H.264: an H.265 MP4 does not open in the player of Windows without a paid
+     * extension. The dialog offers it when the estimate says `h265`; an older dialog never sends it.
+     */
+    h264?: boolean;
   }): Promise<{ url: string; filename: string }> {
     await this.ready;
     const zone = this.zoneFormat(request.timeZone);
@@ -2075,6 +2090,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
             outDir,
             filename: name,
             timelapseIntervalSec: request.timelapseIntervalSec,
+            h264: madeH264(segments, request.h264 === true) ? (await this.h264()).encoder : undefined,
           });
           parts.push({ path: res.path, name });
         }
@@ -2795,7 +2811,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         if (!segments.length) continue;
         const name = `${String(parts.length + 1).padStart(2, '0')}_${this.cameraSlug(block.cameraId)}_${fileStamp(startUs, zone)}.mp4`;
         const located = segments.map((s) => this.store.located(s));
-        const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments: located, startUs, endUs, outDir, filename: name });
+        const made = madeH264(located, false) ? (await this.h264()).encoder : undefined;
+        const res = await exportClip({ ffmpegPath: this.ffmpegPath, segments: located, startUs, endUs, outDir, filename: name, h264: made });
         parts.push({ path: res.path, name });
       }
       if (!parts.length) throw new Error('No recordings for this episode');
