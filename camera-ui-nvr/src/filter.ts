@@ -68,7 +68,10 @@ export function matchesContent(ev: RecordedEvent, opts: GetEventsOptions): boole
   }
   if (hasTypes) {
     const types = eventTypes(ev);
-    results.push(opts.types!.some((wanted) => (wanted === EVENT_TYPE_OTHER ? [...types].some((t) => !NAMED_TYPES.has(t)) : types.has(lower(wanted)))));
+    // the classes and questions of modules the bar names by chips of their own are not «Другое» too
+    const named = opts.otherExcept?.length ? new Set(opts.otherExcept.map(lower)) : undefined;
+    const other = (t: string) => !NAMED_TYPES.has(t) && !named?.has(t);
+    results.push(opts.types!.some((wanted) => (wanted === EVENT_TYPE_OTHER ? [...types].some(other) : types.has(lower(wanted)))));
     if (hasTriggers) ops.push(opts.filterLogicTriggers === 'and' ? 'and' : 'or');
   }
   if (hasAttributes) {

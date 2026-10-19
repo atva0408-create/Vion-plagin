@@ -68,6 +68,8 @@ const specs: Spec[] = [
   { id: 'motion-bird', start: 7000, triggers: [{ type: 'motion' }], labels: ['bird'] },
   { id: 'weak-person', start: 8000, triggers: [{ type: 'motion' }], labels: ['person'], score: 0.3 },
   { id: 'cam2-animal', start: 9000, triggers: [{ type: 'motion' }], labels: ['animal'], camera: 'cam2' },
+  // a store module's class: the filter bar has a chip of its own for it
+  { id: 'motion-bicycle', start: 9500, triggers: [{ type: 'motion' }], labels: ['bicycle'] },
 ];
 const byId = new Map(specs.map((s) => [s.id, event(s)]));
 
@@ -85,7 +87,10 @@ assert.deepEqual(pick({ triggers: ['audio'], triggerLabels: ['glass_break'] }), 
 assert.deepEqual(pick({ triggerLabels: ['glass_break'] }), ['audio-glass'], 'audio label alone');
 assert.deepEqual(pick({ attributes: ['face'] }), ['motion-person-face']);
 assert.deepEqual(pick({ attributes: ['face', 'license_plate'] }), ['motion-person-face', 'motion-vehicle-plate'], 'values of one group: any of them');
-assert.deepEqual(pick({ types: ['__other__'] }), ['motion-bird'], '«Другое»: types the filter bar does not name');
+assert.deepEqual(pick({ types: ['__other__'] }), ['motion-bicycle', 'motion-bird'], '«Другое»: types the filter bar does not name (an older client names no module)');
+// the bar names a module's class by a chip of its own: that class is not «Другое» too (otherExcept)
+assert.deepEqual(pick({ types: ['__other__'], otherExcept: ['Bicycle'] }), ['motion-bird'], '«Другое» without the classes the bar names');
+assert.deepEqual(pick({ types: ['bicycle'], otherExcept: ['bicycle'] }), ['motion-bicycle'], 'its own chip finds it');
 // triggers ⟷ types
 assert.deepEqual(pick({ triggers: ['contact'], types: ['person'], filterLogicTriggers: 'and' }), ['contact-person']);
 assert.deepEqual(
@@ -137,7 +142,8 @@ assert.deepEqual(ids(await page({ triggers: ['doorbell'], types: ['person'], att
   'motion-person-face',
 ]);
 assert.deepEqual(ids(await nvr.getCameraEvents(['cam1'], { types: [], attributes: ['license_plate'], limit: 10 })), ['motion-vehicle-plate']);
-assert.deepEqual(ids(await page({ types: ['__other__'], limit: 10 })), ['motion-bird']);
+assert.deepEqual(ids(await page({ types: ['__other__'], limit: 10 })), ['motion-bicycle', 'motion-bird'], 'an older client: a module class is «other» too');
+assert.deepEqual(ids(await page({ types: ['__other__'], otherExcept: ['bicycle'], limit: 10 })), ['motion-bird'], 'the classes the bar names are not «other»');
 
 // paging through a filtered list: every page continues before the last event of the previous one
 const first = await page({ types: ['vehicle'], limit: 200 });

@@ -222,6 +222,11 @@ export interface ManualRecording {
 
 export interface GetEventsOptions {
   types?: string[];
+  /**
+   * With «Другое» (EVENT_TYPE_OTHER) in `types`: the types the filter bar names by chips of their own (the classes and
+   * questions of modules), which are not «other» then. An older client sends none: a module's class is «other» too.
+   */
+  otherExcept?: string[];
   /** Sensor/trigger types (motion, audio, contact, doorbell…). */
   triggers?: string[];
   /** Audio labels of audio triggers (doorbell, glass_break…). */
