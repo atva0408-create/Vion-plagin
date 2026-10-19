@@ -1,3 +1,8 @@
+## [0.24.4]
+
+- Die Ereigniswerkzeuge des Assistenten kennen die Klasse eines heute installierten Moduls: der Server nennt die Klassen der Module beim Aufruf, und eine ohne Ereignis wurde als «Unknown label» abgelehnt (vom Modell als «kein solches Modul» gelesen)
+- «Sonstiges» in den Ereignisfiltern findet nicht mehr die Typen, die die Filterleiste mit eigenen Chips nennt (das Fahrrad eines Store-Moduls): der Client nennt sie (`otherExcept`)
+
 ## [0.24.3]
 
 - Ein Export über einen Codecwechsel (eine Kamera im gewählten Zeitraum von H.264 auf H.265 umgestellt) spielt jetzt ganz: die Dateien wurden Byte für Byte verbunden und die H.265-Hälfte lag in der H.264-Spur, im Testclip wurden 199 von 400 Bildern dekodiert, der Rest stand still. Ein Clip aus mehreren Codecs wird jetzt zu H.264, seine Abschnitte nacheinander gelesen, in der Größe der ersten Datei, mit Ton, wenn alle Teile welchen haben

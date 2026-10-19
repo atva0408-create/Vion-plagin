@@ -1,3 +1,8 @@
+## [0.24.4]
+
+- The assistant's event tools know a class of a module installed today: the server names the modules' classes in the call, and one without an event yet was refused as «Unknown label» (read as «there is no such module»)
+- «Другое» in the event filters no longer finds the types the filter bar names by chips of their own (a store module's bicycle): the client names them (`otherExcept`)
+
 ## [0.24.3]
 
 - An export over a codec change (a camera set from H.264 to H.265 inside the range) plays all of it: its files were joined byte by byte and the H.265 half lay in the H.264 track, 199 of 400 pictures decoded in a test clip and the rest stood still. A clip of more than one codec is made H.264 now, its stretches read one by one, at the size of its first file, with its sound when every part has some
