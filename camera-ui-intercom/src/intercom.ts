@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { Severity } from '@camera.ui/sdk';
 import { LANGUAGE_NAMES, formatClock, localTime } from '@vionvision/speech';
 
-import { IntercomError, canOpen, canSetMode, isAdmin, needAdmin } from './access.js';
+import { IntercomError, canOpen, canSetMode, isAdmin, needAdmin, needTalk, seesPanel } from './access.js';
 import { DoorAgent } from './agent/dialog.js';
 import { Conversation, DEFAULT_TIMING } from './agent/conversation.js';
 import { ownerText, ownerTexts, summarizeVisit } from './agent/summary.js';
@@ -265,7 +265,7 @@ export class Intercom {
     const mode = this.currentMode();
     const settings = this.settings();
     return {
-      panels: this.store.panels().map((panel) => ({
+      panels: this.seenPanels(actor).map((panel) => ({
         id: panel.id,
         name: panel.name,
         cameraId: panel.cameraId,
@@ -277,18 +277,19 @@ export class Intercom {
         model: panel.driver?.profileId,
       })),
       mode: { ...mode, setBy: this.modeState().setBy, canSet: canSetMode(actor, settings) },
-      calls: [...this.live.values()].filter((live) => live.call.state !== 'ended' && !live.quiet).map((live) => this.view(live)),
+      calls: [...this.live.values()].filter((live) => live.call.state !== 'ended' && !live.quiet && seesPanel(actor, live.panel)).map((live) => this.view(live)),
       instructions: activeInstructions(this.store.instructions(), '', this.now(), this.timeZone()).length,
       agent: { enabled: settings.agent.enabled },
       isAdmin: isAdmin(actor),
     };
   }
 
-  callState(_actor: Actor, callId: string): CallView {
+  callState(actor: Actor, callId: string): CallView {
     const live = this.byCall.get(callId);
-    if (live) return this.view(live);
+    if (live && seesPanel(actor, live.panel)) return this.view(live);
+    if (live) throw new IntercomError('not_found', 'no such call');
     const visit = this.store.queryVisits({ limit: 200 }).visits.find((v) => v.actions.some((a) => a.detail === `call:${callId}`));
-    if (!visit) throw new IntercomError('not_found', 'no such call');
+    if (!visit || !this.seesVisit(actor, visit)) throw new IntercomError('not_found', 'no such call');
     const panel = this.store.panel(visit.panelId);
     return {
       callId,
@@ -590,7 +591,21 @@ export class Intercom {
     });
   }
 
-  private async notify(notification: Notification): Promise<void> {
+  /**
+   * `panel`: the panel it is about. Its camera goes with it (data.cameraId): the server tells a user limited to some
+   * cameras of those cameras only, and a notification naming none reaches no such user.
+   */
+  /** The panel a notification is about: the one it names, or that of the call it links to (callLink). */
+  private panelOf(notification: Notification): Panel | undefined {
+    const panelId = (notification.data as { panelId?: unknown } | undefined)?.panelId;
+    if (typeof panelId === 'string') return this.store.panel(panelId);
+    const callId = /^\/intercom\/call\/(.+)$/.exec(notification.deepLink ?? '')?.[1];
+    return callId ? this.byCall.get(callId)?.panel : undefined;
+  }
+
+  private async notify(notification: Notification, panel?: Pick<Panel, 'id' | 'cameraId'>): Promise<void> {
+    const about = panel ?? this.panelOf(notification);
+    if (about) notification = { ...notification, data: { panelId: about.id, ...notification.data, cameraId: about.cameraId } };
     try {
       await this.host.publish(notification);
     } catch (error) {
@@ -680,14 +695,16 @@ export class Intercom {
     return texts[kind].replace('{label}', label ?? '');
   }
 
-  private liveCall(callId: string): Live {
+  /** A call under way of a panel the user sees: another one is no call of theirs (`not_found`, as an ended one). */
+  private liveCall(callId: string, actor?: Actor): Live {
     const live = this.byCall.get(callId);
-    if (!live || live.call.state === 'ended') throw new IntercomError('not_found', 'the call is over');
+    if (!live || live.call.state === 'ended' || (actor && !seesPanel(actor, live.panel))) throw new IntercomError('not_found', 'the call is over');
     return live;
   }
 
   answerCall(actor: Actor, callId: string): { ok: true; cameraId: string } | { ok: false; taken: string } {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
+    needTalk(actor);
     this.remember(actor); // before the step: it tells the household who answered
     const result = this.event(live, { type: live.call.state === 'agent' ? 'take_over' : 'answer', userId: actor.userId });
     if (result.refused === 'taken') return { ok: false, taken: result.takenBy ?? '' };
@@ -697,13 +714,13 @@ export class Intercom {
   }
 
   declineCall(actor: Actor, callId: string): CallView {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
     this.event(live, { type: 'decline', userId: actor.userId });
     return this.view(live);
   }
 
   handToAgent(actor: Actor, callId: string): CallView {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
     const result = this.event(live, { type: 'to_agent', userId: actor.userId });
     if (result.refused === 'agent_off') throw new IntercomError('unavailable', 'the agent cannot answer at this panel now');
     return this.view(live);
@@ -714,7 +731,7 @@ export class Intercom {
   }
 
   hangUpCall(actor: Actor, callId: string): CallView {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
     this.event(live, { type: 'hang_up', userId: actor.userId });
     return this.view(live);
   }
@@ -724,7 +741,8 @@ export class Intercom {
    * model). A ringing call is handed to the agent first, so typed answers work without a voice connection.
    */
   async sayInCall(actor: Actor, callId: string, text: string, verbatim = true): Promise<CallView> {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
+    needTalk(actor);
     const said = text?.trim().slice(0, 300);
     if (!said) throw new IntercomError('invalid', 'text');
     if (live.call.state === 'answered') throw new IntercomError('conflict', 'the call is answered: speak yourself');
@@ -741,7 +759,7 @@ export class Intercom {
 
   /** A quick answer of the call card: open, leave at the door, call me, no thanks. */
   async quickAnswer(actor: Actor, callId: string, option: string): Promise<CallView> {
-    const live = this.liveCall(callId);
+    const live = this.liveCall(callId, actor);
     const texts = ownerTexts(this.language()).quickAnswers;
     if (option === 'open') {
       const door = live.panel.doors[0];
@@ -1005,7 +1023,7 @@ export class Intercom {
   /** "Open" pressed by a person (the call card, the panel card, the assistant). */
   async openDoorAs(actor: Actor, panelId: string, doorId: string): Promise<DoorResult> {
     const panel = this.store.panel(panelId);
-    if (!panel) throw new IntercomError('not_found', 'no such panel');
+    if (!panel || !seesPanel(actor, panel)) throw new IntercomError('not_found', 'no such panel');
     const door = panel.doors.find((d) => d.id === doorId || d.name.toLowerCase() === doorId.toLowerCase());
     if (!door) throw new IntercomError('not_found', 'no such door');
     if (!canOpen(actor, panel)) throw new IntercomError('forbidden', `you may not open the doors of ${panel.name}`);
@@ -1126,7 +1144,7 @@ export class Intercom {
       if (recent.length >= NOBODY_STREAK && (this.silencedUntil.get(panel.id) ?? 0) <= now) {
         this.silencedUntil.set(panel.id, now + SILENCE_MS);
         this.nobodyAt.set(panel.id, []);
-        void this.notify({ title: ownerText(this.language(), 'nobodyStreakTitle', { panel: panel.name }), tag: `intercom-nobody:${panel.id}` });
+        void this.notify({ title: ownerText(this.language(), 'nobodyStreakTitle', { panel: panel.name }), tag: `intercom-nobody:${panel.id}` }, panel);
       }
     }
 
@@ -1269,9 +1287,9 @@ export class Intercom {
   }
 
   /** A file of a visit (a snapshot or the voice message), for the server to serve. */
-  async visitFile(_actor: Actor, visitId: string, name: string): Promise<{ data: Uint8Array; mimeType: string }> {
+  async visitFile(actor: Actor, visitId: string, name: string): Promise<{ data: Uint8Array; mimeType: string }> {
     const visit = this.store.visit(visitId);
-    if (!visit) throw new IntercomError('not_found', 'no such visit');
+    if (!visit || !this.seesVisit(actor, visit)) throw new IntercomError('not_found', 'no such visit');
     const known = [...visit.snapshots, ...(visit.voiceMessage ? [visit.voiceMessage] : [])];
     if (!known.includes(name)) throw new IntercomError('not_found', 'no such file');
     const { readFile } = await import('node:fs/promises');
@@ -1282,19 +1300,37 @@ export class Intercom {
 
   // ---- the archive ----
 
-  visits(_actor: Actor, query: VisitQuery): VisitPage {
-    return this.store.queryVisits({ ...query, limit: Math.min(Math.max(query.limit ?? 50, 1), 200) });
+  visits(actor: Actor, query: VisitQuery): VisitPage {
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    if (!actor.cameraIds) return this.store.queryVisits({ ...query, limit });
+    // a user limited to some cameras: the visits at their panels, filtered before the page is cut
+    const seen = this.seenPanels(actor).map((panel) => panel.id);
+    const panelIds = query.panelIds?.length ? query.panelIds.filter((id) => seen.includes(id)) : seen;
+    if (!panelIds.length) return { visits: [], hasMore: false };
+    return this.store.queryVisits({ ...query, panelIds, limit });
   }
 
-  visit(_actor: Actor, id: string): Visit {
+  visit(actor: Actor, id: string): Visit {
     const visit = this.store.visit(id);
-    if (!visit) throw new IntercomError('not_found', 'no such visit');
+    if (!visit || !this.seesVisit(actor, visit)) throw new IntercomError('not_found', 'no such visit');
     return visit;
+  }
+
+  /** The panels of the cameras the user sees (all of them for a user not limited). */
+  private seenPanels(actor: Actor): Panel[] {
+    return this.store.panels().filter((panel) => seesPanel(actor, panel));
+  }
+
+  /** A visit at a panel the user sees; one of a panel since removed is seen by those not limited only. */
+  private seesVisit(actor: Actor, visit: Pick<Visit, 'panelId'>): boolean {
+    if (!actor.cameraIds) return true;
+    const panel = this.store.panel(visit.panelId);
+    return !!panel && seesPanel(actor, panel);
   }
 
   markVisitSeen(actor: Actor, id: string): void {
     const visit = this.store.visit(id);
-    if (!visit) throw new IntercomError('not_found', 'no such visit');
+    if (!visit || !this.seesVisit(actor, visit)) throw new IntercomError('not_found', 'no such visit');
     if (!visit.seenBy.includes(actor.userId)) this.store.saveVisit({ ...visit, seenBy: [...visit.seenBy, actor.userId] });
   }
 
@@ -1341,7 +1377,7 @@ export class Intercom {
     return {
       now,
       timeZone: this.timeZone(),
-      panels: this.store.panels(),
+      panels: this.seenPanels(actor),
       people: this.store.people(),
       activeCount: this.store.instructions().filter((i) => !i.cancelledAt && !(i.once && i.doneAt) && !instructionOver(i.when, now)).length,
       mayOpen: (panel: Panel) => canOpen(actor, panel),

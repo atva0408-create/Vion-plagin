@@ -7,7 +7,7 @@
  */
 import { formatClock, localTime } from '@vionvision/speech';
 
-import { IntercomError } from './access.js';
+import { IntercomError, asActor } from './access.js';
 import { parseMoment } from './inputs.js';
 import { CATEGORIES, MODES } from './types.js';
 
@@ -219,7 +219,11 @@ export const TOOLS: AssistantToolSpec[] = [
   },
 ];
 
-const actorOf = (ctx: AssistantToolContext): Actor => ({ userId: ctx.userId, role: ctx.role });
+// the server adds the cameras and the right to talk of a person limited to some cameras (assistant/plugin-tools.ts)
+const actorOf = (ctx: AssistantToolContext): Actor => {
+  const limits = ctx as AssistantToolContext & { cameraIds?: unknown; talk?: unknown };
+  return asActor({ userId: ctx.userId, role: ctx.role, cameraIds: limits.cameraIds, talk: limits.talk });
+};
 
 function moment(intercom: Intercom, ms: number | undefined): string | undefined {
   if (ms === undefined) return undefined;

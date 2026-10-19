@@ -12,6 +12,7 @@ import { hashSecret } from '../src/codes.js';
 import { Intercom } from '../src/intercom.js';
 import { checkProfile } from '../src/panels/profile.js';
 import { placeOf } from '../src/place.js';
+import { asActor } from '../src/access.js';
 import { Store } from '../src/store.js';
 import { callTool } from '../src/tools.js';
 
@@ -266,6 +267,57 @@ test('away: nobody is rung and the agent answers at once; a mode set with an end
   assert.ok(w.titles().includes('Домофон: режим «дома» вернулся'));
   w.intercom.setSettings(admin, { modeUserIds: ['u1'] });
   assert.equal(w.intercom.setMode(u1, 'dnd').mode, 'dnd');
+});
+
+// ViON limits a user to some cameras (cameraAccess) and to talk or not: the server shut such a user out of the whole
+// intercom, their own cameras' panels too (2026-10-19). Now the actor brings its cameras and its right to talk: the
+// panels, calls, doors and visits of other cameras are none of theirs, a call is answered and spoken to with the
+// right to talk only, and every notice of a panel carries its camera for the server to tell only those who see it.
+test('a user limited to some cameras: the panels, calls, doors and visits of their cameras only; talking needs the right', async () => {
+  const w = new World();
+  w.store.savePanel({ ...w.store.panel('gate')!, id: 'back', name: 'Задняя', cameraId: 'cam2', doors: [{ id: 'back', name: 'Задняя', via: { kind: 'lock', sensorId: 'lock1' }, relockSeconds: 5 }], doorbellSensorIds: [] });
+  for (const id of ['gate', 'back']) w.store.savePanel({ ...w.store.panel(id)!, openUserIds: ['nanny'] });
+  const nanny = asActor({ userId: 'nanny', role: 'user', cameraIds: ['cam1'] });
+  const quiet = asActor({ userId: 'nanny', role: 'user', cameraIds: ['cam1'], talk: false });
+  assert.deepEqual(nanny.cameraIds, ['cam1']);
+  assert.equal(asActor({ userId: 'a', role: 'admin', cameraIds: [] }).cameraIds, undefined, 'an admin is never limited');
+
+  w.intercom.press('gate');
+  w.intercom.press('back');
+  await w.pass(100);
+  const calls = w.calls();
+  const gateCall = calls.find((n) => n.data?.panelId === 'gate')!.data!.callId;
+  const backCall = calls.find((n) => n.data?.panelId === 'back')!.data!.callId;
+  // every notice of a panel names its camera
+  assert.ok(w.published.filter((n) => n.data?.panelId).every((n) => n.data?.cameraId === (n.data?.panelId === 'back' ? 'cam2' : 'cam1')), JSON.stringify(w.published.map((n) => n.data)));
+
+  const state = w.intercom.intercomState(nanny) as { panels: { id: string }[]; calls: { panelId: string }[] };
+  assert.deepEqual(state.panels.map((p) => p.id), ['gate']);
+  assert.deepEqual(state.calls.map((c) => c.panelId), ['gate']);
+  assert.throws(() => w.intercom.answerCall(nanny, backCall), /not_found/, "another camera's call is no call of theirs");
+  assert.throws(() => w.intercom.callState(nanny, backCall), /not_found/);
+  await assert.rejects(w.intercom.openDoorAs(nanny, 'back', 'back'), /not_found/);
+  assert.throws(() => w.intercom.answerCall(quiet, gateCall), /forbidden/, 'answering is talking');
+  await assert.rejects(w.intercom.sayInCall(quiet, gateCall, 'Оставьте у двери'), /forbidden/);
+  assert.deepEqual(w.intercom.answerCall(nanny, gateCall), { ok: true, cameraId: 'cam1' });
+  assert.equal((await w.intercom.openDoorAs(nanny, 'gate', 'gate')).result, 'confirmed');
+  w.intercom.hangUpCall(nanny, gateCall);
+  w.intercom.hangUpCall(admin, backCall);
+  await w.pass(100);
+
+  const visits = w.intercom.visits(nanny, {});
+  assert.deepEqual(visits.visits.map((v) => v.panelId), ['gate']);
+  assert.deepEqual(w.intercom.visits(nanny, { panelIds: ['back'] }).visits, [], 'asked for another camera: nothing, not everything');
+  assert.equal(w.intercom.visits(admin, {}).visits.length, 2);
+  const backVisit = w.intercom.visits(admin, { panelIds: ['back'] }).visits[0]!;
+  assert.throws(() => w.intercom.visit(nanny, backVisit.id), /not_found/);
+  assert.throws(() => w.intercom.markVisitSeen(nanny, backVisit.id), /not_found/);
+  await assert.rejects(w.intercom.visitFile(nanny, backVisit.id, '1.jpg'), /not_found/);
+  assert.equal(w.intercom.visit(nanny, visits.visits[0]!.id).panelId, 'gate');
+  // the answer, the opening and the end were told with the camera too (a limited user's call card is ended by them)
+  const told = w.published.filter((n) => n.data?.panelId);
+  assert.ok(told.some((n) => n.data?.kind === 'intercom.call.update'), 'the updates of the calls were told');
+  for (const n of told) assert.equal(n.data?.cameraId, n.data?.panelId === 'back' ? 'cam2' : 'cam1', `${n.title}: ${JSON.stringify(n.data)}`);
 });
 
 test('opening: a user needs the right of the panel; the opening is logged and told; an unconfirmed command says so', async () => {
