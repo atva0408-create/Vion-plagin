@@ -104,6 +104,16 @@ const MAX_REFERENCES = 6;
 const RECAP_REFERENCES = 12;
 
 const LABELS = ['person', 'vehicle', 'animal'];
+
+/**
+ * The classes of the modules installed on the server, named by it in the call (assistant/plugin-tools.ts): a class of a
+ * module installed today has no event yet and was refused as «Unknown label», read as «no such module».
+ */
+function knownClasses(ctx: AssistantToolContext): string[] {
+  const named = (ctx as AssistantToolContext & { moduleLabels?: unknown }).moduleLabels;
+  const extra = Array.isArray(named) ? named.filter((label): label is string => typeof label === 'string').map((label) => label.toLowerCase()) : [];
+  return [...LABELS, ...extra];
+}
 /** Attribute types the NVR knows apart; every other type is the question of a module («играет в компьютер»). */
 const NOT_MODULE_ATTRIBUTES = new Set(['face', 'license_plate', 'clip']);
 const YES = new Set(['да', 'yes', 'ja', 'true']);
@@ -613,9 +623,10 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
   // event has had is said, not answered with nothing: "people" found 0 events, read as "nobody came"
   const labels = stringList(input.labels).map((l) => l.toLowerCase());
   const knownFrom = Math.min(range.from, range.to - KNOWN_MS);
-  if (labels.some((label) => !LABELS.includes(label))) {
+  const classes = knownClasses(ctx);
+  if (labels.some((label) => !classes.includes(label))) {
     const seen = knownLabels(host, camera.ids, knownFrom, range.to);
-    const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.has(label));
+    const unknown = labels.filter((label) => !classes.includes(label) && !seen.has(label));
     if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the events of the last 30 days: ${[...seen].join(', ')}` };
   }
   const plate = normalizePlate(input.plate);
@@ -1194,9 +1205,10 @@ async function eventStats(host: AssistantHost, input: Input, ctx: AssistantToolC
 
   const labels = stringList(input.labels).map((l) => l.toLowerCase());
   const knownFrom = Math.min(from, to - KNOWN_MS);
-  if (labels.some((label) => !LABELS.includes(label))) {
+  const classes = knownClasses(ctx);
+  if (labels.some((label) => !classes.includes(label))) {
     const seen = knownLabels(host, camera.ids, knownFrom, to);
-    const unknown = labels.filter((label) => !LABELS.includes(label) && !seen.has(label));
+    const unknown = labels.filter((label) => !classes.includes(label) && !seen.has(label));
     if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the events of the last 30 days: ${[...seen].join(', ')}` };
   }
   let question: Question | undefined;
@@ -1316,11 +1328,12 @@ async function lineCounts(host: AssistantHost, input: Input, ctx: AssistantToolC
   const labels = stringList(input.labels).map((l) => l.toLowerCase());
 
   // a label no crossing had is said, not counted as nobody: «car» found 0 where the lines count «vehicle»
-  if (labels.some((label) => !LABELS.includes(label))) {
+  const classes = knownClasses(ctx);
+  if (labels.some((label) => !classes.includes(label))) {
     const seen = host.crossingLabels(camera.ids, Math.min(from, to - KNOWN_MS), to);
     // the labels asked are lowered, the stored ones are as the detector names them («Самокат» of one's own model)
     const lowered = new Set(seen.map((label) => label.toLowerCase()));
-    const unknown = labels.filter((label) => !LABELS.includes(label) && !lowered.has(label));
+    const unknown = labels.filter((label) => !classes.includes(label) && !lowered.has(label));
     if (unknown.length) {
       return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the crossings of the last 30 days: ${seen.join(', ') || 'none'}` };
     }

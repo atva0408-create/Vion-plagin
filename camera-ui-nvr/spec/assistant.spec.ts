@@ -269,5 +269,18 @@ assert.equal(startOfDay('2026-09-29', 'Not/AZone'), Date.parse('2026-09-29T00:00
 assert.equal(normalizePlate(' a-123 bc '), 'A123BC');
 assert.match((await call('no_such_tool', {})).error ?? '', /Unknown tool/);
 
+// a class of a module installed today, no event of it yet: the server names the modules' classes in the call
+// (moduleLabels); it was refused as «Unknown label», read by the model as «there is no such module». A misspelling
+// is still refused
+{
+  const withModules = { ...ctx, moduleLabels: ['bicycle'] } as AssistantToolContext;
+  const bikes = await nvr.callAssistantTool('query_events', { labels: ['bicycle'] }, withModules);
+  assert.equal(bikes.error, undefined, `a module's class without an event yet: ${bikes.error}`);
+  assert.match((await nvr.callAssistantTool('query_events', { labels: ['bicycle'] }, ctx)).error ?? '', /Unknown label "bicycle"/, 'without the server naming it, as before');
+  assert.match((await nvr.callAssistantTool('query_events', { labels: ['people'] }, withModules)).error ?? '', /Unknown label "people"/);
+  const stats = await nvr.callAssistantTool('event_stats', { labels: ['bicycle'], period: 'week' }, withModules);
+  assert.doesNotMatch(stats.error ?? '', /Unknown label/, `event_stats: ${stats.error}`);
+}
+
 console.log('assistant.spec: tools declared, query_events, summarize_day, list_plates, get_event_image OK');
 process.exit(0);
