@@ -1,3 +1,7 @@
+## [0.24.5]
+
+- A store module's bicycle is a kind of its own in the episodes, titled «Велосипед»: it was folded into «Транспорт», and a cyclist at the gate, a car at the door and the cyclist again became one visit
+
 ## [0.24.4]
 
 - The assistant's event tools know a class of a module installed today: the server names the modules' classes in the call, and one without an event yet was refused as «Unknown label» (read as «there is no such module»)

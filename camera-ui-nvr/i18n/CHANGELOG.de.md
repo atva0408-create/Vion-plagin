@@ -1,3 +1,7 @@
+## [0.24.5]
+
+- Das Fahrrad eines Store-Moduls ist in den Episoden eine eigene Art, betitelt «Велосипед»: es wurde zu «Транспорт» gezählt, und ein Radfahrer am Tor, ein Auto an der Tür und wieder der Radfahrer wurden ein Besuch
+
 ## [0.24.4]
 
 - Die Ereigniswerkzeuge des Assistenten kennen die Klasse eines heute installierten Moduls: der Server nennt die Klassen der Module beim Aufruf, und eine ohne Ereignis wurde als «Unknown label» abgelehnt (vom Modell als «kein solches Modul» gelesen)
