@@ -117,7 +117,8 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
         results: list[ClassifierResult] = []
         for frame in frames:
             label = frame.get("label")
-            wanted = [e for e in entries if e["label"] == label] if label else []
+            # a store detector names its class as its model does («Bicycle»), the question keeps it lowercase
+            wanted = [e for e in entries if str(e["label"]).lower() == label.lower()] if label else []
             posed = pose and label == POSE_LABEL
             detections: list[ClassifierDetection] = []
             if wanted or posed:

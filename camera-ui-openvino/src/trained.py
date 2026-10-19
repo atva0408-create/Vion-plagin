@@ -20,8 +20,6 @@ from typing import Any
 TRAINED_PREFIX = "vion-trained-"
 # the manifest changes a few times a week at most: checking its mtime every few seconds is plenty
 _CHECK_EVERY_S = 5.0
-# labels an upstream object detector emits that can trigger a classifier (SDK DetectionLabel)
-TRIGGER_LABELS = ("person", "vehicle", "animal")
 
 
 def is_trained(model_name: str) -> bool:
@@ -84,7 +82,9 @@ class TrainedModels:
         ]
 
     def trigger_labels(self, camera_id: str | None = None) -> list[str]:
-        return sorted({e["label"] for e in self.attributes(camera_id) if e["label"] in TRIGGER_LABELS})
+        # every class a question is asked of, a store module's (bicycle) too, lowercase as the cloud keeps it: the
+        # server compares the boxes' classes to these in any case
+        return sorted({str(e["label"]).lower() for e in self.attributes(camera_id)})
 
     def module_detectors(self, camera_id: str) -> list[dict[str, Any]]:
         """The detectors of object modules that work on this camera, next to its own detector."""

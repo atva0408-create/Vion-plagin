@@ -257,6 +257,45 @@ def test_the_attribute_sensor_runs_the_classifiers_of_its_camera(
     assert sensor_for("cam-2").modelSpec["triggerLabels"] == ["person", "vehicle"]
 
 
+def test_a_question_of_a_class_a_module_adds_runs_on_its_boxes_in_any_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A store module's bicycle: the cloud keeps the class lowercase, the store detector names it as its model does."""
+    monkeypatch.syspath_prepend(str(ONNX_SRC))
+    monkeypatch.syspath_prepend(str(SDK))
+    monkeypatch.syspath_prepend(str(ROOT / "packages" / "camera_ui_ml"))
+    fresh_ml(monkeypatch)
+    for name in ("trained", "sensors.attribute_sensor"):
+        sys.modules.pop(name, None)
+    attribute_sensor = importlib.import_module("sensors.attribute_sensor")
+    trained_module = sys.modules["trained"]
+    write_manifest(
+        tmp_path,
+        {
+            "detector": None,
+            "attributes": [model(tmp_path, "locked", label="bicycle", attribute="пристёгнут")],
+        },
+    )
+    trained_module.trained_models.dir = str(tmp_path)
+    fresh(trained_module.trained_models)
+    sensor = attribute_sensor.ViONAttributeSensor(
+        None, types.SimpleNamespace(id="cam-1"), types.SimpleNamespace(log=print, error=print)
+    )
+    asked: list[str] = []
+
+    async def classify(entry: dict[str, Any], rgb: Any) -> float:
+        asked.append(entry["id"])
+        return 0.9
+
+    sensor._classify = classify
+    # the server crops the boxes of the class for this sensor
+    assert sensor.modelSpec["triggerLabels"] == ["bicycle"]
+    bike = {"data": b"\0" * (8 * 8 * 3), "width": 8, "height": 8, "format": "rgb", "label": "Bicycle"}
+    result = asyncio.run(sensor.detectClassifications([bike]))
+    assert asked == ["locked"], "the question of a module's class did not run on its box"
+    assert [d["attribute"] for d in result[0]["detections"]] == ["пристёгнут"]
+
+
 def test_the_attribute_sensor_tells_the_posture_of_people_when_asked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
