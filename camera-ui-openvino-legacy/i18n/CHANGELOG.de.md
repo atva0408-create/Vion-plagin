@@ -1,3 +1,7 @@
+## [1.5.5]
+
+- Eine Frage eines Moduls zu einer Klasse, die ein anderes Modul hinzufügt (das Fahrrad eines Store-Moduls), läuft auf deren Boxen: nur Personen-, Fahrzeug- und Tier-Boxen gingen an den Klassifikator, und die eigene Schreibweise einer Klasse beim Detektor («Bicycle») passte nicht zur Frage
+
 ## [1.5.4]
 
 - Der Umriss eines auf einem Bild markierten Gegenstands für die Frage von ViON NVR 0.23.0 «wann ist er verschwunden, wer hat ihn weggetragen» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB vom Modellspiegel) umreißt, was ein Rahmen oder ein Punkt auf einem Bild zeigt. Es lädt mit der ersten Frage und verlässt den Speicher nach fünf Minuten ohne Frage. Immer auf dem Prozessor, unabhängig vom Gerät des Plugins: ein Viertel der Kerne (mindestens zwei), ein Bild nach dem anderen, 3-5 s pro Bild auf dem Prüfstand, etwa 0,6 GB solange geladen. Während es lädt, sagt die Antwort das; ein unlesbares Bild bekommt keinen Umriss, die anderen werden umrissen. Nie im Hintergrund

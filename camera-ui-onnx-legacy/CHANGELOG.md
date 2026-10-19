@@ -1,3 +1,7 @@
+## [1.5.9]
+
+- A question module asked of a class a module adds (a store module's bicycle) runs on its boxes: only person, vehicle and animal boxes were sent to the classifier, and a detector's own case of a class («Bicycle») did not match the question's
+
 ## [1.5.8]
 
 - Detections on the GPU no longer go wrong and no longer lose the GPU when two calls of one model run at once: each call of a model took a CUDA stream of its own and one call's buffers were used by the other — boxes off by hundreds of pixels, and in the end «CUDA failure 700/716» in a Conv (the GPU was lost three times in one day on the test machine). Every call of a model now runs on one stream: 0 wrong answers in 34,000 calls, as fast as before

@@ -1,3 +1,7 @@
+## [1.7.8]
+
+- Eine Frage eines Moduls zu einer Klasse, die ein anderes Modul hinzufügt (das Fahrrad eines Store-Moduls), läuft auf deren Boxen: nur Personen-, Fahrzeug- und Tier-Boxen gingen an den Klassifikator, und die eigene Schreibweise einer Klasse beim Detektor («Bicycle») passte nicht zur Frage
+
 ## [1.7.7]
 
 - Erkennungen auf der GPU gehen nicht mehr schief und verlieren die GPU nicht mehr, wenn zwei Aufrufe eines Modells gleichzeitig laufen: jeder Aufruf nahm einen eigenen CUDA-Stream, und die Puffer des einen wurden vom anderen benutzt — Rahmen um Hunderte Pixel daneben und am Ende «CUDA failure 700/716» in einer Conv (dreimal an einem Tag auf dem Testrechner). Alle Aufrufe eines Modells laufen jetzt auf einem Stream: 0 falsche Antworten bei 34.000 Aufrufen, so schnell wie zuvor

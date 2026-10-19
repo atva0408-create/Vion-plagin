@@ -1,3 +1,7 @@
+## [1.7.5]
+
+- A question module asked of a class a module adds (a store module's bicycle) runs on its boxes: only person, vehicle and animal boxes were sent to the classifier, and a detector's own case of a class («Bicycle») did not match the question's
+
 ## [1.7.4]
 
 - The outline of a thing marked on a picture, for ViON NVR 0.23.0's «when did it go, who carried it off» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB from the models mirror) outlines what a box or a point on a picture shows. It loads with the first question and leaves memory after five minutes without one. Always on the processor, whatever the plugin's device: a quarter of the cores (two at least), one picture at a time, 3-5 s a picture on the bench, about 0.6 GB while loaded. While it loads the answer says so; a picture that cannot be read gets no outline and the others are outlined. Never in the background
