@@ -194,6 +194,18 @@ assert.deepEqual(
 assert.equal(scooter[0].description?.title, 'Самокат: Въезд → Входная дверь');
 assert.match(scooter[0].description?.description ?? '', /^Въезд → Входная дверь/);
 
+// 3a'. a store module's bicycle has a chip of its own: a kind of its own too, titled in Russian, never one visit with a
+// car (it was folded into «Транспорт» and joined with the car between its two sightings)
+await ingest({ id: 's3c-bike-gate', camera: 'gate', at: scene(32, 0), labels: ['bicycle'] });
+await ingest({ id: 's3c-car-door', camera: 'door', at: scene(32, 10), labels: ['vehicle'] });
+await ingest({ id: 's3c-bike-door', camera: 'door', at: scene(32, 20), labels: ['bicycle'] });
+const bikes = (await nvr.getEpisodes({ startMs: scene(32, -60), endMs: scene(32, 120) })).episodes;
+assert.deepEqual(
+  bikes.map((episode) => episode.members.map((m) => m.eventId)),
+  [['s3c-bike-gate', 's3c-bike-door']],
+);
+assert.equal(bikes[0].description?.title, 'Велосипед: Въезд → Входная дверь');
+
 // 3b. what modules answered «да» is told in the episode; «нет» is not
 await ingest({ id: 's3b-gate', camera: 'gate', at: scene(31, 0), labels: ['person'], answers: ['играет в компьютер: нет', 'поза: сидит'] });
 await ingest({ id: 's3b-door', camera: 'door', at: scene(31, 20), labels: ['person'], answers: ['падение: да', 'играет в компьютер: нет'] });

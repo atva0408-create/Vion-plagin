@@ -103,7 +103,7 @@ const CLASS_OF: Record<string, string> = {
   bus: 'vehicle',
   motorcycle: 'vehicle',
   motorbike: 'vehicle',
-  bicycle: 'vehicle',
+  // no bicycle: the store's bicycle module has a chip of its own, its class is a kind of its own (classOf), not a car's
   animal: 'animal',
   dog: 'animal',
   cat: 'animal',
@@ -111,7 +111,7 @@ const CLASS_OF: Record<string, string> = {
   horse: 'animal',
 };
 const CLASS_ORDER = ['person', 'vehicle', 'animal'];
-const CLASS_RU: Record<string, string> = { person: 'Человек', vehicle: 'Транспорт', animal: 'Животное' };
+const CLASS_RU: Record<string, string> = { person: 'Человек', vehicle: 'Транспорт', animal: 'Животное', bicycle: 'Велосипед' };
 const NOT_OBJECTS = new Set(['', 'motion', 'audio']);
 
 /** A label the map does not know is a module's class (a store module's «самокат»): a kind of its own. */
