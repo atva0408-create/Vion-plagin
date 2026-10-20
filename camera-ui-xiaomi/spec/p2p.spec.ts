@@ -197,6 +197,48 @@ test('loopback bridge preserves encrypted commands and media and rejects a secon
   }
 });
 
+// The camera's video stopped 4 s after talk started on a camera behind a relay (bench, 2026-10-20 16:35:53 →
+// «cs2: read udp i/o timeout» 16:36:27). DRW is delivered reliably: a frame the camera sends on a channel go2rtc cannot
+// read (1, or 3 where the speaker is) was dropped here without an acknowledgement, so the camera kept sending it again.
+test('a frame on a channel go2rtc does not read is acknowledged to the camera, not passed to go2rtc', async () => {
+  const fake = await fakeRelay();
+  const bridge = await P2pBridge.open({ uid: UID, init: INIT }, fake.options);
+  const client = createSocket('udp4');
+  await bind(client, '127.0.0.1');
+  const received: Buffer[] = [];
+  client.on('message', (m) => received.push(Buffer.from(m)));
+  const told: number[] = [];
+  bridge.onUnread = (channel) => told.push(channel);
+  const port = Number(bridge.host.split(':')[1]);
+  try {
+    client.send(frame(0x30), port, '127.0.0.1');
+    await until(() => received.some((m) => m[1] === 0x41));
+    for (const [channel, seq] of [
+      [3, 0x0102],
+      [3, 0x0103],
+      [1, 7],
+    ]) {
+      const unread = frame(0xd0, Buffer.from([0xd1, channel, seq >> 8, seq & 0xff, 0xaa, 0xbb]));
+      fake.send(unread);
+      const ack = frame(0xd1, Buffer.from([0xd1, channel, 0, 1, seq >> 8, seq & 0xff]));
+      await until(() => fake.forwarded.some((m) => m.equals(ack)));
+      assert.ok(!received.some((m) => m.equals(unread)), `channel ${channel} reached go2rtc`);
+    }
+    // go2rtc's own channels are still its to acknowledge
+    const media = frame(0xd0, Buffer.from('d10200090011', 'hex'));
+    fake.send(media);
+    await until(() => received.some((m) => m.equals(media)));
+    await delay(30);
+    assert.ok(!fake.forwarded.some((m) => m[1] === 0xd1 && m[5] === 2), 'the bridge acknowledged media go2rtc reads');
+    // said once a channel, as the evidence of what the camera sends while talking
+    assert.deepEqual(told, [3, 1]);
+  } finally {
+    bridge.close();
+    client.close();
+    await fake.close();
+  }
+});
+
 test('a remote close immediately notifies the local PTZ connection', async () => {
   const fake = await fakeRelay();
   const bridge = await P2pBridge.open({ uid: UID, init: INIT }, fake.options);

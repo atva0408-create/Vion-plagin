@@ -75,7 +75,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   /** the MIoT descriptions of the models, read once each */
   private readonly specs = new SpecSource();
   private started = false;
-  private readonly p2p = new P2pConnections();
+  private readonly p2p = new P2pConnections((message) => this.logger.log(message));
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<XiaomiConfig>) {
     super(logger, api, storage);

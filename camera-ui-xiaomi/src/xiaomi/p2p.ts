@@ -27,6 +27,11 @@ function sessionFrame(message: Buffer, inbound: boolean): boolean {
   }
 }
 
+/** A whole DRW frame of the camera on a channel other than go2rtc's 0 and 2. */
+function unreadDrw(message: Buffer): boolean {
+  return validFrame(message) && message[1] === 0xd0 && message.length >= 8 && message[4] === 0xd1 && message[5] !== 0 && message[5] !== 2;
+}
+
 /** A short, non-invasive discovery probe. An unrelated UDP response is not evidence of a local camera. */
 export async function reachableLocally(host: string, timeoutMs = 1200): Promise<boolean> {
   if (!host) return false;
@@ -71,7 +76,10 @@ export class P2pBridge {
   private lastActivity = Date.now();
   private timer?: NodeJS.Timeout;
   private stopped = false;
+  private readonly unread = new Set<number>();
   public onClose?: () => void;
+  /** The first frame of a session on a channel go2rtc does not read: what the camera sends besides video. */
+  public onUnread?: (channel: number) => void;
   public host = '';
 
   private constructor(
@@ -80,7 +88,18 @@ export class P2pBridge {
   ) {
     relay.onClose = () => this.close();
     relay.onMessage = (message) => {
-      if (!sessionFrame(message, true)) return;
+      if (!sessionFrame(message, true)) {
+        // DRW is delivered reliably: a frame the camera sends on a channel go2rtc cannot read (1, or 3 where the speaker
+        // is) is acknowledged here as Cs2Connection does, or the camera sends it again and again. Dropped unacknowledged,
+        // the video of a camera behind a relay stopped 4 s after talk started (bench, 2026-10-20)
+        if (!unreadDrw(message)) return;
+        relay.send(frame(0xd1, Buffer.from([0xd1, message[5], 0, 1, message[6], message[7]])));
+        if (!this.unread.has(message[5])) {
+          this.unread.add(message[5]);
+          this.onUnread?.(message[5]);
+        }
+        return;
+      }
       if (message[1] === 0xf0 || message[1] === 0xf1) {
         this.close();
         return;
@@ -172,6 +191,8 @@ export class P2pConnections {
   private epoch = 0;
   private readonly versions = new Map<string, number>();
 
+  constructor(private readonly say?: (message: string) => void) {}
+
   public token(did: string): string {
     return `${this.epoch}:${this.versions.get(did) ?? 0}`;
   }
@@ -192,6 +213,7 @@ export class P2pConnections {
       const bridge = await P2pBridge.open(credentials, { signal: session.abort.signal });
       session.bridge = bridge;
       bridge.onClose = remove;
+      bridge.onUnread = (channel) => this.say?.(`CS2 P2P ${did}: the camera sends on channel ${channel}, which go2rtc does not read; acknowledged here`);
       if (session.abort.signal.aborted || bridge.closed) {
         bridge.close();
         throw new Error('CS2 P2P: connection cancelled');

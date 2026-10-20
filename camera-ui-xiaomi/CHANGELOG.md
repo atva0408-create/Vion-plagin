@@ -1,3 +1,7 @@
+## [0.4.2]
+
+- A camera behind a Xiaomi P2P relay keeps its video while you talk through it. The bridge to go2rtc dropped the camera's frames on channels go2rtc does not read (the speaker's among them) without acknowledging them, so the camera kept sending them again; its video stopped seconds after talk started. They are acknowledged now, and the plugin log says once per connection on which channel the camera sent them.
+
 ## [0.4.1]
 
 - Releasing an arrow, changing direction or removing PTZ cancels motor commands still waiting for P2P authentication. Queued commands cannot move a disposed control; movement state starts when the command is sent.
