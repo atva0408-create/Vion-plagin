@@ -1,3 +1,7 @@
+## [0.4.2]
+
+- Eine Kamera hinter einem Xiaomi-P2P-Relay behält ihr Video, während Sie über sie sprechen. Die Brücke zu go2rtc verwarf Bilder der Kamera auf Kanälen, die go2rtc nicht liest (darunter der des Lautsprechers), ohne sie zu bestätigen, sodass die Kamera sie immer wieder sendete; ihr Video stand Sekunden nach Beginn des Gesprächs still. Sie werden jetzt bestätigt, und das Plugin-Protokoll nennt einmal pro Verbindung den Kanal, auf dem die Kamera sie sendete.
+
 ## [0.4.1]
 
 - Loslassen, Richtungswechsel und Entfernen von PTZ verwerfen Motorbefehle, die noch auf die P2P-Anmeldung warten. Entfernte Steuerungen führen keine Befehle aus.
