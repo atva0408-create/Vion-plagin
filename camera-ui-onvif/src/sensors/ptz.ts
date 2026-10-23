@@ -111,6 +111,11 @@ export class OnvifPTZSensor extends PTZControl {
     return this.device;
   }
 
+  /** The camera reconnected: the commands and the polling go to the new connection, the sensor stays the one it was. */
+  rebind(device: Onvif): void {
+    this.device = device;
+  }
+
   async initialize(): Promise<void> {
     if (this.device) {
       await this.detectCapabilities();

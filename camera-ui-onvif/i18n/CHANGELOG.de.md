@@ -1,3 +1,7 @@
+## [1.3.3]
+
+- Nach „Neu verbinden“ oder einer Änderung der Anmeldedaten hört die Kamera wieder auf ihre Ereignisse, und ihr PTZ-Sensor folgt der neuen Verbindung, statt dass ein zweiter Sensor die alte abfragt; zuvor blieben Bewegung und Objekte der Kamera bis zum Neustart des Plugins aus
+
 ## [1.3.2]
 
 - Eine Korrektur der Hinweise zu 1.3.0, nach denen der Assistent eine ONVIF-Kamera neu startet, die nicht mehr antwortet: Er startet eine Kamera neu, die noch über ONVIF antwortet, etwa wenn ihr Video hängt. Eine Kamera, die nicht über ONVIF antwortet, kann nicht zum Neustart aufgefordert werden; der Assistent sagt das und bittet, Stromversorgung und Netzwerk zu prüfen

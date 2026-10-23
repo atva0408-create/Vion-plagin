@@ -143,6 +143,12 @@ export class OnvifCamera {
   }
 
   private async setupPTZSensor(device: Onvif): Promise<void> {
+    // a reconnect keeps the sensor and gives it the new connection: a second instance left the first polling the
+    // old one five times a second for good
+    if (this.ptzSensor) {
+      this.ptzSensor.rebind(device);
+      return;
+    }
     this.ptzSensor = new OnvifPTZSensor(this.camera, device);
     await this.camera.addSensor(this.ptzSensor);
 
@@ -210,9 +216,9 @@ export class OnvifCamera {
       return;
     }
 
-    if (this.device) {
-      this.device.events.stopEventLoop();
-    }
+    // the loop of the old connection ends here and is forgotten: stopped on the device alone, the flag stayed up and
+    // the new connection never listened for events again (a new password, «Reconnect» — audit 2026-10-23)
+    this.stopEventLoop();
 
     await this.connect(values.url, values.username, values.password);
   }
@@ -227,25 +233,26 @@ export class OnvifCamera {
   private async setupEventSensors(): Promise<void> {
     const types = this.capabilities?.advertisedTypes ?? [];
 
-    if (types.includes('motion')) {
+    // a reconnect keeps the sensors it has: the events of the new connection reach them as before
+    if (types.includes('motion') && !this.motionSensor) {
       this.motionSensor = new OnvifMotionSensor(this.camera, this.topicsForTypes(['motion']));
       await this.camera.addSensor(this.motionSensor);
       this.motionSensor.onAssignmentChanged.subscribe(() => this.updateEventLoop());
     }
 
-    if (types.includes('person') || types.includes('vehicle') || types.includes('animal')) {
+    if ((types.includes('person') || types.includes('vehicle') || types.includes('animal')) && !this.objectSensor) {
       this.objectSensor = new OnvifObjectSensor(this.camera, this.topicsForTypes(['person', 'vehicle', 'animal']));
       await this.camera.addSensor(this.objectSensor);
       this.objectSensor.onAssignmentChanged.subscribe(() => this.updateEventLoop());
     }
 
-    if (types.includes('face')) {
+    if (types.includes('face') && !this.faceSensor) {
       this.faceSensor = new OnvifFaceSensor(this.camera, this.topicsForTypes(['face']));
       await this.camera.addSensor(this.faceSensor);
       this.faceSensor.onAssignmentChanged.subscribe(() => this.updateEventLoop());
     }
 
-    if (types.includes('audio')) {
+    if (types.includes('audio') && !this.audioSensor) {
       this.audioSensor = new OnvifAudioSensor(this.camera, this.topicsForTypes(['audio']));
       await this.camera.addSensor(this.audioSensor);
       this.audioSensor.onAssignmentChanged.subscribe(() => this.updateEventLoop());

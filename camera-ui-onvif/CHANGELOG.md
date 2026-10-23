@@ -1,3 +1,7 @@
+## [1.3.3]
+
+- After «Reconnect» or a change of the sign-in the camera listens for its events again, and its PTZ sensor follows the new connection instead of a second sensor polling the old one; before, motion and objects from the camera stopped until the plugin restarted
+
 ## [1.3.2]
 
 - A correction to the notes of 1.3.0, which said the assistant reboots an ONVIF camera that stopped answering: it reboots a camera that still answers over ONVIF, for example one whose video hangs. A camera that does not answer over ONVIF cannot be told to reboot; the assistant says so and asks to check its power and network
