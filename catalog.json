@@ -609,6 +609,32 @@
       "node": ">=22.0.0"
     }
   },
+  "@vionvision/camera-ui-vion-sensor": {
+    "displayName": "ViON Sensor",
+    "category": "camera-source",
+    "featured": false,
+    "tagline": "A ViON security sensor on an ESP32-CAM: notices movement in a room by the Wi-Fi signal, without video.",
+    "i18n": {
+      "en": {
+        "tagline": "A ViON security sensor on an ESP32-CAM: notices movement in a room by the Wi-Fi signal, without video."
+      },
+      "ru": {
+        "tagline": "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео."
+      },
+      "de": {
+        "tagline": "Ein ViON-Sicherheitssensor auf einem ESP32-CAM: erkennt Bewegung im Raum am WLAN-Signal, ohne Video."
+      }
+    },
+    "logo": "https://raw.githubusercontent.com/atva0408-create/Vion-plagin/main/camera-ui-vion-sensor/logo.png",
+    "screenshots": [],
+    "protocolLevel": 2,
+    "os": [],
+    "cpu": [],
+    "engines": {
+      "camera.ui": ">=2.3.4",
+      "node": ">=22.0.0"
+    }
+  },
   "@vionvision/camera-ui-voice": {
     "displayName": "VOICE",
     "category": "other",
