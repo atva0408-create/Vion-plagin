@@ -1,3 +1,8 @@
+## [0.2.5]
+
+- A short outage of Yandex Passport while the session of the app is renewed no longer erases the sign-in as the Yandex app: only a token or an account Yandex refuses asks to sign in again, an outage is tried again at the next reading
+- One failed reading of the official API (a DNS hiccup) no longer makes every sensor unavailable: three readings failing in a row do, and the first that works brings them back
+
 ## [0.2.4]
 
 - Two texts a few seconds apart to a station whose kept connection died no longer open two new connections, one of them left open for good; signing out or changing the settings while the connection is checked sends nothing more

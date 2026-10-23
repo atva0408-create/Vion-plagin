@@ -406,7 +406,7 @@ test('the official API read again after a failed reading: a press made during th
 
   down = true;
   await h.inside.read();
-  assert.equal(button!.sourceState, 'unavailable');
+  assert.equal(button!.sourceState, 'connected', 'one failed reading is no outage: the sensors stay (audit 2026-10-23)');
   assert.match(lines.warn.join('\n'), /Could not read the Smart Home: fetch failed: getaddrinfo ENOTFOUND/, 'the log says why');
   pressAt(3000);
   down = false;
@@ -437,6 +437,31 @@ test('a sign-in as the app Yandex refused: one error, the sensors unavailable, t
   assert.match(lines.error[0]!, /no longer accepts the sign-in as the Yandex app.*oauth_token\.invalid/);
   assert.equal(door!.sourceState, 'unavailable');
   assert.equal(h.values.account, '');
+  await h.shutdown();
+});
+
+test('one failed reading leaves the sensors as they are; readings failing for longer make them unavailable', async () => {
+  // a DNS hiccup made every sensor «unavailable» for one reading, and automations on «unavailable» fired (audit 2026-10-23)
+  const state = baseState();
+  globalThis.fetch = fakeYandex(state).fetch;
+  const { logger } = recorder();
+  const h = host({ oauthToken: OAUTH_TOKEN, pollSeconds: 300 }, logger);
+  const [door] = await h.plugin.configureAdoptedSensors([adopt('door-1|open', SensorType.Contact)]);
+  await h.launch();
+  await until(() => door!.sourceState === 'connected', 'the first reading');
+  state.closedPages = ['/v1.0/user/info'];
+  await (h.plugin as any).read();
+  assert.equal(door!.sourceState, 'connected', 'one failed reading is no outage');
+  await (h.plugin as any).read();
+  assert.equal(door!.sourceState, 'connected');
+  await (h.plugin as any).read();
+  assert.equal(door!.sourceState, 'unavailable', 'three in a row are');
+  state.closedPages = undefined;
+  await (h.plugin as any).read();
+  assert.equal(door!.sourceState, 'connected', 'and a reading that works brings them back');
+  state.closedPages = ['/v1.0/user/info'];
+  await (h.plugin as any).read();
+  assert.equal(door!.sourceState, 'connected', 'the count starts over after a reading that worked');
   await h.shutdown();
 });
 

@@ -29,8 +29,11 @@ export interface FakeState {
   codeConfirmed: boolean;
   /** the session of the app ended: the next request of the app gets 401 */
   sessionEnded: boolean;
+  /** times Passport fails a session made from the x_token with an outage of its own (backend.failed), not a refusal */
+  passportDown?: number;
   stationHost?: { host: string; port: number };
-  /** A page of the Smart Home that closes the connection without an answer, as yandex.ru/quasar did in 2026-10. */
+  /** A page of the Smart Home that closes the connection without an answer, as yandex.ru/quasar did in 2026-10; a path of
+   *  the app's web API or of the official API here fails as a DNS hiccup does. */
   closedPages?: string[];
   /** The addresses the station names, in its order; by default an IPv6 one and `stationHost`. */
   stationAddresses?: string[];
@@ -118,6 +121,10 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
         return headers.get('authorization') === `OAuth ${X_TOKEN}` ? ok({ status: 'ok', display_login: 'ivan', uid: 7 }) : ok({ status: 'error', errors: ['oauth_token.invalid'] });
       }
       if (path === '/1/bundle/auth/x_token/') {
+        if (state.passportDown) {
+          state.passportDown--;
+          return ok({ status: 'error', errors: ['backend.failed'] });
+        }
         return headers.get('ya-consumer-authorization') === `OAuth ${X_TOKEN}`
           ? ok({ status: 'ok', passport_host: 'https://passport.yandex.ru', track_id: 'xtrack' })
           : ok({ status: 'error', errors: ['oauth_token.invalid'] });
@@ -144,6 +151,7 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
 
     // ---- official Smart Home API
     if (url.host === 'api.iot.yandex.net') {
+      if (state.closedPages?.includes(path)) throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo EAI_AGAIN'), { code: 'EAI_AGAIN' }) });
       const auth = headers.get('authorization');
       if (auth !== `Bearer ${OAUTH_TOKEN}` && auth !== 'Bearer oauth-2') return ok({ status: 'error', message: 'unauthorized' }, { status: 401 });
       if (path === '/v1.0/user/info') {
@@ -191,6 +199,7 @@ export function fakeYandex(state: FakeState): { fetch: typeof fetch; calls: Call
 
     // ---- web API of the app
     if (url.host === 'iot.quasar.yandex.ru') {
+      if (state.closedPages?.includes(path)) throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo EAI_AGAIN'), { code: 'EAI_AGAIN' }) });
       if (state.sessionEnded || cookie(init, 'Session_id') !== SESSION) {
         state.sessionEnded = false;
         return ok({ status: 'error' }, { status: 401 });

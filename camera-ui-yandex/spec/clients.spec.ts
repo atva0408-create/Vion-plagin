@@ -121,6 +121,15 @@ async function main(): Promise<void> {
     assert.equal(fake.calls.filter((c) => c.url.includes('/bundle/auth/x_token/')).length, before + 1);
     assert.deepEqual(state.ran, ['sc-1', 'sc-1']);
 
+    // a Passport outage while the session is made anew is no refusal of the token: the sign-in as the app was erased
+    // for it (audit 2026-10-23); the next request goes through once Passport is back
+    state.sessionEnded = true;
+    state.passportDown = 1;
+    await assert.rejects(quasar.runScenario('sc-1'), (error: unknown) => error instanceof YandexApiError && !(error instanceof YandexAuthError) && /backend\.failed/.test(error.message));
+    await quasar.runScenario('sc-1');
+    assert.deepEqual(state.ran, ['sc-1', 'sc-1', 'sc-1']);
+    state.ran.splice(2);
+
     // a camera's stream
     assert.equal(await quasar.streamUrl('cam-1'), 'https://app-stream.yandex/cam-1.m3u8');
 

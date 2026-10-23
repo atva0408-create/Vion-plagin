@@ -56,6 +56,11 @@ const TOKEN_MARGIN_MS = 24 * 60 * 60_000;
 const RENEW_RETRY_MS = 60 * 60_000;
 /** Scenarios that could not be read in the app mode are read again after this: until then their switches are unavailable. */
 const SCENARIO_RETRY_MS = 60_000;
+/**
+ * Readings that failed in a row before the sensors are unavailable: one failed reading (a DNS hiccup) made every sensor
+ * «unavailable» for a moment, and automations on «unavailable» fired (audit 2026-10-23).
+ */
+const FAILED_READINGS_BEFORE_UNAVAILABLE = 3;
 /** How long the window of the QR code waits for the confirmation after its button is pressed. */
 const QR_WAIT_MS = 20_000;
 const QR_POLL_MS = 2_000;
@@ -94,6 +99,8 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   private reading?: Promise<void>;
   /** The last reading succeeded: only a reading right after a good one is live, see applyDevice. */
   private readOk = false;
+  /** readings failed in a row since the last that worked */
+  private failedReadings = 0;
   private renewing?: Promise<string>;
   private renewFailedAt = 0;
   private started = false;
@@ -366,6 +373,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     this.iot = undefined;
     this.appDevices = undefined;
     this.readOk = false;
+    this.failedReadings = 0;
     this.updatesDown = false;
   }
 
@@ -472,6 +480,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         // signed out or restarted while Yandex answered: what was read belongs to a sign-in that is gone
         if (signOuts !== this.signOuts || iot !== this.iot || quasar !== this.quasar) return;
         this.readOk = true;
+        this.failedReadings = 0;
         await this.applyList(home.devices, home.scenarios, live);
       } catch (error: any) {
         if (signOuts !== this.signOuts || iot !== this.iot || quasar !== this.quasar) {
@@ -479,7 +488,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
           return;
         }
         this.readOk = false;
-        this.markUnavailable();
+        if (++this.failedReadings >= FAILED_READINGS_BEFORE_UNAVAILABLE) this.markUnavailable();
         if (error instanceof YandexAuthError && source) await this.dropRefused(source, token, error);
         else this.logger.warn('Could not read the Smart Home:', errorText(error));
       }

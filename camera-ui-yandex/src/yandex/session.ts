@@ -2,6 +2,9 @@
 // It is not an official API of Yandex; it follows what the YandexStation integration does (see LICENSE.md).
 import { CookieJar, YandexApiError, YandexAuthError, http, json } from './http.js';
 
+/** The answers of Passport that refuse the x_token itself or its account (oauth_token.invalid, account.disabled …). */
+const TOKEN_REFUSALS = /^(oauth_token|account)\./;
+
 export const PASSPORT_URL = 'https://passport.yandex.ru';
 export const MOBILE_PROXY_URL = 'https://mobileproxy.passport.yandex.net';
 export const MOBILE_OAUTH_URL = 'https://oauth.mobile.yandex.net';
@@ -177,9 +180,13 @@ export class YandexSession {
     });
     const body = await json<{ status?: string; passport_host?: string; track_id?: string; errors?: string[] }>(res);
     if (body.status !== 'ok' || !body.passport_host || !body.track_id) {
-      throw new YandexAuthError(`Yandex did not accept the token: ${body.errors?.length ? body.errors.join(', ') : 'no session'}`);
+      const message = `Yandex did not accept the token: ${body.errors?.length ? body.errors.join(', ') : 'no session'}`;
+      // only a refusal of the token or of its account is final: an outage of Passport (backend.failed, an answer without a
+      // reason) was taken for one, and the sign-in as the app was erased (audit 2026-10-23)
+      throw body.errors?.some((code) => TOKEN_REFUSALS.test(code)) ? new YandexAuthError(message) : new YandexApiError(message, res.status);
     }
     const finish = await this.fetch(`${body.passport_host}/auth/session/?track_id=${encodeURIComponent(body.track_id)}`, {}, false);
+    if (finish.status >= 500 || finish.status === 429) throw new YandexApiError(`Passport answered ${finish.status} opening the session`, finish.status);
     const location = finish.headers.get('location') ?? '';
     if (!location.includes('/auth/finish')) throw new YandexAuthError('Yandex did not open a session for the token');
     this.csrf = undefined;

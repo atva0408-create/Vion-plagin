@@ -1,3 +1,8 @@
+## [0.2.5]
+
+- Ein kurzer Ausfall von Yandex Passport beim Erneuern der Sitzung der App löscht die Anmeldung als Yandex-App nicht mehr: nur ein von Yandex abgelehnter Token oder ein abgelehntes Konto verlangt eine neue Anmeldung, ein Ausfall wird beim nächsten Lesen erneut versucht
+- Ein einzelnes fehlgeschlagenes Lesen der offiziellen API (ein DNS-Aussetzer) macht nicht mehr alle Sensoren unerreichbar: das tun drei Fehlschläge in Folge, und das erste gelungene Lesen bringt sie zurück
+
 ## [0.2.4]
 
 - Zwei Texte im Abstand weniger Sekunden an eine Station, deren gehaltene Verbindung tot ist, öffnen keine zwei neuen Verbindungen mehr, von denen eine für immer offen blieb; Abmelden oder geänderte Einstellungen während der Prüfung der Verbindung schicken nichts mehr
