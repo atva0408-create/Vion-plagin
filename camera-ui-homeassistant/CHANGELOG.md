@@ -1,3 +1,7 @@
+## [1.1.2]
+
+- A notification Home Assistant could not deliver (the service gone, Home Assistant down, an error of its notify) is reported to ViON as not delivered, so a route's fallback (Telegram, a station) fires; before, every notification counted as delivered
+
 ## [1.1.1]
 
 - A call through the ViON assistant acts only on the one entity the confirmation names: a call that also named an area, a device, a floor or a label (for example turning off one lamp "in the kitchen") would have acted on all of them, and is now refused

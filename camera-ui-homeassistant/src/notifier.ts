@@ -6,6 +6,21 @@ import type { HaState, StorageValues } from './types.js';
 
 const DEVICE_PREFIX = 'notify:';
 
+interface Delivery {
+  deviceId: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * The answer of sendNotification. The SDK says it answers nothing; ViON reads a delivery per device when there is one
+ * (server manager/channels.ts, deliveriesOf) and falls back to another channel for what did not arrive. Without it
+ * every notification counted as delivered, HA down or not.
+ */
+function answered(deliveries: Delivery[]): void {
+  return deliveries as unknown as void;
+}
+
 function toHaImageUrl(imageUrl: string | undefined): string | undefined {
   if (!imageUrl) return undefined;
   if (/^https?:\/\//.test(imageUrl)) return imageUrl;
@@ -65,8 +80,9 @@ export class HaNotifier {
 
   public async sendNotification(deviceIds: string[], n: Notification): Promise<void> {
     const client = this.getClient();
-    if (!client) return;
-    // silent replaces an existing banner in the apps; HA notify can only add a new audible one
+    if (!client) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: false, error: 'Home Assistant is not connected' })));
+    // silent replaces an existing banner in the apps; HA notify can only add a new audible one — not sent, and not
+    // answered: the server decides about such notices itself
     if (n.silent) return;
 
     const message = [n.subtitle, n.body].filter(Boolean).join('\n') || n.title;
@@ -83,11 +99,20 @@ export class HaNotifier {
     // before the first sync the target list is empty, send blind rather than drop
     const known = this.targetKeys();
 
+    const deliveries: Delivery[] = [];
     for (const deviceId of deviceIds) {
       const key = this.keyForId(deviceId);
-      if (!key || this.isMuted(key)) continue;
+      if (!key) {
+        deliveries.push({ deviceId, ok: false, error: 'not a Home Assistant notify target' });
+        continue;
+      }
+      if (this.isMuted(key)) {
+        deliveries.push({ deviceId, ok: false, error: 'the target is muted' });
+        continue;
+      }
       if (known.length > 0 && !known.includes(key)) {
         this.logger.debug(`Skipping notify target ${key}, Home Assistant no longer offers it`);
+        deliveries.push({ deviceId, ok: false, error: 'Home Assistant no longer offers this target' });
         continue;
       }
       try {
@@ -97,10 +122,13 @@ export class HaNotifier {
         } else {
           await client.callService('notify', key, { title: n.title, message, data });
         }
+        deliveries.push({ deviceId, ok: true });
       } catch (error) {
         this.logger.error(`Notify via ${key} failed:`, error);
+        deliveries.push({ deviceId, ok: false, error: error instanceof Error ? error.message : String(error) });
       }
     }
+    return answered(deliveries);
   }
 
   public async registerDevice(): Promise<NotifierDevice> {

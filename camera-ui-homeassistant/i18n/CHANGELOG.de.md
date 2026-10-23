@@ -1,3 +1,7 @@
+## [1.1.2]
+
+- Eine Benachrichtigung, die Home Assistant nicht zustellen konnte (Dienst verschwunden, Home Assistant nicht erreichbar, Fehler seines notify), wird ViON als nicht zugestellt gemeldet, sodass der Ersatzkanal einer Route (Telegram, eine Station) greift; zuvor galt jede Benachrichtigung als zugestellt
+
 ## [1.1.1]
 
 - Ein Aufruf über den ViON-Assistenten wirkt nur auf die eine Entität, die die Bestätigung nennt: Ein Aufruf, der zusätzlich einen Bereich, ein Gerät, eine Etage oder ein Label nannte (etwa eine Lampe „in der Küche“ ausschalten), hätte auf alle davon gewirkt und wird jetzt abgelehnt
