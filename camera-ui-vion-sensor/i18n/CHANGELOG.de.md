@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## [0.4.1]
+
+### Behoben
+
+- Nach einem Firmware-Update zeigten die Einstellungen weiter die alte Firmware mit ihrer Update-Schaltfläche: die Platine startet länger neu als die wenigen Sekunden, auf die das Plugin achtete. Die Platine wird jetzt neu gelesen, sobald ihre Laufzeit gefallen ist.
+
 ## [0.4.0]
 
 ### Hinzugefügt

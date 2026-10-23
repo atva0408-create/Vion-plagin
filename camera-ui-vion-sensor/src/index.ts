@@ -521,8 +521,14 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     try {
       bound.client.token ??= this.token(bound.id);
       if (!bound.client.address) throw new SensorRequestError('no address yet');
-      // the settings show the board's own values: read them once, and again after it restarted
-      if (!bound.info || (bound.state && bound.state.uptime_s < 5)) {
+      const state = await bound.client.state();
+      if (bound.failures >= FAILURES_BEFORE_OFFLINE) this.logger.log(`${sensor.name} is back`);
+      bound.failures = 0;
+      const restarted = bound.state !== undefined && state.uptime_s < bound.state.uptime_s;
+      // the settings show the board's own values: read them once, and again after it restarted — its uptime fell, not
+      // «is under 5 s»: a restart into a new firmware takes longer than that (Wi-Fi and all), and the old firmware stayed
+      // on the page with its update button (audit 2026-10-23)
+      if (!bound.info || restarted) {
         bound.info = await bound.client.info();
         const failed = bound.info.update_failed;
         if (failed && failed !== bound.failedTold) {
@@ -530,10 +536,6 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         }
         bound.failedTold = failed;
       }
-      const state = await bound.client.state();
-      if (bound.failures >= FAILURES_BEFORE_OFFLINE) this.logger.log(`${sensor.name} is back`);
-      bound.failures = 0;
-      const restarted = bound.state !== undefined && state.uptime_s < bound.state.uptime_s;
       if (restarted) bound.events = undefined;
       bound.state = state;
       sensor.setSourceState(state.blind ? 'unavailable' : 'connected');

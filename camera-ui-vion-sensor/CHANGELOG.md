@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1]
+
+### Fixed
+
+- After a firmware update the settings kept showing the old firmware with its update button: the board restarts for longer than the few seconds the plugin watched for. The board is read anew whenever its uptime fell.
+
 ## [0.4.0]
 
 ### Added

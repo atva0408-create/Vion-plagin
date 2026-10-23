@@ -247,6 +247,13 @@ try {
     const update = moved.calls.find((c) => c.path === '/api/update');
     assert.deepEqual(update?.body, { url: `http://${moved.address}/sensor-1.1.0.bin`, sha256: 'a'.repeat(64) }, 'the board is told where the file is and its checksum');
 
+    // the board came back in the new firmware after a restart longer than a few seconds (Wi-Fi and all): its uptime fell,
+    // and the plugin reads the board anew — the button is gone, the status names the new firmware
+    moved.info.firmware = '1.1.0';
+    moved.info.uptime_s = moved.state.uptime_s = 30;
+    await until(() => !sensor.storageSchema.some((f) => f.key === 'update'), 'no update button once the board runs the new firmware');
+    assert.match(String(field(sensor, 'status').defaultValue), /Firmware 1\.1\.0/, 'the status names the firmware the board runs now');
+
     // ---- reset: the board forgets this ViON ---------------------------------------------------------------------------
     await field(sensor, 'reset').onSet!(undefined, undefined);
     assert.equal(moved.token, undefined, 'the board forgot the token');
