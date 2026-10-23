@@ -1,3 +1,7 @@
+## [1.2.15]
+
+- A model file that came back as a web page (the sign-in page of a hotel or train Wi-Fi) or cut short is no longer saved, and one saved before is downloaded again: the model failed to load at every start
+
 ## [1.2.14]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface

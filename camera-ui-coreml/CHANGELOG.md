@@ -1,3 +1,7 @@
+## [1.2.15]
+
+- A model file that came back as a web page (the sign-in page of a hotel or train Wi-Fi) or cut short is no longer saved, and one saved before is downloaded again: the model failed to load at every start
+
 ## [1.2.14]
 
 - At its start the plugin no longer writes «Не удалось предзагрузить модели CLIP:» with nothing after it: a failure of the translator of the search words is told as its own, and an error without text is named by its kind

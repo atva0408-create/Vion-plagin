@@ -1,3 +1,7 @@
+## [1.2.15]
+
+- Eine Modelldatei, die als Webseite ankam (die Anmeldeseite eines Hotel- oder Zug-WLANs) oder unvollständig war, wird nicht mehr gespeichert, und eine früher gespeicherte wird neu geladen: das Modell ließ sich bei jedem Start nicht laden
+
 ## [1.2.14]
 
 - Beim Start schreibt das Plugin nicht mehr «Не удалось предзагрузить модели CLIP:» ohne Fortsetzung: ein Fehler des Übersetzers der Suchwörter wird als eigener gemeldet, und ein Fehler ohne Text wird nach seiner Art benannt

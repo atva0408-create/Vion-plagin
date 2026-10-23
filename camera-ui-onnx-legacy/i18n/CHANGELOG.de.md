@@ -1,3 +1,8 @@
+## [1.5.10]
+
+- Eine Modelldatei, die als Webseite ankam (die Anmeldeseite eines Hotel- oder Zug-WLANs) oder unvollständig war, wird nicht mehr gespeichert, und eine früher gespeicherte wird neu geladen: das Modell ließ sich bei jedem Start nicht laden
+- Eine nicht mehr ausgegebene Klassifikator-Version (eine neuere Version derselben Frage) wird entladen, statt mit jeder neuen Version im Speicher zu bleiben
+
 ## [1.5.9]
 
 - Eine Frage eines Moduls zu einer Klasse, die ein anderes Modul hinzufügt (das Fahrrad eines Store-Moduls), läuft auf deren Boxen: nur Personen-, Fahrzeug- und Tier-Boxen gingen an den Klassifikator, und die eigene Schreibweise einer Klasse beim Detektor («Bicycle») passte nicht zur Frage

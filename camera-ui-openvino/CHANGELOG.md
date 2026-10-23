@@ -1,3 +1,8 @@
+## [1.7.6]
+
+- A model file that came back as a web page (the sign-in page of a hotel or train Wi-Fi) or cut short is no longer saved, and one saved before is downloaded again: the model failed to load at every start
+- A classifier version given out no more (a newer version of its question) is unloaded instead of staying in memory with every new version
+
 ## [1.7.5]
 
 - A question module asked of a class a module adds (a store module's bicycle) runs on its boxes: only person, vehicle and animal boxes were sent to the classifier, and a detector's own case of a class («Bicycle») did not match the question's

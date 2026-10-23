@@ -1,7 +1,7 @@
 {
   "displayName": "CoreML",
   "name": "@vionvision/camera-ui-coreml",
-  "version": "1.2.14",
+  "version": "1.2.15",
   "description": "Детектор Apple CoreML для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP на оборудовании Apple.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",

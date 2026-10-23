@@ -1,7 +1,7 @@
 {
   "displayName": "Coral",
   "name": "@vionvision/camera-ui-coral",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "description": "Детектор на Coral Edge TPU (TFLite) для ViON. Распознавание объектов на Coral Edge TPU с запасным режимом на CPU.",
   "author": "ViON (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
