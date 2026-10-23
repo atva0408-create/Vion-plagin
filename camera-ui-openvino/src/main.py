@@ -1433,6 +1433,18 @@ class OpenVinoPlugin(
             if is_trained(n) and n not in in_use and trained_models.entry(n) is None
         ]:
             asyncio.create_task(self._drop_trained_detector(name))
+        # a classifier given out no more (a newer version of its question): it stayed loaded, one more model in memory
+        # with every version (audit 2026-10-23)
+        for name in [n for n in self.attribute_backends if trained_models.entry(n) is None]:
+            self._drop_attribute_backend(name)
+
+    def _drop_attribute_backend(self, model_name: str) -> None:
+        backend = self.attribute_backends.pop(model_name, None)
+        self.model_manager.forget(model_name)
+        if backend is not None:
+            # a call under way finishes on the backend's own threads; the next one loads the version given out now
+            backend.close()
+            self.logger.log(f"Классификатор {model_name} больше не выдаётся и выгружен")
 
     async def _drop_trained_detector(self, model_name: str) -> None:
         detector = self.object_detectors.pop(model_name, None)
