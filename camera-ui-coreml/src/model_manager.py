@@ -10,6 +10,7 @@ import coremltools as ct
 from camera_ui_ml import BaseModelManager, InferenceBackend
 from camera_ui_sdk import LoggerService
 
+from checked_download import download as checked_download
 from defaults import MODEL_BASE_URL, MODEL_LFS_URL, model_version
 from inference import CoreMlBackend
 
@@ -37,6 +38,11 @@ class CoreMlModelManager(BaseModelManager):
     ) -> None:
         super().__init__(storage_path, logger, model_version)
         self._get_compute_units = get_compute_units
+
+    async def _download(self, url: str, rel: str) -> None:
+        """Checked: a web page or a cut file saved as the model stayed for good (checked_download.py). Here and not in
+        camera_ui_ml: the bundle installs camera-ui-ml from PyPI."""
+        await checked_download(self.model_path, url, rel, self.logger)
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         pkg = f"{model_name}.mlpackage"

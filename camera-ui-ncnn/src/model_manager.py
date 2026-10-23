@@ -8,6 +8,7 @@ import ncnn
 from camera_ui_ml import BaseModelManager, InferenceBackend
 from camera_ui_sdk import LoggerService
 
+from checked_download import download as checked_download
 from defaults import (
     FACE_DETECTOR_MODELS,
     LPD_DETECTOR_MODELS,
@@ -34,6 +35,11 @@ class NcnnModelManager(BaseModelManager):
         super().__init__(storage_path, logger, model_version)
         self._get_use_vulkan = get_use_vulkan
         self._get_vulkan_device = get_vulkan_device
+
+    async def _download(self, url: str, rel: str) -> None:
+        """Checked: a web page or a cut file saved as the model stayed for good (checked_download.py). Here and not in
+        camera_ui_ml: the bundle installs camera-ui-ml from PyPI."""
+        await checked_download(self.model_path, url, rel, self.logger)
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         param_rel = f"{model_name}/{model_name}.ncnn.param"

@@ -11,6 +11,7 @@ import onnxruntime as ort
 from camera_ui_ml import BaseModelManager, InferenceBackend
 from camera_ui_sdk import LoggerService
 
+from checked_download import download as checked_download
 from defaults import (
     LEGACY_RUNTIME,
     MODEL_BASE_URL,
@@ -64,6 +65,11 @@ class OnnxModelManager(BaseModelManager):
         camera-ui-ml from PyPI, which has no forget, and dropping a module's old version or reloading an updated
         store module stopped there with an AttributeError."""
         self._load_tasks.pop(model_name, None)
+
+    async def _download(self, url: str, rel: str) -> None:
+        """Checked: a web page or a cut file saved as the model stayed for good (checked_download.py). Here and not in
+        camera_ui_ml: the bundle installs camera-ui-ml from PyPI."""
+        await checked_download(self.model_path, url, rel, self.logger)
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         if is_trained(model_name):
