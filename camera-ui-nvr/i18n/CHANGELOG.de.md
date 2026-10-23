@@ -1,3 +1,7 @@
+## [0.24.6]
+
+- Das Zeitraffer-Intervall eines Exports ist eine ganze Zahl von Sekunden, 1 bis 3600; ein Bruch über den Bus ließ ffmpeg Milliarden Frames ohne Zeitlimit auf die Archivplatte schreiben. Zwei Exporte laufen gleichzeitig, einige weitere warten, der Rest wird sofort abgelehnt
+
 ## [0.24.5]
 
 - Das Fahrrad eines Store-Moduls ist in den Episoden eine eigene Art, betitelt «Велосипед»: es wurde zu «Транспорт» gezählt, und ein Radfahrer am Tor, ein Auto an der Tür und wieder der Radfahrer wurden ein Besuch

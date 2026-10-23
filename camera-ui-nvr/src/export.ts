@@ -21,6 +21,50 @@ const ZIP_MAX_FILES = 0xffff;
  * stretches of recording follow each other without the pauses between them, so its length is the recorded time
  * inside the range, not the span of the range, and the cut that ends it is counted the same way.
  */
+/**
+ * The timelapse interval of an export: a whole number of seconds, 1 to 3600, as the REST schema takes it; none for a
+ * plain clip. The export over the bus took the number as it came, and a fraction (1e-6) made `setpts` and `fps`
+ * write billions of frames onto the archive disk, by libx264, with no timeout (ViON audit 2026-10-23).
+ */
+export function timelapseOf(intervalSec: number | undefined): number {
+  if (intervalSec === undefined || intervalSec === 0) return 0;
+  if (!Number.isInteger(intervalSec) || intervalSec < 1 || intervalSec > 3600) {
+    throw new Error('The timelapse interval must be a whole number of seconds from 1 to 3600');
+  }
+  return intervalSec;
+}
+
+/**
+ * How many exports run at once and how many wait: ffmpeg on an hour of video is a core and a file on the archive disk,
+ * and the bus had no limit on them (the REST jobs have two per user). The rest are refused at once, so the player says
+ * so instead of queueing for an hour.
+ */
+export class ExportGate {
+  private running = 0;
+  private readonly waiting: (() => void)[] = [];
+
+  constructor(
+    private readonly maxRunning: number,
+    private readonly maxWaiting: number,
+  ) {}
+
+  public async run<T>(job: () => Promise<T>): Promise<T> {
+    if (this.running >= this.maxRunning) {
+      if (this.waiting.length >= this.maxWaiting) throw new Error('Too many exports are running: try again in a minute');
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
+    this.running++;
+    try {
+      return await job();
+    } finally {
+      this.running--;
+      this.waiting.shift()?.();
+    }
+  }
+}
+
+export const exportGate = new ExportGate(2, 6);
+
 export function clipPlan(segments: SegmentRow[], startUs: number, endUs: number): { runs: SegmentRow[][]; offsetSec: number; durationSec: number } {
   const runs: SegmentRow[][] = [];
   const ends: number[] = [];
@@ -102,6 +146,8 @@ export async function exportClip(opts: {
    */
   h264?: H264Encoder;
 }): Promise<{ path: string; size: number; durationMs: number }> {
+  // checked before anything is written: a wrong interval refused here, not after a folder was made
+  const timelapse = timelapseOf(opts.timelapseIntervalSec);
   const segments = opts.segments.filter((s) => s.end_us > opts.startUs && s.start_us < opts.endUs);
   if (!segments.length) throw new Error('No recordings in the selected range');
   await mkdir(opts.outDir, { recursive: true });
@@ -115,7 +161,6 @@ export async function exportClip(opts: {
   // inside it (it does that for MPEG-TS, not for a list). The whitelist lets the list name `concat:` inputs (a list
   // read from a file may open only files by default).
   const input = runs.length === 1 ? ['-i', concatUrl(runs[0])] : ['-protocol_whitelist', 'file,concat', '-f', 'concat', '-safe', '0', '-i', list];
-  const timelapse = opts.timelapseIntervalSec && opts.timelapseIntervalSec > 0 ? opts.timelapseIntervalSec : 0;
   // more than one codec cannot be copied into one track (madeH264): made H.264, by libx264 when nobody said by what
   const mixed = new Set(segments.map((s) => s.codec)).size > 1;
   const madeBy = !timelapse ? (opts.h264 ?? (mixed ? LIBX264 : undefined)) : undefined;
@@ -159,7 +204,7 @@ export async function exportClip(opts: {
   try {
     if (runs.length > 1 && !mixed) await writeFile(list, concatList(runs));
     try {
-      await run(opts.ffmpegPath, argsWith(madeBy));
+      await exportGate.run(() => run(opts.ffmpegPath, argsWith(madeBy)));
     } catch (error) {
       // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it. Only a
       // failure before much was written: one later (a full disk, a file the retention removed) would fail again after
@@ -170,7 +215,7 @@ export async function exportClip(opts: {
       );
       if (!madeBy || madeBy.name === LIBX264.name || written > 1024 * 1024) throw error;
       try {
-        await run(opts.ffmpegPath, argsWith(LIBX264));
+        await exportGate.run(() => run(opts.ffmpegPath, argsWith(LIBX264)));
       } catch (again) {
         throw new Error(`${(again as Error).message} (${madeBy.name} first: ${(error as Error).message})`);
       }

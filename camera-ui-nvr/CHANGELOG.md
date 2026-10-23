@@ -1,3 +1,7 @@
+## [0.24.6]
+
+- The timelapse interval of an export is a whole number of seconds, 1 to 3600; a fraction sent over the bus made ffmpeg write billions of frames onto the archive disk, with no timeout. Two exports run at a time, a few more wait their turn, the rest are refused at once
+
 ## [0.24.5]
 
 - A store module's bicycle is a kind of its own in the episodes, titled «Велосипед»: it was folded into «Транспорт», and a cyclist at the gate, a car at the door and the cyclist again became one visit
