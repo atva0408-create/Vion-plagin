@@ -1,3 +1,8 @@
+## [1.2.9]
+
+- Eine Türklingel (YAMNets „Doorbell“ und „Ding-dong“) gilt jetzt als Klingel; ein beliebiges Türgeräusch („Door“) nicht mehr, ein Klopfen weiterhin
+- Zerspringendes Glas („Shatter“) gilt jetzt als Glasbruch; ein abgestelltes oder angestoßenes Glas („Glass“) nicht mehr
+
 ## [1.2.8]
 
 - Beschreibung, Einstellungen und Änderungsliste des Plugins sind jetzt auf Deutsch, Englisch und Russisch verfügbar und folgen der Sprache der Oberfläche

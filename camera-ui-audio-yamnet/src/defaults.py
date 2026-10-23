@@ -28,7 +28,8 @@ YAMNET_TO_LABEL: dict[str, str] = {
     "Fire alarm": "alarm",
     "Alarm": "alarm",
     "Car alarm": "car_alarm",
-    "Glass": "glass_break",
+    # "Glass" is a glass set down or clinked, no break-in; "Shatter" is
+    "Shatter": "glass_break",
     "Breaking": "glass_break",
     "Gunshot, gunfire": "gunshot",
     "Screaming": "scream",
@@ -36,6 +37,9 @@ YAMNET_TO_LABEL: dict[str, str] = {
     "Crying, sobbing": "baby_cry",
     "Baby cry, infant cry": "baby_cry",
     "Smoke detector, smoke alarm": "smoke_alarm",
-    "Door": "doorbell",
+    # a doorbell rang as "Doorbell" or "Ding-dong" and was nothing, while any door ("Door") rang; a knock at the door is
+    # someone there too
+    "Doorbell": "doorbell",
+    "Ding-dong": "doorbell",
     "Knock": "doorbell",
 }

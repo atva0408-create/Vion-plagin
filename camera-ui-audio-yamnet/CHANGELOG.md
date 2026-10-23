@@ -1,3 +1,8 @@
+## [1.2.9]
+
+- A doorbell (YAMNet's "Doorbell" and "Ding-dong") is now a doorbell; any door sound ("Door") no longer is, a knock still is
+- Shattering glass ("Shatter") is now a glass break; a glass set down or clinked ("Glass") no longer is
+
 ## [1.2.8]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface
