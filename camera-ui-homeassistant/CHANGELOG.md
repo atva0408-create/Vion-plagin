@@ -1,3 +1,7 @@
+## [1.1.3]
+
+- The name is written VION
+
 ## [1.1.2]
 
 - A notification Home Assistant could not deliver (the service gone, Home Assistant down, an error of its notify) is reported to VION as not delivered, so a route's fallback (Telegram, a station) fires; before, every notification counted as delivered

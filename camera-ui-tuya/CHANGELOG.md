@@ -1,3 +1,7 @@
+## [1.2.9]
+
+- The name is written VION
+
 ## [1.2.8]
 
 - The data center regions in the settings are shown in the language of the interface, China and India included

@@ -1,3 +1,7 @@
+## [1.5.7]
+
+- Der Name wird VION geschrieben
+
 ## [1.5.6]
 
 - Eine Modelldatei, die als Webseite ankam (die Anmeldeseite eines Hotel- oder Zug-WLANs) oder unvollständig war, wird nicht mehr gespeichert, und eine früher gespeicherte wird neu geladen: das Modell ließ sich bei jedem Start nicht laden

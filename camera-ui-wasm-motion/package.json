@@ -1,7 +1,7 @@
 {
   "displayName": "WASM Motion",
   "name": "@vionvision/camera-ui-wasm-motion",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Детектор движения для VION в виде модуля WebAssembly. Переносимый попиксельный анализ движения без зависимостей.",
   "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

@@ -1,3 +1,7 @@
+## [2.0.7]
+
+- The name is written VION
+
 ## [2.0.6]
 
 - The live view freezes less often. A frame lost on the way, or cut between two network packets, stopped the picture until the next full frame arrived

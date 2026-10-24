@@ -1,3 +1,7 @@
+## [1.7.10]
+
+- The name is written VION
+
 ## [1.7.9]
 
 - A model file that came back as a web page (the sign-in page of a hotel or train Wi-Fi) or cut short is no longer saved, and one saved before is downloaded again: the model failed to load at every start

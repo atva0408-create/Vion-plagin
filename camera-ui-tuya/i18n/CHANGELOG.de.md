@@ -1,3 +1,7 @@
+## [1.2.9]
+
+- Der Name wird VION geschrieben
+
 ## [1.2.8]
 
 - Die Rechenzentrumsregionen in den Einstellungen werden in der Sprache der Oberfläche angezeigt, auch China und Indien

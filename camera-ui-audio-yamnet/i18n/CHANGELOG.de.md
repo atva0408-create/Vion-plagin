@@ -1,3 +1,7 @@
+## [1.2.10]
+
+- Der Name wird VION geschrieben
+
 ## [1.2.9]
 
 - Eine Türklingel (YAMNets „Doorbell“ und „Ding-dong“) gilt jetzt als Klingel; ein beliebiges Türgeräusch („Door“) nicht mehr, ein Klopfen weiterhin

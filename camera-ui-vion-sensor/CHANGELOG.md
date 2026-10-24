@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.2]
+
+### Changed
+
+- The name is written VION
+
 ## [0.4.1]
 
 ### Fixed

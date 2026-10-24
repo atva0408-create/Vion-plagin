@@ -1,3 +1,7 @@
+## [2.0.7]
+
+- Der Name wird VION geschrieben
+
 ## [2.0.6]
 
 - Das Live-Bild friert seltener ein. Ein unterwegs verlorenes oder zwischen zwei Netzwerkpaketen geteiltes Bild hielt das Bild bis zum nächsten vollständigen Bild an

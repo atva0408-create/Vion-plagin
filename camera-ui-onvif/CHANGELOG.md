@@ -1,3 +1,7 @@
+## [1.3.4]
+
+- The name is written VION
+
 ## [1.3.3]
 
 - After «Reconnect» or a change of the sign-in the camera listens for its events again, and its PTZ sensor follows the new connection instead of a second sensor polling the old one; before, motion and objects from the camera stopped until the plugin restarted

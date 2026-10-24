@@ -1,3 +1,8 @@
+## [0.2.6]
+
+- Der Name wird VION geschrieben
+- Das früher angelegte Szenario einer Station gilt weiter als das des Plugins (wird nicht als Schalter angeboten), bis die nächste Ansage ihm den neuen Namen gibt
+
 ## [0.2.5]
 
 - Ein kurzer Ausfall von Yandex Passport beim Erneuern der Sitzung der App löscht die Anmeldung als Yandex-App nicht mehr: nur ein von Yandex abgelehnter Token oder ein abgelehntes Konto verlangt eine neue Anmeldung, ein Ausfall wird beim nächsten Lesen erneut versucht

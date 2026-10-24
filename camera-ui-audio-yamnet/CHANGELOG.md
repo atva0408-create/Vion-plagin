@@ -1,3 +1,7 @@
+## [1.2.10]
+
+- The name is written VION
+
 ## [1.2.9]
 
 - A doorbell (YAMNet's "Doorbell" and "Ding-dong") is now a doorbell; any door sound ("Door") no longer is, a knock still is

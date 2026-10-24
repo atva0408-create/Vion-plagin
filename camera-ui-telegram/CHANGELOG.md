@@ -1,3 +1,7 @@
+## [0.1.3]
+
+- The name is written VION
+
 ## [0.1.2]
 
 - VION learns whether each chat got a notification: without a bot (no token, Telegram not reachable), a chat switched off, one that blocked the bot or a failed send is told back, and VION 2.6.5 sends the notification another way. Before, nothing went out without a bot and VION counted it delivered

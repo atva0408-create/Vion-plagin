@@ -1,3 +1,7 @@
+## [1.2.28]
+
+- The name is written VION
+
 ## [1.2.27]
 
 - The description, settings and release notes of the plugin are now available in English, Russian and German and follow the language of the interface

@@ -1,3 +1,7 @@
+## [1.2.9]
+
+- Der Name wird VION geschrieben
+
 ## [1.2.8]
 
 - Die Beispiele in den Feldern „Text für Bewegungsbeginn“ und „Text für Bewegungsende“ werden auf Russisch und Deutsch angezeigt

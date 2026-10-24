@@ -1,3 +1,7 @@
+## [0.1.3]
+
+- Der Name wird VION geschrieben
+
 ## [0.1.2]
 
 - VION erfährt, ob jede Unterhaltung eine Benachrichtigung bekam: ohne Bot (kein Token, Telegram nicht erreichbar), eine ausgeschaltete, eine, die den Bot blockiert hat, oder ein fehlgeschlagener Versand wird zurückgemeldet, und VION 2.6.5 schickt die Benachrichtigung anders. Bisher ging ohne Bot nichts hinaus, und VION zählte sie als zugestellt

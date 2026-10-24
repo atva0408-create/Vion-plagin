@@ -1,3 +1,8 @@
+## [0.2.6]
+
+- The name is written VION
+- The scenario of a station made before keeps counting as the plugin's own (not offered as a switch) until its next speech gives it the new name
+
 ## [0.2.5]
 
 - A short outage of Yandex Passport while the session of the app is renewed no longer erases the sign-in as the Yandex app: only a token or an account Yandex refuses asks to sign in again, an outage is tried again at the next reading

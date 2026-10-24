@@ -1,3 +1,7 @@
+## [1.2.9]
+
+- Der Name wird VION geschrieben
+
 ## [1.2.8]
 
 - Schnellere Bewegungserkennung auf ARM-Boards wie Jetson: Der Bildvergleich ist so geschrieben, dass der Prozessor ihn parallel ausführt (rust-detector 0.0.13)

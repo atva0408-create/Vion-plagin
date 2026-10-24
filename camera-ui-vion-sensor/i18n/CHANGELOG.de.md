@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## [0.4.2]
+
+### Geändert
+
+- Der Name wird VION geschrieben
+
 ## [0.4.1]
 
 ### Behoben

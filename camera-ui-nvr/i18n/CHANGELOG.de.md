@@ -1,3 +1,7 @@
+## [0.24.7]
+
+- Der Name wird VION geschrieben
+
 ## [0.24.6]
 
 - Das Zeitraffer-Intervall eines Exports ist eine ganze Zahl von Sekunden, 1 bis 3600; ein Bruch über den Bus ließ ffmpeg Milliarden Frames ohne Zeitlimit auf die Archivplatte schreiben. Zwei Exporte laufen gleichzeitig, einige weitere warten, der Rest wird sofort abgelehnt

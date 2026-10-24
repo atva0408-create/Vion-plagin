@@ -1,3 +1,7 @@
+## [1.1.3]
+
+- Der Name wird VION geschrieben
+
 ## [1.1.2]
 
 - Eine Benachrichtigung, die Home Assistant nicht zustellen konnte (Dienst verschwunden, Home Assistant nicht erreichbar, Fehler seines notify), wird VION als nicht zugestellt gemeldet, sodass der Ersatzkanal einer Route (Telegram, eine Station) greift; zuvor galt jede Benachrichtigung als zugestellt

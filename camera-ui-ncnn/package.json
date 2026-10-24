@@ -1,7 +1,7 @@
 {
   "displayName": "NCNN",
   "name": "@vionvision/camera-ui-ncnn",
-  "version": "1.2.15",
+  "version": "1.2.16",
   "description": "Детектор NCNN для VION. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR).",
   "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",

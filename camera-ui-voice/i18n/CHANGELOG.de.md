@@ -1,3 +1,7 @@
+## [0.5.4]
+
+- Der Name wird VION geschrieben
+
 ## [0.5.3]
 
 - VION erfährt, ob jeder Kameralautsprecher eine Benachrichtigung gesprochen hat: ausgeschaltet, Ruhezeiten von VOICE, zu langer Text, kein Sprechkanal, belegt oder fehlgeschlagen wird zurückgemeldet, und VION 2.6.5 schickt die Benachrichtigung anders

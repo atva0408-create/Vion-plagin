@@ -1,3 +1,7 @@
+## [1.2.9]
+
+- The name is written VION
+
 ## [1.2.8]
 
 - The examples in the "Motion On Text" and "Motion Off Text" fields are shown in Russian and German

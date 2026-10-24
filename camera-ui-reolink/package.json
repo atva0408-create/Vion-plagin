@@ -1,7 +1,7 @@
 {
   "displayName": "Reolink",
   "name": "@vionvision/camera-ui-reolink",
-  "version": "1.2.27",
+  "version": "1.2.28",
   "description": "Подключает камеры и звонки Reolink к VION по родному протоколу Baichuan: поиск устройств, прямой эфир, двусторонний звук, события движения, ИИ-объектов, батареи и звонка.",
   "author": "VION (https://vionvision.tech)",
   "main": "./bundle/main.go",

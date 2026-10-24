@@ -1,3 +1,7 @@
+## [0.24.7]
+
+- The name is written VION
+
 ## [0.24.6]
 
 - The timelapse interval of an export is a whole number of seconds, 1 to 3600; a fraction sent over the bus made ffmpeg write billions of frames onto the archive disk, with no timeout. Two exports run at a time, a few more wait their turn, the rest are refused at once

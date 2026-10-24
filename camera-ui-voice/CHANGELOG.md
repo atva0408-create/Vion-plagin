@@ -1,3 +1,7 @@
+## [0.5.4]
+
+- The name is written VION
+
 ## [0.5.3]
 
 - VION learns whether each camera speaker said a notification: speaking off, the quiet hours of VOICE, a text too long, no talk channel, busy or failed is told back, and VION 2.6.5 sends the notification another way
