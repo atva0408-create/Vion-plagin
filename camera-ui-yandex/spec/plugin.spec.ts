@@ -1,4 +1,4 @@
-// The plugin as ViON drives it, against the stand-in of Yandex: the sign-in by code to the official API, sensors
+// The plugin as VION drives it, against the stand-in of Yandex: the sign-in by code to the official API, sensors
 // offered, adopted and kept up to date, commands and scenarios, a camera of the Smart Home with its stream, the
 // sign-in by QR code, notifications said by a station, the tools of the assistant, and signing out. Then what breaks
 // on the way: live updates that close or die, tokens Yandex refuses or renews, Sign out while Yandex answers, speech
@@ -38,7 +38,7 @@ function host(values: Record<string, unknown> = {}, logger: typeof silent = sile
   const pushed: DiscoveredCamera[][] = [];
   const hookCalls = new Map<string, number>();
   const offers = { failing: 0, tried: 0 };
-  // like the storage of ViON: setValue keeps only fields of the schema and runs their hook, detached;
+  // like the storage of VION: setValue keeps only fields of the schema and runs their hook, detached;
   // other values go through setInternalValue
   const storage = {
     values,
@@ -85,7 +85,7 @@ function host(values: Record<string, unknown> = {}, logger: typeof silent = sile
     submit: (key: string, form: Record<string, unknown>) => field(key).onClick(form) as Promise<FormSubmitResponse | undefined>,
     press: (key: string) => field(key).onSet(undefined, undefined) as Promise<void>,
     set: (key: string, value: unknown) => field(key).onSet(value, undefined) as Promise<void>,
-    /** a value typed into a field of the settings: ViON stores it, then runs the hook */
+    /** a value typed into a field of the settings: VION stores it, then runs the hook */
     type: async (key: string, value: unknown) => {
       const old = values[key];
       values[key] = value;
@@ -259,7 +259,7 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
   // ---- sign-in by QR code
   const qr = await h.submit('qrLogin', {});
   assert.deepEqual(keys(qr), ['qrLink', 'qrImage'], 'the link to open in the browser comes first');
-  // a web address: ViON gives such a field the button that opens it
+  // a web address: VION gives such a field the button that opens it
   assert.match(String(valueOf(qr, 'qrLink')), /^https:\/\/passport\.yandex\.ru\//);
   assert.match(String(valueOf(qr, 'qrImage')), /^data:image\/png;base64,/);
   assert.equal(pngWidth(String(valueOf(qr, 'qrImage'))), 240, 'the code is small enough for the window on a phone');
@@ -662,7 +662,7 @@ test('stations speak at once: a slow one does not hold back another', async () =
   const fake = fakeYandex(state);
   // the first station's scenario is written slowly
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    if (init?.method === 'PUT' && String(init.body).includes('"ViON station-1"')) await sleep(1_500);
+    if (init?.method === 'PUT' && String(init.body).includes('"VION station-1"')) await sleep(1_500);
     return fake.fetch(input, init);
   }) as typeof fetch;
   const h = host({ ...(await appSignIn()), source: 'app', voiceMode: 'cloud', speakingStations: ['station-1', 'station-2'] });
@@ -673,7 +673,7 @@ test('stations speak at once: a slow one does not hold back another', async () =
     const id = /\/scenarios\/(own-\d+)\/actions$/.exec(c.url)?.[1];
     return id ? [state.own.get(id).name] : [];
   });
-  assert.deepEqual(runs, ['ViON station-2', 'ViON station-1'], 'the second station spoke while the first one waited');
+  assert.deepEqual(runs, ['VION station-2', 'VION station-1'], 'the second station spoke while the first one waited');
   await h.shutdown();
 });
 
@@ -810,7 +810,7 @@ test('scenarios in the app mode: read with the list and again when Yandex says t
   await updates.close();
 });
 
-test('what became of a notification on each station goes back to ViON: off, unknown, offline, not signed in, said', async () => {
+test('what became of a notification on each station goes back to VION: off, unknown, offline, not signed in, said', async () => {
   const state = baseState();
   globalThis.fetch = fakeYandex(state).fetch;
   const h = host({ ...(await appSignIn()), source: 'app', voiceMode: 'cloud' });
@@ -862,7 +862,7 @@ test('what became of a notification on each station goes back to ViON: off, unkn
   assert.equal(back.own.size, 1, 'and the station back on said it');
   await b.shutdown();
 
-  // without the sign-in as the app no station can speak, and ViON hears why
+  // without the sign-in as the app no station can speak, and VION hears why
   const unsigned = host({ oauthToken: OAUTH_TOKEN, pollSeconds: 300 });
   globalThis.fetch = fakeYandex(baseState()).fetch;
   await unsigned.launch();

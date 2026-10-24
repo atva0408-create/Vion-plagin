@@ -1,12 +1,12 @@
 # Ring
 
-Connects your Ring cameras and doorbells to ViON. After you sign in with your Ring account, you add the devices you want as cameras.
+Connects your Ring cameras and doorbells to VION. After you sign in with your Ring account, you add the devices you want as cameras.
 
 ## What it does
 
 - Finds the cameras and doorbells of your Ring account and offers them for adding
 - Shows the live view and current pictures of each device
-- Passes motion detected by Ring on to ViON as a motion event
+- Passes motion detected by Ring on to VION as a motion event
 - Shows the battery level of battery cameras, including charging and low battery
 - Switches the light and the siren of devices that have them, and shows their state
 - Reports each button press of doorbells wired to a chime inside the house

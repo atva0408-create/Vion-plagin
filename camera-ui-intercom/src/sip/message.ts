@@ -1,5 +1,5 @@
 /**
- * SIP messages and SDP, as much as a panel that calls ViON directly by IP needs (RFC 3261, RFC 4566): reading a
+ * SIP messages and SDP, as much as a panel that calls VION directly by IP needs (RFC 3261, RFC 4566): reading a
  * request or a response, writing one, the parameters of a header, the audio of an offer and the answer to it.
  * Nothing here talks to the network.
  */
@@ -264,7 +264,7 @@ export function describeAudio(options: { address: string; port: number; sessionI
   const lines = [
     'v=0',
     `o=vion ${options.sessionId} ${options.sessionId} IN IP4 ${options.address}`,
-    's=ViON',
+    's=VION',
     `c=IN IP4 ${options.address}`,
     't=0 0',
     `m=audio ${options.port} RTP/AVP ${payloads.join(' ')}`,

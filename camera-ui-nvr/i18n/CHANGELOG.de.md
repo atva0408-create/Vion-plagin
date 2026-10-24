@@ -26,7 +26,7 @@
 
 ## [0.24.0]
 
-- Das Archiv einer H.265-Kamera behält nur ihr eigenes H.265. Ein Browser ohne H.265 bekommt die Aufnahmen beim Ansehen zu H.264 gemacht: Wiedergabe, Spulen, die Bilder der Spur, die Vorschau beim Überfahren und der Export eines Abschnitts, erfragt mit der Rolle `h264` (getNvrFeatures `h264`; `low` ist die leichteste Aufnahme, wie sie ist). Die H.264-Kopie, die ViON aus dem Stream einer solchen Kamera macht (eine Quelle, die der Server als `copyOf` meldet), wird nicht mehr aufgezeichnet, wenn das Original aufgezeichnet wird: auf dem Testrechner belegte sie 20,8 GB am Tag neben 5,7 GB eigenem H.265 der Kamera. Die früher aufgezeichnete Kopie spielt für ihre Zeit, und eine Wiedergabe geht dort, wo sie endet, mit dem Original weiter
+- Das Archiv einer H.265-Kamera behält nur ihr eigenes H.265. Ein Browser ohne H.265 bekommt die Aufnahmen beim Ansehen zu H.264 gemacht: Wiedergabe, Spulen, die Bilder der Spur, die Vorschau beim Überfahren und der Export eines Abschnitts, erfragt mit der Rolle `h264` (getNvrFeatures `h264`; `low` ist die leichteste Aufnahme, wie sie ist). Die H.264-Kopie, die VION aus dem Stream einer solchen Kamera macht (eine Quelle, die der Server als `copyOf` meldet), wird nicht mehr aufgezeichnet, wenn das Original aufgezeichnet wird: auf dem Testrechner belegte sie 20,8 GB am Tag neben 5,7 GB eigenem H.265 der Kamera. Die früher aufgezeichnete Kopie spielt für ihre Zeit, und eine Wiedergabe geht dort, wo sie endet, mit dem Original weiter
 - Gemacht von einem Hardware-Encoder, wo einer auf dem Rechner arbeitet (NVENC, VA-API, Quick Sync, VideoToolbox; geprüft durch eine Probekodierung mit dem ffmpeg des Hosts), sonst von libx264, und von libx264, wo der Hardware-Encoder versagt. Höchstens die Hälfte der Kerne des Rechners zugleich, mit niedrigerer Priorität als Aufnahme und Analyse, nur so schnell wie angesehen; ein Client, der 30 s kein Bild nimmt, gibt seinen Platz frei, eine Wiedergabe behält einen von Datei zu Datei, Spulen, ein Streifen der Spur oder eine Vorschau warten höchstens 10 s auf einen
 - Die Bilder vor der gefragten Zeit werden dekodiert, nicht kodiert: ein Sprung beginnt mit dem Bild der Zeit, feines Spulen und ein genaues Bild der Spur sind dieses Bild allein; mehr als 300 Bilder von jedem Schlüsselbild entfernt das nähere Schlüsselbild, wie die Aufnahme ohne Umwandlung es gibt. Die Zeiten sind die der Aufnahme: an jedem Schlüsselbild des Index, mit Sprüngen der Kamerauhr und dem Überlauf des 33-Bit-PTS, auch mit B-Frames. Die Datei, die noch geschrieben wird, gibt ihr erstes Bild sofort, nicht nach einer Minute
 - Ein Export übergeht einen Stream, der innerhalb des Abschnitts beginnt oder endet oder mehr als ein Zehntel davon vermisst, wo ein anderer Stream das abdeckt: die alte Kopie, die endete, einen später zur Aufnahme hinzugefügten Stream. Eine Lücke durch ein Wiederverbinden ändert nichts
@@ -78,7 +78,7 @@
 
 - Der Beschreiber der Ereignisse beschreibt auch ein Ereignis der Klasse eines Moduls (das Fahrrad eines Moduls aus dem Store: dem Modell wurden nur Person, Fahrzeug und Tier angeboten), und ihm wird gesagt, was die Module antworteten («Ответы модулей: играет в компьютер: нет, да; поза: сидит»), als Hinweis neben den Bildern
 - Episoden: eine Klasse eines Moduls ist eine eigene Art, über Kameras mit derselben Klasse verbunden und nicht mit einer Person, und benennt die Episode («Самокат: Въезд → Входная дверь»; es war «Движение» ohne Verbindung); was Module in ihren Ereignissen mit ja beantworteten, steht in der Beschreibung
-- Mit ViON 2.6.1 benennt eine nur mit «нет» beantwortete Frage kein Ereignis: beim ersten Start nimmt das Plugin eine solche Frage einmal, stückweise, aus den Typen der früher aufgezeichneten Ereignisse (der Filter nach Typ, die Suche und die Zählungen fanden das Kind, das nicht spielt)
+- Mit VION 2.6.1 benennt eine nur mit «нет» beantwortete Frage kein Ereignis: beim ersten Start nimmt das Plugin eine solche Frage einmal, stückweise, aus den Typen der früher aufgezeichneten Ereignisse (der Filter nach Typ, die Suche und die Zählungen fanden das Kind, das nicht spielt)
 
 ## [0.22.3]
 
@@ -102,7 +102,7 @@
 
 ## [0.22.0]
 
-- Was aus einer Stelle wurde, die auf einem Bild der Aufzeichnung markiert ist: mit ViON 2.4.5 die Aufnahme einer Kamera anhalten, eine Stelle umrahmen und fragen, wo das hin ist, was dort lag, wann es kam oder was dort eine Weile lang war. Beobachtet wird die Stelle, nicht der Gegenstand, daher geht alles, auch was die Suche im Bild nicht kennt: ihr Aussehen auf Schlüsselbildern (nur diese werden dekodiert, 0,15–0,2 s pro Bild) wird mit dem markierten Moment verglichen, und jede Änderung wird auf benachbarte Schlüsselbilder (1–3 s) eingegrenzt, samt der Zeit, in der jemand davor stand. Der Rest des Bildes zeigt eine gedrehte Kamera (dort endet die Suche) und Nachtbilder (nur mit Nachtbildern verglichen). Der Assistent nennt die Momente in der Uhrzeit der Person mit den Bildern davor und danach, den Ereignissen daneben und Knöpfen, die die Aufnahme dort angehalten öffnen; höchstens eine Woche pro Frage
+- Was aus einer Stelle wurde, die auf einem Bild der Aufzeichnung markiert ist: mit VION 2.4.5 die Aufnahme einer Kamera anhalten, eine Stelle umrahmen und fragen, wo das hin ist, was dort lag, wann es kam oder was dort eine Weile lang war. Beobachtet wird die Stelle, nicht der Gegenstand, daher geht alles, auch was die Suche im Bild nicht kennt: ihr Aussehen auf Schlüsselbildern (nur diese werden dekodiert, 0,15–0,2 s pro Bild) wird mit dem markierten Moment verglichen, und jede Änderung wird auf benachbarte Schlüsselbilder (1–3 s) eingegrenzt, samt der Zeit, in der jemand davor stand. Der Rest des Bildes zeigt eine gedrehte Kamera (dort endet die Suche) und Nachtbilder (nur mit Nachtbildern verglichen). Der Assistent nennt die Momente in der Uhrzeit der Person mit den Bildern davor und danach, den Ereignissen daneben und Knöpfen, die die Aufnahme dort angehalten öffnen; höchstens eine Woche pro Frage
 
 ## [0.21.1]
 
@@ -114,7 +114,7 @@
 
 ## [0.20.1]
 
-- Der Assistent findet die Einstellungen der Aufzeichnung: person_route nennt die Einstellungen der Wechsel und dass der Assistent sie ändern kann; mit ViON 2.4.4 setzt er einen Wert nur so, wie sein Feld ihn nimmt, und zeigt jede Einstellung vor der Bestätigung mit ihrem Titel, von was zu was
+- Der Assistent findet die Einstellungen der Aufzeichnung: person_route nennt die Einstellungen der Wechsel und dass der Assistent sie ändern kann; mit VION 2.4.4 setzt er einen Wert nur so, wie sein Feld ihn nimmt, und zeigt jede Einstellung vor der Bestätigung mit ihrem Titel, von was zu was
 
 ## [0.20.0]
 
@@ -141,12 +141,12 @@
 ## [0.18.0]
 
 - Eine Frage eines Moduls, die es mit eigenen Wörtern beantwortet — die Körperhaltung: стоит, сидит, лежит —, wird mit einem davon gestellt: „поза: лежит“ oder nur „лежит“. Der Assistent findet die Ereignisse, in denen jemand lag (query_events, event_stats), rechnet zusammen, wie lange jemand an einem Tag lag (attribute_time), und zählt die Haltungen in der Tageszusammenfassung; die anderen Wörter der Frage sind ihr „nein“ (steht oder sitzt: liegt nicht). Die Liste der Fragen nennt eine solche Frage mit ihren Wörtern
-- Wie lange ein Modul antwortete, zählt die Zeit jeder Antwort, wenn ViON sie mitgibt (dieselbe Antwort am Stück innerhalb eines Aufenthalts: zehn Minuten gestanden, dann fünfzig gelegen), nicht den ganzen Aufenthalt; frühere Ereignisse zählen weiter ihr ganzes Segment
+- Wie lange ein Modul antwortete, zählt die Zeit jeder Antwort, wenn VION sie mitgibt (dieselbe Antwort am Stück innerhalb eines Aufenthalts: zehn Minuten gestanden, dann fünfzig gelegen), nicht den ganzen Aufenthalt; frühere Ereignisse zählen weiter ihr ganzes Segment
 
 ## [0.17.0]
 
 - Wohin eine Person ging, Kamera für Kamera: aus einem Moment der Personensuche zeigt die Aufnahmenseite den Weg („Weg“) — die Aufenthalte der Person auf jeder Kamera mit Personen-Wiedererkennung, der Reihe nach, eine halbe Stunde davor und danach, jeweils mit ihrem Moment; der Assistent beantwortet «wohin ging er dann» mit demselben Weg (person_route). Re-ID vergleicht Kleidung und Statur, ein Aufenthalt kann also jemand ähnlich Gekleidetes sein; die Kameras, die niemanden sahen, werden genannt
-- Die Aufzeichnung behält, wie viele Personen und Fahrzeuge jede auf einer Kamera gezeichnete Linie überqueren, hinein oder hinaus, wenn die Linie eine Eingangsseite hat (ab der ViON-Version, die jede Überquerung einmal meldet): Der Assistent zählt sie über die Zeit für Diagramme – pro Stunde, Tag oder Woche oder die Stunden eines Tages im Schnitt –, zusammen oder getrennt nach Linie, hinein und hinaus (mit der Zahl drinnen: hinein minus hinaus), Richtung, Objekt oder Kamera (line_counts). Die Zählungen bleiben 400 Tage, unabhängig von der Aufbewahrung der Aufnahmen: dieser Monat lässt sich mit demselben Monat des Vorjahres vergleichen. Die Modulseite von ViON zeigt die Zählungen jeder Linie der letzten 24 Stunden (lineTotals)
+- Die Aufzeichnung behält, wie viele Personen und Fahrzeuge jede auf einer Kamera gezeichnete Linie überqueren, hinein oder hinaus, wenn die Linie eine Eingangsseite hat (ab der VION-Version, die jede Überquerung einmal meldet): Der Assistent zählt sie über die Zeit für Diagramme – pro Stunde, Tag oder Woche oder die Stunden eines Tages im Schnitt –, zusammen oder getrennt nach Linie, hinein und hinaus (mit der Zahl drinnen: hinein minus hinaus), Richtung, Objekt oder Kamera (line_counts). Die Zählungen bleiben 400 Tage, unabhängig von der Aufbewahrung der Aufnahmen: dieser Monat lässt sich mit demselben Monat des Vorjahres vergleichen. Die Modulseite von VION zeigt die Zählungen jeder Linie der letzten 24 Stunden (lineTotals)
 
 ## [0.16.0]
 
@@ -169,9 +169,9 @@
 
 ## [0.13.0]
 
-- Ähnlich aussehende Personen lassen sich suchen, zusammen mit der Personensuche von ViON und ML-Plugins mit Personen-Wiedererkennung: Der Rekorder merkt sich, wie Kleidung und Statur jeder Person aussehen, die eine Kamera mit zugewiesener Personen-Wiedererkennung gesehen hat, und findet die Momente mit ähnlich aussehenden Personen, ausgehend von einem aufgezeichneten Moment oder einem Bild, auf dem eine Person zu sehen ist. Re-ID beschreibt Kleidung und Statur, nicht die Identität, daher bleibt die Suche bei wenigen Tagen um den Moment. Suchen können nur die Administratoren des Servers
+- Ähnlich aussehende Personen lassen sich suchen, zusammen mit der Personensuche von VION und ML-Plugins mit Personen-Wiedererkennung: Der Rekorder merkt sich, wie Kleidung und Statur jeder Person aussehen, die eine Kamera mit zugewiesener Personen-Wiedererkennung gesehen hat, und findet die Momente mit ähnlich aussehenden Personen, ausgehend von einem aufgezeichneten Moment oder einem Bild, auf dem eine Person zu sehen ist. Re-ID beschreibt Kleidung und Statur, nicht die Identität, daher bleibt die Suche bei wenigen Tagen um den Moment. Suchen können nur die Administratoren des Servers
 - Die Daten der Personensuche werden standardmäßig 7 Tage aufbewahrt (Einstellungen → Personensuche) und lassen sich auf einmal löschen; sie werden mit ihrem Ereignis gelöscht, auch bei Favoriten. Die Personenvektoren gelangen weder in die gespeicherten Ereignisse noch in die Oberfläche
-- Die Suche nach Beschreibung auf der Aufnahmenseite findet auch ältere Ereignisse, zusammen mit der seitenweisen Suche von ViON: Die Seite suchte Treffer nur unter den bereits geladenen Ereignissen, ein Treffer älter als die geladenen Seiten wurde nie gezeigt. Jetzt wendet der Rekorder die Filter der Seite an (Kameras, Zeit, Bewertung, Favoriten und die übrigen Bedingungen) und liefert die Treffer seitenweise
+- Die Suche nach Beschreibung auf der Aufnahmenseite findet auch ältere Ereignisse, zusammen mit der seitenweisen Suche von VION: Die Seite suchte Treffer nur unter den bereits geladenen Ereignissen, ein Treffer älter als die geladenen Seiten wurde nie gezeigt. Jetzt wendet der Rekorder die Filter der Seite an (Kameras, Zeit, Bewertung, Favoriten und die übrigen Bedingungen) und liefert die Treffer seitenweise
 - Ein Link auf eine ältere Episode öffnet sie: Der Rekorder liefert eine Episode anhand ihrer Kennung
 - H.265-Kameras, deren Stream go2rtc mit einem H.264-Zugriffseinheitstrenner beginnt (Xiaomi), werden aufgezeichnet: der Rekorder hielt den Trenner für den Beginn eines Bildes und sah nie ein Schlüsselbild
 
@@ -189,7 +189,7 @@
 
 ## [0.12.0]
 
-- Der Assistent beantwortet Fragen zur Aufzeichnung selbst, zusammen mit dem Assistenten-Update von ViON: ob Kameras über einen Zeitraum aufgezeichnet haben (Anteil der Aufzeichnung, Lücken länger als eine Minute und ihre Ursache, wenn der Rekorder eine vermerkt hat) und wie viele Tage der Speicher beim aktuellen Datenstrom reicht oder dass die Aufbewahrungsdauer das Archiv früher begrenzt
+- Der Assistent beantwortet Fragen zur Aufzeichnung selbst, zusammen mit dem Assistenten-Update von VION: ob Kameras über einen Zeitraum aufgezeichnet haben (Anteil der Aufzeichnung, Lücken länger als eine Minute und ihre Ursache, wenn der Rekorder eine vermerkt hat) und wie viele Tage der Speicher beim aktuellen Datenstrom reicht oder dass die Aufbewahrungsdauer das Archiv früher begrenzt
 - Der Assistent listet bekannte und unbekannte Gesichter und benennt nach einer Bestätigung im Chat durch einen Administrator ein Gesicht eines Ereignisses („das ist Mascha“), korrigiert einen falschen Namen, blendet eine Gruppe unbekannter Gesichter aus oder vergisst eine Person. Die Bestätigungskarte zeigt das Gesicht
 - Der Assistent startet und stoppt eine manuelle Aufnahme und löscht die Aufnahmen einer Kamera in einem Zeitraum von bis zu 24 Stunden, beides für Administratoren und nach Bestätigung. Ein Zeitraum mit Favoriten wird abgelehnt, solange der Nutzer nicht ausdrücklich sagt, dass auch sie gelöscht werden; die Karte zeigt, wie viel gelöscht wird und dass es nicht rückgängig zu machen ist
 
@@ -199,16 +199,16 @@
 
 ## [0.11.2]
 
-- Beim Überfahren eines Ereignisses auf der Startseite läuft ein kurzer Bewegungsausschnitt, zusammen mit den neuen Ereigniskarten von ViON: bis zu 4 Sekunden aufeinanderfolgender Bilder ab dem Schlüsselbild vor dem Ereignis statt einiger Schlüsselbilder
+- Beim Überfahren eines Ereignisses auf der Startseite läuft ein kurzer Bewegungsausschnitt, zusammen mit den neuen Ereigniskarten von VION: bis zu 4 Sekunden aufeinanderfolgender Bilder ab dem Schlüsselbild vor dem Ereignis statt einiger Schlüsselbilder
 
 ## [0.11.1]
 
 - Die Neuindizierung der Suche zählt nur ihre eigene Arbeit: Ereignisse, die ihren Vektor schon hatten, erschienen als Fehler („3 von 3, 2 fehlgeschlagen“), und ein aktueller Suchindex wurde nie so genannt
-- Ein geänderter Tarif von ViON Cloud erreicht die Aufnahme sofort, zusammen mit ViON 2.3.4: Die Cloud sagt es dem Server, der Server der Aufnahme. Ein Tarif mit mehr Kameras startet deren Aufnahme gleich, früher dauerte das bis zu einer Stunde
+- Ein geänderter Tarif von VION Cloud erreicht die Aufnahme sofort, zusammen mit VION 2.3.4: Die Cloud sagt es dem Server, der Server der Aufnahme. Ein Tarif mit mehr Kameras startet deren Aufnahme gleich, früher dauerte das bis zu einer Stunde
 
 ## [0.11.0]
 
-- Weniger falsche Namen bei Gesichtern, zusammen mit ViON 2.3.0. Ein Gesicht, das zwei bekannten Personen etwa gleich ähnlich sieht, wird keiner von beiden mehr zugeordnet, und zu einem Gesicht, das niemand sicher ist, nennt der Rekorder die ähnlichste Person, was die Ereignisverfolgung des Servers zeigt
+- Weniger falsche Namen bei Gesichtern, zusammen mit VION 2.3.0. Ein Gesicht, das zwei bekannten Personen etwa gleich ähnlich sieht, wird keiner von beiden mehr zugeordnet, und zu einem Gesicht, das niemand sicher ist, nennt der Rekorder die ähnlichste Person, was die Ereignisverfolgung des Servers zeigt
 
 ## [0.10.6]
 
@@ -253,7 +253,7 @@
 
 ## [0.10.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [0.10.0]
 
@@ -278,7 +278,7 @@
 
 ## [0.7.0]
 
-- Werkzeuge für den Assistenten. Der ViON-Assistent erhält das Archiv nur zum Lesen: Ereignisse eines Zeitraums, gefiltert nach Kamera, Objekt, Kennzeichen oder erkanntem Gesicht; eine Zusammenfassung eines oder mehrerer Tage in der Zeitzone des Benutzers mit den wichtigsten Ereignissen in zeitlicher Reihenfolge; Suche nach Beschreibung; die gelesenen Kennzeichen; das Bild eines Ereignisses. Zuvor konnte der Assistent keinen Tag zusammenfassen, kein Ereignis finden und keine Kennzeichen auflisten
+- Werkzeuge für den Assistenten. Der VION-Assistent erhält das Archiv nur zum Lesen: Ereignisse eines Zeitraums, gefiltert nach Kamera, Objekt, Kennzeichen oder erkanntem Gesicht; eine Zusammenfassung eines oder mehrerer Tage in der Zeitzone des Benutzers mit den wichtigsten Ereignissen in zeitlicher Reihenfolge; Suche nach Beschreibung; die gelesenen Kennzeichen; das Bild eines Ereignisses. Zuvor konnte der Assistent keinen Tag zusammenfassen, kein Ereignis finden und keine Kennzeichen auflisten
 - Kennzeichen werden ohne Leerzeichen, Bindestriche und Groß-/Kleinschreibung verglichen („К 178 УС 77“ und „к178ус77“ sind dasselbe Kennzeichen); ein nicht erkanntes Gesicht wird nicht als Person ausgegeben
 
 ## [0.6.0]
@@ -307,7 +307,7 @@
 
 ## [0.5.0]
 
-- KI-Ereignisbeschreibungen (Einstellung „KI-Ereignisbeschreibungen“): Nach einem Ereignis mit Person, Fahrzeug oder Tier beschreibt das Assistenzmodell anhand der Bilder des Ereignisses, was passiert ist. Funktioniert mit jedem Assistenzmodell von ViON, das Bilder versteht (OpenAI-kompatibles Gateway, Ollama, OpenRouter und andere); es gibt ein Limit für Beschreibungen pro Stunde
+- KI-Ereignisbeschreibungen (Einstellung „KI-Ereignisbeschreibungen“): Nach einem Ereignis mit Person, Fahrzeug oder Tier beschreibt das Assistenzmodell anhand der Bilder des Ereignisses, was passiert ist. Funktioniert mit jedem Assistenzmodell von VION, das Bilder versteht (OpenAI-kompatibles Gateway, Ollama, OpenRouter und andere); es gibt ein Limit für Beschreibungen pro Stunde
 - Kombinierte KI-Suche: nach dem Inhalt der Bilder (CLIP/SigLIP) und nach dem Text der Beschreibungen, einschließlich russischer Wortformen
 - Smarte Benachrichtigungen: Die Beschreibung kommt als Benachrichtigung („Eingang: Kurier hat ein Paket abgelegt“)
 - Ein Ereignis lässt sich auf Anfrage beschreiben
@@ -323,13 +323,13 @@
 
 - Die Aufzeichnungseinstellungen zeigen den Tarif, seine Limits und die Kameras, die die Aufzeichnungsplätze belegen
 - Ereignisse, die nach einem Neustart aktiv geblieben sind, werden beim Start geschlossen
-- In den ViON-Server integriert: wird zusammen mit ihm installiert und aktualisiert
+- In den VION-Server integriert: wird zusammen mit ihm installiert und aktualisiert
 
 ## [0.2.0]
 
-- Limits des ViON-Cloud-Tarifs: Anzahl der Kameras mit Aufzeichnung und maximale Archivdauer (ein Server ohne Cloud nutzt lokale Limits)
+- Limits des VION-Cloud-Tarifs: Anzahl der Kameras mit Aufzeichnung und maximale Archivdauer (ein Server ohne Cloud nutzt lokale Limits)
 - Der Tarif wird in den Aufzeichnungseinstellungen angezeigt
 
 ## [0.1.0]
 
-- Erste Version von ViON NVR: durchgehende Aufzeichnung und Aufzeichnung bei Ereignis, Zeitleiste, Wiedergabe, Ereignisse, MP4/ZIP-Export, Aufbewahrungsdauer und Speicherlimits
+- Erste Version von VION NVR: durchgehende Aufzeichnung und Aufzeichnung bei Ereignis, Zeitleiste, Wiedergabe, Ereignisse, MP4/ZIP-Export, Aufbewahrungsdauer und Speicherlimits

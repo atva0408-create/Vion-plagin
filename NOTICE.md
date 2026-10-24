@@ -1,6 +1,6 @@
 # NOTICE
 
-ViON Plugins are derived from **camera.ui plugins** (https://github.com/cameraui/plugins).
+VION Plugins are derived from **camera.ui plugins** (https://github.com/cameraui/plugins).
 
 Copyright (c) 2023-2026 seydx <hi@seydx.dev>
 

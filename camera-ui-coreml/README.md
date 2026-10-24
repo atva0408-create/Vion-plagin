@@ -14,7 +14,7 @@ Detects objects, faces and license plates in the video of your cameras on a Mac,
 
 ## What you need
 
-- A ViON server running on a Mac (macOS)
+- A VION server running on a Mac (macOS)
 - For names on faces, this plugin must be selected as "Face Recognition" for each camera: camera settings, "Plugins", "Detections"
 
 ## Settings

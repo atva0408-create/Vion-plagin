@@ -37,6 +37,6 @@
     "The ring code differs between firmwares (BackKeyLight with State 1 or 2, Invite); a VTO2000A gives no ring through attach",
     "Some firmwares answer 404 to openDoor and open through RPC2; a 400 is not retried another way, the door may have opened",
     "The VTO has one talk channel: the talk stream is opened only during a conversation",
-    "The command that ends the call on the panel when it was answered in ViON is not known yet"
+    "The command that ends the call on the panel when it was answered in VION is not known yet"
   ]
 }

@@ -1,6 +1,6 @@
 # Eufy
 
-Connects Eufy cameras, doorbells, HomeBases and sensors to ViON. You log in once with your Eufy account, and the devices of that account appear in ViON.
+Connects Eufy cameras, doorbells, HomeBases and sensors to VION. You log in once with your Eufy account, and the devices of that account appear in VION.
 
 ## What it does
 

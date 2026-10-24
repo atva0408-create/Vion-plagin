@@ -1,12 +1,12 @@
 # Wyze
 
-Connects the cameras of your Wyze account to ViON, with live view and motion events.
+Connects the cameras of your Wyze account to VION, with live view and motion events.
 
 ## What it does
 
 - Finds the cameras of your Wyze account and lists them as discovered cameras
 - Adds each camera with two video streams, one in HD and one in SD quality
-- Reports the motion events of the camera as a motion sensor in ViON
+- Reports the motion events of the camera as a motion sensor in VION
 - Saves the login, so the plugin connects again on its own after a restart
 
 ## What you need

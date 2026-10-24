@@ -49,7 +49,7 @@ export interface IntercomSettings {
   notifyMinor: boolean;
   /** seconds a person stands in a panel's zone without ringing before it is a visit */
   presenceSeconds: number;
-  /** the UDP port where panels that call over SIP reach ViON (only from the home network) */
+  /** the UDP port where panels that call over SIP reach VION (only from the home network) */
   sipPort: number;
 }
 

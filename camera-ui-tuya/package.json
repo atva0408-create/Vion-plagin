@@ -2,8 +2,8 @@
   "displayName": "Tuya",
   "name": "@vionvision/camera-ui-tuya",
   "version": "1.2.8",
-  "description": "Подключает камеры Tuya / Smart Life к ViON: поиск устройств и прямой эфир.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Подключает камеры Tuya / Smart Life к VION: поиск устройств и прямой эфир.",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

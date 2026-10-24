@@ -54,7 +54,7 @@ export class YandexSwitch extends SwitchControl {
   private extraFields: JsonSchema[] = [];
   private extraKey = '[]';
 
-  /** The settings ViON shows for the sensor: the extra controls of the device (extras.ts). */
+  /** The settings VION shows for the sensor: the extra controls of the device (extras.ts). */
   override get storageSchema(): JsonSchema[] {
     return this.extraFields;
   }
@@ -100,7 +100,7 @@ export class YandexLight extends LightControl {
   private extraFields: JsonSchema[] = [];
   private extraKey = '[]';
 
-  /** The settings ViON shows for the sensor: the extra controls of the device (extras.ts). */
+  /** The settings VION shows for the sensor: the extra controls of the device (extras.ts). */
   override get storageSchema(): JsonSchema[] {
     return this.extraFields;
   }

@@ -1,4 +1,4 @@
-// What an air conditioner, a TV on an IR remote and a remote of learned buttons can do in ViON besides on and off:
+// What an air conditioner, a TV on an IR remote and a remote of learned buttons can do in VION besides on and off:
 // the fields of their settings, the commands the fields send, and the settings replaced only when they change.
 // Run: npx tsx spec/extras.spec.ts
 import assert from 'node:assert/strict';

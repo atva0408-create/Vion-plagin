@@ -1,4 +1,4 @@
-# ViON Sensor
+# VION Sensor
 
 A security sensor on an ESP32-CAM board. It notices people moving in a room by how they change the Wi-Fi signal
 between the board and the router (Wi-Fi Sensing): no video, works in the dark and through a door. The camera of the
@@ -6,10 +6,10 @@ board is optional.
 
 ## Setting up a board
 
-1. Flash the ViON Sensor firmware once over USB (see `sensor esp VION` in the ViON project).
-2. Power the board where it should watch. It shows its own Wi-Fi network **ViON-Sensor-XXXX**: connect a phone to it,
+1. Flash the VION Sensor firmware once over USB (see `sensor esp VION` in the VION project).
+2. Power the board where it should watch. It shows its own Wi-Fi network **VION-Sensor-XXXX**: connect a phone to it,
    choose your home network (2.4 GHz) and enter its password.
-3. In ViON open **Sensors**, **Found**, and add **ViON Sensor XXXX**. The board gives this ViON its key: from now on it
+3. In VION open **Sensors**, **Found**, and add **VION Sensor XXXX**. The board gives this VION its key: from now on it
    answers only here.
 4. For 30 seconds after the start the sensor learns the empty room: keep the room empty.
 
@@ -24,7 +24,7 @@ If the board does not appear, type its address in the settings of this plugin.
   calibrates again.
 - **Calibrate** — learn the empty room again (leave the room first).
 - **Update the firmware** — appears when a new firmware is out; the board downloads and checks it itself.
-- **Reset the sensor** — the board forgets the Wi-Fi and this ViON.
+- **Reset the sensor** — the board forgets the Wi-Fi and this VION.
 
 Three quick power-ons in a row (each shorter than 10 seconds) also reset the board.
 
@@ -34,7 +34,7 @@ Three quick power-ons in a row (each shorter than 10 seconds) also reset the boa
   notices a person standing still too (the Espressif esp-radar algorithm) and learns the empty room in the same 30 s as
   the calibration. When the Wi-Fi signal is too uneven it does not learn, and presence stays unknown until the next
   calibration; motion works as before.
-- **Motion from** — which algorithm makes motion in ViON: ViON's own, Espressif's or either. Both run all the time.
+- **Motion from** — which algorithm makes motion in VION: VION's own, Espressif's or either. Both run all the time.
 - **HLK-LD2450 radar** (optional): wired to the board (TX of the radar to GPIO13, RX to GPIO14, 5 V and GND), it gives
   the positions of up to three people to the floor plan.
 - A firmware that does not start takes the board back to the previous one by itself; the settings say so.
@@ -42,18 +42,18 @@ Three quick power-ons in a row (each shorter than 10 seconds) also reset the boa
 ## Boards with the ESPectre firmware
 
 A board can run [ESPectre](https://github.com/francescopace/espectre) (by Francesco Pace, free software under GPLv3)
-instead of the ViON Sensor firmware: its official release, as is. ESPectre finds motion with a statistical detector or
+instead of the VION Sensor firmware: its official release, as is. ESPectre finds motion with a statistical detector or
 with a small neural network trained by its authors. This plugin only talks to the board over the network.
 
 1. Flash the official **Native** firmware for the chip of the board over USB at
    [espectre.dev/tools/flash](https://espectre.dev/tools/flash/) (desktop Chrome) and set the Wi-Fi there: the board has
    no Wi-Fi network of its own.
-2. In ViON open **Sensors**, **Found** and add the board (maker ESPectre). It is found by mDNS; if not, type its address
+2. In VION open **Sensors**, **Found** and add the board (maker ESPectre). It is found by mDNS; if not, type its address
    in the settings of this plugin.
 3. The settings of the sensor: **Detection** (Lightweight, or High accuracy — the neural network, no calibration),
    **Motion threshold** (a probability, 0–1), **Readings to start motion** and **to end motion**, **Signal source**,
    **Calibrate**, and the firmware update from the ESPectre releases. **Motion lasts, seconds** (8 unless set) is kept by
-   ViON: how long the sensor stays in motion after the board's last reading of it.
+   VION: how long the sensor stays in motion after the board's last reading of it.
 
 The ESPectre API has no password: any device in the home network can change these settings. ESPectre sees motion only:
 it does not tell a person from a pet, count people or prove that a room is empty.

@@ -14,7 +14,7 @@ Objekt-, Gesichts- und Kennzeichenerkennung für ältere Intel-Grafik. Mit dem r
 
 - Verwenden Sie es anstelle des regulären OpenVino-Plugins, wenn Ihre Intel-Grafik zur 10. Core-Generation gehört oder älter ist (Gen9/Gen11-Grafik, zum Beispiel HD/UHD Graphics 610 bis 630)
 - Wichtig ist es vor allem unter Windows, wo der Bestandteil, auf den diese Chips angewiesen sind, zum Grafiktreiber gehört und sich nicht separat aktualisieren lässt
-- Unter Linux mit dem Docker-Image von ViON wird es meist nicht benötigt: Das Image enthält bereits, was ältere Intel-Grafik braucht
+- Unter Linux mit dem Docker-Image von VION wird es meist nicht benötigt: Das Image enthält bereits, was ältere Intel-Grafik braucht
 - Ab der 11. Core-Generation (Iris Xe, Arc) verwenden Sie das reguläre OpenVino-Plugin: Es ist dort schneller und erhält weiterhin Korrekturen
 
 ## Einstellungen

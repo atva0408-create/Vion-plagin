@@ -1,6 +1,6 @@
-# ViON NVR
+# VION NVR
 
-Der Videorekorder von ViON: Er zeichnet Ihre Kameras auf und speichert das Archiv auf Ihrem eigenen Server.
+Der Videorekorder von VION: Er zeichnet Ihre Kameras auf und speichert das Archiv auf Ihrem eigenen Server.
 
 ## Funktionen
 
@@ -13,8 +13,8 @@ Der Videorekorder von ViON: Er zeichnet Ihre Kameras auf und speichert das Archi
 
 ## Voraussetzungen
 
-- Der ViON-Cloud-Tarif des Serverbesitzers bestimmt, wie viele Kameras aufzeichnen dürfen und wie lange das Archiv aufbewahrt wird. Ein Server ohne Verknüpfung mit ViON Cloud nutzt seine lokalen Limits.
-- Für KI-Beschreibungen: ein Assistenzmodell, das Bilder versteht (Einstellungen → Assistent), und die Freigabe für ViON NVR.
+- Der VION-Cloud-Tarif des Serverbesitzers bestimmt, wie viele Kameras aufzeichnen dürfen und wie lange das Archiv aufbewahrt wird. Ein Server ohne Verknüpfung mit VION Cloud nutzt seine lokalen Limits.
+- Für KI-Beschreibungen: ein Assistenzmodell, das Bilder versteht (Einstellungen → Assistent), und die Freigabe für VION NVR.
 
 ## Einstellungen
 

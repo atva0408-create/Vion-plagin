@@ -26,7 +26,7 @@
 
 ## [0.24.0]
 
-- The archive of an H.265 camera keeps its own H.265 only. A browser that cannot decode H.265 gets the recordings made H.264 while it watches them: playback, scrubbing, the trace pictures, the hover preview and the trim export, asked with the role `h264` (getNvrFeatures `h264`; `low` is the lightest recording as it is). The recorder no longer keeps the H.264 copy ViON makes of such a camera's stream (a source the server tells as `copyOf`) when it records the original: on the test machine it took 20.8 GB a day beside 5.7 GB of the camera's own H.265. The copy recorded before still plays for its time, and a playback goes on with the original where it ends
+- The archive of an H.265 camera keeps its own H.265 only. A browser that cannot decode H.265 gets the recordings made H.264 while it watches them: playback, scrubbing, the trace pictures, the hover preview and the trim export, asked with the role `h264` (getNvrFeatures `h264`; `low` is the lightest recording as it is). The recorder no longer keeps the H.264 copy VION makes of such a camera's stream (a source the server tells as `copyOf`) when it records the original: on the test machine it took 20.8 GB a day beside 5.7 GB of the camera's own H.265. The copy recorded before still plays for its time, and a playback goes on with the original where it ends
 - Made by a hardware encoder where one works on the machine (NVENC, VA-API, Quick Sync, VideoToolbox; tried by an encode with the host's ffmpeg), else by libx264, and by libx264 where the hardware one fails. At most half the machine's cores at once, below the recording and the analysis in priority, only as fast as it is watched; a client that takes no frame for 30 s leaves its place, a playback keeps one from file to file, a scrub, a trace strip or a hover excerpt waits 10 s for one at most
 - The frames before the time asked for are decoded, not made: a seek begins with the frame of the time, a fine scrub and an exact trace frame are that frame alone; more than 300 frames from any keyframe, the nearer keyframe, as the recording as it is gives it. The times are the recording's: every keyframe of the index, a jump of the camera's clock and the 33-bit PTS wrap included, with B-frames too. The file being written gives its first frame at once, not after a minute
 - An export passes over a stream that begins or ends inside the slice, or misses more than a tenth of it, where another stream covers it: the old low copy that ended, a stream added to the recording later. A gap of a reconnect changes nothing
@@ -78,7 +78,7 @@
 
 - The describer of events describes an event of a module's class too (a store module's bicycle: only a person, a vehicle or an animal was offered to the model), and is told what modules answered («Ответы модулей: играет в компьютер: нет, да; поза: сидит») as a hint beside the pictures
 - Episodes: a class of a module is a kind of its own, joined across cameras with the same class and not with a person, and names the episode («Самокат: Въезд → Входная дверь»; it was «Движение» with no link); what modules answered yes in its events is told in the description
-- With ViON 2.6.1 a question answered only «нет» names no event: at its first start the plugin takes such a question out of the types of the events recorded before, once, a batch at a time (the filter by type, the search and the counts found the child not playing)
+- With VION 2.6.1 a question answered only «нет» names no event: at its first start the plugin takes such a question out of the types of the events recorded before, once, a batch at a time (the filter by type, the search and the counts found the child not playing)
 
 ## [0.22.3]
 
@@ -102,7 +102,7 @@
 
 ## [0.22.0]
 
-- What became of a place marked on a frame of the recording: with ViON 2.4.5, pause a camera's recording, outline a place and ask where what lay there went, when it came or what was there over a while. The place is watched, not the thing, so anything works, also what the search in pictures does not know: its look at keyframes (only keyframes are decoded, 0.15-0.2 s each) is compared with the marked moment, and each change is narrowed to neighbouring keyframes (1-3 s) with the stretch someone stood in front of it. The rest of the picture tells a turned camera (the looking stops there) and night pictures (compared with night pictures only). The assistant says the moments in the person's clock with the pictures before and after, the events by them and buttons that open the recording paused on them; a week at most per question
+- What became of a place marked on a frame of the recording: with VION 2.4.5, pause a camera's recording, outline a place and ask where what lay there went, when it came or what was there over a while. The place is watched, not the thing, so anything works, also what the search in pictures does not know: its look at keyframes (only keyframes are decoded, 0.15-0.2 s each) is compared with the marked moment, and each change is narrowed to neighbouring keyframes (1-3 s) with the stretch someone stood in front of it. The rest of the picture tells a turned camera (the looking stops there) and night pictures (compared with night pictures only). The assistant says the moments in the person's clock with the pictures before and after, the events by them and buttons that open the recording paused on them; a week at most per question
 
 ## [0.21.1]
 
@@ -114,7 +114,7 @@
 
 ## [0.20.1]
 
-- The assistant finds the recorder's settings: person_route names the hop settings and that the assistant can change them; with ViON 2.4.4 it sets a value only as its field takes it and shows each setting by its title, from what to what, before it is confirmed
+- The assistant finds the recorder's settings: person_route names the hop settings and that the assistant can change them; with VION 2.4.4 it sets a value only as its field takes it and shows each setting by its title, from what to what, before it is confirmed
 
 ## [0.20.0]
 
@@ -141,12 +141,12 @@
 ## [0.18.0]
 
 - A question of a module answered with words of its own — the posture of people: стоит, сидит, лежит — is asked by one of them: «поза: лежит», or just «лежит». The assistant finds the events in which someone lay (query_events, event_stats), adds up how long someone lay a day (attribute_time) and counts the postures in a day's summary; the other words of the question are its «no» (standing or sitting: not lying). The list of the questions names such a question by its words
-- How long a module answered counts the time of each answer when ViON gives it (a run of the same answer within one stay: stood ten minutes, then lay fifty), not the whole stay; events from before keep counting their whole segment
+- How long a module answered counts the time of each answer when VION gives it (a run of the same answer within one stay: stood ten minutes, then lay fifty), not the whole stay; events from before keep counting their whole segment
 
 ## [0.17.0]
 
 - Where a person went, camera after camera: from a moment of the people search the recordings page shows the route (Маршрут) — the stays of the person on each camera with person re-ID, in time order, half an hour before and after, each with its moment; the assistant answers «куда он пошёл потом» with the same route (person_route). Re-ID compares clothes and build, so a stay can be someone dressed alike; the cameras that saw nobody are named
-- The recorder keeps how many people and vehicles cross each line drawn on a camera, in or out when the line has a way in (from ViON's version that reports each crossing once): the assistant counts them over time for charts — per hour, day or week, or the hours of a day on average — together or apart by line, in and out (with how many are inside: in minus out), direction, object or camera (line_counts). The counts are kept 400 days whatever the retention of the recordings: this month can be compared with the same month last year. The modules page of ViON shows each line's counts of the last 24 hours (lineTotals)
+- The recorder keeps how many people and vehicles cross each line drawn on a camera, in or out when the line has a way in (from VION's version that reports each crossing once): the assistant counts them over time for charts — per hour, day or week, or the hours of a day on average — together or apart by line, in and out (with how many are inside: in minus out), direction, object or camera (line_counts). The counts are kept 400 days whatever the retention of the recordings: this month can be compared with the same month last year. The modules page of VION shows each line's counts of the last 24 hours (lineTotals)
 
 ## [0.16.0]
 
@@ -169,9 +169,9 @@
 
 ## [0.13.0]
 
-- People who look alike can be searched for, together with ViON's people search and the ML plugins that bring Person Re-ID: the recorder keeps what a person's clothes and build look like for every person a camera with Person Re-ID saw, and finds the moments with people who look the same, starting from a recorded moment or a picture with somebody on it. Re-ID describes clothes and build, not who someone is, so the search keeps to a few days around the moment. Only the server's admins can search
+- People who look alike can be searched for, together with VION's people search and the ML plugins that bring Person Re-ID: the recorder keeps what a person's clothes and build look like for every person a camera with Person Re-ID saw, and finds the moments with people who look the same, starting from a recorded moment or a picture with somebody on it. Re-ID describes clothes and build, not who someone is, so the search keeps to a few days around the moment. Only the server's admins can search
 - The data of the people search is kept 7 days by default (Settings → People search) and can be deleted in one go; it is deleted with its event, favourites included. The person vectors never reach the stored events or the interface
-- The search by description on the recordings page finds older events too, together with ViON's paged search: the page looked for matches only among the events it had loaded, so a match older than the loaded pages was never shown. The recorder now applies the page's filters (cameras, time, score, favourites, the rest of the filter) and sends the matches page by page
+- The search by description on the recordings page finds older events too, together with VION's paged search: the page looked for matches only among the events it had loaded, so a match older than the loaded pages was never shown. The recorder now applies the page's filters (cameras, time, score, favourites, the rest of the filter) and sends the matches page by page
 - A link to an older episode opens it: the recorder answers for one episode by its id
 - H.265 cameras whose stream go2rtc starts with an H.264 access unit delimiter (Xiaomi) are recorded: the recorder took the delimiter for the start of a picture and never saw a keyframe
 
@@ -189,7 +189,7 @@
 
 ## [0.12.0]
 
-- The assistant answers about the recording itself, together with ViON's assistant update: whether cameras recorded through a period (the share recorded, the gaps longer than a minute and their cause when the recorder logged one) and how many days the disk holds at the current rate, or that the retention ends the archive first
+- The assistant answers about the recording itself, together with VION's assistant update: whether cameras recorded through a period (the share recorded, the gaps longer than a minute and their cause when the recorder logged one) and how many days the disk holds at the current rate, or that the retention ends the archive first
 - The assistant lists the known and unknown faces and, after a confirmation in the chat by an administrator, names a face of an event («this is Masha»), corrects a wrong name, ignores a group of unknown faces or forgets a person. The confirmation card shows the face
 - The assistant starts and stops a manual recording and deletes the recordings of one camera in a range of up to 24 hours, both for administrators and after a confirmation. A range with favorite events is refused unless the user said favorites go too; the card says how much goes and that it cannot be undone
 
@@ -199,16 +199,16 @@
 
 ## [0.11.2]
 
-- Hovering an event on the home page plays a short motion excerpt of it, together with ViON's new event cards: up to 4 seconds of consecutive frames from the keyframe before the event, instead of a few keyframes
+- Hovering an event on the home page plays a short motion excerpt of it, together with VION's new event cards: up to 4 seconds of consecutive frames from the keyframe before the event, instead of a few keyframes
 
 ## [0.11.1]
 
 - The search re-index counts only its own work: events that already had their vector were shown as failures ("3 of 3, 2 failed"), and a search index that was up to date was never said to be
-- A changed plan of ViON Cloud reaches the recording at once, together with ViON 2.3.4: the cloud tells the server, the server tells the recorder. A plan with more cameras starts their recording right away, it used to take up to an hour
+- A changed plan of VION Cloud reaches the recording at once, together with VION 2.3.4: the cloud tells the server, the server tells the recorder. A plan with more cameras starts their recording right away, it used to take up to an hour
 
 ## [0.11.0]
 
-- Fewer wrong names on faces, together with ViON 2.3.0. A face that looks about as much like two known people is no longer given to one of them, and for a face that is nobody for sure the recorder says whom it came closest to, which the event trace of the server shows
+- Fewer wrong names on faces, together with VION 2.3.0. A face that looks about as much like two known people is no longer given to one of them, and for a face that is nobody for sure the recorder says whom it came closest to, which the event trace of the server shows
 
 ## [0.10.6]
 
@@ -253,7 +253,7 @@
 
 ## [0.10.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [0.10.0]
 
@@ -278,7 +278,7 @@
 
 ## [0.7.0]
 
-- Assistant tools. The ViON assistant gets read-only access to the archive: the events of a period filtered by camera, object, license plate or recognized face; a summary of one or several days in the time zone of the user, with the main events in order of time; search by description; the license plates that were read; the picture of an event. Before, the assistant could not sum up a day, find an event or list license plates
+- Assistant tools. The VION assistant gets read-only access to the archive: the events of a period filtered by camera, object, license plate or recognized face; a summary of one or several days in the time zone of the user, with the main events in order of time; search by description; the license plates that were read; the picture of an event. Before, the assistant could not sum up a day, find an event or list license plates
 - License plates are compared without spaces, hyphens and letter case ("К 178 УС 77" and "к178ус77" are the same plate); an unrecognized face is not presented as a person
 
 ## [0.6.0]
@@ -307,7 +307,7 @@
 
 ## [0.5.0]
 
-- AI event descriptions (setting "AI event descriptions"): after an event with a person, vehicle or animal the assistant model describes what happened from the pictures of the event. Works with any assistant model of ViON that understands pictures (OpenAI-compatible gateway, Ollama, OpenRouter and others); there is a limit of descriptions per hour
+- AI event descriptions (setting "AI event descriptions"): after an event with a person, vehicle or animal the assistant model describes what happened from the pictures of the event. Works with any assistant model of VION that understands pictures (OpenAI-compatible gateway, Ollama, OpenRouter and others); there is a limit of descriptions per hour
 - Combined AI search: by the content of pictures (CLIP/SigLIP) and by the text of the descriptions, Russian word forms included
 - Smart notifications: the description arrives as a notification ("Entrance: Courier left a parcel")
 - An event can be described on request
@@ -323,13 +323,13 @@
 
 - The recording settings show the plan, its limits and the cameras that take up the recording slots
 - Events that were left active after a restart are closed at startup
-- Built into the ViON server: installed and updated together with it
+- Built into the VION server: installed and updated together with it
 
 ## [0.2.0]
 
-- Limits of the ViON Cloud plan: the number of cameras with recording and the longest archive period (a server without the cloud uses local limits)
+- Limits of the VION Cloud plan: the number of cameras with recording and the longest archive period (a server without the cloud uses local limits)
 - The plan is shown in the recording settings
 
 ## [0.1.0]
 
-- First version of ViON NVR: continuous recording and recording on event, timeline, playback, events, MP4/ZIP export, retention period and disk limits
+- First version of VION NVR: continuous recording and recording on event, timeline, playback, events, MP4/ZIP export, retention period and disk limits

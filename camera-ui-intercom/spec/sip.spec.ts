@@ -1,6 +1,6 @@
-// SIP for a panel that calls ViON directly by IP, over real UDP on this machine with a fake panel: a call rings and is
+// SIP for a panel that calls VION directly by IP, over real UDP on this machine with a fake panel: a call rings and is
 // answered with G.711, the sound goes both ways, keys come as telephone events and SIP INFO and go out as events, the
-// panel or ViON ends the call, a call is cancelled while it rings, an INVITE repeated, an answer never confirmed, an
+// panel or VION ends the call, a call is cancelled while it rings, an INVITE repeated, an answer never confirmed, an
 // offer without G.711, and a stranger who gets no answer at all. Messages are written as Akuvox-based panels send them.
 // Run: npx tsx spec/sip.spec.ts
 import assert from 'node:assert/strict';
@@ -238,7 +238,7 @@ test('μ-law both ways keeps the sound; 8 kHz becomes 16 kHz for recognition', (
   assert.equal(samples.length, 320);
 });
 
-test('a ring, the answer with A-law, sound both ways, keys both ways, ViON ends the call', async () => {
+test('a ring, the answer with A-law, sound both ways, keys both ways, VION ends the call', async () => {
   const w = await world();
   try {
     w.panel.send(invite(w.panel, 'call-1@127.0.0.1'), w.server.port);
@@ -272,7 +272,7 @@ test('a ring, the answer with A-law, sound both ways, keys both ways, ViON ends 
     }
     await until(() => heard >= 5 * 320);
 
-    // ViON speaks: 200 ms of a tone in 20 ms packets, the first marked
+    // VION speaks: 200 ms of a tone in 20 ms packets, the first marked
     const tone = new Float32Array(3_200).map((_, i) => 0.3 * Math.sin((2 * Math.PI * 440 * i) / 16_000));
     const said = await call.rtp!.speak(tone, 16_000);
     assert.equal(said.status, 'spoken');
@@ -308,10 +308,10 @@ test('a ring, the answer with A-law, sound both ways, keys both ways, ViON ends 
     assert.equal(ends.length, 6);
     assert.ok(events.filter((p) => p.marker).length === 2);
 
-    // ViON hangs up: a BYE to the panel's Contact, answered
+    // VION hangs up: a BYE to the panel's Contact, answered
     const hungUp = call.hangUp();
     const bye = await w.panel.next(method('BYE'));
-    assert.equal(textParam(header(bye, 'From'), 'tag'), textParam(header(ok, 'To'), 'tag'), "the BYE comes from ViON's side of the dialog");
+    assert.equal(textParam(header(bye, 'From'), 'tag'), textParam(header(ok, 'To'), 'tag'), "the BYE comes from VION's side of the dialog");
     w.panel.send(
       `SIP/2.0 200 OK\nVia: ${header(bye, 'Via')}\nFrom: ${header(bye, 'From')}\nTo: ${header(bye, 'To')}\nCall-ID: ${header(bye, 'Call-ID')}\nCSeq: ${header(bye, 'CSeq')}\nContent-Length: 0\n\n`,
       w.server.port,
@@ -485,7 +485,7 @@ test('a SIP panel: the call rings, a code typed at the panel comes whole, the pa
     assert.deepEqual(w.events[0], ['ring', { caller: 'Gate' }]);
     assert.ok(w.online(), 'a panel that called is there');
     assert.ok(w.engine.call);
-    // ViON answered (a person took it): the panel's call is answered
+    // VION answered (a person took it): the panel's call is answered
     const answered = w.engine.answered();
     const ok = await w.panel.next(status(200));
     w.panel.send(ack(w.panel, ok), w.server.port);
@@ -506,7 +506,7 @@ test('a SIP panel: the call rings, a code typed at the panel comes whole, the pa
   }
 });
 
-test('ViON ends a call that still rings: the panel hears "busy"; a DTMF door needs a call', async () => {
+test('VION ends a call that still rings: the panel hears "busy"; a DTMF door needs a call', async () => {
   const dtmfDoor = { ...rubetek, doors: [{ key: '1', name: 'Calitka', open: { dtmf: '#1' } }] } as PanelProfile;
   const w = await sipWorld(dtmfDoor);
   try {
@@ -518,7 +518,7 @@ test('ViON ends a call that still rings: the panel hears "busy"; a DTMF door nee
     assert.deepEqual(
       w.events.map(([kind]) => kind),
       ['ring'],
-      "ViON's own end is not told back to ViON",
+      "VION's own end is not told back to VION",
     );
     // a new call: the door opens by its code, the ringing call answered first
     w.panel.send(invite(w.panel, 'p-3@127.0.0.1', undefined, 'z9hG4bK31'), w.server.port);

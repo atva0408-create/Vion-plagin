@@ -81,7 +81,7 @@ jobs:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: node .github/scripts/select-plugins.mjs
 
-  # Every plugin carries its texts in the languages of the ViON interface (scripts/i18n.ts says what and where).
+  # Every plugin carries its texts in the languages of the VION interface (scripts/i18n.ts says what and where).
   translations:
     runs-on: ubuntu-latest
     steps:

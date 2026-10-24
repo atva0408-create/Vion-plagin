@@ -1,6 +1,6 @@
-# ViON NVR
+# VION NVR
 
-ViON's own video recorder: it records your cameras and keeps the archive on your own server.
+VION's own video recorder: it records your cameras and keeps the archive on your own server.
 
 ## What it does
 
@@ -13,8 +13,8 @@ ViON's own video recorder: it records your cameras and keeps the archive on your
 
 ## What you need
 
-- The ViON Cloud plan of the server owner decides how many cameras may record and how long the archive is kept. A server not linked to ViON Cloud uses its local limits.
-- For AI descriptions: an assistant model that understands pictures (Settings → Assistant) and permission for ViON NVR.
+- The VION Cloud plan of the server owner decides how many cameras may record and how long the archive is kept. A server not linked to VION Cloud uses its local limits.
+- For AI descriptions: an assistant model that understands pictures (Settings → Assistant) and permission for VION NVR.
 
 ## Settings
 

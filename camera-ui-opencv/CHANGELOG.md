@@ -4,29 +4,29 @@
 
 ## [1.2.6]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.5]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.0]
 
 - In the motion detection test, Blur now moves only through odd values, the only ones the detector accepts
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.4]
 
@@ -36,7 +36,7 @@
 
 ## [1.1.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.2]
 
@@ -45,15 +45,15 @@
 ## [1.1.1]
 
 - The plugin stays responsive while it analyzes the picture, with all three detection methods
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.2]
 

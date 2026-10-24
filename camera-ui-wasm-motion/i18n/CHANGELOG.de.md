@@ -4,28 +4,28 @@
 
 ## [1.2.6]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.5]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.4]
 
@@ -33,7 +33,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -45,11 +45,11 @@
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.2]
 

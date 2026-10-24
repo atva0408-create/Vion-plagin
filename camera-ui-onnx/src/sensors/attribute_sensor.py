@@ -1,4 +1,4 @@
-"""Attributes of detected objects ("person · с пакетом": да / нет) by the classifiers trained on ViON Cloud.
+"""Attributes of detected objects ("person · с пакетом": да / нет) by the classifiers trained on VION Cloud.
 
 The server crops every object whose label is in ``triggerLabels`` and passes the crops here with the
 label (``frame["label"]``); each crop goes through the classifiers trained for that label. The answers
@@ -41,7 +41,7 @@ POSE_LABEL = "person"
 
 class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
     def __init__(
-        self, plugin: Any, camera: CameraDevice, logger: LoggerService, name: str = "ViON: признаки"
+        self, plugin: Any, camera: CameraDevice, logger: LoggerService, name: str = "VION: признаки"
     ) -> None:
         super().__init__(name)
         self._camera = camera
@@ -124,7 +124,7 @@ class ViONAttributeSensor(ClassifierDetectorSensor[dict[str, Any]]):
             if wanted or posed:
                 rgb = frame_to_rgb(frame["data"], frame["width"], frame["height"], frame["format"])
                 if posed:
-                    # `cut`: the server says the picture cuts the person (ViON 2.4.2)
+                    # `cut`: the server says the picture cuts the person (VION 2.4.2)
                     detection = await self._posture(rgb, cut=cast(dict[str, Any], frame).get("cut") is True)
                     if detection is not None:
                         detections.append(detection)

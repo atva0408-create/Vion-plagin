@@ -1,6 +1,6 @@
 # Apple LLM
 
-Offers the language model built into your Mac to the ViON assistant. The model answers on the Mac where the plugin runs: no key is needed and nothing is sent to a cloud.
+Offers the language model built into your Mac to the VION assistant. The model answers on the Mac where the plugin runs: no key is needed and nothing is sent to a cloud.
 
 ## What it does
 
@@ -12,8 +12,8 @@ Offers the language model built into your Mac to the ViON assistant. The model a
 
 ## What you need
 
-- A Mac with Apple Silicon and macOS 26 or newer, with ViON running on it.
-- Apple Intelligence turned on in the system settings of the Mac. While macOS is still downloading the model, ViON does not offer it yet.
+- A Mac with Apple Silicon and macOS 26 or newer, with VION running on it.
+- Apple Intelligence turned on in the system settings of the Mac. While macOS is still downloading the model, VION does not offer it yet.
 - macOS 27 if the model is to see pictures.
 
 ## Settings

@@ -138,7 +138,7 @@ export class HttpPanel implements PanelEngine {
     return this.send(door.open, doorKey);
   }
 
-  /** Tells the panel the call was answered in ViON (its own monitors stop ringing). */
+  /** Tells the panel the call was answered in VION (its own monitors stop ringing). */
   async answered(): Promise<CommandResult | undefined> {
     return this.profile.answered ? this.send(this.profile.answered) : undefined;
   }

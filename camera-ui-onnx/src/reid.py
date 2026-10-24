@@ -2,7 +2,7 @@
 plugins (the legacy plugins copy them).
 
 Upstream ships these helpers in camera-ui-ml 1.2.16 and later; the bundles install 1.2.15 from PyPI, whose newer
-versions also change detection thresholds and face alignment that ViON's detection is tuned to. Everything below uses
+versions also change detection thresholds and face alignment that VION's detection is tuned to. Everything below uses
 only what 1.2.15 has.
 """
 

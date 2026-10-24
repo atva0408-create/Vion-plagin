@@ -1,6 +1,6 @@
 # Tuya
 
-Verbindet Kameras von Tuya und Smart Life mit ViON. Nach der Anmeldung findet das Plugin die Kameras Ihres Kontos, und Sie fügen die gewünschten hinzu; das Livebild läuft über den Tuya-Dienst.
+Verbindet Kameras von Tuya und Smart Life mit VION. Nach der Anmeldung findet das Plugin die Kameras Ihres Kontos, und Sie fügen die gewünschten hinzu; das Livebild läuft über den Tuya-Dienst.
 
 ## Funktionen
 

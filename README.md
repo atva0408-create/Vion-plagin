@@ -1,22 +1,22 @@
 <p align="center">
-  <img src=".github/vion-logo.svg" alt="ViON" width="320" />
+  <img src=".github/vion-logo.svg" alt="VION" width="320" />
 </p>
 
-# ViON - Plugins
+# VION - Plugins
 
-Official plugins for the ViON video surveillance platform.
+Official plugins for the VION video surveillance platform.
 
 All plugins are published under the `@vionvision` npm scope.
 
 ## Model downloads
 
 Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, YAMNet) download their models on first use.
-They come from the ViON mirror `https://models.vionvision.tech` (see `deploy/models-mirror` in the VIONN- repo);
+They come from the VION mirror `https://models.vionvision.tech` (see `deploy/models-mirror` in the VIONN- repo);
 set `VION_MODELS_HOST` to use another mirror. The path layout is `/<version>/<backend>/...`, identical to the upstream host.
 
 ## Translations
 
-The ViON interface exists in English, Russian and German, and every plugin ships its own texts in all three:
+The VION interface exists in English, Russian and German, and every plugin ships its own texts in all three:
 
 | File                                                | What it is                                                                        |
 | --------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -41,7 +41,7 @@ read by a model rather than by people (tool and answer schemas) is excluded with
 
 ## Ready-made automations
 
-`automations/catalog.json` and `automations/blueprints/` are the store of ready-made automations the ViON
+`automations/catalog.json` and `automations/blueprints/` are the store of ready-made automations the VION
 interface offers under Automations. They are generated from the templates in `scripts/automations.ts`, where every
 template carries its texts in all languages of the interface:
 
@@ -88,4 +88,4 @@ git fetch upstream && git merge upstream/main
 
 ---
 
-_Part of the ViON ecosystem - [vionvision.tech](https://vionvision.tech)._
+_Part of the VION ecosystem - [vionvision.tech](https://vionvision.tech)._

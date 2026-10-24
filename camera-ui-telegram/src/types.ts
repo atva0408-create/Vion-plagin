@@ -5,7 +5,7 @@ export interface StorageValues {
   botToken?: string;
   /** the Bot API server; empty: api.telegram.org */
   apiUrl?: string;
-  /** the ViON address the button of a message opens; empty: no button */
+  /** the VION address the button of a message opens; empty: no button */
   linkBase?: string;
   _chats?: LinkedChat[];
   _pending?: PendingLink[];

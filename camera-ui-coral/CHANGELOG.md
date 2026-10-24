@@ -8,15 +8,15 @@
 
 ## [1.2.11]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.10]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.9]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.8]
 
@@ -24,7 +24,7 @@
 
 ## [1.2.7]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.5]
 
@@ -33,11 +33,11 @@
 ## [1.2.4]
 
 - The confidence threshold is no longer in the plugin settings. Object detection now uses the value from the camera's detection settings, so it is set in one place and a change takes effect right away
-- The plugin reports which model it loaded and which hardware it runs on, so ViON can show this in the camera metrics
+- The plugin reports which model it loaded and which hardware it runs on, so VION can show this in the camera metrics
 
 ## [1.2.2]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.1]
 
@@ -47,8 +47,8 @@
 ## [1.2.0]
 
 - Fixed the "Download models again" button, which did nothing when pressed
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.6]
 
@@ -64,7 +64,7 @@
 
 ## [1.1.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.2]
 
@@ -74,15 +74,15 @@
 
 - The log names the model when it starts loading, and a model that fails to load is now reported instead of failing silently; loading it can then be tried again
 - When one model fails to load during a reload, the other models are still loaded
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 

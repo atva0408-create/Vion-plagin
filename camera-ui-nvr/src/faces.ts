@@ -16,7 +16,7 @@ export interface FaceMatchResult {
 }
 
 /**
- * A face as the server of ViON 2.3.0 asks about it: who it is (`identity`), or, when it is nobody for sure, whom it
+ * A face as the server of VION 2.3.0 asks about it: who it is (`identity`), or, when it is nobody for sure, whom it
  * came closest to. The server names a person only after several faces agree and shows the rest in the event trace.
  */
 export interface FaceNearestResult {

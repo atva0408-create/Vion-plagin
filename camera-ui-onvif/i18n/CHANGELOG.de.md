@@ -12,7 +12,7 @@
 
 ## [1.3.0]
 
-- Der ViON-Assistent liest die Presets einer PTZ-Kamera, speichert die aktuelle Position als Preset oder löscht eines und startet eine ONVIF-Kamera neu, die nicht mehr antwortet; jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt
+- Der VION-Assistent liest die Presets einer PTZ-Kamera, speichert die aktuelle Position als Preset oder löscht eines und startet eine ONVIF-Kamera neu, die nicht mehr antwortet; jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt
 
 ## [1.2.8]
 
@@ -20,20 +20,20 @@
 
 ## [1.2.7]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.6]
 
-- Eine Kamera, die beim Start von ViON nicht erreichbar war, kommt jetzt von selbst zurück
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Eine Kamera, die beim Start von VION nicht erreichbar war, kommt jetzt von selbst zurück
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.5]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.3]
 
@@ -42,14 +42,14 @@
 
 ## [1.2.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.0]
 
 - Kurze Bewegungsimpulse von thingino-Kameras gehen nicht mehr verloren. Diese Kameras melden bei jeder Abfrage nur den letzten Bewegungszustand, und das Plugin legte zwischen zwei Abfragen genau in dem Moment eine Pause ein, in dem eine einsekündige Bewegung beginnen und enden konnte, sodass die meisten Auslöser verloren gingen. Solange etwas passiert, fragt das Plugin jetzt ohne Pausen ab
 - Tapo-Kameras fluten das Protokoll nicht mehr mit „other side closed“ und verlieren ihr Ereignisabonnement nicht mehr alle zwei Minuten. Ihre Firmware bricht eine Ereignisabfrage ab, die sie nicht innerhalb von etwa 10 Sekunden beantwortet hat; in diesem Fall wechselt das Plugin jetzt zu kürzeren Abfragen, die die Kamera rechtzeitig beantwortet
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.11]
 
@@ -81,11 +81,11 @@
 
 - Sensoren zeigen ihre Details jetzt in den Sensoreinstellungen: Ereignissensoren listen die Ereignisthemen der Kamera auf, die sie speisen, der PTZ-Sensor zeigt die Achsen, die unterstützten Bewegungsbefehle und die auf der Kamera gefundenen Presets
 - Fehlerbehebungen und Verbesserungen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.3]
 
@@ -102,11 +102,11 @@
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.2]
 

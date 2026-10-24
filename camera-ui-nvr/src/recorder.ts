@@ -105,7 +105,7 @@ const FIRST_RETRY_MS = 2000;
 const MAX_RETRY_MS = 60_000;
 
 /**
- * When a recorder tries its stream again and what it says about it. A camera that does not answer (ViON Sensor 89C0, all
+ * When a recorder tries its stream again and what it says about it. A camera that does not answer (VION Sensor 89C0, all
  * night) wrote a warning a minute, each one an event of the system panel too: its first end is told, then once that it
  * goes on quietly when the pause reached a minute, and that it answers again when data comes after that.
  */

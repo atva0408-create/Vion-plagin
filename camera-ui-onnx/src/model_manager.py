@@ -73,10 +73,10 @@ class OnnxModelManager(BaseModelManager):
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         if is_trained(model_name):
-            # downloaded by the ViON server; an absolute path makes the base download a no-op
+            # downloaded by the VION server; an absolute path makes the base download a no-op
             return {"model": ("", trained_models.path(model_name))}
         if is_module(model_name):
-            # a module of the store, downloaded by the ViON server: same absolute path, nothing to fetch
+            # a module of the store, downloaded by the VION server: same absolute path, nothing to fetch
             _, paths = installed_modules.paths(model_name, MODULE_BACKENDS)
             return {"model": ("", paths[".onnx"])}
         rel = self._rel_path(model_name)
@@ -136,20 +136,20 @@ class OnnxModelManager(BaseModelManager):
         if LEGACY_RUNTIME:
             self.logger.warn(
                 "Для распознавания на CUDA этому плагину нужны библиотеки CUDA 12: в Docker используйте "
-                "образ ViON с поддержкой NVIDIA (CUDA 12). Для CUDA 13 (образ ViON с поддержкой NVIDIA "
+                "образ VION с поддержкой NVIDIA (CUDA 12). Для CUDA 13 (образ VION с поддержкой NVIDIA "
                 "(CUDA)) установите вместо него обычный плагин ONNX"
             )
             return
         if "TensorrtExecutionProvider" in names:
             self.logger.warn(
-                "Для TensorRT нужны библиотеки TensorRT 10: в Docker используйте образ ViON с поддержкой "
+                "Для TensorRT нужны библиотеки TensorRT 10: в Docker используйте образ VION с поддержкой "
                 "NVIDIA (TensorRT), в остальных случаях установите TensorRT 10 самостоятельно"
             )
             return
         self.logger.warn(
             "Для распознавания на CUDA нужны библиотеки CUDA 13 и драйвер NVIDIA 580 или новее: в Docker "
-            "используйте образ ViON с поддержкой NVIDIA (CUDA). Если доступна только CUDA 12 или GPU "
-            "старше GTX 1650 (Maxwell, Pascal, Volta), используйте образ ViON с поддержкой NVIDIA "
+            "используйте образ VION с поддержкой NVIDIA (CUDA). Если доступна только CUDA 12 или GPU "
+            "старше GTX 1650 (Maxwell, Pascal, Volta), используйте образ VION с поддержкой NVIDIA "
             "(CUDA 12) вместе с плагином ONNX Legacy"
         )
 

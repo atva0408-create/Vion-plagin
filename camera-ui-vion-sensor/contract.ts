@@ -3,7 +3,7 @@ import { PluginInterface, PluginRole, SensorType } from '@camera.ui/sdk';
 import type { PluginContract } from '@camera.ui/sdk';
 
 export const contract: PluginContract = {
-  name: 'ViON Sensor',
+  name: 'VION Sensor',
   role: PluginRole.CameraAndSensorProvider,
   provides: [SensorType.Motion],
   consumes: [],

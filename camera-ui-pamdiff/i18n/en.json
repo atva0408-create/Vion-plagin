@@ -1,5 +1,5 @@
 {
-  "Попиксельный детектор движения для ViON: алгоритм pam-diff на кадрах PAM из ffmpeg.": "Motion detection for ViON that compares the picture pixel by pixel.",
+  "Попиксельный детектор движения для VION: алгоритм pam-diff на кадрах PAM из ffmpeg.": "Motion detection for VION that compares the picture pixel by pixel.",
   "Разница движения": "Motion Difference",
   "Изменение цвета пикселя, необходимое для обнаружения движения.": "Change in a pixel's color needed to detect motion.",
   "Процент движения": "Motion Percentage",

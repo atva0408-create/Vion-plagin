@@ -1,4 +1,4 @@
-// A stand-in of the ViON Sensor board: the HTTP API of the firmware (sensor esp VION/src/api.h) on a local port,
+// A stand-in of the VION Sensor board: the HTTP API of the firmware (sensor esp VION/src/api.h) on a local port,
 // with its state in the open so a test can move it.
 import { createServer } from 'node:http';
 
@@ -26,7 +26,7 @@ export async function fakeBoard(id = 'AABBCCDDEEFF'): Promise<FakeBoard> {
       kind: 'vion-sensor',
       model: 'ESP32-CAM',
       firmware: '1.0.0',
-      name: 'ViON Sensor EEFF',
+      name: 'VION Sensor EEFF',
       room: '',
       paired: false,
       ip: '127.0.0.1',

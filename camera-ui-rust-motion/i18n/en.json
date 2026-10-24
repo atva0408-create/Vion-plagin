@@ -1,5 +1,5 @@
 {
-  "Нативный детектор движения для ViON на Rust с низкой нагрузкой на процессор.": "Motion detection for ViON with low load on the processor.",
+  "Нативный детектор движения для VION на Rust с низкой нагрузкой на процессор.": "Motion detection for VION with low load on the processor.",
   "Площадь": "Area",
   "Минимальный суммарный размер соседних изменившихся областей, считающийся движением.": "Minimum combined size of nearby changed regions that counts as motion.",
   "Порог": "Threshold",

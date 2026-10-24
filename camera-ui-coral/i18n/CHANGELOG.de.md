@@ -8,15 +8,15 @@
 
 ## [1.2.11]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.10]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.9]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.8]
 
@@ -24,7 +24,7 @@
 
 ## [1.2.7]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.5]
 
@@ -33,11 +33,11 @@
 ## [1.2.4]
 
 - Die Konfidenzschwelle ist nicht mehr in den Plugin-Einstellungen. Die Objekterkennung verwendet jetzt den Wert aus den Erkennungseinstellungen der Kamera, sodass er an einer Stelle festgelegt wird und eine Änderung sofort wirkt
-- Das Plugin meldet, welches Modell es geladen hat und auf welcher Hardware es läuft, sodass ViON dies in den Kamerametriken anzeigen kann
+- Das Plugin meldet, welches Modell es geladen hat und auf welcher Hardware es läuft, sodass VION dies in den Kamerametriken anzeigen kann
 
 ## [1.2.2]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.1]
 
@@ -47,8 +47,8 @@
 ## [1.2.0]
 
 - Die Schaltfläche „Modelle neu herunterladen“ funktioniert wieder: Ein Klick darauf bewirkte nichts
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.6]
 
@@ -64,7 +64,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -74,15 +74,15 @@
 
 - Das Protokoll nennt das Modell beim Beginn des Ladens, und ein Modell, das sich nicht laden lässt, wird jetzt gemeldet, statt stillschweigend zu scheitern; das Laden kann anschließend wiederholt werden
 - Schlägt beim Neuladen der Modelle eines fehl, werden die übrigen trotzdem geladen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 

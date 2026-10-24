@@ -1,4 +1,4 @@
-// What a ViON Sensor feels and how it is tuned, through the assistant: reading for anyone, a calibration and a new
+// What a VION Sensor feels and how it is tuned, through the assistant: reading for anyone, a calibration and a new
 // threshold, hold time or source of motion an admin's and asked first. The card says the values before and after and
 // that the room must be empty; an ESPectre board keeps its own threshold; the firmware is only named, never installed.
 // Run: npx tsx spec/assistant.spec.ts
@@ -85,7 +85,7 @@ assert.deepEqual((await callSensorTool(host, 'calibrate', { sensor: 'Прихо�
   preview: { lines: ['Прихожая: калибровка на пустой комнате', 'В комнате никого не должно быть 30 секунд, иначе датчик примет человека за пустую комнату'] },
 });
 assert.deepEqual((await callSensorTool(host, 'tune', { sensor: 'Прихожая', threshold: 1.6, holdSeconds: 8, motionSource: 'any', __preview: true }, admin)).content, {
-  preview: { lines: ['Прихожая', 'Порог движения: 1.4 → 1.6', 'Источник движения: ViON → любой из двух'] },
+  preview: { lines: ['Прихожая', 'Порог движения: 1.4 → 1.6', 'Источник движения: VION → любой из двух'] },
 });
 // a value that is so already is not a change: the card says so, nothing is sent to the board
 assert.deepEqual((await callSensorTool(host, 'tune', { sensor: 'Прихожая', threshold: 1.4, __preview: true }, admin)).content, {

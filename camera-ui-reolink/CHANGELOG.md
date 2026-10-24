@@ -4,15 +4,15 @@
 
 ## [1.2.26]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.25]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.24]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.23]
 
@@ -20,7 +20,7 @@
 
 ## [1.2.22]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.21]
 
@@ -32,15 +32,15 @@
 
 ## [1.2.19]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.18]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.17]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.16]
 
@@ -58,17 +58,17 @@
 ## [1.2.13]
 
 - Battery cameras and doorbells no longer lose their charge within a day. The plugin kept a connection to the camera open around the clock, which is what stops a battery model from sleeping. It now gives the camera an address to report to and lets the connection go; motion, doorbell presses and the battery level arrive on their own. Cameras whose firmware cannot report this way say so in the log and keep the old behavior
-- The connection to a battery camera is only dropped once the camera has actually reached ViON with a report of its own. If it cannot, the connection stays up and the log says so, so a camera in an unusual network setup never ends up silent
+- The connection to a battery camera is only dropped once the camera has actually reached VION with a report of its own. If it cannot, the connection stays up and the log says so, so a camera in an unusual network setup never ends up silent
 - New camera setting "Permanently Powered" for battery models. A doorbell wired to its bell transformer has no reason to sleep, so it keeps a connection like a mains camera and reacts faster. It takes effect right away
 - A camera you disabled is now really disabled. Disabling only stopped recording and streaming, while the plugin stayed logged in to the camera and kept asking it for events. Enabling and disabling takes effect right away
 
 ## [1.2.12]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.11]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.10]
 
@@ -112,19 +112,19 @@
 
 ## [1.2.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.0]
 
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.5]
 
 - WiFi cameras no longer go missing when you search for cameras. Some models ignore the search for the first ten seconds, so they showed up only every other try. The plugin now keeps looking in the background, and a search finishes in two seconds instead of ten
 - Sound and picture now share one clock. The camera sends its audio without any timing information, and the plugin started the audio clock from zero instead of from the picture, which is why audio and video could not be lined up in recordings
 - Two-way audio works again. The camera stayed silent because your voice arrived on a second connection that the plugin discarded; both connections now reach the camera
-- The spotlight switch now follows the camera. When the camera turns its own light on, or you switch it in the Reolink app, ViON shows it instead of staying on the last state it set itself
+- The spotlight switch now follows the camera. When the camera turns its own light on, or you switch it in the Reolink app, VION shows it instead of staying on the last state it set itself
 - Cameras that listen for a baby crying now get their own audio detection sensor, instead of the sound showing up as if it had been seen in the picture. The sensor appears the first time the camera actually reports one
 
 ## [1.1.4]
@@ -147,7 +147,7 @@
 
 ## [1.1.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.0]
 
@@ -163,11 +163,11 @@
 
 ## [1.0.2]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.0]
 

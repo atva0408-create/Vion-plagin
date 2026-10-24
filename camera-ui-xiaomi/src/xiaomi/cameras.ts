@@ -94,13 +94,13 @@ export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: R
 const PLAYABLE_VENDORS = new Set(['cs2', 'tutk']);
 const VENDOR_LABELS: Record<string, string> = { agora: 'Agora', mtp: 'MTP' };
 
-/** A camera ViON cannot play: the cloud connects it over a P2P vendor the stream engine does not dial. */
+/** A camera VION cannot play: the cloud connects it over a P2P vendor the stream engine does not dial. */
 export class UnplayableCameraError extends Error {
   constructor(
     public readonly camera: XiaomiCamera,
     public readonly vendor: string,
   ) {
-    super(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[vendor] ?? `P2P vendor "${vendor}"`}, which ViON cannot play`);
+    super(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[vendor] ?? `P2P vendor "${vendor}"`}, which VION cannot play`);
     this.name = 'UnplayableCameraError';
   }
 }
@@ -178,7 +178,7 @@ function isOlderProtocol(error: unknown): boolean {
 }
 
 /**
- * Whether ViON can play the camera, asked the way a connection asks: throws UnplayableCameraError when the cloud
+ * Whether VION can play the camera, asked the way a connection asks: throws UnplayableCameraError when the cloud
  * connects it over a P2P vendor the stream engine refuses. A camera of the older protocol plays.
  */
 export async function checkPlayable(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<void> {

@@ -3,7 +3,7 @@
     "title": "Person at the camera",
     "description": "Sends a notification with a picture when the camera sees a person.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "person",
@@ -36,7 +36,7 @@
     "title": "Person at night",
     "description": "Sends an urgent notification with a picture when the camera sees a person between 22:00 and 06:00. Change the hours in the time condition.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "person",
@@ -70,7 +70,7 @@
     "title": "Vehicle at the camera",
     "description": "Sends a notification with a picture when the camera sees a vehicle.",
     "category": "detection",
-    "author": "ViON",
+    "author": "VION",
     "featured": false,
     "tags": [
       "vehicle",
@@ -103,7 +103,7 @@
     "title": "Alarming sound",
     "description": "Sends a critical notification when the camera hears breaking glass, a scream, a gunshot, an alarm, a siren or a smoke alarm.",
     "category": "detection",
-    "author": "ViON",
+    "author": "VION",
     "featured": false,
     "tags": [
       "sound",
@@ -136,7 +136,7 @@
     "title": "Camera went offline",
     "description": "Sends a notification when any camera stops responding.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "camera",
@@ -160,7 +160,7 @@
     "title": "Camera is back online",
     "description": "Sends a notification when a camera answers again after it was offline.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": false,
     "tags": [
       "camera",
@@ -184,7 +184,7 @@
     "title": "Daily picture",
     "description": "Sends a picture of the camera every day at 09:00. Change the time in the schedule.",
     "category": "schedule",
-    "author": "ViON",
+    "author": "VION",
     "featured": false,
     "tags": [
       "schedule",
@@ -214,7 +214,7 @@
     "title": "A plugin stopped with an error",
     "description": "Sends a notification when a plugin stops with an error, so a detector or a camera source does not stay down unnoticed.",
     "category": "utility",
-    "author": "ViON",
+    "author": "VION",
     "featured": false,
     "tags": [
       "plugin",
@@ -238,7 +238,7 @@
     "title": "Person at night — Alice and the phone",
     "description": "Says it urgently on the Alice stations and sends a picture to the phone when the camera sees a person between 22:00 and 06:00; when neither got it, to Telegram. Urgent comes in the quiet hours too unless a channel is silent at night.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "person",
@@ -273,7 +273,7 @@
     "title": "Person while nobody is home",
     "description": "Sends an urgent notification with a picture to the phone when the camera sees a person while nobody is at home (by the phones or as set by hand); when it did not get there, to Telegram.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "person",
@@ -308,7 +308,7 @@
     "title": "Camera gone — to Telegram",
     "description": "Writes to Telegram when a camera stops responding; when Telegram did not take it, to the phone.",
     "category": "notification",
-    "author": "ViON",
+    "author": "VION",
     "featured": true,
     "tags": [
       "camera",

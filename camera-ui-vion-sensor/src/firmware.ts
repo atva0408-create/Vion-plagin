@@ -1,5 +1,5 @@
 /**
- * Firmware updates come from ViON Cloud: a manifest names the newest firmware, its address and its SHA-256. The
+ * Firmware updates come from VION Cloud: a manifest names the newest firmware, its address and its SHA-256. The
  * manifest is read here over checked TLS; the board downloads the file itself and refuses it unless the SHA-256 matches.
  */
 export const DEFAULT_MANIFEST_URL = 'https://models.vionvision.tech/firmware/vion-sensor/manifest.json';

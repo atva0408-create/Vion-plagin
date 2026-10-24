@@ -1,7 +1,7 @@
-"""Models trained on ViON Cloud: the base detector fine-tuned on the owners' checked frames, the detectors of
+"""Models trained on VION Cloud: the base detector fine-tuned on the owners' checked frames, the detectors of
 object modules ("велосипед") and the classifiers of question modules ("person · с пакетом": yes / no).
 
-The ViON server downloads what the cloud gives it into VION_TRAINED_MODELS_DIR and keeps ``manifest.json``
+The VION server downloads what the cloud gives it into VION_TRAINED_MODELS_DIR and keeps ``manifest.json``
 there (server/src/manager/trainedModels.ts). The plugin reads the manifest while it runs, so a new model
 takes over without a restart and an empty manifest puts the cameras back on the stock models. A module
 works only on the cameras its entry names (``cameras``); a classifier of before modules has none and works
@@ -135,7 +135,7 @@ trained_models = TrainedModels()
 
 
 def resolve_object_model(requested: str | None, fallback: str, default_option: str = "default") -> str:
-    """ "По умолчанию" means the ViON-trained detector when one is published, else the stock one."""
+    """ "По умолчанию" means the VION-trained detector when one is published, else the stock one."""
     if not requested or requested == default_option:
         return trained_models.detector_name() or fallback
     return requested

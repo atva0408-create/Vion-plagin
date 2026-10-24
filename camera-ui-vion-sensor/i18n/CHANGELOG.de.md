@@ -10,7 +10,7 @@
 
 ### Hinzugefügt
 
-- **Der ViON-Assistent** liest, was ein Sensor gerade misst (Bewegungspegel gegen die Schwelle, Anwesenheit, Signal, Firmware), kalibriert ihn auf den leeren Raum und ändert Schwelle, Haltezeit der Bewegung und den Bewegungsalgorithmus. Jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt; die Firmware wird weiterhin nur auf der Einstellungsseite installiert.
+- **Der VION-Assistent** liest, was ein Sensor gerade misst (Bewegungspegel gegen die Schwelle, Anwesenheit, Signal, Firmware), kalibriert ihn auf den leeren Raum und ändert Schwelle, Haltezeit der Bewegung und den Bewegungsalgorithmus. Jede Änderung wird im Chat bestätigt und ist nur Administratoren erlaubt; die Firmware wird weiterhin nur auf der Einstellungsseite installiert.
 
 ## [0.3.0]
 
@@ -23,7 +23,7 @@
 ### Hinzugefügt
 
 - Im Grundriss lassen sich Bewegung, Kalibrierungszeit, fehlende Router-Pakete und Verbindungsstatus zusammen mit der Sensorkamera anzeigen. Die Live-Werte stammen aus dem Zwischenspeicher, ohne zusätzliche Anfragen an die Platine.
-- **Anwesenheit** (Firmware 1.1.0): ein zweiter Sensor der Platine, angeboten unter „Sensoren → Gefunden“, sobald ihr Bewegungssensor hinzugefügt ist. Er erkennt auch eine still stehende Person (Algorithmus Espressif esp-radar). Seine Empfindlichkeit steht in den Einstellungen des Sensors, ebenso die Wahl, welcher Algorithmus die Bewegung liefert: ViON, Espressif oder einer von beiden.
+- **Anwesenheit** (Firmware 1.1.0): ein zweiter Sensor der Platine, angeboten unter „Sensoren → Gefunden“, sobald ihr Bewegungssensor hinzugefügt ist. Er erkennt auch eine still stehende Person (Algorithmus Espressif esp-radar). Seine Empfindlichkeit steht in den Einstellungen des Sensors, ebenso die Wahl, welcher Algorithmus die Bewegung liefert: VION, Espressif oder einer von beiden.
 - **Radar HLK-LD2450** an der Platine: die Positionen von bis zu drei Personen gehen an den Grundriss.
 - Ein Firmware-Update, das nicht startete (die Platine kehrte selbst zurück), steht in den Einstellungen und im Protokoll.
 
@@ -31,6 +31,6 @@
 
 ### Hinzugefügt
 
-- **ViON Sensor:** ein Sicherheitssensor auf einer ESP32-CAM-Platine, der Bewegung am WLAN-Signal erkennt. Die Platine
-  wird im Netz von selbst gefunden, unter „Sensoren → Gefunden“ hinzugefügt und aus ViON eingerichtet und aktualisiert;
+- **VION Sensor:** ein Sicherheitssensor auf einer ESP32-CAM-Platine, der Bewegung am WLAN-Signal erkennt. Die Platine
+  wird im Netz von selbst gefunden, unter „Sensoren → Gefunden“ hinzugefügt und aus VION eingerichtet und aktualisiert;
   ihre Kamera ist optional.

@@ -62,9 +62,9 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   private refused?: string;
 
   private cameras = new Map<string, XiaomiCamera>();
-  /** Cameras of the account ViON cannot play, by device id: they are not offered. */
+  /** Cameras of the account VION cannot play, by device id: they are not offered. */
   private unplayable = new Map<string, UnplayableCameraError>();
-  /** Cameras the cloud connects over a vendor ViON plays: it is not asked about them again. */
+  /** Cameras the cloud connects over a vendor VION plays: it is not asked about them again. */
   private playable = new Set<string>();
   private camerasReadAt = 0;
   private refreshing?: Promise<void>;
@@ -326,7 +326,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   }
 
   /**
-   * Asks the cloud once per camera how it connects. One ViON cannot play is not offered and is named once in the log;
+   * Asks the cloud once per camera how it connects. One VION cannot play is not offered and is named once in the log;
    * one that could not be asked is offered as before and asked again at the next reading of the list.
    */
   private async checkCameras(cameras: XiaomiCamera[]): Promise<void> {
@@ -555,7 +555,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
             type: 'string',
             key: SIGNED_IN_FIELD,
             title: 'Signed in to Mi Home',
-            description: 'Cameras found are listed below. To add one, open Cameras in ViON and click it under Discovered.',
+            description: 'Cameras found are listed below. To add one, open Cameras in VION and click it under Discovered.',
             format: 'textarea',
             readonly: true,
             defaultValue: names.join('\n'),
@@ -563,7 +563,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
         : {
             type: 'string',
             key: SIGNED_IN_FIELD,
-            title: 'Signed in to Mi Home, no camera ViON can play',
+            title: 'Signed in to Mi Home, no camera VION can play',
             description: 'The cameras of this Mi account are listed below with the reason they cannot be added.',
             readonly: true,
             defaultValue: '',
@@ -573,8 +573,8 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
       schema.push({
         type: 'string',
         key: 'leftOut',
-        title: 'Cameras ViON cannot play',
-        description: 'Xiaomi connects these cameras over a protocol ViON does not support yet. They are not offered for adding.',
+        title: 'Cameras VION cannot play',
+        description: 'Xiaomi connects these cameras over a protocol VION does not support yet. They are not offered for adding.',
         format: 'textarea',
         readonly: true,
         defaultValue: leftOut.sort(byName).join('\n'),

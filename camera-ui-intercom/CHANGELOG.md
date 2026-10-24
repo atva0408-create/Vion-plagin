@@ -1,6 +1,6 @@
 ## [0.2.0]
 
-- Rights per camera: a user limited to some cameras (Settings → Users) uses the panels of those cameras — their calls, doors, visits, guest codes and instructions — and nothing of the others; answering a call or speaking to a visitor needs the right to talk. Before, the server shut such a user out of the whole intercom, their own cameras' panels too. Every notice about a panel carries its camera, so the server tells only those who see it. Needs ViON 2.6.15
+- Rights per camera: a user limited to some cameras (Settings → Users) uses the panels of those cameras — their calls, doors, visits, guest codes and instructions — and nothing of the others; answering a call or speaking to a visitor needs the right to talk. Before, the server shut such a user out of the whole intercom, their own cameras' panels too. Every notice about a panel carries its camera, so the server tells only those who see it. Needs VION 2.6.15
 
 ## [0.1.0]
 

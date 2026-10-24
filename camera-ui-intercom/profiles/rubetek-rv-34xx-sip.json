@@ -19,8 +19,8 @@
   "features": { "keypad": true },
   "setup": ["setup.camera.onvif", "setup.rubetek.sipDirect", "setup.sip.localOnly", "setup.rubetek.relayHttp", "setup.changePassword"],
   "quirks": [
-    "Path B: the panel calls ViON over SIP directly by IP; the agent speaks and listens in that call (G.711). Use it when the panel tells of a ring only over SIP, or takes no sound over RTSP",
-    "A person answering in ViON sees and hears the panel by its RTSP; their own voice reaches the panel only where its camera has a talk channel, else they answer in text or hand the call to the agent",
+    "Path B: the panel calls VION over SIP directly by IP; the agent speaks and listens in that call (G.711). Use it when the panel tells of a ring only over SIP, or takes no sound over RTSP",
+    "A person answering in VION sees and hears the panel by its RTSP; their own voice reaches the panel only where its camera has a talk channel, else they answer in text or hand the call to the agent",
     "The relays open by the HTTP command; opening by a DTMF code in the call works too, but the code is set in the panel and checked on a panel first",
     "The menu names differ between firmware versions (Account, Phone, Intercom): the step-0 table of the report says what was found on the owner's panel"
   ]

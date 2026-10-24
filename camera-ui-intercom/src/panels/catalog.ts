@@ -1,5 +1,5 @@
 /**
- * The models of panels the owner can choose: the profiles shipped with the plugin, and newer ones fetched from the ViON
+ * The models of panels the owner can choose: the profiles shipped with the plugin, and newer ones fetched from the VION
  * models mirror (`<VION_MODELS_HOST>/v1/intercom/profiles/catalog.json`), each checked by size and sha256, then by the
  * profile check, before it is kept. A profile is data only: fetching one never adds code. One that needs an engine
  * this version of the plugin does not have is listed as "needs a newer plugin" and cannot be chosen.

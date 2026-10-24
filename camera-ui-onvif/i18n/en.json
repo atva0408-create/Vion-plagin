@@ -1,5 +1,5 @@
 {
-  "Интеграция ONVIF для ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.": "Connects ONVIF cameras to ViON: camera discovery, PTZ control, and motion, object, sound and face events reported by the camera.",
+  "Интеграция ONVIF для VION: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.": "Connects ONVIF cameras to VION: camera discovery, PTZ control, and motion, object, sound and face events reported by the camera.",
   "Username": "Username",
   "Username for the camera's ONVIF account.": "Username for the camera's ONVIF account.",
   "Password": "Password",

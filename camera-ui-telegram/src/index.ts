@@ -9,7 +9,7 @@ import type { TgUpdate } from './bot.js';
 import type { LinkedChat, PendingLink } from './links.js';
 import type { StorageValues } from './types.js';
 
-// ViON notifications in Telegram chats, through the owner's own bot. A ViON user links a chat with a link of a
+// VION notifications in Telegram chats, through the owner's own bot. A VION user links a chat with a link of a
 // one-time code (Settings → Notifications → «Подключить Telegram»): the chat that opens the bot with it gets that
 // user's notifications, as their phone would, with quiet hours, mute and the cameras they may see. The bot reads its
 // messages by long polling: nothing has to reach the server from outside.
@@ -21,22 +21,22 @@ const RETRY_MAX_MS = 60_000;
 const RATE_WAIT_MAX_S = 30;
 
 // the bot does not know who opens it: its own words are said in both languages of the home
-const LINKED = 'Готово: уведомления ViON будут приходить в этот чат. /stop — отключить.\nDone: ViON notifications will come to this chat. /stop to turn them off.';
+const LINKED = 'Готово: уведомления VION будут приходить в этот чат. /stop — отключить.\nDone: VION notifications will come to this chat. /stop to turn them off.';
 const UNKNOWN =
-  'Ссылка устарела или неверна. Получите новую в ViON: Настройки → Уведомления → «Подключить Telegram».\n' +
-  'The link is old or wrong. Get a new one in ViON: Settings → Notifications → Connect Telegram.';
+  'Ссылка устарела или неверна. Получите новую в VION: Настройки → Уведомления → «Подключить Telegram».\n' +
+  'The link is old or wrong. Get a new one in VION: Settings → Notifications → Connect Telegram.';
 const HELLO =
-  'Это бот уведомлений ViON. Подключите чат в ViON: Настройки → Уведомления → «Подключить Telegram».\n' +
-  'This is the ViON notification bot. Connect the chat in ViON: Settings → Notifications → Connect Telegram.';
-const STOPPED = 'Уведомления ViON в этот чат отключены.\nViON notifications to this chat are off.';
-// shown as is under «Подключить Telegram» in ViON, whose language the plugin does not know
+  'Это бот уведомлений VION. Подключите чат в VION: Настройки → Уведомления → «Подключить Telegram».\n' +
+  'This is the VION notification bot. Connect the chat in VION: Settings → Notifications → Connect Telegram.';
+const STOPPED = 'Уведомления VION в этот чат отключены.\nVION notifications to this chat are off.';
+// shown as is under «Подключить Telegram» in VION, whose language the plugin does not know
 const NO_BOT =
   'Бот Telegram ещё не подключён: введите его токен в настройках плагина Telegram.\n' + 'The Telegram bot is not connected yet: enter its token in the plugin settings.';
-const OPEN = 'Открыть в ViON';
+const OPEN = 'Открыть в VION';
 /** Why a notification went to no chat: no token yet, or Telegram did not answer the bot's sign-in (getMe) so far. */
 const NOT_CONNECTED = 'the bot of the server is not connected: no token in the settings of the Telegram plugin, or Telegram is not reachable';
 
-/** Whether a chat got a notification, and why not: ViON keeps it and sends the notification another way. */
+/** Whether a chat got a notification, and why not: VION keeps it and sends the notification another way. */
 interface ChatDelivery {
   deviceId: string;
   ok: boolean;
@@ -44,7 +44,7 @@ interface ChatDelivery {
 }
 
 /**
- * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; VION reads an answer per
  * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
  */
 function answered(deliveries: ChatDelivery[]): void {
@@ -71,7 +71,7 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
         key: 'botToken',
         title: 'Bot token',
         description:
-          'Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. ' + 'Each ViON user then connects their chat under Settings, Notifications.',
+          'Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. ' + 'Each VION user then connects their chat under Settings, Notifications.',
         format: 'password',
         required: false,
         store: true,
@@ -89,8 +89,8 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
       {
         type: 'string',
         key: 'linkBase',
-        title: 'ViON address for the button',
-        description: 'For example https://vion.example.com. A message then has a button that opens the moment in ViON; empty: no button.',
+        title: 'VION address for the button',
+        description: 'For example https://vion.example.com. A message then has a button that opens the moment in VION; empty: no button.',
         required: false,
         store: true,
       },
@@ -175,7 +175,7 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
         }
         const problem =
           error instanceof BotApiError && error.status === 409
-            ? 'another program reads the messages of this bot (another ViON with the same token?)'
+            ? 'another program reads the messages of this bot (another VION with the same token?)'
             : (error as Error).message;
         // said once while it stays the same: a blocked network would say it every minute
         if (problem !== lastProblem) this.logger.warn(`Telegram: messages are not read, trying again: ${problem}`);
@@ -214,8 +214,8 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
   }
 
   public async getDevices(ownerUserIds: string[]): Promise<NotifierDevice[]> {
-    // nobody named is the list of an admin in ViON (the notification settings): every chat, each with its owner. A
-    // notification is never sent so: ViON names the people it tells
+    // nobody named is the list of an admin in VION (the notification settings): every chat, each with its owner. A
+    // notification is never sent so: VION names the people it tells
     if (!ownerUserIds.length) return this.chats.map(deviceOf);
     const owners = new Set(ownerUserIds);
     return this.chats.filter((chat) => owners.has(chat.ownerUserId)).map(deviceOf);
@@ -227,7 +227,7 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
   }
 
   /**
-   * A link for one ViON user: the chat that opens the bot with it is theirs. The device it answers is not one yet (not
+   * A link for one VION user: the chat that opens the bot with it is theirs. The device it answers is not one yet (not
    * active): it carries the link to show; the chat becomes a device once it opens the bot.
    */
   public async registerDevice(ownerUserId: string): Promise<NotifierDevice> {
@@ -265,8 +265,8 @@ export default class Telegram extends ServicePlugin<StorageValues> implements No
   /**
    * To each chat named: the picture with the words under it, or the words alone. A chat that blocked the bot is
    * switched off (it would refuse every time); a «too many requests» is waited out once. What became of it in each
-   * chat goes back to ViON, which keeps it and sends the notification another way when no chat got it: without a bot
-   * nothing was sent and ViON counted it delivered (the audit of 2026-10-17).
+   * chat goes back to VION, which keeps it and sends the notification another way when no chat got it: without a bot
+   * nothing was sent and VION counted it delivered (the audit of 2026-10-17).
    */
   public async sendNotification(deviceIds: string[], notification: Notification): Promise<void> {
     const ids = [...new Set(deviceIds)];

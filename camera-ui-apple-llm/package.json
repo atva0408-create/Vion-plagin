@@ -2,8 +2,8 @@
   "displayName": "Apple LLM",
   "name": "@vionvision/camera-ui-apple-llm",
   "version": "1.0.4",
-  "description": "Встроенная модель Apple как модель ассистента ViON, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Встроенная модель Apple как модель ассистента VION, с инструментами и изображениями. Работает прямо на Mac, без ключей и облака.",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

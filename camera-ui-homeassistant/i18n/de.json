@@ -1,13 +1,13 @@
 {
-  "Импортирует датчики Home Assistant в ViON: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками ViON, которые могут запускать обнаружение на камерах.": "Importiert Sensoren aus Home Assistant in ViON: Bewegung, Anwesenheit, Kontakte, Türklingeln, Rauch, Wasserlecks und weitere werden zu ViON-Sensoren, die die Erkennung an Kameras auslösen können.",
+  "Импортирует датчики Home Assistant в VION: движение, присутствие, контакты, звонки, дым, протечки и другие становятся датчиками VION, которые могут запускать обнаружение на камерах.": "Importiert Sensoren aus Home Assistant in VION: Bewegung, Anwesenheit, Kontakte, Türklingeln, Rauch, Wasserlecks und weitere werden zu VION-Sensoren, die die Erkennung an Kameras auslösen können.",
   "Debug": "Debug",
   "Enable debug mode": "Debug-Modus aktivieren",
   "Home Assistant URL": "URL von Home Assistant",
-  "For example http://homeassistant.local:8123. Leave empty when ViON runs as Home Assistant add-on.": "Zum Beispiel http://homeassistant.local:8123. Leer lassen, wenn ViON als Home-Assistant-Add-on läuft.",
+  "For example http://homeassistant.local:8123. Leave empty when VION runs as Home Assistant add-on.": "Zum Beispiel http://homeassistant.local:8123. Leer lassen, wenn VION als Home-Assistant-Add-on läuft.",
   "Access Token": "Zugriffstoken",
-  "Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as Home Assistant add-on.": "Langlebiges Zugriffstoken aus Ihrem Home-Assistant-Profil. Leer lassen, wenn ViON als Home-Assistant-Add-on läuft.",
+  "Long-lived access token from your Home Assistant profile. Leave empty when VION runs as Home Assistant add-on.": "Langlebiges Zugriffstoken aus Ihrem Home-Assistant-Profil. Leer lassen, wenn VION als Home-Assistant-Add-on läuft.",
   "Excluded Entities": "Ausgeschlossene Entitäten",
   "Comma-separated entity ids that should not be offered for adoption.": "Kommagetrennte Entitäts-IDs, die nicht zur Übernahme angeboten werden sollen.",
   "Assistant Domains": "Domänen für den Assistenten",
-  "The ViON assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat.": "Der ViON-Assistent kann Dienste von Szenen, Skripten, Automationen, Lichtern, Schaltern, Abdeckungen, Klima, Mediaplayern und Benachrichtigungen aufrufen. Weitere Domänen, die er aufrufen darf, durch Komma getrennt, zum Beispiel fan, vacuum. Jeder Aufruf wird im Chat bestätigt."
+  "The VION assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat.": "Der VION-Assistent kann Dienste von Szenen, Skripten, Automationen, Lichtern, Schaltern, Abdeckungen, Klima, Mediaplayern und Benachrichtigungen aufrufen. Weitere Domänen, die er aufrufen darf, durch Komma getrennt, zum Beispiel fan, vacuum. Jeder Aufruf wird im Chat bestätigt."
 }

@@ -1,4 +1,4 @@
-"""A classifier version given out no more is unloaded (ViON audit 2026-10-23, ML3).
+"""A classifier version given out no more is unloaded (VION audit 2026-10-23, ML3).
 
 Every new version of a question (a module's next training) came with a new name: the old one stayed loaded in
 attribute_backends for the life of the process, one more model in memory with every version. The detectors given out no

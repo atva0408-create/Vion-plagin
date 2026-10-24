@@ -38,14 +38,14 @@ jobs:
       PLUGIN: ${{ needs.resolve.outputs.plugin }}
       VERSION: ${{ needs.resolve.outputs.version }}
     steps:
-      # The ViON registry is a self-hosted Verdaccio: it takes a token, there is no OIDC exchange. Without the
+      # The VION registry is a self-hosted Verdaccio: it takes a token, there is no OIDC exchange. Without the
       # token cui publish fails with ENEEDAUTH only after the whole build, so the job stops here instead.
       - name: Check the publish token
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::The NPM_TOKEN secret is empty: set it (repository or 'release' environment secret) to the publish token of the ViON registry, nothing was built or published"
+            echo "::error::The NPM_TOKEN secret is empty: set it (repository or 'release' environment secret) to the publish token of the VION registry, nothing was built or published"
             exit 1
           fi
 
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          # ViON packages are published to the self-hosted registry (deploy/npm-registry in VIONN)
+          # VION packages are published to the self-hosted registry (deploy/npm-registry in VIONN)
           registry-url: "${{ vars.NPM_REGISTRY_URL || 'https://npm.vionvision.tech' }}"
 
       - name: Setup Python
@@ -113,10 +113,10 @@ jobs:
         working-directory: ${{ needs.resolve.outputs.plugin }}
         run: npx cui bundle
 
-      - name: Publish to the ViON registry
+      - name: Publish to the VION registry
         working-directory: ${{ needs.resolve.outputs.plugin }}
         env:
-          # publish token for the ViON registry (Verdaccio user with publish rights)
+          # publish token for the VION registry (Verdaccio user with publish rights)
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@11.18.0

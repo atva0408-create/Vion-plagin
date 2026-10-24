@@ -1,8 +1,8 @@
 /**
- * The intercom plugin: panels ring, the household answers in ViON or on the phone, the door agent answers when nobody
+ * The intercom plugin: panels ring, the household answers in VION or on the phone, the door agent answers when nobody
  * does, doors open by a person or a rule, and every visit goes to the archive.
  *
- * This file joins the intercom (intercom.ts) to ViON: the panels' cameras, the plugin's own doorbell and locks of a
+ * This file joins the intercom (intercom.ts) to VION: the panels' cameras, the plugin's own doorbell and locks of a
  * driver panel (RUBITEK, Dahua, Hikvision: they are seen like any doorbell by automations, the recorder, HomeKit and
  * the floor plan), doorbells, locks, relays and door contacts of other plugins, faces and plates of the cameras' events,
  * the recorder, VOICE, notifications and the assistant. The server calls the public methods below with the user of the
@@ -394,7 +394,7 @@ export default class IntercomPlugin extends BasePlugin<PluginValues> implements 
     this.reportOffline();
   }
 
-  /** The users of ViON, from servers that give them to plugins: a call to "all" ends when every one declined. */
+  /** The users of VION, from servers that give them to plugins: a call to "all" ends when every one declined. */
   private async refreshUsers(): Promise<void> {
     this.usersAt = Date.now();
     const core = this.api.coreManager as unknown as { getUserIds?: () => Promise<string[]> };

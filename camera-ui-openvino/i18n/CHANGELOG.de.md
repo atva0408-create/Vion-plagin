@@ -9,7 +9,7 @@
 
 ## [1.7.4]
 
-- Der Umriss eines auf einem Bild markierten Gegenstands für die Frage von ViON NVR 0.23.0 «wann ist er verschwunden, wer hat ihn weggetragen» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB vom Modellspiegel) umreißt, was ein Rahmen oder ein Punkt auf einem Bild zeigt. Es lädt mit der ersten Frage und verlässt den Speicher nach fünf Minuten ohne Frage. Immer auf dem Prozessor, unabhängig vom Gerät des Plugins: ein Viertel der Kerne (mindestens zwei), ein Bild nach dem anderen, 3-5 s pro Bild auf dem Prüfstand, etwa 0,6 GB solange geladen. Während es lädt, sagt die Antwort das; ein unlesbares Bild bekommt keinen Umriss, die anderen werden umrissen. Nie im Hintergrund
+- Der Umriss eines auf einem Bild markierten Gegenstands für die Frage von VION NVR 0.23.0 «wann ist er verschwunden, wer hat ihn weggetragen» (`outlineMarked`): SAM 2.1 Hiera tiny (155 MB vom Modellspiegel) umreißt, was ein Rahmen oder ein Punkt auf einem Bild zeigt. Es lädt mit der ersten Frage und verlässt den Speicher nach fünf Minuten ohne Frage. Immer auf dem Prozessor, unabhängig vom Gerät des Plugins: ein Viertel der Kerne (mindestens zwei), ein Bild nach dem anderen, 3-5 s pro Bild auf dem Prüfstand, etwa 0,6 GB solange geladen. Während es lädt, sagt die Antwort das; ein unlesbares Bild bekommt keinen Umriss, die anderen werden umrissen. Nie im Hintergrund
 
 ## [1.7.3]
 
@@ -21,37 +21,37 @@
 
 ## [1.7.1]
 
-- Suche im Bild: ein Bild, das sich nicht lesen lässt (eine bei voller Platte oder beim Stopp abgeschnittene Karte, eine leere Datei), hat keine Rahmen, die anderen werden angesehen; es ließ den ganzen Aufruf scheitern, und ViON NVR beendete die Suche in allen gefundenen Ereignissen
+- Suche im Bild: ein Bild, das sich nicht lesen lässt (eine bei voller Platte oder beim Stopp abgeschnittene Karte, eine leere Datei), hat keine Rahmen, die anderen werden angesehen; es ließ den ganzen Aufruf scheitern, und VION NVR beendete die Suche in allen gefundenen Ereignissen
 
 ## [1.7.0]
 
-- Die Suche nach Beschreibung versteht die Sprache der Plattform: CLIP ViT-B/32, das Standardmodell, kennt nur Englisch, und eine russische Anfrage fand nichts. Eine Anfrage wird von opus-mt (≈110 MB, 0,2–0,3 s pro Anfrage) ins Englische übersetzt: aus dem Russischen immer, wenn sie Kyrillisch enthält, gleich welche Sprache die Plattform spricht, sonst aus der Sprache der Plattform, von der die Suche kommt (Deutsch); das mehrsprachige SigLIP erhält die Anfrage unverändert. Der russische Übersetzer wird bei englischem CLIP beim Start geladen, ein anderer beim ersten Bedarf (solange er lädt, wird nach dem Eingegebenen gesucht, höchstens 15 s gewartet). Für die Sprache der Plattform wird ViON NVR 0.19.0 benötigt
-- Suche im Bild: Die Aufnahmen von ViON fragen, wo im Bild jedes per Beschreibung gefundenen Ereignisses das Gesuchte ist („красная сумка“, „человек с велосипедом“), und zeigen den Fund. Die Anfrage wird ebenso ins Englische übersetzt, OWL-ViT B/32 rahmt das Ding ein, ein Fund kommt mit seinem Ausschnitt. Das Modell (≈600 MB) wird bei der ersten Anfrage im Hintergrund heruntergeladen und geladen — währenddessen sagt die Antwort, dass es lädt, ein fehlgeschlagenes Laden wird der nächsten Anfrage gemeldet — und nach fünf Minuten ohne Suche aus dem Speicher entfernt; ein Bild dauert auf einem Prozessor 1–4 s. Benötigt ViON NVR 0.19.0
+- Die Suche nach Beschreibung versteht die Sprache der Plattform: CLIP ViT-B/32, das Standardmodell, kennt nur Englisch, und eine russische Anfrage fand nichts. Eine Anfrage wird von opus-mt (≈110 MB, 0,2–0,3 s pro Anfrage) ins Englische übersetzt: aus dem Russischen immer, wenn sie Kyrillisch enthält, gleich welche Sprache die Plattform spricht, sonst aus der Sprache der Plattform, von der die Suche kommt (Deutsch); das mehrsprachige SigLIP erhält die Anfrage unverändert. Der russische Übersetzer wird bei englischem CLIP beim Start geladen, ein anderer beim ersten Bedarf (solange er lädt, wird nach dem Eingegebenen gesucht, höchstens 15 s gewartet). Für die Sprache der Plattform wird VION NVR 0.19.0 benötigt
+- Suche im Bild: Die Aufnahmen von VION fragen, wo im Bild jedes per Beschreibung gefundenen Ereignisses das Gesuchte ist („красная сумка“, „человек с велосипедом“), und zeigen den Fund. Die Anfrage wird ebenso ins Englische übersetzt, OWL-ViT B/32 rahmt das Ding ein, ein Fund kommt mit seinem Ausschnitt. Das Modell (≈600 MB) wird bei der ersten Anfrage im Hintergrund heruntergeladen und geladen — währenddessen sagt die Antwort, dass es lädt, ein fehlgeschlagenes Laden wird der nächsten Anfrage gemeldet — und nach fünf Minuten ohne Suche aus dem Speicher entfernt; ein Bild dauert auf einem Prozessor 1–4 s. Benötigt VION NVR 0.19.0
 
 ## [1.6.0]
 
-- Körperhaltung: Mit „Поза людей“ meldet der Merkmalssensor („ViON: признаки“) für jede Person im Bild, ob sie steht, sitzt oder liegt, und das Ereignis erhält es als Merkmal „поза“ („поза: лежит“). Einschalten in ViON: Erweiterungen → Module → „Körperhaltung“ oder in den Einstellungen des Merkmalssensors der Kamera. Das Modell (RTMPose-t) wird mit der ersten Person geladen, die eine solche Kamera sieht, nicht beim Start. Ist zu wenig von einer Person zu sehen oder ist sie vorgebeugt, wird keine Haltung genannt.
-- Ein Haltungsmodell, das lädt, aber an den Ausschnitten scheitert, wird entladen und ViON als nicht funktionierend mit Grund gemeldet, nach zehn Minuten erneut geladen; es sieht nicht mehr aus, als würde es analysieren
-- Benötigt ViON 2.4.2 oder neuer: ältere ViON-Versionen behielten pro Person eine Antwort je Bild und Aufenthalt, die Haltung hätte die Antworten der trainierten Fragen verdrängt und einen Haltungswechsel verloren
-- Über eine Person, die der Bildrand abschneidet (ViON 2.4.2 meldet das), wird nur «steht» oder nichts gesagt, nie «sitzt» oder «liegt»: die verdeckten Beine erfindet das Modell; auf dem Prüfstand betrafen 5 der 6 falschen Antworten eines Morgens solche Personen
+- Körperhaltung: Mit „Поза людей“ meldet der Merkmalssensor („VION: признаки“) für jede Person im Bild, ob sie steht, sitzt oder liegt, und das Ereignis erhält es als Merkmal „поза“ („поза: лежит“). Einschalten in VION: Erweiterungen → Module → „Körperhaltung“ oder in den Einstellungen des Merkmalssensors der Kamera. Das Modell (RTMPose-t) wird mit der ersten Person geladen, die eine solche Kamera sieht, nicht beim Start. Ist zu wenig von einer Person zu sehen oder ist sie vorgebeugt, wird keine Haltung genannt.
+- Ein Haltungsmodell, das lädt, aber an den Ausschnitten scheitert, wird entladen und VION als nicht funktionierend mit Grund gemeldet, nach zehn Minuten erneut geladen; es sieht nicht mehr aus, als würde es analysieren
+- Benötigt VION 2.4.2 oder neuer: ältere VION-Versionen behielten pro Person eine Antwort je Bild und Aufenthalt, die Haltung hätte die Antworten der trainierten Fragen verdrängt und einen Haltungswechsel verloren
+- Über eine Person, die der Bildrand abschneidet (VION 2.4.2 meldet das), wird nur «steht» oder nichts gesagt, nie «sitzt» oder «liegt»: die verdeckten Beine erfindet das Modell; auf dem Prüfstand betrafen 5 der 6 falschen Antworten eines Morgens solche Personen
 
 ## [1.5.2]
 
-- Das Plugin meldet ViON, warum das Modell eines Sensors noch nicht geladen ist: Es wartet auf den ersten Einsatz (Personen-Wiedererkennung auf die erste Person im Bild) oder es wurde nicht geladen, mit Grund. ViON zeigt das Erste als „Verbunden“ und nur das Zweite als „Funktioniert nicht“.
+- Das Plugin meldet VION, warum das Modell eines Sensors noch nicht geladen ist: Es wartet auf den ersten Einsatz (Personen-Wiedererkennung auf die erste Person im Bild) oder es wurde nicht geladen, mit Grund. VION zeigt das Erste als „Verbunden“ und nur das Zweite als „Funktioniert nicht“.
 - Eine Modulversion, zu der zurückgekehrt wurde, oder eine korrigierte wird sofort geladen, auch für eine Kamera, die auf das Standardmodell ausgewichen ist, nicht erst mit dem nächsten Bild mit Bewegung.
 
 ## [1.5.1]
 
 - Bei einem fehlgeschlagenen Modul-Update bleibt der funktionierende Detektor aktiv. Parallele Updates erzeugen einen Ersatz, überholte Ladevorgänge werden verworfen und die Eingangsgröße der Kamera wird nach dem Wechsel aktualisiert.
 - Ein nach dem Stoppen oder Gerätewechsel abgeschlossener Ladevorgang aktiviert die alte Sitzung nicht erneut.
-- Das Plugin meldet ViON, welche Version eines Moduls es geladen hat und welche nicht: Die Modulkarte nennt eine Version, die nicht geladen wurde, und ein Update behält die Version, die funktioniert hat, für den Weg zurück. Eine Kamera, deren Modulversion nach einem Neustart nicht lädt, arbeitet mit dem Standardmodell, bis das Modul geladen ist. Ein Update oder eine Rückkehr des Moduls wird sofort geladen, ohne die zehnminütige Pause nach einem fehlgeschlagenen Laden.
+- Das Plugin meldet VION, welche Version eines Moduls es geladen hat und welche nicht: Die Modulkarte nennt eine Version, die nicht geladen wurde, und ein Update behält die Version, die funktioniert hat, für den Weg zurück. Eine Kamera, deren Modulversion nach einem Neustart nicht lädt, arbeitet mit dem Standardmodell, bis das Modul geladen ist. Ein Update oder eine Rückkehr des Moduls wird sofort geladen, ohne die zehnminütige Pause nach einem fehlgeschlagenen Laden.
 
 ## [1.5.0]
 
-- Ähnlich aussehende Personen lassen sich über Kameras hinweg finden, zusammen mit ViON NVR 0.12.0: Wählen Sie dieses Plugin in den Einstellungen der Kamera → Plugins → Sensor-Typen → „Personen-Wiedererkennung“. Es merkt sich, wie Kleidung und Statur einer Person aussehen, nicht wer sie ist. Das Modell lädt mit der ersten Person, die eine solche Kamera sieht, nicht beim Start
+- Ähnlich aussehende Personen lassen sich über Kameras hinweg finden, zusammen mit VION NVR 0.12.0: Wählen Sie dieses Plugin in den Einstellungen der Kamera → Plugins → Sensor-Typen → „Personen-Wiedererkennung“. Es merkt sich, wie Kleidung und Statur einer Person aussehen, nicht wer sie ist. Das Modell lädt mit der ersten Person, die eine solche Kamera sieht, nicht beim Start
 - Die Suche nach Bild findet zuerst die größte Person auf dem Bild und schneidet sie aus, so wie der Server die Personen aus den Bildern schneidet
 - Segmentierung: Das Plugin umreißt Personen, Fahrzeuge und Tiere, auf seiner Seite und für den Server; auch dieses Modell lädt erst, wenn es zum ersten Mal gebraucht wird
-- Benötigt ViON 2.4.0 oder neuer: Beim Hinzufügen des Plugins zu einer Kamera bleibt die Personen-Wiedererkennung dort ausgeschaltet
+- Benötigt VION 2.4.0 oder neuer: Beim Hinzufügen des Plugins zu einer Kamera bleibt die Personen-Wiedererkennung dort ausgeschaltet
 
 ## [1.4.6]
 
@@ -59,11 +59,11 @@
 
 ## [1.4.5]
 
-- Trainingsmodule aus der ViON Cloud: Der Detektor eines Objektmoduls (zum Beispiel „Fahrrad“) läuft neben dem Detektor der Kamera auf den Kameras, für die das Modul in ViON eingeschaltet ist, und die Klassifikatoren der Fragemodule laufen nur auf ihren Kameras; eine nicht mehr ausgelieferte Modulversion wird entladen
+- Trainingsmodule aus der VION Cloud: Der Detektor eines Objektmoduls (zum Beispiel „Fahrrad“) läuft neben dem Detektor der Kamera auf den Kameras, für die das Modul in VION eingeschaltet ist, und die Klassifikatoren der Fragemodule laufen nur auf ihren Kameras; eine nicht mehr ausgelieferte Modulversion wird entladen
 
 ## [1.4.4]
 
-- Detektormodule aus dem ViON-Store: ein im Store unter „Module“ installiertes Modul erscheint unter den Objektmodellen dieses Plugins und wird wie diese verwendet; ein aktualisiertes Modul wird neu geladen
+- Detektormodule aus dem VION-Store: ein im Store unter „Module“ installiertes Modul erscheint unter den Objektmodellen dieses Plugins und wird wie diese verwendet; ein aktualisiertes Modul wird neu geladen
 
 ## [1.4.3]
 
@@ -75,12 +75,12 @@
 
 ## [1.4.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.4.0]
 
-- **Von ViON trainierte Modelle.** Hat ViON Cloud einen Detektor veröffentlicht, der mit den von Ihnen geprüften Bildern nachtrainiert wurde, wechselt die Einstellung „Standard“ des Objektmodells von selbst darauf, ohne Neustart. Eigene Kategorien aus dem Editor „Training“ (zum Beispiel „Fahrrad“) kommen mit dem Modell. Lässt sich ein Modell nicht laden, bleibt die Kamera nicht ohne Objekterkennung: Es arbeitet das Standardmodell.
-- **Objektmerkmale.** Ein neuer Klassifikator „ViON: признаки“ (Merkmale): Trainierte Klassifikatoren beantworten Fragen wie „Person · mit Tüte“ (ja / nein); die Antwort wird im Ereignis als Attribut gespeichert. ViON schaltet ihn auf den Kameras, auf denen dieses Plugin Objekte erkennt, von selbst ein.
+- **Von VION trainierte Modelle.** Hat VION Cloud einen Detektor veröffentlicht, der mit den von Ihnen geprüften Bildern nachtrainiert wurde, wechselt die Einstellung „Standard“ des Objektmodells von selbst darauf, ohne Neustart. Eigene Kategorien aus dem Editor „Training“ (zum Beispiel „Fahrrad“) kommen mit dem Modell. Lässt sich ein Modell nicht laden, bleibt die Kamera nicht ohne Objekterkennung: Es arbeitet das Standardmodell.
+- **Objektmerkmale.** Ein neuer Klassifikator „VION: признаки“ (Merkmale): Trainierte Klassifikatoren beantworten Fragen wie „Person · mit Tüte“ (ja / nein); die Antwort wird im Ereignis als Attribut gespeichert. VION schaltet ihn auf den Kameras, auf denen dieses Plugin Objekte erkennt, von selbst ein.
 
 ## [1.3.0]
 
@@ -89,14 +89,14 @@
 
 ## [1.2.16]
 
-- Erfordert ViON 2.2.5 oder neuer
+- Erfordert VION 2.2.5 oder neuer
 - **Wählen Sie nach dem Update dieses Plugin für die Gesichtswiedererkennung jeder Kamera aus** (Kameraeinstellungen, „Plugins“, „Erkennungen“). Bis dahin werden Gesichter erkannt, aber nicht benannt. Seine neuen Gesichtsmodelle lädt das Plugin beim ersten Start herunter.
-- **Die Gesichtswiedererkennung ist jetzt ein eigener Sensor und richtet das Gesicht vor dem Wiedererkennen aus.** Sie erkennt deutlich mehr Personen wieder, und ein Gesicht von der Seite oder steil von oben erhält keinen Namen statt eines falschen. Das Wiedererkennungsmodell wird einmal für das ganze Plugin festgelegt; die gespeicherten Bilder der Personen verarbeitet ViON von selbst neu.
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- **Die Gesichtswiedererkennung ist jetzt ein eigener Sensor und richtet das Gesicht vor dem Wiedererkennen aus.** Sie erkennt deutlich mehr Personen wieder, und ein Gesicht von der Seite oder steil von oben erhält keinen Namen statt eines falschen. Das Wiedererkennungsmodell wird einmal für das ganze Plugin festgelegt; die gespeicherten Bilder der Personen verarbeitet VION von selbst neu.
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.15]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.14]
 
@@ -114,11 +114,11 @@
 ## [1.2.10]
 
 - Die Konfidenzschwellen wurden aus den Plugin-Einstellungen entfernt. Objekt-, Gesichts- und Kennzeichenerkennung verwenden jetzt die Werte aus den Erkennungseinstellungen der Kamera; sie werden also an einer Stelle festgelegt, und eine Änderung wirkt sofort.
-- Das Plugin meldet, welches Modell geladen ist und auf welchem Gerät es läuft, sodass ViON dies in den Metriken der Kamera anzeigen kann
+- Das Plugin meldet, welches Modell geladen ist und auf welchem Gerät es läuft, sodass VION dies in den Metriken der Kamera anzeigen kann
 
 ## [1.2.8]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.7]
 
@@ -158,8 +158,8 @@
 - Modelle werden jetzt einmal vorbereitet statt bei jedem Start. Die vorbereiteten Modelle bleiben auf dem Datenträger gespeichert, sodass ein Neustart des Plugins die aufwendige Vorbereitung für GPU und NPU überspringt, die schwächere Systeme ausbremsen konnte. Der erste Start nach einem Update oder Modellwechsel dauert weiterhin länger.
 - Das Feld „Aktive Hardware“ zeigt das Gerät, auf dem die Erkennung tatsächlich läuft. Mit AUTO blieb es bisher bei der vorübergehenden CPU-Stufe stehen, die angezeigt wird, solange das eigentliche Gerät im Hintergrund noch vorbereitet wird.
 - Behoben: Die Schaltfläche „Modelle neu herunterladen“ tat nichts; ein Klick führte nur zu einem Fehler im Protokoll
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.7]
 
@@ -173,7 +173,7 @@
 ## [1.1.5]
 
 - Heruntergeladene Modelle werden nicht mehr in Sicherungen aufgenommen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.4]
 
@@ -181,7 +181,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -191,15 +191,15 @@
 
 - Ein Modell, das sich nicht laden lässt, wird jetzt im Protokoll gemeldet statt stillschweigend übergangen und bei der nächsten Anfrage erneut geladen
 - Schlägt das Laden eines einzelnen Modells fehl, werden die übrigen trotzdem geladen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 

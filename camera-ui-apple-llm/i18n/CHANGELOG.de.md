@@ -8,13 +8,13 @@
 
 ## [1.0.2]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.1]
 
 - **Das Modell kann Werkzeuge nutzen.** Der Assistent greift darüber auf Ereignisse, Kameras und Sensoren zu, die Antwort erscheint Wort für Wort, und eine abgebrochene Frage stoppt das Modell sofort
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.0]
 
-- Erste Version. Das integrierte Apple-Modell kann in den Einstellungen des ViON-Assistenten gewählt werden
+- Erste Version. Das integrierte Apple-Modell kann in den Einstellungen des VION-Assistenten gewählt werden

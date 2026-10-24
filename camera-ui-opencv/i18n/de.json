@@ -1,5 +1,5 @@
 {
-  "Детектор движения для ViON на OpenCV.": "Bewegungserkennung für ViON mit drei Erkennungsverfahren zur Auswahl.",
+  "Детектор движения для VION на OpenCV.": "Bewegungserkennung für VION mit drei Erkennungsverfahren zur Auswahl.",
   "Детектор движения": "Bewegungsdetektor",
   "Выберите модель обнаружения движения": "Verfahren der Bewegungserkennung auswählen",
   "Разность кадров": "Bilddifferenz",

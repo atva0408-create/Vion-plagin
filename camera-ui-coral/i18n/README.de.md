@@ -12,7 +12,7 @@ Erkennt Personen, Fahrzeuge und Tiere im Kamerabild und nutzt für die Erkennung
 
 ## Voraussetzungen
 
-- Ein ViON-Server unter Linux (x64 oder ARM64)
+- Ein VION-Server unter Linux (x64 oder ARM64)
 - Ein per USB oder PCIe angeschlossener Coral Edge TPU sowie die auf dem Server installierte Edge-TPU-Systemsoftware (libedgetpu). Ohne beides arbeitet das Plugin trotzdem, dann auf dem Prozessor
 
 ## Einstellungen

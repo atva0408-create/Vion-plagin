@@ -1,5 +1,5 @@
 // The notify of Home Assistant answered nothing about its deliveries: a phone that HA could not reach (the service
-// gone, HA down, a 500) was marked «delivered» by the server, and a route's fallback (Telegram) never fired (ViON audit
+// gone, HA down, a 500) was marked «delivered» by the server, and a route's fallback (Telegram) never fired (VION audit
 // 2026-10-23, F1). The notifier now says what became of each target, as the Telegram and Yandex plugins do.
 // Run: npx tsx spec/notifier.spec.ts
 import assert from 'node:assert/strict';

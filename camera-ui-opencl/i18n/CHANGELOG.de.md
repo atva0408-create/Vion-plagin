@@ -4,29 +4,29 @@
 
 ## [1.2.6]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.5]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.0]
 
 - Im Test der Bewegungserkennung lassen sich „Weichzeichnung“ und „Ausdehnung“ jetzt nur noch auf ungerade Werte einstellen, weil der Detektor nur diese annimmt
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.5]
 
@@ -38,7 +38,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -47,15 +47,15 @@
 ## [1.1.1]
 
 - Das Plugin bleibt reaktionsfähig, während es den Detektor startet und das Bild auswertet
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 

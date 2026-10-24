@@ -1,10 +1,10 @@
 # SMTP
 
-Turns the email a camera sends on motion into a motion event in ViON. The plugin runs a small mail server that the camera sends its alerts to.
+Turns the email a camera sends on motion into a motion event in VION. The plugin runs a small mail server that the camera sends its alerts to.
 
 ## What it does
 
-- Receives the alert emails of your cameras directly on the ViON server, without an outside mail service
+- Receives the alert emails of your cameras directly on the VION server, without an outside mail service
 - Gives each camera a motion sensor with its own email address; a message to that address reports motion
 - Can count only emails that contain a certain text as motion
 - Can end the motion when a message with another text arrives
@@ -13,7 +13,7 @@ Turns the email a camera sends on motion into a motion event in ViON. The plugin
 ## What you need
 
 - A camera that can send an email when it detects motion
-- In the camera's email settings: the ViON server as mail server (SMTP), the port set in this plugin, and as recipient the address entered for that camera in ViON
+- In the camera's email settings: the VION server as mail server (SMTP), the port set in this plugin, and as recipient the address entered for that camera in VION
 
 ## Settings
 

@@ -8,7 +8,7 @@ import type { FirmwareRelease } from './firmware.js';
 
 export const ORIGIN = 'vion-sensor';
 
-/** Which algorithm of the board makes the motion of this sensor in ViON. */
+/** Which algorithm of the board makes the motion of this sensor in VION. */
 export type MotionSource = 'vion' | 'espressif' | 'any';
 
 /** What the settings of one sensor can do; the plugin carries it out on the board. */
@@ -28,7 +28,7 @@ export class VionPresenceSensor extends OccupancySensor {
   }
 }
 
-/** The motion sensor of a board, with the board's own settings in its settings in ViON. */
+/** The motion sensor of a board, with the board's own settings in its settings in VION. */
 export class VionMotionSensor extends MotionSensor {
   private info?: SensorInfo;
   private state?: SensorState;
@@ -166,7 +166,7 @@ export class VionMotionSensor extends MotionSensor {
       type: 'button',
       key: 'reset',
       title: 'Reset the sensor',
-      description: 'The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.',
+      description: 'The board forgets the Wi-Fi and this VION and shows its own network for a new setup.',
       color: 'danger',
       onSet: async () => this.actions.reset(),
     });
@@ -193,10 +193,10 @@ export class VionMotionSensor extends MotionSensor {
         type: 'string',
         key: 'motionSource',
         title: 'Motion from',
-        description: 'Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.',
+        description: 'Which algorithm of the board makes motion in VION. Both run all the time: switch to compare them.',
         defaultValue: this.actions.motionSource(),
         enum: ['vion', 'espressif', 'any'],
-        enumLabels: { vion: 'ViON (signal changes)', espressif: 'Espressif (esp-radar)', any: 'Either of them' },
+        enumLabels: { vion: 'VION (signal changes)', espressif: 'Espressif (esp-radar)', any: 'Either of them' },
         store: true,
         onSet: async (value) => this.actions.setMotionSource(value as MotionSource),
       },

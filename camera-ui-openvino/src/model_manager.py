@@ -51,12 +51,12 @@ class OpenVinoModelManager(BaseModelManager):
 
     def model_files(self, model_name: str) -> Mapping[str, tuple[str, str]]:
         if is_trained(model_name):
-            # an ONNX file downloaded by the ViON server: OpenVINO reads it directly (the "bin" key
+            # an ONNX file downloaded by the VION server: OpenVINO reads it directly (the "bin" key
             # points to the same file so nothing is downloaded)
             path = trained_models.path(model_name)
             return {"xml": ("", path), "bin": ("", path)}
         if is_module(model_name):
-            # a module of the store, downloaded by the ViON server: its IR pair, or its ONNX graph read the same
+            # a module of the store, downloaded by the VION server: its IR pair, or its ONNX graph read the same
             # way as a trained model
             backend, paths = installed_modules.paths(model_name, MODULE_BACKENDS)
             if backend == "openvino":

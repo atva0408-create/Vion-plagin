@@ -2,8 +2,8 @@
   "displayName": "Onvif",
   "name": "@vionvision/camera-ui-onvif",
   "version": "1.3.3",
-  "description": "Интеграция ONVIF для ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Интеграция ONVIF для VION: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.",
+  "author": "VION (https://vionvision.tech)",
   "type": "module",
   "main": "./bundle/dist/index.js",
   "scripts": {

@@ -12,17 +12,17 @@
 
 ## [1.2.12]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.11]
 
-**Erfordert ViON 2.2.5 oder neuer.** Wählen Sie nach dem Update dieses Plugin für jede Kamera als „Gesichtserkennung“ aus: Kameraeinstellungen, „Plugins“, „Erkennungen“. Bis dahin werden Gesichter erkannt, aber nicht benannt. Das Plugin lädt seine neuen Gesichtsmodelle beim ersten Start herunter.
-- **Die Gesichtswiedererkennung ist ein eigener Sensor und richtet das Gesicht vor dem Erkennen aus.** Sie erkennt deutlich mehr Personen, und ein Gesicht, das von der Seite oder steil von oben zu sehen ist, erhält keinen Namen statt eines falschen. Das Wiedererkennungsmodell wird einmal für das Plugin festgelegt, und ViON verarbeitet die gespeicherten Gesichtsbilder von selbst erneut.
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+**Erfordert VION 2.2.5 oder neuer.** Wählen Sie nach dem Update dieses Plugin für jede Kamera als „Gesichtserkennung“ aus: Kameraeinstellungen, „Plugins“, „Erkennungen“. Bis dahin werden Gesichter erkannt, aber nicht benannt. Das Plugin lädt seine neuen Gesichtsmodelle beim ersten Start herunter.
+- **Die Gesichtswiedererkennung ist ein eigener Sensor und richtet das Gesicht vor dem Erkennen aus.** Sie erkennt deutlich mehr Personen, und ein Gesicht, das von der Seite oder steil von oben zu sehen ist, erhält keinen Namen statt eines falschen. Das Wiedererkennungsmodell wird einmal für das Plugin festgelegt, und VION verarbeitet die gespeicherten Gesichtsbilder von selbst erneut.
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.10]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.9]
 
@@ -40,11 +40,11 @@
 ## [1.2.5]
 
 - Die Konfidenzschwellen sind nicht mehr in den Plugin-Einstellungen. Objekt-, Gesichts- und Kennzeichenerkennung verwenden jetzt die Werte aus den Erkennungseinstellungen der Kamera, sodass sie an einer Stelle festgelegt werden und eine Änderung sofort wirkt
-- Das Plugin meldet, welches Modell es geladen hat und auf welcher Hardware es läuft, sodass ViON dies in den Kamerametriken anzeigen kann
+- Das Plugin meldet, welches Modell es geladen hat und auf welcher Hardware es läuft, sodass VION dies in den Kamerametriken anzeigen kann
 
 ## [1.2.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.2]
 
@@ -60,13 +60,13 @@
 
 - Modelle laden nach dem ersten Start deutlich schneller. Das vorbereitete Modell bleibt auf dem Datenträger gespeichert und wird wiederverwendet, statt bei jedem Start des Plugins neu vorbereitet zu werden
 - Die Schaltfläche „Modelle neu herunterladen“ funktioniert wieder: Ein Klick darauf bewirkte nichts
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.5]
 
 - Heruntergeladene Modelle werden nicht mehr in Sicherungen aufgenommen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.4]
 
@@ -74,7 +74,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -84,15 +84,15 @@
 
 - Das Protokoll nennt jedes Modell beim Beginn des Ladens, und ein Modell, das sich nicht laden lässt (Objekt-, Gesichts- oder Kennzeichenerkennung, Gesichtswiedererkennung, Kennzeichenlesung oder CLIP), wird jetzt gemeldet, statt stillschweigend zu scheitern; das Laden kann anschließend wiederholt werden
 - Schlägt beim Neuladen der Modelle eines fehl, werden die übrigen trotzdem geladen
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.4]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 

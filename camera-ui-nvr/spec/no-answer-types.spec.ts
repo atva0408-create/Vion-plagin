@@ -1,4 +1,4 @@
-// Events recorded before ViON 2.6.1 kept a module's question among their types when it was answered only «нет»: the
+// Events recorded before VION 2.6.1 kept a module's question among their types when it was answered only «нет»: the
 // plugin takes it out once at its start, a batch at a time, and says how many events it changed.
 // Run: npx tsx spec/no-answer-types.spec.ts
 import assert from 'node:assert/strict';

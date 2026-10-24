@@ -1,6 +1,6 @@
 # @vionvision/speech
 
-Speech of ViON plugins on the server, without a cloud. Shared by **VOICE** (`camera-ui-voice`) and the **intercom**
+Speech of VION plugins on the server, without a cloud. Shared by **VOICE** (`camera-ui-voice`) and the **intercom**
 (`camera-ui-intercom`); each bundles it (`file:` dev dependency, esbuild inlines it), it is never published.
 
 | Module | What |
@@ -12,6 +12,6 @@ Speech of ViON plugins on the server, without a cloud. Shared by **VOICE** (`cam
 | `queue.ts` | `PhraseQueue`: one phrase at a time per camera, a limit a minute |
 | `text.ts` | `isEcho`, `foreignNumber` (numbers of an LLM phrase that the facts do not have), `spokenDigits` (a code said as words) |
 
-Licenses of the models and of the engine: `docs/VOICE_IMPLEMENTATION.md` in the ViON repository.
+Licenses of the models and of the engine: `docs/VOICE_IMPLEMENTATION.md` in the VION repository.
 
 Checks: `npm install`, `npm run build` (types), `npm run lint`, `npm test`.

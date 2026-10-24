@@ -11,7 +11,7 @@ export interface EspectreActions {
   calibrate(): Promise<void>;
   checkUpdate(): Promise<void>;
   update(): Promise<void>;
-  /** The hold time is ViON's, not the board's: kept by the plugin. */
+  /** The hold time is VION's, not the board's: kept by the plugin. */
   holdS(): number;
   setHoldS(seconds: number): Promise<void>;
 }
@@ -35,7 +35,7 @@ const TRAFFIC: Record<string, string> = {
   dns_tcp: 'DNS over TCP to the router',
 };
 
-/** The motion sensor of a board with the ESPectre firmware, with the board's own settings in its settings in ViON. */
+/** The motion sensor of a board with the ESPectre firmware, with the board's own settings in its settings in VION. */
 export class EspectreMotionSensor extends MotionSensor {
   private view?: EspectreView;
   private schemaKey = '';
@@ -112,7 +112,7 @@ export class EspectreMotionSensor extends MotionSensor {
     // a mode set elsewhere (the ESPectre tools) is shown as it is, not replaced by a default
     if (sensing && !traffic[sensing.traffic_generator_mode]) traffic[sensing.traffic_generator_mode] = sensing.traffic_generator_mode;
     // The values below are the board's (a calibration and the ESPectre tools change them too): they are not stored in
-    // ViON, so the form always shows what the board has — a stored value would win over it after the first save.
+    // VION, so the form always shows what the board has — a stored value would win over it after the first save.
     const fields: JsonSchema[] = [
       { type: 'string', key: 'status', title: 'Sensor', description: 'What the board reports now.', readonly: true, defaultValue: this.status() },
       {

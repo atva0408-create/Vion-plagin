@@ -1,6 +1,6 @@
 # HomeKit
 
-Shows your ViON cameras and sensors in Apple's Home app.
+Shows your VION cameras and sensors in Apple's Home app.
 
 ## What it does
 

@@ -1,7 +1,7 @@
 ## [0.5.3]
 
-- ViON erfährt, ob jeder Kameralautsprecher eine Benachrichtigung gesprochen hat: ausgeschaltet, Ruhezeiten von VOICE, zu langer Text, kein Sprechkanal, belegt oder fehlgeschlagen wird zurückgemeldet, und ViON 2.6.5 schickt die Benachrichtigung anders
-- Jeder Lautsprecher wird mit seiner Kamera gelistet: ViON 2.6.5 sagt die Benachrichtigung auf dem Lautsprecher der Kamera, um die es geht, wenn ihr Weg die Kameralautsprecher nennt
+- VION erfährt, ob jeder Kameralautsprecher eine Benachrichtigung gesprochen hat: ausgeschaltet, Ruhezeiten von VOICE, zu langer Text, kein Sprechkanal, belegt oder fehlgeschlagen wird zurückgemeldet, und VION 2.6.5 schickt die Benachrichtigung anders
+- Jeder Lautsprecher wird mit seiner Kamera gelistet: VION 2.6.5 sagt die Benachrichtigung auf dem Lautsprecher der Kamera, um die es geht, wenn ihr Weg die Kameralautsprecher nennt
 
 ## [0.5.2]
 
@@ -19,13 +19,13 @@
 
 ## [0.4.0]
 
-- Macht das Kind nach drei Erinnerungen weiter, öffnet die Mitteilung an die Eltern ein Ereignis in den Aufnahmen der Kamera (mit den übergangenen Erinnerungen, ab der ersten) mit seinem Video. Braucht ViON NVR 0.14.0; ohne ihn kommt die Mitteilung wie bisher
+- Macht das Kind nach drei Erinnerungen weiter, öffnet die Mitteilung an die Eltern ein Ereignis in den Aufnahmen der Kamera (mit den übergangenen Erinnerungen, ab der ersten) mit seinem Video. Braucht VION NVR 0.14.0; ohne ihn kommt die Mitteilung wie bisher
 - Die Mitteilung geht sicher, sobald VOICE dem Kind gesagt hat «Ich habe deinen Eltern Bescheid gegeben», auch wenn das Kind gleich danach weggeht; jede Mitteilung steht im Protokoll, gesendet oder nicht und warum
 - Schlafenszeit und Tageslimit fangen ihre Erinnerungen nicht mehr von vorn an, wenn das Kind weniger als 15 Minuten nicht zu sehen ist
 
 ## [0.3.0]
 
-- VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «ViON» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert, und was das Kind beim Rufen sagt, geht nicht an den Assistenten. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft nur zusammen mit einer Frage nach der Zeit. Mit mehreren Kindern an der Kamera wird jedes am Computer beantwortet. Vorerst nur auf Russisch; standardmäßig aus
+- VOICE beim Namen rufen: Ist für ein Kind „Antworten, wenn gerufen“ an, sagt es jederzeit «VION» und eine Frage, und VOICE antwortet. Das Mikrofon der Kamera bleibt dafür offen; die Sprache wird auf dem Server erkannt, nichts wird gespeichert, und was das Kind beim Rufen sagt, geht nicht an den Assistenten. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft nur zusammen mit einer Frage nach der Zeit. Mit mehreren Kindern an der Kamera wird jedes am Computer beantwortet. Vorerst nur auf Russisch; standardmäßig aus
 - Antworten in Minuten: „noch 5 Minuten Pause“, „du kannst spielen, noch 20 Minuten bis zur Pause“, „weniger als eine Minute“; zu früh zurück, dieselben Minuten wie in der Erinnerung; ist die Pause am Computer fällig, die ganze Pause. Der nächste Morgen bleibt eine Uhrzeit („morgen um 07:30“)
 - Die Pause wird zusammengezählt: zu früh zurück und wieder weg, nimmt das Kind nur noch den Rest; Erinnerung, Zustand und Antwort nennen, was bleibt
 - Behoben: nach dem Tageslimit sagte VOICE in Moskau „morgen um 03:00“ (Mitternacht UTC) statt 00:00

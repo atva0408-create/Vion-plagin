@@ -2,8 +2,8 @@
   "displayName": "Wyze",
   "name": "@vionvision/camera-ui-wyze",
   "version": "1.2.8",
-  "description": "Подключает камеры Wyze к ViON: поиск устройств, прямой эфир и события движения.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Подключает камеры Wyze к VION: поиск устройств, прямой эфир и события движения.",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
   "type": "module",
   "scripts": {

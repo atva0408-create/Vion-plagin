@@ -4,7 +4,7 @@
 
 ## [1.3.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.3.2]
 
@@ -13,7 +13,7 @@
 
 ## [1.3.1]
 
-- **Eine Kamera, die ihr Videoformat wechselt, wird wieder übernommen.** Wurde der Hauptstream einer Kamera bei laufendem ViON von H.264 auf H.265 umgestellt, zeichnete HomeKit einen H.265-Stream auf, der als H.264 gekennzeichnet war, und Apple verwarf die Aufzeichnung kurz nach dem Start. Das Gerät folgt jetzt der Änderung
+- **Eine Kamera, die ihr Videoformat wechselt, wird wieder übernommen.** Wurde der Hauptstream einer Kamera bei laufendem VION von H.264 auf H.265 umgestellt, zeichnete HomeKit einen H.265-Stream auf, der als H.264 gekennzeichnet war, und Apple verwarf die Aufzeichnung kurz nach dem Start. Das Gerät folgt jetzt der Änderung
 - **Sauberer Ton im lokalen Livebild unter iOS 27.** HEVC-Kameras mit dem neuen Secure Video konnten zu Hause verzerrt klingen. Der Ton wird jetzt so gesendet, wie Apple es dort erwartet; die Wiedergabe von unterwegs war nicht betroffen
 
 ## [1.3.0]
@@ -24,7 +24,7 @@
 
 ## [1.2.11]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.10]
 
@@ -41,19 +41,19 @@
 
 ## [1.2.7]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.5]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.4]
 
-- Eine veraltete Netzwerkadresse stoppt die Bridge nicht mehr. Ist in ViON eine Adresse eingestellt, die der Rechner nicht mehr hat (geänderte IP-Adresse, alte Konfiguration), überspringen die Bridge und die Kameras diese Adresse mit einer Warnung und bleiben über die übrigen erreichbar, statt nicht zu starten
+- Eine veraltete Netzwerkadresse stoppt die Bridge nicht mehr. Ist in VION eine Adresse eingestellt, die der Rechner nicht mehr hat (geänderte IP-Adresse, alte Konfiguration), überspringen die Bridge und die Kameras diese Adresse mit einer Warnung und bleiben über die übrigen erreichbar, statt nicht zu starten
 
 ## [1.2.3]
 
-- Neue Sensortypen erreichen HomeKit. Sensoren für Kohlenmonoxid, Kohlendioxid (Wert plus Alarm über 1500 ppm), Helligkeit und Vibration erscheinen jetzt in der Home-App; Vibration wird als Bewegungssensor angezeigt, weil HomeKit keine Kategorie für Vibration kennt. Sensoren für Gas, Hitze, Kälte, Sabotage, Störung und Stromversorgung bleiben nur in ViON, HomeKit hat keinen passenden Gerätetyp
+- Neue Sensortypen erreichen HomeKit. Sensoren für Kohlenmonoxid, Kohlendioxid (Wert plus Alarm über 1500 ppm), Helligkeit und Vibration erscheinen jetzt in der Home-App; Vibration wird als Bewegungssensor angezeigt, weil HomeKit keine Kategorie für Vibration kennt. Sensoren für Gas, Hitze, Kälte, Sabotage, Störung und Stromversorgung bleiben nur in VION, HomeKit hat keinen passenden Gerätetyp
 
 ## [1.2.2]
 
@@ -69,8 +69,8 @@
 - Neue Bridge für eigenständige Sensoren. Kontakt-, Präsenz-, Rauch-, Leck-, Temperatur- und Feuchtigkeitssensoren, Schlösser, Garagentore, Schalter und Sicherheitssysteme sowie eigenständige Lichter und Sirenen kommen über eine einzige Bridge. Koppeln Sie sie einmal, und jeder später freigegebene Sensor kommt automatisch hinzu. QR-Code, PIN, Port und eine Schaltfläche zum Zurücksetzen befinden sich in den Plugin-Einstellungen
 - Kameras in der Home-App zeigen jetzt die Ausstattung der Kamera: Scheinwerfer, Sirene und Akku erscheinen an der Kamera selbst, neben Bewegung und Türklingel
 - Der Schalter „Sensor freigeben“ auf der Seite „Sensoren“ bestimmt, was HomeKit erreicht. Ausschalten entfernt den Sensor, Einschalten bringt ihn zurück
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.7]
 
@@ -91,7 +91,7 @@
 
 ## [1.1.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.2]
 
@@ -103,11 +103,11 @@
 
 ## [1.1.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.3]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.2]
 

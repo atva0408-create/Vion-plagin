@@ -3,7 +3,7 @@
 The server crops every person box to the attribute sensor's square input (expanded, not stretched); the square is
 fitted into the model's 192x256 with bars above and below, which leaves a standing person about the size mmpose gives
 it (its box grown by a quarter). The model takes raw 0-255 RGB: its normalization is in the graph (the mirror's
-rtmpose-t-256x192 is OpenMMLab's RTMPose-t body7 with the mean and std folded in, as ViON's re-ID model).
+rtmpose-t-256x192 is OpenMMLab's RTMPose-t body7 with the mean and std folded in, as VION's re-ID model).
 
 The posture is a rule on the keypoints, not a model: the torso lying flat is lying, an upright torso with the thighs
 out is sitting, an upright torso over upright thighs is standing; too few keypoints seen says nothing.

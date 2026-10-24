@@ -12,7 +12,7 @@
 
 ## [1.3.0]
 
-- The ViON assistant reads the presets of a PTZ camera, saves the current position as a preset or deletes one, and reboots an ONVIF camera that stopped answering; each change is confirmed in the chat and only an administrator can make it
+- The VION assistant reads the presets of a PTZ camera, saves the current position as a preset or deletes one, and reboots an ONVIF camera that stopped answering; each change is confirmed in the chat and only an administrator can make it
 
 ## [1.2.8]
 
@@ -20,20 +20,20 @@
 
 ## [1.2.7]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.6]
 
-- A camera that was unreachable when ViON started now comes back on its own
-- Compatibility update for the current ViON version
+- A camera that was unreachable when VION started now comes back on its own
+- Compatibility update for the current VION version
 
 ## [1.2.5]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.3]
 
@@ -42,14 +42,14 @@
 
 ## [1.2.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.0]
 
 - Short motion pulses from thingino cameras are no longer missed. These cameras report only the latest motion state each time they are asked, and the plugin used to pause between two requests in exactly the moment a one-second motion could start and end, so most triggers were lost. While there is activity, the plugin now asks without pauses
 - Tapo cameras no longer flood the log with "other side closed" and no longer lose their event subscription every two minutes. Their firmware drops an event request it has not answered within about 10 seconds; when that happens, the plugin now switches to shorter requests that the camera answers in time
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.11]
 
@@ -81,11 +81,11 @@
 
 - Sensors now show their details in the sensor settings: event sensors list the camera event topics that feed them, the PTZ sensor shows the axes, the supported move commands and the presets found on the camera
 - Bug fixes and improvements
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.3]
 
@@ -102,11 +102,11 @@
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.2]
 

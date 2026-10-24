@@ -1,4 +1,4 @@
-// Whom a face is given to. The server of ViON 2.3.0 asks the recorder for the nearest people instead of a plain
+// Whom a face is given to. The server of VION 2.3.0 asks the recorder for the nearest people instead of a plain
 // match: a face that passes the bar of two people and is about as close to both is given to neither, and a face
 // that is nobody for sure still says whom it came closest to. Run: npx tsx spec/faces-nearest.spec.ts
 import assert from 'node:assert/strict';

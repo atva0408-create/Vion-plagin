@@ -1,5 +1,5 @@
 {
-  "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.": "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.",
+  "Охранный датчик VION на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из VION; камера платы по желанию.": "Охранный датчик VION на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из VION; камера платы по желанию.",
   "Sensor": "Датчик",
   "What the board reports now.": "Что плата сообщает сейчас.",
   "Detection": "Обнаружение",
@@ -33,12 +33,12 @@
   "The sensor learns the empty room for 30 seconds: leave the room before pressing.": "Датчик 30 секунд изучает пустую комнату: выйдите из неё перед нажатием.",
   "The new firmware did not start, and the board went back to the one it had.": "Новая прошивка не запустилась, и плата вернулась на прежнюю.",
   "Reset the sensor": "Сбросить датчик",
-  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "Плата забудет Wi-Fi и этот ViON и раздаст свою сеть для новой настройки.",
+  "The board forgets the Wi-Fi and this VION and shows its own network for a new setup.": "Плата забудет Wi-Fi и этот VION и раздаст свою сеть для новой настройки.",
   "Presence sensitivity": "Чувствительность присутствия",
   "How readily a person standing still counts as present (the Espressif algorithm). Higher is more sensitive.": "Насколько легко неподвижный человек считается присутствующим (алгоритм Espressif). Больше — чувствительнее.",
   "Motion from": "Движение по",
-  "Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.": "Какой алгоритм платы даёт движение в ViON. Работают оба всё время: переключайте, чтобы сравнить.",
-  "ViON (signal changes)": "ViON (изменения сигнала)",
+  "Which algorithm of the board makes motion in VION. Both run all the time: switch to compare them.": "Какой алгоритм платы даёт движение в VION. Работают оба всё время: переключайте, чтобы сравнить.",
+  "VION (signal changes)": "VION (изменения сигнала)",
   "Espressif (esp-radar)": "Espressif (esp-radar)",
   "Either of them": "Любой из двух"
 }

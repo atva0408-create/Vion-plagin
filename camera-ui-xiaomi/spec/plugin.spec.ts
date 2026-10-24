@@ -1,4 +1,4 @@
-// The plugin as ViON drives it: the sign-in form with the captcha and the code in the dialog that follows, the token
+// The plugin as VION drives it: the sign-in form with the captcha and the code in the dialog that follows, the token
 // kept instead of the password, the cameras offered, adopted and opened, a restart that signs in with the token, a
 // session Xiaomi ended, and signing out. The host is a stand-in; the Mi servers are the stand-in of fake-xiaomi.ts.
 // Run: npx tsx spec/plugin.spec.ts
@@ -191,7 +191,7 @@ test('the sign-in asks for the captcha and the code in the dialog, keeps the tok
   // the window ends with what was found and where to add it
   const result = done?.schema?.[0] as { key: string; title: string; description: string; defaultValue?: string; readonly?: boolean };
   assert.equal(result.title, 'Signed in to Mi Home');
-  assert.match(result.description, /open Cameras in ViON and click it under Discovered/);
+  assert.match(result.description, /open Cameras in VION and click it under Discovered/);
   assert.equal(result.defaultValue, 'Hall');
   assert.equal(result.readonly, true);
   // its button closes the window, it does not sign in again
@@ -299,7 +299,7 @@ const UNPLAYABLE_VENDORS = {
   '1004': { vendor: { vendor: 3 }, public_key: 'dd'.repeat(32), sign: 'sig' },
 };
 
-test('cameras ViON cannot play are not offered; the sign-in names them and why, the log says it once', async () => {
+test('cameras VION cannot play are not offered; the sign-in names them and why, the log says it once', async () => {
   const fake = fakeXiaomi(scenario({ devices: UNPLAYABLE, vendors: { ...scenario().vendors, ...UNPLAYABLE_VENDORS } }));
   globalThis.fetch = fake.fetch;
   const { lines, logger } = recorder();
@@ -309,10 +309,10 @@ test('cameras ViON cannot play are not offered; the sign-in names them and why, 
   const [found, leftOut] = done?.schema as { key: string; title: string; defaultValue?: string }[];
   assert.equal(found?.title, 'Signed in to Mi Home');
   assert.equal(found?.defaultValue, 'Hall');
-  assert.equal(leftOut?.title, 'Cameras ViON cannot play');
+  assert.equal(leftOut?.title, 'Cameras VION cannot play');
   assert.equal(
     leftOut?.defaultValue,
-    'Garage (chuangmi.camera.069a01) connects over MTP, which ViON cannot play\nPorch (isa.camera.hlc7) connects over Agora, which ViON cannot play',
+    'Garage (chuangmi.camera.069a01) connects over MTP, which VION cannot play\nPorch (isa.camera.hlc7) connects over Agora, which VION cannot play',
   );
   assert.deepEqual(
     h.pushed.map((c) => c.id),
@@ -328,25 +328,25 @@ test('cameras ViON cannot play are not offered; the sign-in names them and why, 
   );
   assert.equal(asked(), 3);
   assert.deepEqual(lines.warn?.sort(), [
-    'Not offered for adding: Garage (chuangmi.camera.069a01) connects over MTP, which ViON cannot play',
-    'Not offered for adding: Porch (isa.camera.hlc7) connects over Agora, which ViON cannot play',
+    'Not offered for adding: Garage (chuangmi.camera.069a01) connects over MTP, which VION cannot play',
+    'Not offered for adding: Porch (isa.camera.hlc7) connects over Agora, which VION cannot play',
   ]);
 
   // added all the same (an older version offered it): opening it says why, the engine gets no address it refuses
   const { camera, stream } = device('1003');
   await h.plugin.onCameraAdded(camera);
-  await assert.rejects(stream(), /Garage \(chuangmi\.camera\.069a01\) connects over MTP, which ViON cannot play/);
+  await assert.rejects(stream(), /Garage \(chuangmi\.camera\.069a01\) connects over MTP, which VION cannot play/);
   assert.equal(asked(), 3);
   await h.shutdown();
 });
 
-test('an account with only cameras ViON cannot play says that, not that it has none', async () => {
+test('an account with only cameras VION cannot play says that, not that it has none', async () => {
   globalThis.fetch = fakeXiaomi(scenario({ devices: { ru: UNPLAYABLE.ru.slice(1), cn: [] }, vendors: UNPLAYABLE_VENDORS })).fetch;
   const h = host();
   const done = await h.submit({ username: 'user@example.com', password: PASSWORD });
   const [found, leftOut] = done?.schema as { title: string; defaultValue?: string }[];
-  assert.equal(found?.title, 'Signed in to Mi Home, no camera ViON can play');
-  assert.equal(leftOut?.title, 'Cameras ViON cannot play');
+  assert.equal(found?.title, 'Signed in to Mi Home, no camera VION can play');
+  assert.equal(leftOut?.title, 'Cameras VION cannot play');
   assert.match(leftOut?.defaultValue ?? '', /^Garage .*MTP.*\nPorch .*Agora/);
   assert.deepEqual(await h.plugin.onDiscoverCameras(), []);
   await h.shutdown();
@@ -795,7 +795,7 @@ test('a camera with a zoom lens zooms and focuses through the Mi Home cloud once
   await hall.set('ptz', true);
   const ptz = hall.sensors[0]!;
   assert.ok(ptz.capabilities.includes(PTZCapability.Zoom));
-  assert.deepEqual(lines.log, ['The camera has a lens ViON can drive: zoom and focus']);
+  assert.deepEqual(lines.log, ['The camera has a lens VION can drive: zoom and focus']);
   assert.deepEqual(keys(), ['connectionMode', 'ptz', 'focusNear', 'focusFar', 'focusAuto']);
 
   await ptz.setRelativeMove({ panDelta: 0, tiltDelta: 0, zoomDelta: 0.5 });

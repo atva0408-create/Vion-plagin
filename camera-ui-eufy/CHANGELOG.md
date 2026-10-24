@@ -13,7 +13,7 @@
 
 ## [2.0.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [2.0.3]
 
@@ -25,7 +25,7 @@
 - Snapshots from an event need a fraction of the memory they used to
 - The guard mode of a camera without a HomeBase, like the Indoor Cam Pan & Tilt, can be changed again. The change hung and never reached the camera
 - More Eufy smart locks show whether they are locked, and the state follows along when the lock is used
-- No light control on cameras that have none. A battery doorbell reports a spotlight setting without having a lamp, so ViON showed a light switch that answered every press with an error. Cameras whose spotlight this plugin cannot switch no longer offer one
+- No light control on cameras that have none. A battery doorbell reports a spotlight setting without having a lamp, so VION showed a light switch that answered every press with an error. Cameras whose spotlight this plugin cannot switch no longer offer one
 
 ## [2.0.1]
 
@@ -35,8 +35,8 @@
 
 ## [2.0.0]
 
-- **Rebuilt from the ground up.** The plugin now connects to Eufy and to the cameras the same way the current Eufy app does. Log in again once in the plugin settings, a verification code may be asked for. Requires ViON 2.2.3 or newer
-- **Eufy sensors come to ViON.** Entry sensors, motion sensors, locks, leak, smoke and CO sensors and the guard mode and siren of a HomeBase show up on the "Sensors" page, ready to be added
+- **Rebuilt from the ground up.** The plugin now connects to Eufy and to the cameras the same way the current Eufy app does. Log in again once in the plugin settings, a verification code may be asked for. Requires VION 2.2.3 or newer
+- **Eufy sensors come to VION.** Entry sensors, motion sensors, locks, leak, smoke and CO sensors and the guard mode and siren of a HomeBase show up on the "Sensors" page, ready to be added
 - **Camera controls.** Spotlight with brightness, siren, pan and tilt with presets, turning the camera on or off and the guard mode of cameras without a HomeBase appear as controls where the camera supports them
 - **More detections.** Unknown people, pets, sounds and crying come in as detections next to motion, people and vehicles
 - **Live view.** A new viewer starts from the last full frame, and two cameras behind one HomeBase can stream at the same time
@@ -45,21 +45,21 @@
 
 ## [1.2.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.0]
 
 - The field for the live stream duration now changes in steps of 10 seconds
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.5]
 
@@ -67,7 +67,7 @@
 
 ## [1.1.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.3]
 
@@ -83,11 +83,11 @@
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.2]
 

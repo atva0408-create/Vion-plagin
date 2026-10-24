@@ -1,8 +1,8 @@
 /**
- * A panel that calls ViON over SIP, directly by IP (RUBITEK's path B, ТЗ 14.6 and 14.10): its call is the ring; the
+ * A panel that calls VION over SIP, directly by IP (RUBITEK's path B, ТЗ 14.6 and 14.10): its call is the ring; the
  * agent speaks and listens in that call; a door opens by the panel's HTTP command, or by a DTMF code said into the
  * call; a code the visitor types at the panel during the call comes as keys and is checked like one typed anywhere.
- * ViON answering the call ("a person or the agent took it") stops the panel's own ringing; ViON's end of the visit
+ * VION answering the call ("a person or the agent took it") stops the panel's own ringing; VION's end of the visit
  * ends the call.
  *
  * The person's own voice does not go through SIP in this stage: the person hears and sees the panel by its RTSP, and
@@ -63,7 +63,7 @@ export class SipPanel implements PanelEngine {
         if (this.current !== call) return;
         this.current = undefined;
         this.flushCode();
-        // ViON's own end is not news to ViON
+        // VION's own end is not news to VION
         if (why !== 'local') this.listener.event('call_end', { why });
       },
       dtmf: (call, digit) => {
@@ -113,7 +113,7 @@ export class SipPanel implements PanelEngine {
     }
   }
 
-  /** ViON took the call: the panel's call is answered, its ringing stops. */
+  /** VION took the call: the panel's call is answered, its ringing stops. */
   async answered(): Promise<CommandResult | undefined> {
     const call = this.call;
     if (!call) return this.profile.answered ? this.http.answered() : undefined;

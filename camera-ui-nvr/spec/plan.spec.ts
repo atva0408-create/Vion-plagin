@@ -1,4 +1,4 @@
-// The plan the recorder applies: when the server says the plan changed (reloadEntitlements, ViON Cloud told it), the
+// The plan the recorder applies: when the server says the plan changed (reloadEntitlements, VION Cloud told it), the
 // recorder reads it at once instead of at its next question, which comes every ten minutes.
 // Run: npx tsx spec/plan.spec.ts
 import assert from 'node:assert/strict';

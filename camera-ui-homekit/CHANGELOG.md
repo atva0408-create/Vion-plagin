@@ -4,7 +4,7 @@
 
 ## [1.3.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.3.2]
 
@@ -13,7 +13,7 @@
 
 ## [1.3.1]
 
-- **A camera that changes its video format is picked up again.** Switching the main stream of a camera from H.264 to H.265 while ViON was running left HomeKit recording an H.265 stream labelled as H.264, which Apple discarded shortly after the start. The accessory now follows the change
+- **A camera that changes its video format is picked up again.** Switching the main stream of a camera from H.264 to H.265 while VION was running left HomeKit recording an H.265 stream labelled as H.264, which Apple discarded shortly after the start. The accessory now follows the change
 - **Clean audio in local live view on iOS 27.** HEVC cameras using the new Secure Video could sound distorted when watched at home. The sound is now sent the way Apple expects there; remote view was not affected
 
 ## [1.3.0]
@@ -24,7 +24,7 @@
 
 ## [1.2.11]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.10]
 
@@ -41,19 +41,19 @@
 
 ## [1.2.7]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.5]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.4]
 
-- An outdated network address no longer stops the bridge. When ViON is set to an address the machine does not have any more (changed IP address, old configuration), the bridge and the cameras skip that address with a warning and stay reachable on the remaining ones, instead of failing to start
+- An outdated network address no longer stops the bridge. When VION is set to an address the machine does not have any more (changed IP address, old configuration), the bridge and the cameras skip that address with a warning and stay reachable on the remaining ones, instead of failing to start
 
 ## [1.2.3]
 
-- New sensor types reach HomeKit. Carbon monoxide, carbon dioxide (level plus an alarm above 1500 ppm), illuminance and vibration sensors now appear in the Home app; vibration shows up as a motion sensor because HomeKit has no vibration category. Gas, heat, cold, tamper, problem and power sensors stay in ViON only, HomeKit has no matching accessory type
+- New sensor types reach HomeKit. Carbon monoxide, carbon dioxide (level plus an alarm above 1500 ppm), illuminance and vibration sensors now appear in the Home app; vibration shows up as a motion sensor because HomeKit has no vibration category. Gas, heat, cold, tamper, problem and power sensors stay in VION only, HomeKit has no matching accessory type
 
 ## [1.2.2]
 
@@ -69,8 +69,8 @@
 - New bridge for standalone sensors. Contact, occupancy, smoke, leak, temperature, humidity, lock, garage door, switch and security system sensors, plus standalone lights and sirens, come across behind a single bridge. Pair it once and every sensor you expose later joins automatically. QR code, PIN, port and a reset button are in the plugin settings
 - Cameras in the Home app now carry the hardware of the camera: spotlight, siren and battery show up on the camera itself, alongside motion and doorbell
 - The "Expose sensor" switch on the Sensors page decides what reaches HomeKit. Turning it off removes the sensor, turning it on brings it back
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.7]
 
@@ -91,7 +91,7 @@
 
 ## [1.1.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.2]
 
@@ -103,11 +103,11 @@
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.2]
 

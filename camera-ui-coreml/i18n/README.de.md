@@ -14,7 +14,7 @@ Erkennt Objekte, Gesichter und Kennzeichen im Video Ihrer Kameras auf einem Mac 
 
 ## Voraussetzungen
 
-- Ein ViON-Server, der auf einem Mac (macOS) läuft
+- Ein VION-Server, der auf einem Mac (macOS) läuft
 - Damit Gesichter Namen erhalten, muss dieses Plugin für jede Kamera als „Gesichtserkennung“ ausgewählt sein: Kameraeinstellungen, „Plugins“, „Erkennungen“
 
 ## Einstellungen

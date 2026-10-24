@@ -42,9 +42,9 @@ export interface VionSensorConfig {
   /** Addresses typed by hand, for networks where the mDNS search does not reach. */
   addresses?: string;
   manifestUrl?: string;
-  /** The token each board gave this ViON when it was added, by board id. Kept after a removal: adding it again works. */
+  /** The token each board gave this VION when it was added, by board id. Kept after a removal: adding it again works. */
   tokens?: Record<string, string>;
-  /** Which algorithm of each board makes its motion, by board id; none — ViON's own. */
+  /** Which algorithm of each board makes its motion, by board id; none — VION's own. */
   motionSources?: Record<string, MotionSource>;
   /** How long an ESPectre board's motion lasts after its last reading, seconds, by device_id; none — ESPECTRE_HOLD_S. */
   espectreHold?: Record<string, number>;
@@ -90,7 +90,7 @@ const ESPECTRE_REFRESH_MS = 10_000;
  */
 const ESPECTRE_SILENT_MS = 8_000;
 const POLL_MS = 1000;
-const MOTION_SOURCE_NAMES: Record<MotionSource, string> = { vion: 'ViON', espressif: 'Espressif', any: 'either algorithm' };
+const MOTION_SOURCE_NAMES: Record<MotionSource, string> = { vion: 'VION', espressif: 'Espressif', any: 'either algorithm' };
 /** Polls that may fail before the sensor is shown as unavailable: one lost answer on Wi-Fi is not an outage. */
 const FAILURES_BEFORE_OFFLINE = 3;
 const PULSE_MS = 2000;
@@ -286,7 +286,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
               });
             }
           } catch {
-            // no ESPectre there (a ViON board, or nothing now): the next probe tries again
+            // no ESPectre there (a VION board, or nothing now): the next probe tries again
           }
         })(),
       ]),
@@ -348,7 +348,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
           continue;
         }
       }
-      // a board added to another ViON answers only that one: offering it here would end in a refusal
+      // a board added to another VION answers only that one: offering it here would end in a refusal
       if (info.paired && !this.token(found.id)) continue;
       result.push({
         id: `${SENSOR_PREFIX}${found.id}`,
@@ -356,7 +356,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         name: info.name || found.name,
         type: SensorType.Motion,
         room: info.room || undefined,
-        manufacturer: 'ViON',
+        manufacturer: 'VION',
         model: info.model,
       });
       // presence reads the same board as its motion sensor: it is offered once that one is added
@@ -367,7 +367,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
           name: `${info.name || found.name} presence`,
           type: SensorType.Occupancy,
           room: info.room || undefined,
-          manufacturer: 'ViON',
+          manufacturer: 'VION',
           model: info.model,
         });
       }
@@ -376,7 +376,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     // first: an announced or typed address may belong to another board by now, or to no ESPectre at all
     const espectre = new Map<string, Omit<FoundEspectre, 'seenAt'>>();
     for (const found of this.finder.espectre.values()) {
-      // Micro-ESPectre only reads (no settings) and takes one event stream, which ViON would hold: not offered
+      // Micro-ESPectre only reads (no settings) and takes one event stream, which VION would hold: not offered
       if (this.espectre.has(found.id) || found.frontend === 'micro') continue;
       try {
         const device = await new EspectreClient(found.address).device();
@@ -435,7 +435,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
         await this.saveToken(id, paired.token);
       } catch (error) {
         if (error instanceof SensorRequestError && error.status === 409) {
-          throw new Error(`${record.name} belongs to another ViON. Reset it (three quick power-ons) to add it here`);
+          throw new Error(`${record.name} belongs to another VION. Reset it (three quick power-ons) to add it here`);
         }
         throw error;
       }
@@ -552,21 +552,21 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       }
       if (error instanceof SensorRequestError && error.status === 401) {
         // the board was reset and added nowhere: its old token no longer opens it
-        if (bound.failures === FAILURES_BEFORE_OFFLINE) this.logger.warn(`${sensor.name} no longer knows this ViON: remove the sensor and add it again`);
+        if (bound.failures === FAILURES_BEFORE_OFFLINE) this.logger.warn(`${sensor.name} no longer knows this VION: remove the sensor and add it again`);
       }
       const found = this.finder.found.get(bound.id);
       if (found && found.address !== bound.client.address) bound.client.address = found.address;
     }
   }
 
-  /** Motion as ViON sees it: on while the board says so, and a short pulse for a motion that started and ended between two polls. */
+  /** Motion as VION sees it: on while the board says so, and a short pulse for a motion that started and ended between two polls. */
   private applyMotion(bound: Bound, state: SensorState | undefined): void {
     const source = this.motionSource(bound.id);
     const espressif = !!state?.presence?.trained && state.presence.motion;
     const vion = !!state?.motion;
     const raw = source === 'espressif' ? espressif : source === 'any' ? vion || espressif : vion;
     const motion = !!state && !state.calibrating && !state.blind && raw;
-    // the events counter is ViON's: a motion too short for a poll is caught only for it
+    // the events counter is VION's: a motion too short for a poll is caught only for it
     const missed = source !== 'espressif' && !!state && bound.events !== undefined && state.events > bound.events && !motion;
     if (state) bound.events = state.events;
     if (missed && !bound.pulse) {
@@ -583,14 +583,14 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
   }
 
   /**
-   * ViON wrote another state of a sensor with no camera: the coordinator of a camera just taken away ended its motion.
+   * VION wrote another state of a sensor with no camera: the coordinator of a camera just taken away ended its motion.
    * Its own state is the board's again, so it is said again — the board would say it only on its next change.
    */
   private overwritten(sensor: MotionSensor, motion: boolean): boolean {
     return sensor.assignedCameraIds.length === 0 && sensor.detected !== motion;
   }
 
-  /** Presence as ViON sees it: unknown while the board learns, could not learn, sees nothing or does not answer. */
+  /** Presence as VION sees it: unknown while the board learns, could not learn, sees nothing or does not answer. */
   private applyPresence(id: string, state: SensorState | undefined): void {
     const presence = state?.presence;
     const bound = this.bound.get(id);
@@ -663,7 +663,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     const id = record.nativeId.slice(ESPECTRE_PREFIX.length);
     // an empty address is none: the next place is asked
     for (const address of [this.espectre.get(id)?.client.address, this.finder.espectre.get(id)?.address, record.address]) {
-      // ViON keeps the host alone (the sensor is shown by it): the board listens on its own port
+      // VION keeps the host alone (the sensor is shown by it): the board listens on its own port
       if (address) return /:\d+$/.test(address) ? address : `${address}:${ESPECTRE_PORT}`;
     }
     return '';
@@ -903,7 +903,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     bound.sensing = sensing;
   }
 
-  /** What ViON is told: unknown while the board is gone, off, collecting or not ready; no motion while it calibrates. */
+  /** What VION is told: unknown while the board is gone, off, collecting or not ready; no motion while it calibrates. */
   private applyEspectre(bound: EspectreBound): void {
     // nothing is known of a board that has not said who it is
     const sensing = bound.verified ? bound.sensing : undefined;
@@ -1109,7 +1109,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
       name: discovered.name,
       nativeId: id,
       isCloud: false,
-      info: { manufacturer: 'ViON', model: bound.info?.model ?? 'ESP32-CAM', serialNumber: id, firmwareVersion: bound.info?.firmware },
+      info: { manufacturer: 'VION', model: bound.info?.model ?? 'ESP32-CAM', serialNumber: id, firmwareVersion: bound.info?.firmware },
       // the address is asked from the plugin for every connection: the router may give the board another one
       sources: [{ name: 'MJPEG', role: 'high-resolution', useForSnapshot: false, hotMode: false, preload: false }],
     };
@@ -1119,7 +1119,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     const result: DiscoveredCamera[] = [];
     for (const bound of this.bound.values()) {
       if (bound.info?.camera.state !== 'on' || this.cameras.has(bound.id)) continue;
-      result.push({ id: `${CAMERA_PREFIX}${bound.id}`, name: `${bound.sensor.name}`, manufacturer: 'ViON', model: bound.info.model, address: bound.client.address });
+      result.push({ id: `${CAMERA_PREFIX}${bound.id}`, name: `${bound.sensor.name}`, manufacturer: 'VION', model: bound.info.model, address: bound.client.address });
     }
     return result;
   }
@@ -1137,7 +1137,7 @@ export default class VionSensorPlugin extends BasePlugin<VionSensorConfig> imple
     const implementation: StreamingInterface & SnapshotInterface = {
       async streamUrl(): Promise<string> {
         const bound = sensorOf(id);
-        if (!bound?.client.token) throw new Error(`The sensor of camera ${device.name} is not added in this ViON`);
+        if (!bound?.client.token) throw new Error(`The sensor of camera ${device.name} is not added in this VION`);
         // the board sends MJPEG; ffmpeg makes H.264 of it for the player and the recording
         return `ffmpeg:${bound.client.streamUrl()}#video=h264`;
       },

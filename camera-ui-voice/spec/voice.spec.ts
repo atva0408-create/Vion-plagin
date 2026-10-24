@@ -635,7 +635,7 @@ test('turned off, the microphone closes and stays closed; in another language it
   (s.voice as any).deps.language = () => 'en';
   await s.look(10_000, true);
   assert.equal(s.camera.sounds.length, 1, 'English: the name is not known');
-  assert.equal(s.voice.callStatusOf(s.camera.id), 'Calling «ViON» works only in Russian for now');
+  assert.equal(s.voice.callStatusOf(s.camera.id), 'Calling «VION» works only in Russian for now');
 
   (s.voice as any).deps.language = () => 'ru';
   await s.look(10_000, true);

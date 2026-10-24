@@ -59,7 +59,7 @@ export type Axis =
 
 export type AutoFocus = { kind: 'action'; action: ActionRef } | { kind: 'switch'; prop: PropRef };
 
-/** What the lens of a camera can do from ViON. Empty for a camera with a fixed lens (Mi 360°, C200, C300). */
+/** What the lens of a camera can do from VION. Empty for a camera with a fixed lens (Mi 360°, C200, C300). */
 export interface Optics {
   zoom?: Axis;
   focus?: Axis;

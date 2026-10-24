@@ -1,5 +1,5 @@
 // Exports over the bus had no limit: a viewer with the right could start any number of ffmpeg runs at once, each on an
-// hour of video, with the archive disk as their output (ViON audit 2026-10-23, S10). A few run at a time, a few more
+// hour of video, with the archive disk as their output (VION audit 2026-10-23, S10). A few run at a time, a few more
 // wait their turn, the rest are refused at once; and a timelapse interval is a whole number of seconds, 1 to 3600 —
 // a fraction made ffmpeg write billions of frames.
 // Run: npx tsx spec/export-gate.spec.ts

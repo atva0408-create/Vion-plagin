@@ -1,5 +1,5 @@
 {
-  "Детектор OpenVINO для ViON со старой средой 2024.6. Для графики Intel до 10-го поколения Core в Windows, чьи драйверы не собирают GPU-код новых версий OpenVINO. В Linux эти GPU поддерживает Docker-образ ViON; в остальных случаях используйте обычный плагин OpenVino.": "OpenVINO detector for ViON on the older OpenVINO 2024.6. For Intel graphics up to 10th gen Core on Windows, whose drivers do not work with newer OpenVINO versions. On Linux the ViON Docker image supports these GPUs; in all other cases use the regular OpenVino plugin.",
+  "Детектор OpenVINO для VION со старой средой 2024.6. Для графики Intel до 10-го поколения Core в Windows, чьи драйверы не собирают GPU-код новых версий OpenVINO. В Linux эти GPU поддерживает Docker-образ VION; в остальных случаях используйте обычный плагин OpenVino.": "OpenVINO detector for VION on the older OpenVINO 2024.6. For Intel graphics up to 10th gen Core on Windows, whose drivers do not work with newer OpenVINO versions. On Linux the VION Docker image supports these GPUs; in all other cases use the regular OpenVino plugin.",
   "Модель CLIP (изображения)": "CLIP Model (Images)",
   "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.": "CLIP model for the semantic search, shared by all cameras. After you change it, the recordings have to be reindexed.",
   "По умолчанию": "Default",
@@ -29,7 +29,7 @@
   "Модель YOLOv9 для обнаружения номерных знаков": "YOLOv9 model for license plate detection",
   "Номерные знаки": "License Plates",
   "Модель CCT для распознавания текста номеров": "CCT model for reading license plate text",
-  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO model for object detection. \"Default\" is the model ViON trained on your footage if one has been published, otherwise the standard one.",
+  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная VION на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO model for object detection. \"Default\" is the model VION trained on your footage if one has been published, otherwise the standard one.",
   "Обнаружение объектов": "Object Detection",
   "Модель, обводящая людей, транспорт и животных": "The model that outlines people, vehicles and animals",
   "Сегментация": "Segmentation",

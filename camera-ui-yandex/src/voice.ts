@@ -1,4 +1,4 @@
-// Speech on the Yandex stations: through the local protocol when ViON reaches the station in the home network,
+// Speech on the Yandex stations: through the local protocol when VION reaches the station in the home network,
 // through a scenario of the account otherwise. Both need the sign-in by QR code or x_token.
 import { GlagolAnswerError, GlagolClient, GlagolSentError, GlagolTokenError, GLAGOL_PORT, commandPayload, sayPayload } from './yandex/glagol.js';
 import { YandexApiError, YandexAuthError } from './yandex/http.js';
@@ -73,7 +73,7 @@ export class StationVoice {
         return 'local';
       } catch (error) {
         if (mode === 'local') throw error;
-        // the station got the text and did not confirm it: through the cloud it could say it a second time (ViON sends
+        // the station got the text and did not confirm it: through the cloud it could say it a second time (VION sends
         // the notification another way when it is told the station did not)
         if (error instanceof GlagolSentError) throw error;
         this.debug(`${station.name}: the local connection failed, speaking through the cloud`, error);

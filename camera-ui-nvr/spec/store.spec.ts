@@ -181,7 +181,7 @@ function planOf(store: Store, run: () => unknown): string {
   store.close();
 }
 
-// ------------------------------------------------------------------ «нет» is no type of an event (ViON 2.6.1)
+// ------------------------------------------------------------------ «нет» is no type of an event (VION 2.6.1)
 
 {
   // events recorded before kept a question answered only «нет» among their types: taken out, a batch at a time

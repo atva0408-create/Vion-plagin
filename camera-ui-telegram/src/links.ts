@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 
 import type { TgChat } from './bot.js';
 
-/** A Telegram chat that gets the notifications of one ViON user. */
+/** A Telegram chat that gets the notifications of one VION user. */
 export interface LinkedChat {
-  /** `tg:<chat id>:<ViON user id>`: one chat may be linked by two people of the home, each gets their own */
+  /** `tg:<chat id>:<VION user id>`: one chat may be linked by two people of the home, each gets their own */
   id: string;
   ownerUserId: string;
   chatId: number;
@@ -13,7 +13,7 @@ export interface LinkedChat {
   linkedAt: number;
 }
 
-/** A link handed to a ViON user: the chat that opens the bot with it is theirs. */
+/** A link handed to a VION user: the chat that opens the bot with it is theirs. */
 export interface PendingLink {
   code: string;
   ownerUserId: string;

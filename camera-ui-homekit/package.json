@@ -2,8 +2,8 @@
   "displayName": "HomeKit",
   "name": "@vionvision/camera-ui-homekit",
   "version": "1.3.4",
-  "description": "Открывает камеры и датчики ViON для Apple HomeKit: камеры транслируют и записывают через HomeKit Secure Video, датчики появляются как аксессуары в приложении «Дом».",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Открывает камеры и датчики VION для Apple HomeKit: камеры транслируют и записывают через HomeKit Secure Video, датчики появляются как аксессуары в приложении «Дом».",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 # Onvif
 
-Connects cameras that support the ONVIF standard to ViON. The plugin finds them in your network, adds their video streams and passes on the events and the PTZ control that the camera itself offers.
+Connects cameras that support the ONVIF standard to VION. The plugin finds them in your network, adds their video streams and passes on the events and the PTZ control that the camera itself offers.
 
 ## What it does
 
@@ -12,7 +12,7 @@ Connects cameras that support the ONVIF standard to ViON. The plugin finds them 
 
 ## What you need
 
-- A camera that supports ONVIF and can be reached from the ViON server over the network
+- A camera that supports ONVIF and can be reached from the VION server over the network
 - The username and password of the camera's ONVIF account
 - Events and PTZ only appear when the camera itself supports them
 

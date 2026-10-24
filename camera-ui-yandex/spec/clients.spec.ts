@@ -499,7 +499,7 @@ async function main(): Promise<void> {
     failing.server.close();
 
     // a station that got the text and did not confirm it may have said it: not said again through the cloud, and the
-    // caller hears it did not confirm (ViON sends the notification another way)
+    // caller hears it did not confirm (VION sends the notification another way)
     const mute = await fakeStation(() => {});
     const unconfirmed = voiceFor(mute.port, 'auto');
     const scenariosBefore = state.own.size;

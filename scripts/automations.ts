@@ -409,7 +409,7 @@ export function build(): Map<string, string> {
       title: template.title[base],
       description: template.description[base],
       category: template.category,
-      author: 'ViON',
+      author: 'VION',
       featured: template.featured ?? false,
       tags: template.tags,
       ...(template.requiredPlugins ? { requiredPlugins: template.requiredPlugins } : {}),

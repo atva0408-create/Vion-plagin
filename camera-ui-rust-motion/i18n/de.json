@@ -1,5 +1,5 @@
 {
-  "Нативный детектор движения для ViON на Rust с низкой нагрузкой на процессор.": "Bewegungserkennung für ViON mit geringer Prozessorlast.",
+  "Нативный детектор движения для VION на Rust с низкой нагрузкой на процессор.": "Bewegungserkennung für VION mit geringer Prozessorlast.",
   "Площадь": "Fläche",
   "Минимальный суммарный размер соседних изменившихся областей, считающийся движением.": "Mindestgesamtgröße benachbarter veränderter Bereiche, die als Bewegung gilt.",
   "Порог": "Schwellenwert",

@@ -14,7 +14,7 @@ Object, face and license plate detection for older Intel graphics. With the regu
 
 - Use it instead of the regular OpenVino plugin if your Intel graphics is 10th gen Core or older (Gen9/Gen11 graphics, for example HD/UHD Graphics 610 to 630)
 - It mainly matters on Windows, where the part these chips depend on belongs to the graphics driver and cannot be updated separately
-- On Linux with the ViON Docker image it is usually not needed: the image already contains what older Intel graphics needs
+- On Linux with the VION Docker image it is usually not needed: the image already contains what older Intel graphics needs
 - On 11th gen Core and newer (Iris Xe, Arc), use the regular OpenVino plugin: it is faster there and keeps receiving fixes
 
 ## Settings

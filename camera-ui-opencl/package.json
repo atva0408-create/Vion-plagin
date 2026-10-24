@@ -2,8 +2,8 @@
   "displayName": "OpenCL",
   "name": "@vionvision/camera-ui-opencl",
   "version": "1.2.7",
-  "description": "Детектор движения для ViON с ускорением на видеокарте через OpenCL.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Детектор движения для VION с ускорением на видеокарте через OpenCL.",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/main.py",
   "type": "module",
   "scripts": {

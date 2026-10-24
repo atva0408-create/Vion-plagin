@@ -1,7 +1,7 @@
 """A model file downloaded from the mirror is kept only when it is what was asked for.
 
 A captive portal of a hotel or train Wi-Fi, or an error page answering 200, was saved as the model, and the file stayed
-for good: a file in place is not downloaded again, and every start failed to load it (ViON audit 2026-10-23). The
+for good: a file in place is not downloaded again, and every start failed to load it (VION audit 2026-10-23). The
 engines install camera-ui-ml from PyPI, whose download checks nothing: each engine carries this same file
 (camera-ui-onnx/tests/test_checked_download.py holds the copies equal).
 """

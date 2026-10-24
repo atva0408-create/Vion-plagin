@@ -1,4 +1,4 @@
-// The lens of a camera driven from ViON: zoom from the player's PTZ control, focus from the camera settings.
+// The lens of a camera driven from VION: zoom from the player's PTZ control, focus from the camera settings.
 import type { MiotDevice } from './xiaomi/miot.js';
 import type { Axis, Optics } from './xiaomi/spec.js';
 
@@ -71,7 +71,7 @@ export function axisDriver(axis: Axis, device: MiotDevice): AxisDriver {
   };
 }
 
-/** What the lens of one camera does from ViON; empty for a fixed lens. */
+/** What the lens of one camera does from VION; empty for a fixed lens. */
 export interface Lens {
   zoom?: AxisDriver;
   focus?: AxisDriver;

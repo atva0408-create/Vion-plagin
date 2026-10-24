@@ -85,9 +85,9 @@ export interface PanelPort {
   sound(): ConversationIO;
   /** opens the door and waits for the door to confirm (its contact, or the lock's state) */
   open(door: PanelDoor): Promise<DoorResult>;
-  /** the call was answered in ViON: the panel's own monitors stop ringing */
+  /** the call was answered in VION: the panel's own monitors stop ringing */
   answered?(): Promise<void>;
-  /** the call ended in ViON */
+  /** the call ended in VION */
   hangUp?(): Promise<void>;
   /** whether the camera saw a person within the time; undefined when it cannot tell (no object detection) */
   personSeen(withinMs: number): boolean | undefined;
@@ -408,7 +408,7 @@ export class Intercom {
     return { now: this.now(), agentEnabled: this.agentEnabled(live), ...(this.everyone ? { everyone: this.everyone } : {}) };
   }
 
-  /** The users of ViON, as the server tells them: who a call to "all" rings, so that all of them declining ends it. */
+  /** The users of VION, as the server tells them: who a call to "all" rings, so that all of them declining ends it. */
   setUsers(userIds: string[]): void {
     this.everyone = [...new Set(userIds.filter((id) => typeof id === 'string' && id))];
   }
@@ -679,8 +679,8 @@ export class Intercom {
 
   /**
    * The panel ended its call: a SIP CANCEL or BYE (`final`), or a hook's "call ended". The visitor's side is gone, so
-   * ringing stops and the agent stops; a call a person answered in ViON goes on after a hook's "ended" (the panel's
-   * own call with its monitors ended, not ViON's).
+   * ringing stops and the agent stops; a call a person answered in VION goes on after a hook's "ended" (the panel's
+   * own call with its monitors ended, not VION's).
    */
   panelHungUp(panelId: string, final: boolean): void {
     const live = this.live.get(panelId);
@@ -1537,7 +1537,7 @@ export class Intercom {
 
   /**
    * A panel saved. A driver's password is kept apart (meta `secret:<panel>`), never in the panel, answers or logs. A
-   * panel whose model takes events by calling ViON gets a hook token: its address is given back once.
+   * panel whose model takes events by calling VION gets a hook token: its address is given back once.
    */
   savePanel(actor: Actor, input: Record<string, unknown>): { panel: Panel; warnings: string[]; hookPath?: string } {
     needAdmin(actor);

@@ -421,7 +421,7 @@ export class Store {
   }
 
   /**
-   * Events recorded before ViON 2.6.1 kept a module's question among their types when it was answered only «нет»
+   * Events recorded before VION 2.6.1 kept a module's question among their types when it was answered only «нет»
    * («играет в компьютер» on every event the module looked at): the filter by type, the search and the counts by type
    * found the boy not playing too. Takes such a question out of the types of up to `limit` events after the rowid
    * `after`; `next` is where to go on, undefined at the end. The answers stay on the segments.
@@ -774,7 +774,7 @@ export class Store {
 
 /** Absolute on this system or the other one: an archive is also moved between a Windows and a Linux server. */
 /**
- * The types of an event without a question answered there only «нет», as the server keeps them since ViON 2.6.1;
+ * The types of an event without a question answered there only «нет», as the server keeps them since VION 2.6.1;
  * undefined when none goes. A type a detection or a trigger gives stays whatever was answered.
  */
 function typesWithoutNo(event: RecordedEvent): string[] | undefined {

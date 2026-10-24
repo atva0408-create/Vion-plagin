@@ -8,13 +8,13 @@
 
 ## [1.0.2]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.1]
 
 - **The model can use tools.** The assistant looks up events, cameras and sensors through it, answers arrive word by word, and a cancelled question stops the model at once
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.0]
 
-- First release. Apple's on-device model can be chosen in the assistant settings of ViON
+- First release. Apple's on-device model can be chosen in the assistant settings of VION

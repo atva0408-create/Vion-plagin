@@ -1,6 +1,6 @@
 ## [0.2.0]
 
-- Rechte pro Kamera: ein auf einige Kameras beschränkter Benutzer (Einstellungen → Benutzer) nutzt die Panels dieser Kameras — ihre Anrufe, Türen, Besuche, Gastcodes und Anweisungen — und nichts von den anderen; einen Anruf annehmen oder mit einem Besucher sprechen geht nur mit dem Recht zu sprechen. Vorher sperrte der Server einen solchen Benutzer aus der ganzen Gegensprechanlage aus, auch aus den Panels seiner eigenen Kameras. Jede Meldung zu einem Panel nennt seine Kamera, damit der Server nur die benachrichtigt, die sie sehen. Braucht ViON 2.6.15
+- Rechte pro Kamera: ein auf einige Kameras beschränkter Benutzer (Einstellungen → Benutzer) nutzt die Panels dieser Kameras — ihre Anrufe, Türen, Besuche, Gastcodes und Anweisungen — und nichts von den anderen; einen Anruf annehmen oder mit einem Besucher sprechen geht nur mit dem Recht zu sprechen. Vorher sperrte der Server einen solchen Benutzer aus der ganzen Gegensprechanlage aus, auch aus den Panels seiner eigenen Kameras. Jede Meldung zu einem Panel nennt seine Kamera, damit der Server nur die benachrichtigt, die sie sehen. Braucht VION 2.6.15
 
 ## [0.1.0]
 

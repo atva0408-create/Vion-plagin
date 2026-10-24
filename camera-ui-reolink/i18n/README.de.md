@@ -1,6 +1,6 @@
 # Reolink
 
-Bindet Kameras, Türklingeln, NVRs und Home Hubs von Reolink in ViON ein, über das Protokoll, das auch die Reolink-App verwendet. Funktioniert mit allen Reolink-Modellen, auch mit Akkukameras und Modellen ohne RTSP oder ONVIF.
+Bindet Kameras, Türklingeln, NVRs und Home Hubs von Reolink in VION ein, über das Protokoll, das auch die Reolink-App verwendet. Funktioniert mit allen Reolink-Modellen, auch mit Akkukameras und Modellen ohne RTSP oder ONVIF.
 
 ## Funktionen
 
@@ -14,8 +14,8 @@ Bindet Kameras, Türklingeln, NVRs und Home Hubs von Reolink in ViON ein, über 
 ## Voraussetzungen
 
 - Benutzername und Passwort des lokalen Kontos der Kamera, wie in der Reolink-App festgelegt
-- Die Kamera muss vom ViON-Server aus per IP-Adresse (Port 9000) oder, im selben Netzwerksegment, per UID erreichbar sein
-- Akkukameras müssen den ViON-Server auf dem unter „Port für Ereignismeldungen“ eingestellten Port erreichen können
+- Die Kamera muss vom VION-Server aus per IP-Adresse (Port 9000) oder, im selben Netzwerksegment, per UID erreichbar sein
+- Akkukameras müssen den VION-Server auf dem unter „Port für Ereignismeldungen“ eingestellten Port erreichen können
 
 ## Einstellungen
 

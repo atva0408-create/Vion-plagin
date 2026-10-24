@@ -9,24 +9,24 @@
 
 ## [1.2.7]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.6]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.5]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.4]
 
-- The sensor settings are gone: the plugin always listens for the standard ViON sounds, and the confidence comes from the camera's "Audio Confidence" setting
-- Detected sounds are reported under the standard ViON names; sounds without such a name no longer appear under internal names
+- The sensor settings are gone: the plugin always listens for the standard VION sounds, and the confidence comes from the camera's "Audio Confidence" setting
+- Detected sounds are reported under the standard VION names; sounds without such a name no longer appear under internal names
 
 ## [1.2.3]
 
-- The plugin reports which model it loaded and which hardware it runs on, so ViON can show this in the camera metrics
+- The plugin reports which model it loaded and which hardware it runs on, so VION can show this in the camera metrics
 
 ## [1.2.2]
 
@@ -34,12 +34,12 @@
 
 ## [1.2.1]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.0]
 
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.6]
 
@@ -56,7 +56,7 @@
 
 ## [1.1.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.2]
 
@@ -65,15 +65,15 @@
 ## [1.1.1]
 
 - Starting the plugin no longer stalls while the list of sound names is loaded
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.2]
 

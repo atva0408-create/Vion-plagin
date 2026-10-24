@@ -1,9 +1,9 @@
 {
-  "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.": "ViON notifications in Telegram through your own bot: the picture and words of an event, zone rules, quiet hours and the rights of users as on a phone.",
+  "Уведомления VION в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.": "VION notifications in Telegram through your own bot: the picture and words of an event, zone rules, quiet hours and the rights of users as on a phone.",
   "Bot token": "Bot token",
-  "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each ViON user then connects their chat under Settings, Notifications.": "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each ViON user then connects their chat under Settings, Notifications.",
+  "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each VION user then connects their chat under Settings, Notifications.": "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each VION user then connects their chat under Settings, Notifications.",
   "Bot API address": "Bot API address",
   "Leave empty for api.telegram.org. A self-hosted Bot API server or a proxy in its place, for example when Telegram is blocked.": "Leave empty for api.telegram.org. A self-hosted Bot API server or a proxy in its place, for example when Telegram is blocked.",
-  "ViON address for the button": "ViON address for the button",
-  "For example https://vion.example.com. A message then has a button that opens the moment in ViON; empty: no button.": "For example https://vion.example.com. A message then has a button that opens the moment in ViON; empty: no button."
+  "VION address for the button": "VION address for the button",
+  "For example https://vion.example.com. A message then has a button that opens the moment in VION; empty: no button.": "For example https://vion.example.com. A message then has a button that opens the moment in VION; empty: no button."
 }

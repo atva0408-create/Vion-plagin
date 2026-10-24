@@ -1,6 +1,6 @@
 /**
  * Who may do what with the intercom. The server passes the user of the session as `actor` to every method that acts
- * (it guarantees the actor is real); the plugin decides by it, with the rights ViON gives per camera (`cameraIds`,
+ * (it guarantees the actor is real); the plugin decides by it, with the rights VION gives per camera (`cameraIds`,
  * `talk`) and its own (ТЗ 5.3):
  * - a user limited to some cameras has the panels of those cameras only: their calls, visits, doors, codes;
  * - every user may see the panels, answer (with the right to talk) and read the archive;
@@ -16,7 +16,7 @@ export interface Actor {
   role: 'user' | 'admin' | 'master';
   /** the user's name, for the household's notifications and the visits ("Anna answered"); the assistant has none */
   name?: string;
-  /** the cameras of a user limited to some (ViON's cameraAccess); absent: every camera */
+  /** the cameras of a user limited to some (VION's cameraAccess); absent: every camera */
   cameraIds?: string[];
   /** false: the user may not talk to a camera, so not answer a call or speak through a panel */
   talk?: boolean;

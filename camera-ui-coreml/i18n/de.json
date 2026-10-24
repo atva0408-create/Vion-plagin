@@ -1,5 +1,5 @@
 {
-  "Детектор Apple CoreML для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP на оборудовании Apple.": "Erkennung mit Apple CoreML für ViON. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Kennzeichenlesung (OCR) und semantische Suche mit CLIP auf Apple-Hardware.",
+  "Детектор Apple CoreML для VION. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP на оборудовании Apple.": "Erkennung mit Apple CoreML für VION. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Kennzeichenlesung (OCR) und semantische Suche mit CLIP auf Apple-Hardware.",
   "Модель CLIP (изображения)": "CLIP-Modell (Bilder)",
   "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.": "CLIP-Modell für die semantische Suche, gilt für alle Kameras. Nach einem Wechsel müssen die Aufzeichnungen neu indexiert werden.",
   "По умолчанию": "Standard",

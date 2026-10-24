@@ -1,5 +1,5 @@
 {
-  "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к ViON: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.": "Connects Eufy cameras, doorbells, HomeBases and sensors to ViON: device discovery, live view, two-way audio, detection events and camera controls.",
+  "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к VION: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.": "Connects Eufy cameras, doorbells, HomeBases and sensors to VION: device discovery, live view, two-way audio, detection events and camera controls.",
   "Stream Mode": "Stream Mode",
   "P2P works for every camera. RTSP needs mains power, and a HomeBase serves only one camera over RTSP.": "P2P works for every camera. RTSP needs mains power, and a HomeBase serves only one camera over RTSP.",
   "P2P": "P2P",

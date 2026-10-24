@@ -1,7 +1,7 @@
 ## [0.5.3]
 
-- ViON learns whether each camera speaker said a notification: speaking off, the quiet hours of VOICE, a text too long, no talk channel, busy or failed is told back, and ViON 2.6.5 sends the notification another way
-- Each speaker is listed with its camera: ViON 2.6.5 tells the speaker of the camera a notification is about when its route names the camera speakers
+- VION learns whether each camera speaker said a notification: speaking off, the quiet hours of VOICE, a text too long, no talk channel, busy or failed is told back, and VION 2.6.5 sends the notification another way
+- Each speaker is listed with its camera: VION 2.6.5 tells the speaker of the camera a notification is about when its route names the camera speakers
 
 ## [0.5.2]
 
@@ -19,7 +19,7 @@
 
 ## [0.4.0]
 
-- When the child keeps on after three reminders, the parents' notice opens an event in the camera's recordings («Сыночка за компьютером во время сна», the reminders let pass, from the first one) with its video. Needs ViON NVR 0.14.0; without it the notice goes as before
+- When the child keeps on after three reminders, the parents' notice opens an event in the camera's recordings («Сыночка за компьютером во время сна», the reminders let pass, from the first one) with its video. Needs VION NVR 0.14.0; without it the notice goes as before
 - The notice goes for sure once VOICE told the child «I told your parents», even if the child steps away a moment later; every notice is in the log, sent or not and why
 - Bedtime and the daily limit no longer start their reminders over when the child is out of sight for less than 15 minutes (a classifier saying "no" for two minutes did that, and the third step that tells the parents never came)
 

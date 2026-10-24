@@ -1,6 +1,6 @@
 /**
- * SIP for a panel that calls ViON directly by IP (ТЗ 14.10): a user agent that takes calls, over UDP, only from the
- * addresses of the panels in the settings. An INVITE rings ViON; ViON answers it with G.711 when the agent or a person
+ * SIP for a panel that calls VION directly by IP (ТЗ 14.10): a user agent that takes calls, over UDP, only from the
+ * addresses of the panels in the settings. An INVITE rings VION; VION answers it with G.711 when the agent or a person
  * takes the call, ends it with BYE (or turns it away while it rings), and hears the keys pressed as RFC 4733 events or
  * SIP INFO. No registration on a SIP server, no TCP, no TLS: a panel on the home network calls straight in.
  *
@@ -22,7 +22,7 @@ import type { AudioChoice, SipMessage } from './message.js';
 export type SipEnd = 'cancel' | 'bye' | 'local' | 'timeout';
 
 export interface SipCallHandler {
-  /** a call came: ring ViON */
+  /** a call came: ring VION */
   ring(call: SipCall): void;
   ended(call: SipCall, why: SipEnd): void;
   /** a key pressed at the panel during the call */
@@ -41,7 +41,7 @@ export interface SipServerOptions {
   localAddress?: (panelHost: string) => Promise<string>;
 }
 
-const USER_AGENT = 'ViON intercom';
+const USER_AGENT = 'VION intercom';
 const ALLOW = 'INVITE, ACK, CANCEL, BYE, OPTIONS, INFO, NOTIFY';
 const T2_MS = 4_000;
 
@@ -176,7 +176,7 @@ export class SipServer {
         this.send(response(message, from, 200, 'OK', [['Allow', ALLOW]]), ...replyTo(message, from));
         return;
       case 'REGISTER': {
-        // a panel set to register with ViON as its server: let it, so it calls in; nobody else may
+        // a panel set to register with VION as its server: let it, so it calls in; nobody else may
         const contact = header(message, 'Contact');
         const expires = header(message, 'Expires') ?? textParam(contact, 'expires') ?? '3600';
         const extra: [string, string][] = contact ? [['Contact', contact.includes('expires=') ? contact : `${contact};expires=${expires}`]] : [];
@@ -308,7 +308,7 @@ export class SipCall {
   async ringing(): Promise<void> {
     this.provisional = serializeSip(response(this.invite, this.from, 100, 'Trying'));
     this.server.send(this.provisional, ...replyTo(this.invite, this.from));
-    // the 180 starts the dialog and names where the panel reaches ViON: the address it routes to
+    // the 180 starts the dialog and names where the panel reaches VION: the address it routes to
     const address = await this.localAddress();
     if (this.state !== 'ringing' || this.finalResponse) return;
     this.provisional = serializeSip(response(this.invite, this.from, 180, 'Ringing', [['Contact', this.contact(address)]], this.localTag));
@@ -374,7 +374,7 @@ export class SipCall {
     this.end('local');
   }
 
-  /** Ends the call from ViON's side: BYE once it is up, a "busy" while it rings. */
+  /** Ends the call from VION's side: BYE once it is up, a "busy" while it rings. */
   async hangUp(): Promise<void> {
     if (this.state === 'ended') return;
     if (this.state === 'ringing') {

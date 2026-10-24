@@ -1,7 +1,7 @@
 {
   "id": "camera-button",
   "version": 1,
-  "vendor": "ViON",
+  "vendor": "VION",
   "models": ["Камера и кнопка", "Звонки Ring, Eufy, Reolink, Home Assistant, Яндекс"],
   "engine": "generic",
   "minPluginVersion": "0.1.0",

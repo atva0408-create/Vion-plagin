@@ -1,5 +1,5 @@
 {
-  "Охранный датчик ViON на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из ViON; камера платы по желанию.": "Ein ViON-Sicherheitssensor auf einem ESP32-CAM: erkennt Bewegung im Raum am WLAN-Signal, ohne Video. Die Platine wird im Netz von selbst gefunden und aus ViON eingerichtet und aktualisiert; ihre Kamera ist optional.",
+  "Охранный датчик VION на ESP32-CAM: замечает движение в помещении по Wi-Fi-сигналу, без видео. Плата находится в сети сама, настраивается и обновляется из VION; камера платы по желанию.": "Ein VION-Sicherheitssensor auf einem ESP32-CAM: erkennt Bewegung im Raum am WLAN-Signal, ohne Video. Die Platine wird im Netz von selbst gefunden und aus VION eingerichtet und aktualisiert; ihre Kamera ist optional.",
   "Sensor": "Sensor",
   "What the board reports now.": "Was die Platine gerade meldet.",
   "Detection": "Erkennung",
@@ -33,12 +33,12 @@
   "The sensor learns the empty room for 30 seconds: leave the room before pressing.": "Der Sensor lernt 30 Sekunden lang den leeren Raum: verlassen Sie ihn, bevor Sie drücken.",
   "The new firmware did not start, and the board went back to the one it had.": "Die neue Firmware startete nicht, und die Platine ist zur vorherigen zurückgekehrt.",
   "Reset the sensor": "Sensor zurücksetzen",
-  "The board forgets the Wi-Fi and this ViON and shows its own network for a new setup.": "Die Platine vergisst das WLAN und dieses ViON und öffnet ihr eigenes Netz für eine neue Einrichtung.",
+  "The board forgets the Wi-Fi and this VION and shows its own network for a new setup.": "Die Platine vergisst das WLAN und dieses VION und öffnet ihr eigenes Netz für eine neue Einrichtung.",
   "Presence sensitivity": "Empfindlichkeit der Anwesenheit",
   "How readily a person standing still counts as present (the Espressif algorithm). Higher is more sensitive.": "Wie leicht eine still stehende Person als anwesend gilt (Algorithmus von Espressif). Höher ist empfindlicher.",
   "Motion from": "Bewegung aus",
-  "Which algorithm of the board makes motion in ViON. Both run all the time: switch to compare them.": "Welcher Algorithmus der Platine die Bewegung in ViON liefert. Beide laufen ständig: umschalten, um sie zu vergleichen.",
-  "ViON (signal changes)": "ViON (Signaländerungen)",
+  "Which algorithm of the board makes motion in VION. Both run all the time: switch to compare them.": "Welcher Algorithmus der Platine die Bewegung in VION liefert. Beide laufen ständig: umschalten, um sie zu vergleichen.",
+  "VION (signal changes)": "VION (Signaländerungen)",
   "Espressif (esp-radar)": "Espressif (esp-radar)",
   "Either of them": "Einer von beiden"
 }

@@ -24,7 +24,7 @@ const ZIP_MAX_FILES = 0xffff;
 /**
  * The timelapse interval of an export: a whole number of seconds, 1 to 3600, as the REST schema takes it; none for a
  * plain clip. The export over the bus took the number as it came, and a fraction (1e-6) made `setpts` and `fps`
- * write billions of frames onto the archive disk, by libx264, with no timeout (ViON audit 2026-10-23).
+ * write billions of frames onto the archive disk, by libx264, with no timeout (VION audit 2026-10-23).
  */
 export function timelapseOf(intervalSec: number | undefined): number {
   if (intervalSec === undefined || intervalSec === 0) return 0;

@@ -8,7 +8,7 @@
 
 ## [1.2.13]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.12]
 
@@ -16,13 +16,13 @@
 
 ## [1.2.11]
 
-**Requires ViON 2.2.5 or newer.** After the update, select this plugin as "Face Recognition" for each camera: camera settings, "Plugins", "Detections". Until then faces are detected but not named. The plugin downloads its new face models on the first start.
-- **Face recognition is a sensor of its own and straightens the face before recognizing it.** It recognizes far more people, and a face seen from the side or steeply from above gets no name instead of a wrong one. The recognition model is set once for the plugin, and ViON processes the saved face pictures again by itself.
-- Compatibility update for the current ViON version
+**Requires VION 2.2.5 or newer.** After the update, select this plugin as "Face Recognition" for each camera: camera settings, "Plugins", "Detections". Until then faces are detected but not named. The plugin downloads its new face models on the first start.
+- **Face recognition is a sensor of its own and straightens the face before recognizing it.** It recognizes far more people, and a face seen from the side or steeply from above gets no name instead of a wrong one. The recognition model is set once for the plugin, and VION processes the saved face pictures again by itself.
+- Compatibility update for the current VION version
 
 ## [1.2.10]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.9]
 
@@ -39,11 +39,11 @@
 ## [1.2.5]
 
 - The confidence thresholds are no longer in the plugin settings. Object, face and license plate detection now use the values from the camera's detection settings, so they are set in one place and a change takes effect right away
-- The plugin reports which model it loaded and which hardware it runs on, so ViON can show this in the camera metrics
+- The plugin reports which model it loaded and which hardware it runs on, so VION can show this in the camera metrics
 
 ## [1.2.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.2.2]
 
@@ -58,8 +58,8 @@
 ## [1.2.0]
 
 - Fixed the "Download models again" button, which did nothing when pressed
-- Compatibility update for the current ViON version
-- Requires ViON 2.0.23 or newer
+- Compatibility update for the current VION version
+- Requires VION 2.0.23 or newer
 
 ## [1.1.7]
 
@@ -73,7 +73,7 @@
 ## [1.1.5]
 
 - Downloaded models are no longer included in backups
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.4]
 
@@ -81,7 +81,7 @@
 
 ## [1.1.3]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.2]
 
@@ -91,15 +91,15 @@
 
 - A model that fails to load is now reported in the log instead of failing silently, and the next attempt loads it afresh
 - When one model fails to load at the start, the remaining models are still loaded
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.1.0]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.4]
 
-- Compatibility update for the current ViON version
+- Compatibility update for the current VION version
 
 ## [1.0.3]
 

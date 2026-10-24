@@ -93,14 +93,19 @@ function properties(raw: unknown): YProperty[] {
 
 /** The answer of GET /v1.0/user/info of the official API. */
 /** Scenarios the plugin keeps, one per station, start with this name. */
-export const SCENARIO_PREFIX = 'ViON ';
+export const SCENARIO_PREFIX = 'VION ';
+/**
+ * The name they had before the brand was written VION. Such a scenario is still found by its voice phrase and gets
+ * the new name with the next speech (the speech writes the whole scenario); till then it is not the user's either.
+ */
+const OLD_SCENARIO_PREFIX = 'ViON ';
 
 /**
- * The scenarios of the account a user may run from ViON: the ones the plugin keeps to make its stations speak are
+ * The scenarios of the account a user may run from VION: the ones the plugin keeps to make its stations speak are
  * left out, offered as switches they said the last notification again.
  */
 export function userScenarios(scenarios: YScenario[]): YScenario[] {
-  return scenarios.filter((scenario) => !scenario.name.startsWith(SCENARIO_PREFIX));
+  return scenarios.filter((scenario) => !scenario.name.startsWith(SCENARIO_PREFIX) && !scenario.name.startsWith(OLD_SCENARIO_PREFIX));
 }
 
 export function parseUserInfo(info: any): YHome {

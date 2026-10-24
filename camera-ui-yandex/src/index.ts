@@ -69,13 +69,13 @@ const NO_VOICE = 'the stations speak after the sign-in by QR code or x_token in 
 const SIGNED_OUT = 'Signed out of Yandex while this sign-in ran: sign in again';
 /**
  * The owner of a station for everyone but a notification on its way: a station belongs to the house, not to a user
- * of ViON, so no user matches it and only an admin may turn it on or rename it.
+ * of VION, so no user matches it and only an admin may turn it on or rename it.
  */
 const HOUSEHOLD = '';
 
 type ReadSource = 'official' | 'app';
 
-/** Whether a station said a notification, and why not: ViON keeps it and sends the notification another way. */
+/** Whether a station said a notification, and why not: VION keeps it and sends the notification another way. */
 interface StationDelivery {
   deviceId: string;
   ok: boolean;
@@ -83,7 +83,7 @@ interface StationDelivery {
 }
 
 /**
- * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; VION reads an answer per
  * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
  */
 function answered(deliveries: StationDelivery[]): void {
@@ -177,7 +177,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'submit',
         key: 'officialLogin',
         title: 'Sign in with Yandex ID',
-        description: 'Gives ViON access to the devices and scenarios of your Smart Home through the official API.',
+        description: 'Gives VION access to the devices and scenarios of your Smart Home through the official API.',
         onClick: this.onOfficialLogin.bind(this),
         group: 'Official API',
       },
@@ -253,7 +253,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'number',
         key: 'pollSeconds',
         title: 'Reading interval, seconds',
-        description: 'How often the official API is read. It has no push, so a sensor changes in ViON at most this much later.',
+        description: 'How often the official API is read. It has no push, so a sensor changes in VION at most this much later.',
         store: true,
         defaultValue: DEFAULT_POLL_SECONDS,
         minimum: MIN_POLL_SECONDS,
@@ -265,7 +265,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'boolean',
         key: 'scenarios',
         title: 'Offer scenarios',
-        description: 'Scenarios of the Smart Home are offered as switches: turning one on runs the scenario, also from automations of ViON.',
+        description: 'Scenarios of the Smart Home are offered as switches: turning one on runs the scenario, also from automations of VION.',
         store: true,
         defaultValue: true,
         group: 'Devices',
@@ -565,7 +565,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
     await this.offerCameras();
   }
 
-  /** Cameras not added yet are offered when they change, not at every reading: ViON logs each offer. */
+  /** Cameras not added yet are offered when they change, not at every reading: VION logs each offer. */
   private async offerCameras(): Promise<void> {
     const fresh = this.notAddedCameras();
     const ids = fresh
@@ -799,7 +799,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       ownerUserId: owner,
       name: this.stationName(station),
       active: this.speaks(station.id),
-      // ViON says a station Yandex counts off before it is tried (its assistant's notification_channels)
+      // VION says a station Yandex counts off before it is tried (its assistant's notification_channels)
       metadata: { type: station.type, online: station.online },
     };
   }
@@ -818,7 +818,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   }
 
   /**
-   * A notification is said aloud: its title, then its text. What became of it on each station goes back to ViON, which
+   * A notification is said aloud: its title, then its text. What became of it on each station goes back to VION, which
    * keeps it in its history and sends the notification another way when no station said it: a station that did not
    * speak was counted as one that did, the error stayed in this log (the audit of 2026-10-17).
    */
@@ -1193,7 +1193,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
 
   /**
    * The link first: it needs no second device, in a browser signed in to Yandex the sign-in is one click on the page
-   * Yandex opens, and a browser that is not signed in is asked to sign in first. ViON gives a link field a button that
+   * Yandex opens, and a browser that is not signed in is asked to sign in first. VION gives a link field a button that
    * opens it. The code is for the phone, when signing in to Yandex in this browser is not wanted.
    */
   private async qrSchema(link: string): Promise<JsonSchemaWithoutCallbacks[]> {
@@ -1223,7 +1223,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
   }
 
   /**
-   * An x_token typed into its field. ViON stores the field before this runs, so one Yandex does not take is put back
+   * An x_token typed into its field. VION stores the field before this runs, so one Yandex does not take is put back
    * to the sign-in that worked (or emptied): kept, it would be what the next start signs in with.
    */
   private async onXToken(value: unknown): Promise<void> {
@@ -1263,7 +1263,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         type: 'string',
         key: DONE_FIELD,
         title: 'Signed in to the Smart Home API, devices found:',
-        description: 'Sensors are added under Sensors in ViON, cameras under Cameras. For speech on the stations, also sign in with a link or QR code.',
+        description: 'Sensors are added under Sensors in VION, cameras under Cameras. For speech on the stations, also sign in with a link or QR code.',
         readonly: true,
         defaultValue: value,
       };
@@ -1273,7 +1273,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       key: DONE_FIELD,
       title: 'Signed in to Yandex as:',
       description:
-        'Sensors are added under Sensors in ViON, cameras under Cameras. A station speaks notifications once you turn it on in the notification settings of ViON.',
+        'Sensors are added under Sensors in VION, cameras under Cameras. A station speaks notifications once you turn it on in the notification settings of VION.',
       readonly: true,
       defaultValue: value,
     };
@@ -1295,7 +1295,7 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
             enumLabels: Object.fromEntries(stations.map((s) => [s.id, this.stationName(s)])),
             defaultValue: stations[0].id,
           },
-          { type: 'string', key: 'phrase', title: 'Phrase', description: 'What the station says.', defaultValue: 'Привет! Это ViON.', required: true },
+          { type: 'string', key: 'phrase', title: 'Phrase', description: 'What the station says.', defaultValue: 'Привет! Это VION.', required: true },
         ],
       };
     }

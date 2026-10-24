@@ -58,7 +58,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
         type: 'number',
         key: 'contextTokens',
         title: 'Context window (tokens)',
-        description: 'How much the model can hold. Raise it after a system update that brings a larger window, ViON plans the conversation with this number.',
+        description: 'How much the model can hold. Raise it after a system update that brings a larger window, VION plans the conversation with this number.',
         store: true,
         defaultValue: CONTEXT_TOKENS,
         minimum: 1024,
@@ -70,7 +70,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
         key: 'useTools',
         title: 'Let the model use tools',
         description:
-          'The assistant can look at events, cameras and sensors through this model. ViON fits the tool list to the small context window. ' +
+          'The assistant can look at events, cameras and sensors through this model. VION fits the tool list to the small context window. ' +
           'Off makes it a plain chat model.',
         store: true,
         defaultValue: true,
@@ -175,7 +175,7 @@ export default class AppleLLM extends ServicePlugin<PluginStorageValues> impleme
       this.logger.log(`Apple on-device model ready (${await this.contextTokens()} tokens of context)`);
       return;
     }
-    this.logger.warn('The on-device model is not usable yet, ViON offers it as soon as macOS reports it ready');
+    this.logger.warn('The on-device model is not usable yet, VION offers it as soon as macOS reports it ready');
   }
 }
 

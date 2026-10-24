@@ -1,5 +1,5 @@
 {
-  "Распознавание звуковых событий для ViON. Классифицирует звуки из аудиопотоков камер моделью YAMNet.": "Geräuscherkennung für ViON. Erkennt Geräusche im Ton der Kameras mit dem Modell YAMNet.",
+  "Распознавание звуковых событий для VION. Классифицирует звуки из аудиопотоков камер моделью YAMNet.": "Geräuscherkennung für VION. Erkennt Geräusche im Ton der Kameras mit dem Modell YAMNet.",
   "Отслеживаемые звуки": "Überwachte Geräusche",
   "Звуки для обнаружения": "Zu erkennende Geräusche",
   "Порог уверенности": "Konfidenzschwelle",

@@ -1,4 +1,4 @@
-// Every plugin ships its texts in the languages of the ViON interface:
+// Every plugin ships its texts in the languages of the VION interface:
 //
 //   README.md, CHANGELOG.md                 English, written for the customer
 //   i18n/README.<lang>.md                   the same page in the other languages
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Languages of the ViON interface (ui/src/i18n/locales in the VIONN- repo). The first one is the language of
+// Languages of the VION interface (ui/src/i18n/locales in the VIONN- repo). The first one is the language of
 // README.md and CHANGELOG.md.
 export const LANGUAGES = ['en', 'ru', 'de'];
 const BASE_LANGUAGE = LANGUAGES[0];

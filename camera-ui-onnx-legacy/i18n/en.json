@@ -1,5 +1,5 @@
 {
-  "Детектор ONNX Runtime для ViON со старой средой CUDA 12. Для видеокарт NVIDIA до GTX 1650 (Maxwell, Pascal, Volta) и систем, остающихся на CUDA 12. На новом оборудовании используйте обычный плагин ONNX.": "ONNX Runtime detector for ViON on the older CUDA 12. For NVIDIA graphics cards before the GTX 1650 (Maxwell, Pascal, Volta) and systems that stay on CUDA 12. On newer hardware, use the regular ONNX plugin.",
+  "Детектор ONNX Runtime для VION со старой средой CUDA 12. Для видеокарт NVIDIA до GTX 1650 (Maxwell, Pascal, Volta) и систем, остающихся на CUDA 12. На новом оборудовании используйте обычный плагин ONNX.": "ONNX Runtime detector for VION on the older CUDA 12. For NVIDIA graphics cards before the GTX 1650 (Maxwell, Pascal, Volta) and systems that stay on CUDA 12. On newer hardware, use the regular ONNX plugin.",
   "Модель CLIP (изображения)": "CLIP Model (Images)",
   "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.": "CLIP model for the semantic search, shared by all cameras. After you change it, the recordings have to be reindexed.",
   "По умолчанию": "Default",
@@ -31,7 +31,7 @@
   "Модель YOLOv9 для обнаружения номерных знаков": "YOLOv9 model for license plate detection",
   "Номерные знаки": "License Plates",
   "Модель CCT для распознавания текста номеров": "CCT model for reading license plate text",
-  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO model for object detection. \"Default\" is the model ViON trained on your footage if one has been published, otherwise the standard one.",
+  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная VION на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO model for object detection. \"Default\" is the model VION trained on your footage if one has been published, otherwise the standard one.",
   "Обнаружение объектов": "Object Detection",
   "Модель, обводящая людей, транспорт и животных": "The model that outlines people, vehicles and animals",
   "Сегментация": "Segmentation",

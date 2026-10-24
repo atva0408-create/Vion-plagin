@@ -1,7 +1,7 @@
 // After «Reconnect» or a change of the sign-in the camera said «Connected to ONVIF device» and never «Started ONVIF
 // event listening» again: the old loop was stopped on the old connection alone, the flag stayed up, and motion and
 // objects from the camera were gone until the plugin restarted; a second PTZ sensor was made each time, the first one
-// polling the old connection five times a second for good (ViON audit 2026-10-23, F2).
+// polling the old connection five times a second for good (VION audit 2026-10-23, F2).
 // Run: npx tsx spec/reconnect.spec.ts
 import assert from 'node:assert/strict';
 

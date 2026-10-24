@@ -1,7 +1,7 @@
-"""Modules of the ViON store as the detection plugins see them (src/modules.py, kept identical in the ONNX and
+"""Modules of the VION store as the detection plugins see them (src/modules.py, kept identical in the ONNX and
 OpenVINO plugins; the legacy plugins copy them).
 
-The ViON server writes ``installed.json`` (server/src/manager/moduleManager.ts); the plugin offers every detector
+The VION server writes ``installed.json`` (server/src/manager/moduleManager.ts); the plugin offers every detector
 module it has the files of as one more object model, loads it through its model manager from the absolute path
 without a download, and follows an added or removed module without a restart.
 

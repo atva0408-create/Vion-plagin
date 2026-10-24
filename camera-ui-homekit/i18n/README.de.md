@@ -1,6 +1,6 @@
 # HomeKit
 
-Zeigt Ihre ViON-Kameras und -Sensoren in der Home-App von Apple.
+Zeigt Ihre VION-Kameras und -Sensoren in der Home-App von Apple.
 
 ## Funktionen
 

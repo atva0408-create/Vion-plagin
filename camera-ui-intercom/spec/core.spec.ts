@@ -99,7 +99,7 @@ test('everyone declined: the agent answers, or the call ends declined; one decli
   assert.equal(noAgent.call.outcome, 'declined');
 });
 
-test('a call to "all": every user of ViON must decline; with the users unknown the first decline speaks for all', () => {
+test('a call to "all": every user of VION must decline; with the users unknown the first decline speaks for all', () => {
   const call = newCall('c1', 'v1', 'gate', [ALL_USERS], TUE_NOON);
   const everyone = ['u1', 'u2'];
   const one = step(call, { type: 'decline', userId: 'u1' }, { ...ctx(TUE_NOON + 1000), everyone });

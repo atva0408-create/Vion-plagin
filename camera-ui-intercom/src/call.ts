@@ -68,7 +68,7 @@ export interface StepContext {
   now: number;
   /** whether the agent may answer this call (the mode, the agent's settings, a talk channel) */
   agentEnabled: boolean;
-  /** the users of ViON, whom a call to "all" rings; unknown on a server that does not tell them */
+  /** the users of VION, whom a call to "all" rings; unknown on a server that does not tell them */
   everyone?: readonly string[];
 }
 

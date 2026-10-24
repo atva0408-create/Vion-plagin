@@ -85,11 +85,11 @@ export function tokenPageUrl(clientId: string): string {
   return `${OAUTH_URL}/authorize?response_type=token&client_id=${encodeURIComponent(clientId)}&scope=${encodeURIComponent(IOT_SCOPES)}`;
 }
 
-/** Sign-in of Yandex ID by a code the user enters on another device: no address of ViON has to be reachable. */
+/** Sign-in of Yandex ID by a code the user enters on another device: no address of VION has to be reachable. */
 export async function requestDeviceCode(clientId: string, deviceId: string): Promise<DeviceCode> {
   const res = await http(`${OAUTH_URL}/device/code`, {
     method: 'POST',
-    body: new URLSearchParams({ client_id: clientId, device_id: deviceId, device_name: 'ViON', scope: IOT_SCOPES }),
+    body: new URLSearchParams({ client_id: clientId, device_id: deviceId, device_name: 'VION', scope: IOT_SCOPES }),
   });
   const body = await json<Record<string, any>>(res);
   if (!res.ok || !body.device_code) throw new YandexAuthError(`Yandex ID did not give a code: ${body.error_description ?? body.error ?? res.status}`);

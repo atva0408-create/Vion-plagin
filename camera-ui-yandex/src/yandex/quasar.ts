@@ -160,7 +160,7 @@ export class YandexQuasar {
         return String(scenario.id);
       }
     }
-    const created = await this.session.quasar('POST', `${this.baseUrl}/m/v4/user/scenarios`, ttsScenario(deviceId, 'ViON'));
+    const created = await this.session.quasar('POST', `${this.baseUrl}/m/v4/user/scenarios`, ttsScenario(deviceId, 'VION'));
     if (!created.scenario_id) throw new YandexApiError('Yandex did not create the scenario for the station');
     this.scenarioIds.set(deviceId, String(created.scenario_id));
     return String(created.scenario_id);

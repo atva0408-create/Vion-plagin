@@ -58,7 +58,7 @@ test('a camera with a fixed lens has no zoom and no focus', () => {
   assert.equal(hasOptics(findOptics(C300)), false);
 });
 
-test('a read-only zoom is not a zoom ViON can drive', () => {
+test('a read-only zoom is not a zoom VION can drive', () => {
   const spec: MiotSpec = {
     type: 't',
     services: [{ iid: 3, type: 's', properties: [{ iid: 1, type: 'urn:x:property:zoom:1:x:1', format: 'uint8', access: ['read'], 'value-range': [0, 10, 1] }] }],

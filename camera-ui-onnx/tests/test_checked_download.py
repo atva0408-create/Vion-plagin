@@ -1,4 +1,4 @@
-"""A model file from the mirror is kept only when it is what was asked for (ViON audit 2026-10-23, ML5).
+"""A model file from the mirror is kept only when it is what was asked for (VION audit 2026-10-23, ML5).
 
 A captive portal of a hotel or train Wi-Fi, or an error page answering 200, was saved as the model and stayed for good:
 the download is skipped for a file in place, and every start failed to load it. The engines install camera-ui-ml from

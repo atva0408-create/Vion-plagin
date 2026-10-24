@@ -93,9 +93,9 @@
     "granted": "Jetzt: die Eltern haben Zeit bis {time} gegeben",
     "hours": "{hours} Std. {minutes} Min.",
     "onlyMinutes": "{minutes} Min.",
-    "call": "Ruf «ViON»: das Mikrofon der Kamera hört zu",
-    "callFailed": "Ruf «ViON»: das Mikrofon der Kamera ist nicht verfügbar ({reason})",
-    "callLanguage": "Der Ruf «ViON» funktioniert vorerst nur auf Russisch"
+    "call": "Ruf «VION»: das Mikrofon der Kamera hört zu",
+    "callFailed": "Ruf «VION»: das Mikrofon der Kamera ist nicht verfügbar ({reason})",
+    "callLanguage": "Der Ruf «VION» funktioniert vorerst nur auf Russisch"
   },
   "test": "Sprachtest. Kannst du mich gut hören?",
   "speakerYes": "VOICE kann über diese Kamera sprechen.",

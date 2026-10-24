@@ -1,5 +1,5 @@
 {
-  "Интеграция ONVIF для ViON: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.": "Bindet ONVIF-Kameras in ViON ein: Kamerasuche, PTZ-Steuerung sowie Bewegungs-, Objekt-, Geräusch- und Gesichtsereignisse der Kamera.",
+  "Интеграция ONVIF для VION: поиск камер, управление PTZ, события движения, объектов, звука и лиц через ONVIF.": "Bindet ONVIF-Kameras in VION ein: Kamerasuche, PTZ-Steuerung sowie Bewegungs-, Objekt-, Geräusch- und Gesichtsereignisse der Kamera.",
   "Username": "Benutzername",
   "Username for the camera's ONVIF account.": "Benutzername des ONVIF-Kontos der Kamera.",
   "Password": "Passwort",

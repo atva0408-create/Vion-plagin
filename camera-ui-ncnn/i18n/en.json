@@ -1,5 +1,5 @@
 {
-  "Детектор NCNN для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR).": "NCNN detection for ViON. Object detection, face detection and recognition, license plate reading (OCR).",
+  "Детектор NCNN для VION. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR).": "NCNN detection for VION. Object detection, face detection and recognition, license plate reading (OCR).",
   "Модель эмбеддингов лиц": "Face Recognition Model",
   "Модель, преобразующая лицо в вектор, общая для всех камер. После её смены эмбеддинги сохранённых лиц будут пересчитаны.": "Model used to recognize faces, shared by all cameras. After you change it, the saved faces are recalculated.",
   "По умолчанию": "Default",

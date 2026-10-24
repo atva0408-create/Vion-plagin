@@ -56,7 +56,7 @@ interface CameraEntry {
 const DEVICE_PREFIX = 'voice:';
 const MAX_NOTIFICATION_CHARS = 300;
 
-/** Whether a speaker said a notification, and why not: ViON keeps it and sends the notification another way. */
+/** Whether a speaker said a notification, and why not: VION keeps it and sends the notification another way. */
 interface SpeakerDelivery {
   deviceId: string;
   ok: boolean;
@@ -64,7 +64,7 @@ interface SpeakerDelivery {
 }
 
 /**
- * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; ViON reads an answer per
+ * The answer of sendNotification. The SDK of camera.ui (upstream's) says it answers nothing; VION reads an answer per
  * device when there is one (server manager/channels.ts, deliveriesOf), so the list passes the SDK's type as void.
  */
 function answered(deliveries: SpeakerDelivery[]): void {
@@ -147,7 +147,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
     this.api.on(API_EVENT.SHUTDOWN, () => this.stop());
   }
 
-  /** The recorder of ViON, when it is installed: the parents' notice of a violation opens its event. */
+  /** The recorder of VION, when it is installed: the parents' notice of a violation opens its event. */
   private async nvrPlugin(): Promise<Record<string, (...args: unknown[]) => Promise<unknown>> | undefined> {
     return (await this.api.coreManager.connectToPlugin(NVR_PLUGIN).catch(() => undefined)) as Record<string, (...args: unknown[]) => Promise<unknown>> | undefined;
   }
@@ -243,7 +243,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
         type: 'string',
         key: 'models',
         title: 'Speech models',
-        description: 'Downloaded from the ViON models server the first time VOICE speaks or listens.',
+        description: 'Downloaded from the VION models server the first time VOICE speaks or listens.',
         readonly: true,
         store: false,
         onGet: async () => (await this.store.installed()).join(', ') || 'not downloaded yet',
@@ -323,7 +323,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
           title: 'Person',
           description: 'A known face.',
           properties: [
-            { type: 'string', key: 'name', title: 'Face name', description: 'As in the faces of ViON.' },
+            { type: 'string', key: 'name', title: 'Face name', description: 'As in the faces of VION.' },
             {
               type: 'string',
               key: 'gender',
@@ -1011,7 +1011,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
   }
 
   /**
-   * A notification said on the speakers of the cameras named. What became of it on each goes back to ViON, which keeps
+   * A notification said on the speakers of the cameras named. What became of it on each goes back to VION, which keeps
    * it and sends the notification another way when no speaker said it (the audit of 2026-10-17).
    */
   async sendNotification(deviceIds: string[], n: Notification): Promise<void> {
@@ -1060,7 +1060,7 @@ export default class VoicePlugin extends BasePlugin<PluginValues> implements Not
 
   private device(cameraId: string, name: string): NotifierDevice {
     const speaks = (this.values().channelSpeakers ?? []).includes(cameraId);
-    // the camera: ViON tells the speaker of the camera a notification is about when its route names the speakers
+    // the camera: VION tells the speaker of the camera a notification is about when its route names the speakers
     return { id: `${DEVICE_PREFIX}${cameraId}`, ownerUserId: '', name: `${name} (VOICE)`, active: false, metadata: { speaks, cameraId } };
   }
 

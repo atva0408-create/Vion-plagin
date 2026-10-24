@@ -5,7 +5,7 @@ import type { Socket as UdpSocket } from 'node:dgram';
 import type { Socket as TcpSocket } from 'node:net';
 
 // The CS2 P2P link of the Mi Home cameras, as go2rtc dials it (pkg/xiaomi/miss/cs2): a search on the camera's UDP port
-// 32108, then the camera names the port and the transport (UDP or TCP) of the session. ViON plays the video through
+// 32108, then the camera names the port and the transport (UDP or TCP) of the session. VION plays the video through
 // go2rtc; the plugin opens a session of its own only for the commands the stream engine does not send (the motor).
 
 const PORT = 32108;

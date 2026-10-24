@@ -1,11 +1,11 @@
 # YAMNet Audio Detection
 
-Listens to the sound of your cameras, recognizes typical sounds such as breaking glass, a siren or a barking dog, and reports them to ViON.
+Listens to the sound of your cameras, recognizes typical sounds such as breaking glass, a siren or a barking dog, and reports them to VION.
 
 ## What it does
 
 - Recognizes twelve kinds of sound: doorbell, glass break, siren, speaking, gunshot, dog bark, baby cry, alarm, scream, cat, car alarm and smoke alarm
-- Reports each sound once and under the names ViON uses for sounds
+- Reports each sound once and under the names VION uses for sounds
 - Uses the confidence value from the camera's settings, so the sensitivity is set per camera in one place
 - Needs no setup of its own: the plugin always listens for all of these sounds
 - Downloads its model itself on the first start

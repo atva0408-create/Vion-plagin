@@ -1,7 +1,7 @@
 import type { DetectionEvent, DetectionEventType } from '@camera.ui/sdk';
 import type { RecordedEpisode } from './episodes.js';
 
-/** Wire shapes of the NVR RPC interface the ViON UI consumes. */
+/** Wire shapes of the NVR RPC interface the VION UI consumes. */
 
 export interface RecordedSegment {
   firstSeen: number;

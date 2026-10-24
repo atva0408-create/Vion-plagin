@@ -1,15 +1,15 @@
 # Yandex Smart Home
 
-Verbindet ViON mit dem Yandex Smart Home und den Alice-Stationen. Sensoren und Relais des Hubs in einer Yandex-Station werden zu Sensoren von ViON, Szenarien des Smart Home laufen aus Automationen von ViON, Stationen sprechen Benachrichtigungen laut aus, und Kameras des Smart Home erscheinen in ViON.
+Verbindet VION mit dem Yandex Smart Home und den Alice-Stationen. Sensoren und Relais des Hubs in einer Yandex-Station werden zu Sensoren von VION, Szenarien des Smart Home laufen aus Automationen von VION, Stationen sprechen Benachrichtigungen laut aus, und Kameras des Smart Home erscheinen in VION.
 
 ## Funktionen
 
-- **Sensoren**: Bewegung, Türen und Fenster, Wasserlecks, Rauch, Gas, Vibration, Taster, Temperatur, Luftfeuchtigkeit, Helligkeit und CO₂ des Smart Home werden zu Sensoren von ViON. Sie können Aufnahme und Erkennung an den Kameras sowie Automationen auslösen
-- **Steuerung**: Relais, Steckdosen, Schalter und Lampen des Smart Home werden zu Schaltern und Lampen von ViON, Automationen schalten sie ein und aus
-- **Klimaanlagen, Fernseher, IR-Fernbedienungen**: neben Ein und Aus stehen Modus, Temperatur und Lüfter einer Klimaanlage, Lautstärke, Kanal, Eingang und Stummschaltung eines Fernsehers und die angelernten Tasten einer IR-Fernbedienung in den Einstellungen ihres Schalters (Seite „Geräte“ in ViON, „Mehr“). Eine Fernbedienung nur aus Tasten wird ein eigener Schalter
+- **Sensoren**: Bewegung, Türen und Fenster, Wasserlecks, Rauch, Gas, Vibration, Taster, Temperatur, Luftfeuchtigkeit, Helligkeit und CO₂ des Smart Home werden zu Sensoren von VION. Sie können Aufnahme und Erkennung an den Kameras sowie Automationen auslösen
+- **Steuerung**: Relais, Steckdosen, Schalter und Lampen des Smart Home werden zu Schaltern und Lampen von VION, Automationen schalten sie ein und aus
+- **Klimaanlagen, Fernseher, IR-Fernbedienungen**: neben Ein und Aus stehen Modus, Temperatur und Lüfter einer Klimaanlage, Lautstärke, Kanal, Eingang und Stummschaltung eines Fernsehers und die angelernten Tasten einer IR-Fernbedienung in den Einstellungen ihres Schalters (Seite „Geräte“ in VION, „Mehr“). Eine Fernbedienung nur aus Tasten wird ein eigener Schalter
 - **Szenarien**: jedes Szenario des Smart Home wird als Schalter angeboten. Einschalten startet das Szenario, aus der Oberfläche oder aus einer Automation
 - **Sprache der Stationen**: mit der Anmeldung als Yandex-App ist jede Station ein Benachrichtigungsziel. Eine Station, die Sie einschalten, spricht Benachrichtigungen laut: „Bewegung. Hofkamera“
-- **Assistent**: der Assistent von ViON kann einen Satz auf einer Station sagen, Alice einen Befehl geben, ein Szenario starten und den Zustand der Geräte lesen
+- **Assistent**: der Assistent von VION kann einen Satz auf einer Station sagen, Alice einen Befehl geben, ein Szenario starten und den Zustand der Geräte lesen
 - **Kameras**: Kameras des Smart Home werden unter Kameras angeboten und zeigen ihr Livebild
 
 ## Zwei Arten der Anmeldung
@@ -29,7 +29,7 @@ Ohne Secret zeigt das Fenster stattdessen eine Seite von Yandex ID: Zugriff erla
 1. Klicken Sie auf **Mit Link oder QR-Code anmelden**. Ein Fenster mit einem Link und einem QR-Code öffnet sich
 2. Bestätigen Sie die Anmeldung auf eine von zwei Arten:
    - **Im Browser.** Klicken Sie auf die Schaltfläche rechts neben dem Link: Yandex öffnet sich in einem neuen Tab und bittet Sie, die Anmeldung zu bestätigen. Ist dieser Browser nicht bei Yandex angemeldet, fragt Yandex zuerst nach der Anmeldung
-   - **Am Telefon.** Scannen Sie den Code mit der Yandex-App auf einem Telefon, das bei Yandex angemeldet ist, und bestätigen Sie die Anmeldung in der App. Praktisch, wenn der Browser mit ViON nicht bei Yandex angemeldet ist
+   - **Am Telefon.** Scannen Sie den Code mit der Yandex-App auf einem Telefon, das bei Yandex angemeldet ist, und bestätigen Sie die Anmeldung in der App. Praktisch, wenn der Browser mit VION nicht bei Yandex angemeldet ist
 3. Kehren Sie zum Fenster zurück und klicken Sie auf **Speichern**. Das Fenster zeigt das Konto, bei dem sich das Plugin angemeldet hat. Vor der Bestätigung geklickt, wartet es bis zu 20 Sekunden und bittet dann, erneut zu klicken
 
 Bestätigen Sie mit dem Yandex-Konto, zu dem Ihr Smart Home gehört: Das Plugin sieht die Geräte und Stationen des Kontos, das bestätigt hat. Yandex verlangt diese Bestätigung jedes Mal, ohne sie geht keine Anmeldung bei einem Konto durch.
@@ -49,15 +49,15 @@ Wenn Sie bereits ein x_token des Kontos haben, können Sie es stattdessen in das
 ## Sensoren, Kameras und Stationen hinzufügen
 
 1. Melden Sie sich wie oben an
-2. Öffnen Sie **Sensoren** in ViON: die Geräte des Smart Home werden mit ihren Räumen zur Übernahme angeboten
+2. Öffnen Sie **Sensoren** in VION: die Geräte des Smart Home werden mit ihren Räumen zur Übernahme angeboten
 3. Öffnen Sie **Kameras**: Kameras des Smart Home stehen unter **Gefunden**
-4. In den Benachrichtigungseinstellungen von ViON, unter Geräte, erscheinen die Stationen nach der Anmeldung als Yandex-App. Keine von ihnen spricht, bevor Sie sie einschalten: schalten Sie Aktiv bei denen ein, die sprechen sollen. Das kann nur ein Administrator von ViON
+4. In den Benachrichtigungseinstellungen von VION, unter Geräte, erscheinen die Stationen nach der Anmeldung als Yandex-App. Keine von ihnen spricht, bevor Sie sie einschalten: schalten Sie Aktiv bei denen ein, die sprechen sollen. Das kann nur ein Administrator von VION
 
 ## Gut zu wissen
 
 - Nur Geräte Ihrer eigenen Häuser werden gelesen; mit Ihnen geteilte Häuser nicht
 - Nimmt Yandex eine Anmeldung nicht mehr an (Passwort geändert, Zugriff widerrufen), meldet das Plugin das einmal im Log, vergisst diese Anmeldung und wartet auf eine neue. Die andere Anmeldung, falls vorhanden, arbeitet weiter
-- Ein Gerät mit mehreren Sensoren benennt jeden nach sich und nach dem, was er zeigt, auf Englisch: „Flursensor: Motion“. Benennen Sie sie in ViON nach Belieben um
-- Die Sprache und die QR-Anmeldung sind keine offizielle Schnittstelle von Yandex. Eine Änderung auf Seiten von Yandex kann ein Update des Plugins erfordern. Für die Sprache über die Cloud hält das Plugin pro Station ein Szenario mit dem Namen „ViON“ und der Kennung der Station; löschen Sie es nicht
-- Das Mikrofon einer Station steht anderen Systemen nicht zur Verfügung: Alice hört nur auf Yandex. Um per Stimme mit ViON zu sprechen, nutzen Sie den ViON-Skill für Alice in der ViON-Cloud
+- Ein Gerät mit mehreren Sensoren benennt jeden nach sich und nach dem, was er zeigt, auf Englisch: „Flursensor: Motion“. Benennen Sie sie in VION nach Belieben um
+- Die Sprache und die QR-Anmeldung sind keine offizielle Schnittstelle von Yandex. Eine Änderung auf Seiten von Yandex kann ein Update des Plugins erfordern. Für die Sprache über die Cloud hält das Plugin pro Station ein Szenario mit dem Namen „VION“ und der Kennung der Station; löschen Sie es nicht
+- Das Mikrofon einer Station steht anderen Systemen nicht zur Verfügung: Alice hört nur auf Yandex. Um per Stimme mit VION zu sprechen, nutzen Sie den VION-Skill für Alice in der VION-Cloud
 - Das Video einer Kamera des Smart Home kommt aus der Cloud von Yandex

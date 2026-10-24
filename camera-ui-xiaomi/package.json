@@ -2,8 +2,8 @@
   "displayName": "Xiaomi",
   "name": "@vionvision/camera-ui-xiaomi",
   "version": "0.4.2",
-  "description": "Подключает камеры Xiaomi Mi Home к ViON: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети или удалённому P2P.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Подключает камеры Xiaomi Mi Home к VION: вход в аккаунт Mi, поиск камер и прямой эфир по локальной сети или удалённому P2P.",
+  "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
   "type": "module",
   "scripts": {

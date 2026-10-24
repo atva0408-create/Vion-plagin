@@ -1,6 +1,6 @@
 # Onvif
 
-Bindet Kameras, die den ONVIF-Standard unterstützen, in ViON ein. Das Plugin findet sie im Netzwerk, übernimmt ihre Videostreams und reicht die Ereignisse und die PTZ-Steuerung weiter, die die Kamera selbst anbietet.
+Bindet Kameras, die den ONVIF-Standard unterstützen, in VION ein. Das Plugin findet sie im Netzwerk, übernimmt ihre Videostreams und reicht die Ereignisse und die PTZ-Steuerung weiter, die die Kamera selbst anbietet.
 
 ## Funktionen
 
@@ -12,7 +12,7 @@ Bindet Kameras, die den ONVIF-Standard unterstützen, in ViON ein. Das Plugin fi
 
 ## Voraussetzungen
 
-- Eine Kamera mit ONVIF-Unterstützung, die vom ViON-Server aus über das Netzwerk erreichbar ist
+- Eine Kamera mit ONVIF-Unterstützung, die vom VION-Server aus über das Netzwerk erreichbar ist
 - Benutzername und Passwort des ONVIF-Kontos der Kamera
 - Ereignisse und PTZ erscheinen nur, wenn die Kamera sie selbst unterstützt
 

@@ -1,6 +1,6 @@
 # Tuya
 
-Connects Tuya and Smart Life cameras to ViON. After you sign in, the plugin finds the cameras of your account and you add the ones you want; their live view runs through the Tuya service.
+Connects Tuya and Smart Life cameras to VION. After you sign in, the plugin finds the cameras of your account and you add the ones you want; their live view runs through the Tuya service.
 
 ## What it does
 

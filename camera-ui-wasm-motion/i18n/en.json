@@ -1,5 +1,5 @@
 {
-  "Детектор движения для ViON в виде модуля WebAssembly. Переносимый попиксельный анализ движения без зависимостей.": "Motion detection for ViON that works on any system without extra components.",
+  "Детектор движения для VION в виде модуля WebAssembly. Переносимый попиксельный анализ движения без зависимостей.": "Motion detection for VION that works on any system without extra components.",
   "Площадь": "Area",
   "Минимальный размер области, считающийся движением.": "Minimum size of an area that counts as motion.",
   "Порог": "Threshold",

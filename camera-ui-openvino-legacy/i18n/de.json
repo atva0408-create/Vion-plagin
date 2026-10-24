@@ -1,5 +1,5 @@
 {
-  "Детектор OpenVINO для ViON со старой средой 2024.6. Для графики Intel до 10-го поколения Core в Windows, чьи драйверы не собирают GPU-код новых версий OpenVINO. В Linux эти GPU поддерживает Docker-образ ViON; в остальных случаях используйте обычный плагин OpenVino.": "OpenVINO-Detektor für ViON mit dem älteren OpenVINO 2024.6. Für Intel-Grafik bis zur 10. Core-Generation unter Windows, deren Treiber mit neueren OpenVINO-Versionen nicht funktionieren. Unter Linux unterstützt das Docker-Image von ViON diese GPUs; in allen anderen Fällen verwenden Sie das reguläre OpenVino-Plugin.",
+  "Детектор OpenVINO для VION со старой средой 2024.6. Для графики Intel до 10-го поколения Core в Windows, чьи драйверы не собирают GPU-код новых версий OpenVINO. В Linux эти GPU поддерживает Docker-образ VION; в остальных случаях используйте обычный плагин OpenVino.": "OpenVINO-Detektor für VION mit dem älteren OpenVINO 2024.6. Für Intel-Grafik bis zur 10. Core-Generation unter Windows, deren Treiber mit neueren OpenVINO-Versionen nicht funktionieren. Unter Linux unterstützt das Docker-Image von VION diese GPUs; in allen anderen Fällen verwenden Sie das reguläre OpenVino-Plugin.",
   "Модель CLIP (изображения)": "CLIP-Modell (Bilder)",
   "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.": "CLIP-Modell für die semantische Suche, gilt für alle Kameras. Nach einem Wechsel müssen die Aufzeichnungen neu indexiert werden.",
   "По умолчанию": "Standard",
@@ -29,7 +29,7 @@
   "Модель YOLOv9 для обнаружения номерных знаков": "YOLOv9-Modell für die Kennzeichenerkennung",
   "Номерные знаки": "Kennzeichen",
   "Модель CCT для распознавания текста номеров": "CCT-Modell zum Lesen von Kennzeichentext",
-  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO-Modell für die Objekterkennung. „Standard“ ist das von ViON mit Ihren Bildern trainierte Modell, sofern eines veröffentlicht wurde, sonst das Standardmodell.",
+  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная VION на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO-Modell für die Objekterkennung. „Standard“ ist das von VION mit Ihren Bildern trainierte Modell, sofern eines veröffentlicht wurde, sonst das Standardmodell.",
   "Обнаружение объектов": "Objekterkennung",
   "Модель, обводящая людей, транспорт и животных": "Das Modell, das Personen, Fahrzeuge und Tiere umreißt",
   "Сегментация": "Segmentierung",

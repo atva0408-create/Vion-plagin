@@ -1,4 +1,4 @@
-// Which ViON sensors a device of the Yandex Smart Home becomes. One device can be several: a climate sensor gives
+// Which VION sensors a device of the Yandex Smart Home becomes. One device can be several: a climate sensor gives
 // the temperature and the humidity, a motion sensor often the light level too.
 import { SensorType } from '@camera.ui/sdk';
 
@@ -48,7 +48,7 @@ const FLOATS: Record<string, SensorType> = {
 
 /**
  * What a sensor of a device with several shows, after the name of the device. In English, as the other plugins name
- * what they make: a plugin is not told the language of the interface, and the user renames a sensor in ViON.
+ * what they make: a plugin is not told the language of the interface, and the user renames a sensor in VION.
  */
 const SUFFIX: Record<string, string> = {
   motion: 'Motion',

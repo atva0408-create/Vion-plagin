@@ -1210,7 +1210,7 @@ class ONNXPlugin(
         await camera.addSensor(clip)
         sensors["clip"] = clip
 
-        # attributes of objects ("с пакетом") by the classifiers trained on ViON Cloud
+        # attributes of objects ("с пакетом") by the classifiers trained on VION Cloud
         attributes = ViONAttributeSensor(self, camera, self.logger)
         await camera.addSensor(attributes)
         sensors["attributes"] = attributes
@@ -1380,7 +1380,7 @@ class ONNXPlugin(
         await self._reload_models()
         self.logger.success("Модели загружены заново")
 
-    # ---- models trained on ViON Cloud (trained.py) ----
+    # ---- models trained on VION Cloud (trained.py) ----
 
     def prepare_object_detector(self, model_name: str) -> None:
         """Loads a detector in the background (a newly published trained model); failures are retried

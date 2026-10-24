@@ -5,7 +5,7 @@ from typing import Literal
 
 from camera_ui_sdk import BASE_AUDIO_LABELS
 
-# ViON models mirror (deploy/models-mirror in VIONN-); VION_MODELS_HOST points to another one
+# VION models mirror (deploy/models-mirror in VIONN-); VION_MODELS_HOST points to another one
 _MODELS_HOST = os.environ.get("VION_MODELS_HOST", "https://models.vionvision.tech").rstrip("/")
 YAMNET_MODEL_URL = f"{_MODELS_HOST}/v1/audio-yamnet/yamnet.tflite"
 YAMNET_LABELS_URL = f"{_MODELS_HOST}/v1/audio-yamnet/yamnet_class_map.csv"

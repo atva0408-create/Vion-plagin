@@ -1,5 +1,5 @@
 {
-  "Детектор NCNN для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR).": "Erkennung mit NCNN für ViON. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Kennzeichenlesung (OCR).",
+  "Детектор NCNN для VION. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR).": "Erkennung mit NCNN für VION. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Kennzeichenlesung (OCR).",
   "Модель эмбеддингов лиц": "Modell für Gesichtswiedererkennung",
   "Модель, преобразующая лицо в вектор, общая для всех камер. После её смены эмбеддинги сохранённых лиц будут пересчитаны.": "Modell für die Gesichtswiedererkennung, gilt für alle Kameras. Nach einem Wechsel werden die gespeicherten Gesichter neu berechnet.",
   "По умолчанию": "Standard",

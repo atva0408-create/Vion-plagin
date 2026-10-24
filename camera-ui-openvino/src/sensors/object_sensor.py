@@ -62,7 +62,7 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
             "type": "string",
             "key": "model",
             "title": "Модель",
-            "description": "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.",
+            "description": "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная VION на ваших кадрах, если она опубликована, иначе стандартная.",
             "group": "Обнаружение объектов",
             "enum": [DEFAULT_OPTION, *OBJECT_MODELS, *modules],
             "enumLabels": modules,
@@ -182,7 +182,7 @@ class OpenVinoObjectSensor(ObjectDetectorSensor["ObjectStorageValues"]):
         self._active_model = model_name
         self.updateModelSpec()
         if trained_models.detector_name() == model_name:
-            self._logger.log(f"Используется модель, обученная ViON: {model_name}")
+            self._logger.log(f"Используется модель, обученная VION: {model_name}")
 
     async def _on_change_model(self, new_model: str, _old_model: str) -> None:
         if new_model != _old_model:

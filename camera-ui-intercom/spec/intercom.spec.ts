@@ -1,4 +1,4 @@
-// The intercom at work, on fakes of ViON: a press rings, the first who answers gets the call, the agent answers when
+// The intercom at work, on fakes of VION: a press rings, the first who answers gets the call, the agent answers when
 // nobody does, the modes, opening with rights and a log, guest codes, "rang and ran", the blocked, the people who come
 // in without a ring, the assistant's tools, panels and their hook, the agent tried in text, the archive's age.
 // Run: npx tsx spec/intercom.spec.ts
@@ -219,7 +219,7 @@ test("the panel ends its call: ringing stops as missed; a hook's end leaves a ca
   const callId = w.calls().at(-1)?.data?.callId ?? '';
   w.intercom.answerCall(u1, callId);
   w.intercom.panelHungUp('gate', false);
-  assert.equal(w.intercom.callState(u1, callId).state, 'answered', "the panel's own call with its monitors ended, not ViON's");
+  assert.equal(w.intercom.callState(u1, callId).state, 'answered', "the panel's own call with its monitors ended, not VION's");
   w.intercom.panelHungUp('gate', true);
   await w.pass(100);
   assert.equal(w.intercom.callState(u1, callId).state, 'ended');
@@ -269,7 +269,7 @@ test('away: nobody is rung and the agent answers at once; a mode set with an end
   assert.equal(w.intercom.setMode(u1, 'dnd').mode, 'dnd');
 });
 
-// ViON limits a user to some cameras (cameraAccess) and to talk or not: the server shut such a user out of the whole
+// VION limits a user to some cameras (cameraAccess) and to talk or not: the server shut such a user out of the whole
 // intercom, their own cameras' panels too (2026-10-19). Now the actor brings its cameras and its right to talk: the
 // panels, calls, doors and visits of other cameras are none of theirs, a call is answered and spoken to with the
 // right to talk only, and every notice of a panel carries its camera for the server to tell only those who see it.

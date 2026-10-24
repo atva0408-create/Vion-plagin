@@ -1,9 +1,9 @@
 {
-  "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.": "Уведомления ViON в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.",
+  "Уведомления VION в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.": "Уведомления VION в Telegram через ваш бот: снимок и текст события, правила зон, тихие часы и права пользователей как у телефона.",
   "Bot token": "Токен бота",
-  "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each ViON user then connects their chat under Settings, Notifications.": "Создайте бота у @BotFather в Telegram (/newbot) и вставьте токен, который он выдаст. Затем каждый пользователь ViON подключает свой чат в «Настройки» → «Уведомления».",
+  "Create a bot with @BotFather in Telegram (/newbot) and paste the token it gives. Each VION user then connects their chat under Settings, Notifications.": "Создайте бота у @BotFather в Telegram (/newbot) и вставьте токен, который он выдаст. Затем каждый пользователь VION подключает свой чат в «Настройки» → «Уведомления».",
   "Bot API address": "Адрес Bot API",
   "Leave empty for api.telegram.org. A self-hosted Bot API server or a proxy in its place, for example when Telegram is blocked.": "Оставьте пустым для api.telegram.org. Свой сервер Bot API или прокси вместо него, например если Telegram заблокирован.",
-  "ViON address for the button": "Адрес ViON для кнопки",
-  "For example https://vion.example.com. A message then has a button that opens the moment in ViON; empty: no button.": "Например, https://vion.example.com. Тогда у сообщения будет кнопка, которая открывает этот момент в ViON; пусто — без кнопки."
+  "VION address for the button": "Адрес VION для кнопки",
+  "For example https://vion.example.com. A message then has a button that opens the moment in VION; empty: no button.": "Например, https://vion.example.com. Тогда у сообщения будет кнопка, которая открывает этот момент в VION; пусто — без кнопки."
 }

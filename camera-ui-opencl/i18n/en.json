@@ -1,5 +1,5 @@
 {
-  "Детектор движения для ViON с ускорением на видеокарте через OpenCL.": "Motion detection for ViON that runs on the graphics card.",
+  "Детектор движения для VION с ускорением на видеокарте через OpenCL.": "Motion detection for VION that runs on the graphics card.",
   "Устройство OpenCL": "OpenCL Device",
   "Площадь": "Area",
   "Минимальный размер обнаруженного движения (в пикселях)": "Minimum size of detected motion (in pixels)",

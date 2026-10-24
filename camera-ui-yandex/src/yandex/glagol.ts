@@ -1,5 +1,5 @@
 // The local protocol of the Yandex stations (Glagol): a WebSocket on the station itself in the home network. It
-// answers in a moment and has no limit on the length of the text, but works only where ViON reaches the station.
+// answers in a moment and has no limit on the length of the text, but works only where VION reaches the station.
 // Not an official API; it follows the YandexStation integration (see LICENSE.md).
 import { randomUUID } from 'node:crypto';
 

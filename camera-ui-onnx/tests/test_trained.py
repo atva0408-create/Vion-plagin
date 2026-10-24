@@ -1,5 +1,5 @@
-"""Models trained on ViON Cloud as the detection plugins see them (src/trained.py, kept identical in the ONNX and
-OpenVINO plugins; the legacy plugins copy them): a module works only on the cameras the ViON server names for it, the
+"""Models trained on VION Cloud as the detection plugins see them (src/trained.py, kept identical in the ONNX and
+OpenVINO plugins; the legacy plugins copy them): a module works only on the cameras the VION server names for it, the
 detector of an object module adds its classes next to the camera's own detector, a classifier of before modules works
 on every camera (docs/TRAINING_MODULES.md 3.6).
 

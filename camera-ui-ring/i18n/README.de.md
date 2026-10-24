@@ -1,12 +1,12 @@
 # Ring
 
-Verbindet Ihre Kameras und Türklingeln von Ring mit ViON. Nach der Anmeldung mit Ihrem Ring-Konto fügen Sie die gewünschten Geräte als Kameras hinzu.
+Verbindet Ihre Kameras und Türklingeln von Ring mit VION. Nach der Anmeldung mit Ihrem Ring-Konto fügen Sie die gewünschten Geräte als Kameras hinzu.
 
 ## Funktionen
 
 - Findet die Kameras und Türklingeln Ihres Ring-Kontos und bietet sie zum Hinzufügen an
 - Zeigt das Livebild und aktuelle Standbilder jedes Geräts
-- Gibt von Ring erkannte Bewegung als Bewegungsereignis an ViON weiter
+- Gibt von Ring erkannte Bewegung als Bewegungsereignis an VION weiter
 - Zeigt den Akkustand von Akkukameras, einschließlich Ladevorgang und niedrigem Akkustand
 - Schaltet Licht und Sirene bei Geräten, die damit ausgestattet sind, und zeigt deren Zustand
 - Meldet jeden Tastendruck bei Türklingeln, die an einen verdrahteten Gong im Haus angeschlossen sind

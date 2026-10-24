@@ -1,5 +1,5 @@
 {
-  "Детектор ONNX Runtime для ViON. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP.": "ONNX-Runtime-Detektor für ViON. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Lesen von Kennzeichen (OCR) und semantische Suche mit CLIP.",
+  "Детектор ONNX Runtime для VION. Распознавание объектов, обнаружение и узнавание лиц, чтение номеров (OCR) и семантические эмбеддинги CLIP.": "ONNX-Runtime-Detektor für VION. Objekterkennung, Gesichtserkennung und Gesichtswiedererkennung, Lesen von Kennzeichen (OCR) und semantische Suche mit CLIP.",
   "Модель CLIP (изображения)": "CLIP-Modell (Bilder)",
   "Модель CLIP для эмбеддингов семантического поиска, общая для всех камер. После её смены записи нужно переиндексировать.": "CLIP-Modell für die semantische Suche, gilt für alle Kameras. Nach einem Wechsel müssen die Aufzeichnungen neu indexiert werden.",
   "По умолчанию": "Standard",
@@ -31,7 +31,7 @@
   "Модель YOLOv9 для обнаружения номерных знаков": "YOLOv9-Modell für die Kennzeichenerkennung",
   "Номерные знаки": "Kennzeichen",
   "Модель CCT для распознавания текста номеров": "CCT-Modell zum Lesen von Kennzeichentext",
-  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная ViON на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO-Modell für die Objekterkennung. „Standard“ ist das von ViON mit Ihren Bildern trainierte Modell, sofern eines veröffentlicht wurde, sonst das Standardmodell.",
+  "Модель YOLO для обнаружения объектов. «По умолчанию» — модель, обученная VION на ваших кадрах, если она опубликована, иначе стандартная.": "YOLO-Modell für die Objekterkennung. „Standard“ ist das von VION mit Ihren Bildern trainierte Modell, sofern eines veröffentlicht wurde, sonst das Standardmodell.",
   "Обнаружение объектов": "Objekterkennung",
   "Модель, обводящая людей, транспорт и животных": "Das Modell, das Personen, Fahrzeuge und Tiere umreißt",
   "Сегментация": "Segmentierung",

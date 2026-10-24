@@ -1,6 +1,6 @@
-// The plugin as ViON drives it, against a stand-in of the board: a sensor found at a typed address, added (the board
-// gives this ViON its token), kept up to date by polling, a motion too short for a poll, a board added to another
-// ViON, a board that stops answering and comes back at another address, the settings sent to the board, the camera
+// The plugin as VION drives it, against a stand-in of the board: a sensor found at a typed address, added (the board
+// gives this VION its token), kept up to date by polling, a motion too short for a poll, a board added to another
+// VION, a board that stops answering and comes back at another address, the settings sent to the board, the camera
 // offered once it is on, and a firmware update from the list of versions. Then a board with the ESPectre firmware: found
 // at a typed address and by its mDNS record, added without pairing, motion from its event stream, the settings, its own
 // firmware update, a board that goes away, comes back and moves.
@@ -142,7 +142,7 @@ try {
     const offered = await h.plugin.onDiscoverSensors();
     assert.deepEqual(
       offered.map((s) => [s.id, s.type, s.name, s.address]),
-      [[`vs:${board.id}`, SensorType.Motion, 'ViON Sensor EEFF', board.address]],
+      [[`vs:${board.id}`, SensorType.Motion, 'VION Sensor EEFF', board.address]],
       'the board at the typed address is offered as a motion sensor',
     );
 
@@ -156,7 +156,7 @@ try {
     board.state.events = 1;
     await until(() => sensor.detected, 'motion on');
     (sensor as any)._onBackendPropertyChanged('detected', false);
-    await until(() => sensor.detected, 'the motion said again after ViON overwrote it');
+    await until(() => sensor.detected, 'the motion said again after VION overwrote it');
     board.state.motion = false;
     await until(() => !sensor.detected, 'motion off');
 
@@ -254,7 +254,7 @@ try {
     await until(() => !sensor.storageSchema.some((f) => f.key === 'update'), 'no update button once the board runs the new firmware');
     assert.match(String(field(sensor, 'status').defaultValue), /Firmware 1\.1\.0/, 'the status names the firmware the board runs now');
 
-    // ---- reset: the board forgets this ViON ---------------------------------------------------------------------------
+    // ---- reset: the board forgets this VION ---------------------------------------------------------------------------
     await field(sensor, 'reset').onSet!(undefined, undefined);
     assert.equal(moved.token, undefined, 'the board forgot the token');
     assert.deepEqual(h.values.tokens, {}, 'and so did the plugin');
@@ -313,17 +313,17 @@ try {
     await until(() => presence.sourceState === 'unavailable', 'no packets: presence unknown');
     board.state.blind = false;
 
-    // the motion source: ViON by default, Espressif or either when chosen
+    // the motion source: VION by default, Espressif or either when chosen
     assert.equal(field(motion, 'motionSource').defaultValue, 'vion');
     board.state.presence.motion = true;
     await sleep(1_200);
-    assert.equal(motion.detected, false, 'Espressif motion alone does not count while the source is ViON');
+    assert.equal(motion.detected, false, 'Espressif motion alone does not count while the source is VION');
     await field(motion, 'motionSource').onSet!('espressif', 'vion');
     await until(() => motion.detected, 'motion from Espressif');
     assert.deepEqual(h.values.motionSources, { [board.id]: 'espressif' }, 'the choice is kept for the next start');
     board.state.presence.motion = false;
     board.state.motion = true;
-    await until(() => !motion.detected, 'ViON motion alone does not count while the source is Espressif');
+    await until(() => !motion.detected, 'VION motion alone does not count while the source is Espressif');
     await field(motion, 'motionSource').onSet!('any', 'espressif');
     await until(() => motion.detected, 'either algorithm');
     board.state.motion = false;
@@ -391,12 +391,12 @@ try {
     assert.equal(live!.radar, null);
   }
 
-  // ---- a board added to another ViON ----------------------------------------------------------------------------------
+  // ---- a board added to another VION ----------------------------------------------------------------------------------
   {
     const { board, h } = await setup();
     board.token = 'someone-else';
-    assert.deepEqual(await h.plugin.onDiscoverSensors(), [], 'a board of another ViON is not offered');
-    await assert.rejects(h.plugin.onSensorAdopted(adopted(board)), /another ViON/, 'adding it says why it cannot be added');
+    assert.deepEqual(await h.plugin.onDiscoverSensors(), [], 'a board of another VION is not offered');
+    await assert.rejects(h.plugin.onSensorAdopted(adopted(board)), /another VION/, 'adding it says why it cannot be added');
   }
 
   // ---- a start with sensors already added -----------------------------------------------------------------------------
@@ -432,9 +432,9 @@ try {
 
     board.motion = { state: 'motion', score: 0.91 };
     await until(() => sensor.detected, 'motion from the stream');
-    // a camera taken away just now: its coordinator ended the motion in ViON; the board's own state is said again
+    // a camera taken away just now: its coordinator ended the motion in VION; the board's own state is said again
     (sensor as any)._onBackendPropertyChanged('detected', false);
-    await until(() => sensor.detected, 'the motion said again after ViON overwrote it');
+    await until(() => sensor.detected, 'the motion said again after VION overwrote it');
     board.motion = { state: 'idle', score: 0.1 };
     await until(() => !sensor.detected, 'idle from the stream');
     board.motion = { state: 'motion', score: 0.9 };
@@ -621,7 +621,7 @@ try {
       /not in the network now/,
     );
     assert.equal((h.plugin as any).espectre.size, 0, 'nothing runs for a sensor that was not added');
-    // after a restart of ViON the record has the host alone, as the sensor showed it: the board is asked on its port
+    // after a restart of VION the record has the host alone, as the sensor showed it: the board is asked on its port
     const restored = (await h.plugin.configureAdoptedSensors([
       { id: 'restored', nativeId: 'es:dddddddddddddddd', address: '192.168.10.110', name: 'Restored', type: SensorType.Motion } as AdoptedSensor,
     ])) as MotionSensor[];
@@ -644,7 +644,7 @@ try {
       type: SensorType.Motion,
     } as AdoptedSensor)) as MotionSensor;
     await until(() => sensor.sourceState === 'connected', 'connected');
-    assert.equal(field(sensor, 'holdS').defaultValue, 8, 'eight seconds unless set, as the ViON board has');
+    assert.equal(field(sensor, 'holdS').defaultValue, 8, 'eight seconds unless set, as the VION board has');
     await field(sensor, 'holdS').onSet!(2, 8);
     assert.deepEqual(h.values.espectreHold, { [board.id]: 2 }, 'kept by the plugin for the next start');
     board.motion = { state: 'motion', score: 0.9 };
@@ -709,7 +709,7 @@ try {
   assert.equal(newer('0.9.9', '1.0.0'), false);
   assert.equal(newer('garbage', '1.0.0'), false);
 
-  console.log('plugin: found, added, polled, missed motion, calibration, settings, moved board, camera, firmware, reset, another ViON, restart OK');
+  console.log('plugin: found, added, polled, missed motion, calibration, settings, moved board, camera, firmware, reset, another VION, restart OK');
 } finally {
   for (const h of hosts) (h as any).stopFn?.();
   for (const board of boards) await board.close();

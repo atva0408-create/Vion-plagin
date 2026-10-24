@@ -50,7 +50,7 @@ export interface PanelProfile {
   talkSource?: string;
   audio: { fromPanel: boolean; toPanel: 'rtsp-backchannel' | 'isapi' | 'sip' | 'none' };
   auth: 'digest' | 'basic' | 'query' | 'none';
-  /** where the events come from: a stream that stays open, a status read every so often, or the panel calling ViON */
+  /** where the events come from: a stream that stays open, a status read every so often, or the panel calling VION */
   events:
     | { via: 'stream'; path: string; format: 'dahua' | 'hikvision' }
     | { via: 'poll'; path: string; everyMs: number }
@@ -59,7 +59,7 @@ export interface PanelProfile {
     | { via: 'sensors' };
   rules: EventRule[];
   doors: { key: string; name: string; open: PanelCommand }[];
-  /** tells the panel the call was answered in ViON, so its own monitors stop ringing */
+  /** tells the panel the call was answered in VION, so its own monitors stop ringing */
   answered?: PanelCommand;
   hangUp?: PanelCommand;
   /** a request that works only with the right login; its answer names the model and firmware */

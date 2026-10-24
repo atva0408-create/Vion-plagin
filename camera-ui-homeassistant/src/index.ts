@@ -30,7 +30,7 @@ import type { ImportedSensor } from './sensors.js';
 import type { HaDevice, HaRegistryEntry, HaRegistryEvent, HaState, StorageValues } from './types.js';
 
 // 'camera.ui' is kept so devices announced by older servers are still recognised as our own
-const OWN_MANUFACTURERS = new Set(['ViON', 'camera.ui']);
+const OWN_MANUFACTURERS = new Set(['VION', 'camera.ui']);
 const OWN_PLATFORM = 'cameraui';
 const OWN_ID_PREFIX = 'cameraui_';
 const RESYNC_INTERVAL_MS = 15 * 60_000;
@@ -86,7 +86,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         type: 'string',
         key: 'host',
         title: 'Home Assistant URL',
-        description: 'For example http://homeassistant.local:8123. Leave empty when ViON runs as Home Assistant add-on.',
+        description: 'For example http://homeassistant.local:8123. Leave empty when VION runs as Home Assistant add-on.',
         required: false,
         store: true,
         onSet: async () => this.reconnectSoon(),
@@ -95,7 +95,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         type: 'string',
         key: 'token',
         title: 'Access Token',
-        description: 'Long-lived access token from your Home Assistant profile. Leave empty when ViON runs as Home Assistant add-on.',
+        description: 'Long-lived access token from your Home Assistant profile. Leave empty when VION runs as Home Assistant add-on.',
         format: 'password',
         required: false,
         store: true,
@@ -114,7 +114,7 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
         key: 'assistantDomains',
         title: 'Assistant Domains',
         description:
-          'The ViON assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. ' +
+          'The VION assistant can call services of scenes, scripts, automations, lights, switches, covers, climate, media players and notify. ' +
           'Comma-separated further domains it may call, for example fan, vacuum. Each call is confirmed in the chat.',
         required: false,
         store: true,

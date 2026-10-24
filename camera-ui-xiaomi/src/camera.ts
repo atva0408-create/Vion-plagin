@@ -11,7 +11,7 @@ export interface CameraValues {
   connectionMode?: ConnectionMode;
 }
 
-/** The switch of a camera that turns its motor from ViON. The camera settings show it next to autotracking. */
+/** The switch of a camera that turns its motor from VION. The camera settings show it next to autotracking. */
 export const PTZ_KEY = 'ptz';
 
 /** The focus of a camera with a zoom lens, next to the switch: shown only for a camera that has one. */
@@ -55,7 +55,7 @@ export class Camera implements StreamingInterface {
         key: PTZ_KEY,
         title: 'Pan, tilt and zoom (PTZ)',
         description:
-          'Turns the camera from ViON: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. ' +
+          'Turns the camera from VION: arrows in the player and autotracking. For cameras with a motor, such as the Mi 360°, C200 and C300. ' +
           'A camera with a zoom lens also zooms, and its focus is set here.',
         store: true,
         defaultValue: false,
@@ -133,7 +133,7 @@ export class Camera implements StreamingInterface {
     try {
       const lens = await this.lensOf(nativeId);
       const parts = [lens.zoom && 'zoom', (lens.focus ?? lens.autoFocus) && 'focus'].filter(Boolean);
-      if (parts.length) this.device.logger.log(`The camera has a lens ViON can drive: ${parts.join(' and ')}`);
+      if (parts.length) this.device.logger.log(`The camera has a lens VION can drive: ${parts.join(' and ')}`);
       return lens;
     } catch (error) {
       this.device.logger.warn('Could not read whether the camera can zoom (switch pan and tilt off and on to try again):', errorText(error));

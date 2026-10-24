@@ -206,7 +206,7 @@ assert.deepEqual(await nvr.nvrStartRecording('co'), { cameraId: 'co', active: fa
 assert.equal(recs.continuous.manual.length, 0);
 await assert.rejects(nvr.nvrStartRecording('off'), /Recording is off/);
 await assert.rejects(nvr.nvrStartRecording('limit'), /No free recording slot/);
-await assert.rejects(nvr.nvrStartRecording('nope'), /not recorded by ViON NVR/);
+await assert.rejects(nvr.nvrStartRecording('nope'), /not recorded by VION NVR/);
 
 // what the assistant hears of a camera is what it does: one set to continuous but over the plan or paused writes
 // nothing, and "records all the time" was the answer to a manual recording of it

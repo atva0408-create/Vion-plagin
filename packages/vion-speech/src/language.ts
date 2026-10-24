@@ -1,4 +1,4 @@
-/** The languages ViON speaks and hears: a voice and a recognizer for each. */
+/** The languages VION speaks and hears: a voice and a recognizer for each. */
 export const LANGUAGES = ['ru', 'en', 'de'] as const;
 export type Language = (typeof LANGUAGES)[number];
 

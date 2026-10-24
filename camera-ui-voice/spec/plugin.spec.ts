@@ -206,7 +206,7 @@ test('12. notifications: a speaker that is off says nothing, one that is on says
   assert.equal(await s.plugin.getDevice('voice:door'), null, 'a camera without a speaker is no device');
   assert.equal(await s.plugin.getDevice('yandex:1'), null);
 
-  // what became of it on each speaker goes back to ViON
+  // what became of it on each speaker goes back to VION
   assert.deepEqual(await s.plugin.sendNotification(['voice:kids'], { title: 'Ужин', body: 'готов' }), [
     { deviceId: 'voice:kids', ok: false, error: 'speaking notifications is off for this camera' },
   ]);

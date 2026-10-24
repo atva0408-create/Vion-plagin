@@ -143,13 +143,13 @@ test('a camera over MTP or Agora gets no address: the engine refuses those vendo
     const { cloud } = stubCloud(() => ({ vendor: { vendor: id }, public_key: 'dd', sign: 's' }));
     await assert.rejects(cameraStreamUrl(cloud, camera()), (error: unknown) => {
       assert.ok(error instanceof UnplayableCameraError, String(error));
-      assert.equal(error.message, `Hall (chuangmi.camera.039a01) connects over ${label}, which ViON cannot play`);
+      assert.equal(error.message, `Hall (chuangmi.camera.039a01) connects over ${label}, which VION cannot play`);
       return true;
     });
   }
 });
 
-test('whether ViON can play a camera is asked as a connection asks; the older protocol plays', async () => {
+test('whether VION can play a camera is asked as a connection asks; the older protocol plays', async () => {
   const cs2 = stubCloud(() => ({ vendor: { vendor: 4 }, public_key: 'dd', sign: 's' }));
   await checkPlayable(cs2.cloud, camera());
   assert.deepEqual(

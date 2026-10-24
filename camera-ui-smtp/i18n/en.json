@@ -1,5 +1,5 @@
 {
-  "Обнаружение движения для ViON через SMTP. Небольшой SMTP-сервер превращает письма-оповещения камер в события движения.": "Motion detection for ViON via SMTP. A small SMTP server turns the email alerts of cameras into motion events.",
+  "Обнаружение движения для VION через SMTP. Небольшой SMTP-сервер превращает письма-оповещения камер в события движения.": "Motion detection for VION via SMTP. A small SMTP server turns the email alerts of cameras into motion events.",
   "Port": "Port",
   "Port the SMTP server listens on.": "Port the SMTP server listens on.",
   "Disable TLS": "Disable TLS",

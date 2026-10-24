@@ -1,4 +1,4 @@
-# The YAMNet classes behind ViON's audio labels: a doorbell rang as "Doorbell" or "Ding-dong" and was nothing, while any
+# The YAMNet classes behind VION's audio labels: a doorbell rang as "Doorbell" or "Ding-dong" and was nothing, while any
 # door sound ("Door") and the clink of a glass ("Glass") were a doorbell and a break-in (audit 2026-10-23, F5).
 # Run: python -m unittest discover -s spec
 from __future__ import annotations

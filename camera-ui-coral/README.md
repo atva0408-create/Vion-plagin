@@ -12,7 +12,7 @@ Detects people, vehicles and animals in the camera picture and uses a Coral Edge
 
 ## What you need
 
-- A ViON server running Linux (x64 or ARM64)
+- A VION server running Linux (x64 or ARM64)
 - A Coral Edge TPU connected by USB or PCIe, and the Edge TPU system software (libedgetpu) installed on the server. Without them the plugin still works, then on the processor
 
 ## Settings

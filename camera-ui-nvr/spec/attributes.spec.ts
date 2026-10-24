@@ -377,7 +377,7 @@ const oct5summary = content<{ byAnswer: Record<string, { yes: number; no: number
 assert.deepEqual(oct5summary.byAnswer, { [`${P}: стоит`]: { yes: 1, no: 0 }, [`${P}: лежит`]: { yes: 1, no: 0 }, [`${P}: сидит`]: { yes: 1, no: 0 } });
 const lying = content<{ total: number }>(await call('event_stats', { date: '2026-10-05', days: 1, attribute: 'лежит' }));
 assert.equal(lying.total, 1, 'the events in which someone lay');
-// one stay of an hour: stood ten minutes, then lay; ViON gives each run of an answer its own time
+// one stay of an hour: stood ten minutes, then lay; VION gives each run of an answer its own time
 const stay = eventAt('p3', 'cam-kid', [['2026-10-06T08:00:00', '2026-10-06T09:00:00']], { question: P });
 stay.segments[0].attributes = [
   { type: P, label: `${P}: стоит`, confidence: 0.8, firstSeen: at('2026-10-06T08:00:00'), lastSeen: at('2026-10-06T08:10:00') },

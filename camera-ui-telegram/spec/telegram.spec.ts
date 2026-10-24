@@ -1,5 +1,5 @@
-// The plugin as ViON drives it, against a stand-in of the Telegram Bot API (fetch replaced): a chat linked by the
-// one-time link of a ViON user, a wrong or old link, the picture with its words, silent and with a button, a chat that
+// The plugin as VION drives it, against a stand-in of the Telegram Bot API (fetch replaced): a chat linked by the
+// one-time link of a VION user, a wrong or old link, the picture with its words, silent and with a button, a chat that
 // blocked the bot, a «too many requests», /stop, unlinking and renaming, a token Telegram refuses, the place to read
 // from kept over a restart, and the token never in a log line.
 // Run: npx tsx spec/telegram.spec.ts
@@ -52,7 +52,7 @@ function fakeTelegram() {
     const reply = (status: number, payload: unknown) => new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
     const refusal = refuse[method]?.shift();
     if (refusal) return reply(refusal.status, { ok: false, description: refusal.description, ...(refusal.retryAfter ? { parameters: { retry_after: refusal.retryAfter } } : {}) });
-    if (method === 'getMe') return me ? reply(me.status, { ok: false, description: 'Unauthorized' }) : reply(200, { ok: true, result: { id: 1, is_bot: true, first_name: 'ViON', username: 'vion_home_bot' } });
+    if (method === 'getMe') return me ? reply(me.status, { ok: false, description: 'Unauthorized' }) : reply(200, { ok: true, result: { id: 1, is_bot: true, first_name: 'VION', username: 'vion_home_bot' } });
     if (method === 'getUpdates') {
       const offset = Number(body.offset ?? 0);
       const due = updates.filter((update) => update.update_id >= offset);
@@ -161,11 +161,11 @@ try {
   opens('/start', { id: 222, type: 'private', username: 'boris' });
   await until(() => tg.sent('sendMessage').length === 3, 'two more answers');
   assert.match(String(tg.sent('sendMessage')[1]!.body.text), /^Ссылка устарела/);
-  assert.match(String(tg.sent('sendMessage')[2]!.body.text), /^Это бот уведомлений ViON/);
+  assert.match(String(tg.sent('sendMessage')[2]!.body.text), /^Это бот уведомлений VION/);
   assert.equal((await plugin.getDevices(['u1'])).length, 1);
 
   // ---- a zone rule's notice: the picture, the words bold title first, silent, the button to the moment
-  // what became of it in each chat goes back to ViON
+  // what became of it in each chat goes back to VION
   const zoneNotice = await plugin.sendNotification(['tg:111:u1', 'tg:999:u9'], {
     title: 'Комната: Стена',
     body: 'Кот точит когти о стену',
@@ -180,7 +180,7 @@ try {
   assert.equal(photo.body.parse_mode, 'HTML');
   assert.equal(photo.body.disable_notification, 'true');
   assert.deepEqual(JSON.parse(String(photo.body.reply_markup)), {
-    inline_keyboard: [[{ text: 'Открыть в ViON', url: 'https://vion.example.com/cameras/%D0%9A%D0%BE%D0%BC%D0%BD%D0%B0%D1%82%D0%B0?startTs=1' }]],
+    inline_keyboard: [[{ text: 'Открыть в VION', url: 'https://vion.example.com/cameras/%D0%9A%D0%BE%D0%BC%D0%BD%D0%B0%D1%82%D0%B0?startTs=1' }]],
   });
   assert.equal(tg.sent().length, 4, 'nothing to a chat that is not linked');
   assert.deepEqual(zoneNotice, [
@@ -225,7 +225,7 @@ try {
   assert.ok(lines.some((line) => /blocked the bot or left: switched off/.test(line)));
   await plugin.updateDevice('tg:111:u1', { active: true });
 
-  // ---- /stop from the chat, then unlinking from ViON
+  // ---- /stop from the chat, then unlinking from VION
   opens('/stop');
   await until(() => (values._chats as unknown[]).length === 0, 'the chat unlinked by /stop');
   const second = await plugin.registerDevice('u1');
@@ -254,7 +254,7 @@ try {
   await sleep(100);
   assert.equal(tg.calls.length, asked, 'no more requests with a refused token');
   assert.ok(!refused.lines.some((line) => /trying again/.test(line)), 'a refused token is not tried again');
-  // with no bot nothing went out, and ViON hears why (it counted such a notification delivered)
+  // with no bot nothing went out, and VION hears why (it counted such a notification delivered)
   const [unsent] = (await refused.plugin.sendNotification(['tg:111:u1'], { title: 'Без бота' })) as unknown as { ok: boolean; error: string }[];
   assert.equal(unsent?.ok, false);
   assert.match(unsent!.error, /bot of the server is not connected/);

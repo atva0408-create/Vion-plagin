@@ -1,6 +1,6 @@
 # Reolink
 
-Connects Reolink cameras, doorbells, NVRs and Home Hubs to ViON over the protocol the Reolink app itself uses. Works with all Reolink models, including battery cameras and models without RTSP or ONVIF.
+Connects Reolink cameras, doorbells, NVRs and Home Hubs to VION over the protocol the Reolink app itself uses. Works with all Reolink models, including battery cameras and models without RTSP or ONVIF.
 
 ## What it does
 
@@ -14,8 +14,8 @@ Connects Reolink cameras, doorbells, NVRs and Home Hubs to ViON over the protoco
 ## What you need
 
 - Username and password of the camera's local account, as set in the Reolink app
-- The camera must be reachable from the ViON server by IP address (port 9000) or, in the same network segment, by UID
-- Battery cameras must be able to reach the ViON server on the "Event Webhook Port"
+- The camera must be reachable from the VION server by IP address (port 9000) or, in the same network segment, by UID
+- Battery cameras must be able to reach the VION server on the "Event Webhook Port"
 
 ## Settings
 

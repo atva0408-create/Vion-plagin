@@ -1,5 +1,5 @@
-"""Modules of the ViON store: models packed as data (no code) that the owner adds on the "Modules" tab of the
-store. The ViON server downloads them into VION_MODULES_DIR and lists the installed ones in ``installed.json``
+"""Modules of the VION store: models packed as data (no code) that the owner adds on the "Modules" tab of the
+store. The VION server downloads them into VION_MODULES_DIR and lists the installed ones in ``installed.json``
 (server/src/manager/moduleManager.ts). The plugin re-reads the list while it runs: an added module becomes one more
 model choice, a removed one falls back to the default, both without a restart.
 

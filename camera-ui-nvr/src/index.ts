@@ -153,7 +153,7 @@ interface ManagedCamera {
   overLimit?: boolean;
 }
 
-/** Plan limits from the host (ViON Cloud plan or local defaults); 0 = unlimited. */
+/** Plan limits from the host (VION Cloud plan or local defaults); 0 = unlimited. */
 interface Entitlements {
   source: 'cloud' | 'local';
   plan: { id: string; name: string };
@@ -457,7 +457,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         type: 'string',
         key: 'plan',
         title: 'Тариф',
-        description: 'Лимиты записи задаёт тариф ViON Cloud владельца сервера. Сменить тариф: cloud.vionvision.tech → «Тариф».',
+        description: 'Лимиты записи задаёт тариф VION Cloud владельца сервера. Сменить тариф: cloud.vionvision.tech → «Тариф».',
         group: 'License',
         readonly: true,
         onGet: async () => {
@@ -560,7 +560,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         description:
           'После каждого события с человеком, транспортом или животным модель ассистента описывает, что произошло ' +
           '(«курьер оставил посылку у двери»). Описания видны в записях и ищутся в «ИИ-поиске». ' +
-          'Нужна модель, понимающая картинки (Настройки → Ассистент), и разрешение для ViON NVR.',
+          'Нужна модель, понимающая картинки (Настройки → Ассистент), и разрешение для VION NVR.',
         group: 'AI',
         defaultValue: false,
         store: true,
@@ -701,7 +701,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private async aiStatusText(): Promise<string> {
     try {
       const access = await this.api.coreManager.assistantAccess();
-      if (!access.allowed) return 'Не разрешено: Настройки → Ассистент → разрешите модель для ViON NVR';
+      if (!access.allowed) return 'Не разрешено: Настройки → Ассистент → разрешите модель для VION NVR';
       if (access.vision === false) return `${access.model ?? 'модель'}: не понимает картинки — выберите модель с поддержкой изображений`;
       return `${access.model ?? 'модель ассистента'}${access.vision ? ' · картинки: да' : ''}`;
     } catch {
@@ -776,7 +776,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (!e) return 'без ограничений';
     const cams = e.nvr.maxCameras > 0 ? `до ${e.nvr.maxCameras} камер с записью` : 'запись со всех камер';
     const days = e.nvr.retentionDays > 0 ? `архив до ${e.nvr.retentionDays} дн.` : 'архив без ограничения срока';
-    return e.source === 'cloud' ? `ViON Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к ViON Cloud: ${cams}, ${days}`;
+    return e.source === 'cloud' ? `VION Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к VION Cloud: ${cams}, ${days}`;
   }
 
   /**
@@ -891,7 +891,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     void this.endSegmentsAtLastFrame();
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
     this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
-    this.logger.log(`ViON NVR ready (ffmpeg: ${this.ffmpegPath})`);
+    this.logger.log(`VION NVR ready (ffmpeg: ${this.ffmpegPath})`);
   }
 
   /** Once: «нет» out of the types of the events recorded before, a batch at a time between the other work. */
@@ -2648,7 +2648,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   public async nvrStartRecording(cameraId: string, minutes?: number): Promise<ManualRecording> {
     await this.ready;
     const managed = this.cameras.get(cameraId);
-    if (!managed) throw new Error('This camera is not recorded by ViON NVR');
+    if (!managed) throw new Error('This camera is not recorded by VION NVR');
     if (!managed.recorders.size) throw new Error(managed.overLimit ? 'No free recording slot in the plan' : 'Recording is off for this camera');
     // the disk guard stopped every recorder: a manual window would be answered as active and write nothing
     if (this.paused) throw new Error('Recording is paused: not enough free disk space');
@@ -3880,7 +3880,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return this.faces.match(embeddings, embeddingModel, sensitivity);
   }
 
-  /** What the server of ViON 2.3.0 asks instead of matchFaces: a face that is not named says whom it came closest to. */
+  /** What the server of VION 2.3.0 asks instead of matchFaces: a face that is not named says whom it came closest to. */
   public async matchFacesNearest(embeddings: number[][], embeddingModel: string, sensitivity = 'balanced'): Promise<(FaceNearestResult | null)[]> {
     await this.ready;
     return this.faces.matchNearest(embeddings, embeddingModel, sensitivity);

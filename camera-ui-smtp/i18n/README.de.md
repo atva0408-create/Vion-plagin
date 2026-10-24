@@ -1,10 +1,10 @@
 # SMTP
 
-Macht aus der E-Mail, die eine Kamera bei Bewegung versendet, ein Bewegungsereignis in ViON. Das Plugin betreibt einen kleinen Mailserver, an den die Kamera ihre Benachrichtigungen sendet.
+Macht aus der E-Mail, die eine Kamera bei Bewegung versendet, ein Bewegungsereignis in VION. Das Plugin betreibt einen kleinen Mailserver, an den die Kamera ihre Benachrichtigungen sendet.
 
 ## Funktionen
 
-- Empfängt die Benachrichtigungs-E-Mails Ihrer Kameras direkt auf dem ViON-Server, ohne externen Maildienst
+- Empfängt die Benachrichtigungs-E-Mails Ihrer Kameras direkt auf dem VION-Server, ohne externen Maildienst
 - Gibt jeder Kamera einen Bewegungssensor mit eigener E-Mail-Adresse; eine Nachricht an diese Adresse meldet Bewegung
 - Kann nur E-Mails mit einem bestimmten Text als Bewegung werten
 - Kann die Bewegung beenden, wenn eine Nachricht mit einem anderen Text eintrifft
@@ -13,7 +13,7 @@ Macht aus der E-Mail, die eine Kamera bei Bewegung versendet, ein Bewegungsereig
 ## Voraussetzungen
 
 - Eine Kamera, die bei erkannter Bewegung eine E-Mail versenden kann
-- In den E-Mail-Einstellungen der Kamera: die Adresse des ViON-Servers als Mailserver (SMTP), der in diesem Plugin eingestellte Port und als Empfänger die Adresse, die Sie für diese Kamera in ViON eingetragen haben
+- In den E-Mail-Einstellungen der Kamera: die Adresse des VION-Servers als Mailserver (SMTP), der in diesem Plugin eingestellte Port und als Empfänger die Adresse, die Sie für diese Kamera in VION eingetragen haben
 
 ## Einstellungen
 

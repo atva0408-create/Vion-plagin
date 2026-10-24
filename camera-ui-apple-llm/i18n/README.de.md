@@ -1,6 +1,6 @@
 # Apple LLM
 
-Stellt dem ViON-Assistenten das Sprachmodell zur Verfügung, das in Ihrem Mac eingebaut ist. Das Modell antwortet auf dem Mac, auf dem das Plugin läuft: Es wird kein Schlüssel benötigt, und nichts wird an eine Cloud gesendet.
+Stellt dem VION-Assistenten das Sprachmodell zur Verfügung, das in Ihrem Mac eingebaut ist. Das Modell antwortet auf dem Mac, auf dem das Plugin läuft: Es wird kein Schlüssel benötigt, und nichts wird an eine Cloud gesendet.
 
 ## Funktionen
 
@@ -12,8 +12,8 @@ Stellt dem ViON-Assistenten das Sprachmodell zur Verfügung, das in Ihrem Mac ei
 
 ## Voraussetzungen
 
-- Ein Mac mit Apple Silicon und macOS 26 oder neuer, auf dem ViON läuft.
-- Apple Intelligence ist in den Systemeinstellungen des Mac eingeschaltet. Solange macOS das Modell noch lädt, bietet ViON es noch nicht an.
+- Ein Mac mit Apple Silicon und macOS 26 oder neuer, auf dem VION läuft.
+- Apple Intelligence ist in den Systemeinstellungen des Mac eingeschaltet. Solange macOS das Modell noch lädt, bietet VION es noch nicht an.
 - macOS 27, wenn das Modell Bilder sehen soll.
 
 ## Einstellungen

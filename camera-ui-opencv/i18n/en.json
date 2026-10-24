@@ -1,5 +1,5 @@
 {
-  "Детектор движения для ViON на OpenCV.": "Motion detection for ViON with a choice of three detection methods.",
+  "Детектор движения для VION на OpenCV.": "Motion detection for VION with a choice of three detection methods.",
   "Детектор движения": "Motion Detector",
   "Выберите модель обнаружения движения": "Select the motion detection method",
   "Разность кадров": "Frame Difference",

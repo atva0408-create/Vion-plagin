@@ -870,7 +870,7 @@ async function attributeTime(host: AssistantHost, input: Input, ctx: AssistantTo
           const answer = answerOf(type, a.label, question.word);
           if (!answer) continue;
           const looks = byCamera.get(ev.cameraId) ?? [];
-          // ViON gives each run of an answer its own time (stood, then lay down in one stay); an older answer is the
+          // VION gives each run of an answer its own time (stood, then lay down in one stay); an older answer is the
           // segment's whole time
           const from = typeof a.firstSeen === 'number' ? a.firstSeen : seg.firstSeen;
           const to = typeof a.lastSeen === 'number' ? a.lastSeen : seg.lastSeen;

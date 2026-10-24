@@ -270,7 +270,7 @@ test('Hikvision: the call status read every second gives a ring once while it la
   device.server.close();
 });
 
-// ---- RUBITEK / Akuvox and events sent to ViON ----
+// ---- RUBITEK / Akuvox and events sent to VION ----
 
 test('RUBITEK: OpenDoor and CallEnd with the login in the query, URL-encoded; the door number of the key', async () => {
   const device = await panel((req, res) => res.writeHead(req.url?.includes('Password=p%26w') ? 200 : 403).end());

@@ -1,4 +1,4 @@
-/** The HTTP API of a ViON Sensor board (firmware: "sensor esp VION", src/api.h). */
+/** The HTTP API of a VION Sensor board (firmware: "sensor esp VION", src/api.h). */
 
 export interface SensorInfo {
   id: string;
@@ -145,7 +145,7 @@ export class SensorClient {
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown, auth = true): Promise<T> {
     const headers: Record<string, string> = {};
     if (auth) {
-      if (!this.token) throw new SensorRequestError('the sensor is not paired with this ViON');
+      if (!this.token) throw new SensorRequestError('the sensor is not paired with this VION');
       headers.authorization = `Bearer ${this.token}`;
     }
     if (body !== undefined) headers['content-type'] = 'application/json';

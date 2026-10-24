@@ -1,6 +1,6 @@
 # Eufy
 
-Bindet Kameras, Türklingeln, HomeBases und Sensoren von Eufy in ViON ein. Sie melden sich einmal mit Ihrem Eufy-Konto an, und die Geräte dieses Kontos erscheinen in ViON.
+Bindet Kameras, Türklingeln, HomeBases und Sensoren von Eufy in VION ein. Sie melden sich einmal mit Ihrem Eufy-Konto an, und die Geräte dieses Kontos erscheinen in VION.
 
 ## Funktionen
 

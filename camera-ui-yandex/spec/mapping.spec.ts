@@ -1,4 +1,4 @@
-// What devices of the Smart Home become in ViON and how their state lands on the sensors: both formats of Yandex
+// What devices of the Smart Home become in VION and how their state lands on the sensors: both formats of Yandex
 // read into one shape, a button pressed only when the press is new, commands for switches and lights.
 // Run: npx tsx spec/mapping.spec.ts
 import assert from 'node:assert/strict';
@@ -24,7 +24,7 @@ const official = parseUserInfo({
   // the second is the plugin's own scenario of a station: not offered as a switch
   scenarios: [
     { id: 'sc-1', name: 'Я ушёл' },
-    { id: 'sc-2', name: 'ViON station-1' },
+    { id: 'sc-2', name: 'VION station-1' },
   ],
 });
 const app = parseQuasarDevices({
@@ -37,7 +37,9 @@ const app = parseQuasarDevices({
 assert.equal(official.devices.length, 7);
 assert.equal(app.length, 7, 'a shared house is not read');
 assert.deepEqual(official.scenarios, [{ id: 'sc-1', name: 'Я ушёл' }]);
-assert.deepEqual(userScenarios([{ id: 'sc-3', name: 'ViON station-2' }, { id: 'sc-4', name: 'Вечер' }]), [{ id: 'sc-4', name: 'Вечер' }], 'the app list as well');
+assert.deepEqual(userScenarios([{ id: 'sc-3', name: 'VION station-2' }, { id: 'sc-4', name: 'Вечер' }]), [{ id: 'sc-4', name: 'Вечер' }], 'the app list as well');
+// made before the name was written VION: still the plugin's own until its next speech renames it
+assert.deepEqual(userScenarios([{ id: 'sc-5', name: 'ViON station-3' }, { id: 'sc-6', name: 'Vion у двери' }]), [{ id: 'sc-6', name: 'Vion у двери' }], 'the old name too');
 for (const list of [official.devices, app]) {
   const motion = list.find((d) => d.id === 'motion-1')!;
   assert.equal(motion.room, 'Прихожая');

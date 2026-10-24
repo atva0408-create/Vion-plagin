@@ -1,10 +1,10 @@
 # VOICE
 
-Die Stimme von ViON: Sie spricht über den Lautsprecher einer Kamera und hört über ihr Mikrofon. Sprache wird auf Ihrem Server erzeugt und erkannt; kein Ton verlässt ihn.
+Die Stimme von VION: Sie spricht über den Lautsprecher einer Kamera und hört über ihr Mikrofon. Sprache wird auf Ihrem Server erzeugt und erkannt; kein Ton verlässt ihn.
 
 ## Was es kann
 
-- **Bildschirmzeit.** Die Kamera sieht ein Kind am Computer, VOICE zählt die Zeit. Kommt eine Pause oder die Schlafenszeit, sagt VOICE es freundlich und mit Namen. Bleibt das Kind sitzen, wiederholt es bestimmter und benachrichtigt dann die Eltern mit einem Standbild. Das Kind kann nach einem Satz von VOICE fragen „Wie lange dauert meine Pause noch?“ oder jederzeit «ViON» rufen (vorerst auf Russisch) und hört die Minuten, die nach dem Plan bleiben.
+- **Bildschirmzeit.** Die Kamera sieht ein Kind am Computer, VOICE zählt die Zeit. Kommt eine Pause oder die Schlafenszeit, sagt VOICE es freundlich und mit Namen. Bleibt das Kind sitzen, wiederholt es bestimmter und benachrichtigt dann die Eltern mit einem Standbild. Das Kind kann nach einem Satz von VOICE fragen „Wie lange dauert meine Pause noch?“ oder jederzeit «VION» rufen (vorerst auf Russisch) und hört die Minuten, die nach dem Plan bleiben.
 - **Wer ist an der Tür.** Eine Türkamera sieht eine Person, und VOICE sagt in den Räumen, wer gekommen ist: „Papa ist da“, „Ein Fremder ist an der Tür“ oder, mit einem Modell, das Bilder sieht, „Ein Kurier mit einem Paket ist an der Tür“.
 - **Sagen.** Jeder Satz über einen Kameralautsprecher: aus dem Assistenten-Chat („sag Artem, dass das Essen fertig ist“), aus einer Automation, von einer anderen Erweiterung über eine Benachrichtigung.
 
@@ -16,7 +16,7 @@ Der Assistent, der dem Kind antwortet, hat keinen Zugriff auf die Einstellungen.
 
 - Eine Kamera mit Lautsprecher und Sprechkanal im Stream. VOICE zeigt bei jeder Kamera, ob es darüber sprechen kann und warum nicht. Kameras ohne Lautsprecher erscheinen nicht unter den Lautsprechern.
 - Für Sätze und Antworten des Assistenten: Erlauben Sie VOICE unter Einstellungen, Assistent. Ohne das nutzt VOICE fertige Sätze.
-- Die Sprachmodelle werden vom ViON-Modellserver geladen, wenn VOICE zum ersten Mal spricht oder zuhört: etwa 60 MB pro Sprache für die Stimme, 21 MB für die russische Erkennung, 94 MB für die englische und deutsche Erkennung.
+- Die Sprachmodelle werden vom VION-Modellserver geladen, wenn VOICE zum ersten Mal spricht oder zuhört: etwa 60 MB pro Sprache für die Stimme, 21 MB für die russische Erkennung, 94 MB für die englische und deutsche Erkennung.
 
 ## Einrichten
 
@@ -38,6 +38,6 @@ Eine Kamera mit Lautsprecher ist ein Benachrichtigungsgerät „<Kamera> (VOICE)
 
 ## Gut zu wissen
 
-- Das Mikrofon öffnet sich nur für wenige Sekunden nach einem Satz von VOICE und schließt sich wieder; der Ton wird nicht gespeichert. Ist für ein Kind „Antworten, wenn gerufen“ an, bleibt das Mikrofon dieser Kamera offen, solange das Szenario läuft: jeder kurze Satz wird auf dem Server erkannt, um «ViON» zu finden, ein Satz ohne ihn wird sofort verworfen (nach dem Namen allein gilt der nächste Satz als Frage), nichts wird aufgenommen. Was das Kind beim Rufen sagt, geht nicht an den Assistenten: eine Bitte um mehr Zeit wird an ihren Wörtern erkannt. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft VOICE nur zusammen mit einer Frage nach der Zeit. Der Zustand der Kamera zeigt, wann sie zuhört. Der Text der Frage des Kindes geht an den Assistenten: Läuft sein Modell in der Cloud, geht der Text dorthin.
+- Das Mikrofon öffnet sich nur für wenige Sekunden nach einem Satz von VOICE und schließt sich wieder; der Ton wird nicht gespeichert. Ist für ein Kind „Antworten, wenn gerufen“ an, bleibt das Mikrofon dieser Kamera offen, solange das Szenario läuft: jeder kurze Satz wird auf dem Server erkannt, um «VION» zu finden, ein Satz ohne ihn wird sofort verworfen (nach dem Namen allein gilt der nächste Satz als Frage), nichts wird aufgenommen. Was das Kind beim Rufen sagt, geht nicht an den Assistenten: eine Bitte um mehr Zeit wird an ihren Wörtern erkannt. Ein Wort, das nur wie der Name klingt („Leon“ in einem Spiel), ruft VOICE nur zusammen mit einer Frage nach der Zeit. Der Zustand der Kamera zeigt, wann sie zuhört. Der Text der Frage des Kindes geht an den Assistenten: Läuft sein Modell in der Cloud, geht der Text dorthin.
 - Eine Kamera sagt höchstens 6 Sätze pro Minute (Einstellung); weitere werden nicht gesprochen.
 - Ein still sitzendes Kind kann aus den Erkennungsereignissen fallen. VOICE liest alle 5 Sekunden den Objektsensor der Kamera, still sitzende Personen eingeschlossen.

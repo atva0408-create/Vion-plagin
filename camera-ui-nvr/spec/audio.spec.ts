@@ -1,5 +1,5 @@
 // Sound in the archive, through the real recorder, store, reader and export with a camera emulator:
-// go2rtc (the restreamer ViON runs) serves H.264 + G.711 A-law, what most cameras send, over RTSP and the
+// go2rtc (the restreamer VION runs) serves H.264 + G.711 A-law, what most cameras send, over RTSP and the
 // recorder must turn it into AAC. Needs ffmpeg with libx264, ffprobe and the go2rtc binary from
 // server/node_modules (FFMPEG / FFPROBE / GO2RTC override the paths).
 // Run: npx tsx spec/audio.spec.ts

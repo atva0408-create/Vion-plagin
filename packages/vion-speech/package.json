@@ -2,8 +2,8 @@
   "name": "@vionvision/speech",
   "version": "0.1.0",
   "private": true,
-  "description": "Speech of ViON plugins on the server: synthesis, recognition and voice activity (sherpa-onnx), the camera's speaker as G.711 RTP, listening through ffmpeg, the speech models from the ViON mirror. Shared by VOICE and the intercom; bundled into each of them, never published.",
-  "author": "ViON (https://vionvision.tech)",
+  "description": "Speech of VION plugins on the server: synthesis, recognition and voice activity (sherpa-onnx), the camera's speaker as G.711 RTP, listening through ffmpeg, the speech models from the VION mirror. Shared by VOICE and the intercom; bundled into each of them, never published.",
+  "author": "VION (https://vionvision.tech)",
   "type": "module",
   "exports": {
     ".": {

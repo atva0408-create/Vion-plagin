@@ -610,7 +610,7 @@ Date.now = realNow;
 
 // ------------------------------------------------------------------ a camera that does not answer
 {
-  // ViON Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
+  // VION Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
   // panel). The first end is told, then once that it goes on quietly, and when it answers again
   const retry = new StreamRetry('[sensor/high]');
   let now = Date.parse('2026-10-16T01:00:00Z');

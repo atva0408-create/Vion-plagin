@@ -1,5 +1,5 @@
 {
-  "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к ViON: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.": "Bindet Kameras, Türklingeln, HomeBases und Sensoren von Eufy in ViON ein: Gerätesuche, Livebild, Gegensprechen, Erkennungsereignisse und Kamerasteuerung.",
+  "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к VION: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.": "Bindet Kameras, Türklingeln, HomeBases und Sensoren von Eufy in VION ein: Gerätesuche, Livebild, Gegensprechen, Erkennungsereignisse und Kamerasteuerung.",
   "Stream Mode": "Stream-Modus",
   "P2P works for every camera. RTSP needs mains power, and a HomeBase serves only one camera over RTSP.": "P2P funktioniert mit jeder Kamera. RTSP braucht Netzstrom, und eine HomeBase liefert nur eine Kamera über RTSP.",
   "P2P": "P2P",

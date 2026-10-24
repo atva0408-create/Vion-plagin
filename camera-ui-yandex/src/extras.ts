@@ -1,6 +1,6 @@
-// What a device of the Smart Home can do besides on and off, as the settings of its ViON switch or light: the mode,
+// What a device of the Smart Home can do besides on and off, as the settings of its VION switch or light: the mode,
 // temperature and fan of an air conditioner, the volume, channel, input and mute of a TV, the learned buttons of an
-// IR remote. ViON has no sensor type for a climate or a media device, so these are the fields of the sensor's own
+// IR remote. VION has no sensor type for a climate or a media device, so these are the fields of the sensor's own
 // settings, and setting one sends the command to Yandex at once.
 import type { JsonSchema } from '@camera.ui/sdk';
 import type { YCapability, YDevice } from './yandex/home.js';

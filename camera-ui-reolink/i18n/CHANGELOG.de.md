@@ -4,15 +4,15 @@
 
 ## [1.2.26]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.25]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.24]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.23]
 
@@ -20,7 +20,7 @@
 
 ## [1.2.22]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.21]
 
@@ -32,15 +32,15 @@
 
 ## [1.2.19]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.18]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.17]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.16]
 
@@ -58,17 +58,17 @@
 ## [1.2.13]
 
 - Akkukameras und Türklingeln sind nicht mehr innerhalb eines Tages leer. Das Plugin hielt rund um die Uhr eine Verbindung zur Kamera offen, und genau das hindert ein Akkumodell am Schlafen. Es nennt der Kamera jetzt eine Adresse für ihre Meldungen und gibt die Verbindung frei; Bewegung, Klingeln und Akkustand kommen von selbst an. Kameras, deren Firmware nicht auf diesem Weg melden kann, sagen das im Protokoll und behalten das alte Verhalten
-- Die Verbindung zu einer Akkukamera wird erst getrennt, wenn die Kamera ViON tatsächlich mit einer eigenen Meldung erreicht hat. Gelingt ihr das nicht, bleibt die Verbindung bestehen und das Protokoll sagt es, damit eine Kamera in einer ungewöhnlichen Netzwerkumgebung nie verstummt
+- Die Verbindung zu einer Akkukamera wird erst getrennt, wenn die Kamera VION tatsächlich mit einer eigenen Meldung erreicht hat. Gelingt ihr das nicht, bleibt die Verbindung bestehen und das Protokoll sagt es, damit eine Kamera in einer ungewöhnlichen Netzwerkumgebung nie verstummt
 - Neue Kameraeinstellung „Dauerhafte Stromversorgung“ für Akkumodelle. Eine Türklingel am Klingeltransformator hat keinen Grund zu schlafen, sie hält deshalb die Verbindung wie eine Netzkamera und reagiert schneller. Die Einstellung wirkt sofort
 - Eine deaktivierte Kamera ist jetzt wirklich deaktiviert. Das Deaktivieren stoppte nur Aufzeichnung und Übertragung, das Plugin blieb aber an der Kamera angemeldet und fragte sie weiter nach Ereignissen. Aktivieren und Deaktivieren wirken sofort
 
 ## [1.2.12]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.11]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.10]
 
@@ -112,19 +112,19 @@
 
 ## [1.2.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.2.0]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
-- Erfordert ViON 2.0.23 oder neuer
+- Kompatibilitätsupdate für die aktuelle VION-Version
+- Erfordert VION 2.0.23 oder neuer
 
 ## [1.1.5]
 
 - WLAN-Kameras fehlen bei der Kamerasuche nicht mehr. Manche Modelle ignorieren die Suche in den ersten zehn Sekunden und tauchten deshalb nur bei jedem zweiten Versuch auf. Das Plugin sucht jetzt im Hintergrund weiter, und eine Suche ist in zwei statt zehn Sekunden fertig
 - Ton und Bild teilen sich jetzt eine Uhr. Die Kamera sendet ihren Ton ohne Zeitangaben, und das Plugin startete die Uhr für den Ton bei null statt beim Bild, weshalb sich Ton und Bild in Aufzeichnungen nicht zur Deckung bringen ließen
 - Gegensprechen funktioniert wieder. Die Kamera blieb stumm, weil Ihre Stimme über eine zweite Verbindung ankam, die das Plugin verwarf; beide Verbindungen erreichen jetzt die Kamera
-- Der Schalter für den Scheinwerfer folgt jetzt der Kamera. Schaltet die Kamera ihr Licht selbst ein oder schalten Sie es in der Reolink-App, zeigt ViON das an, statt beim zuletzt selbst gesetzten Zustand zu bleiben
+- Der Schalter für den Scheinwerfer folgt jetzt der Kamera. Schaltet die Kamera ihr Licht selbst ein oder schalten Sie es in der Reolink-App, zeigt VION das an, statt beim zuletzt selbst gesetzten Zustand zu bleiben
 - Kameras, die auf Babyweinen hören, bekommen jetzt einen eigenen Sensor für die Geräuscherkennung, statt dass das Geräusch so erscheint, als wäre es im Bild gesehen worden. Der Sensor erscheint, sobald die Kamera zum ersten Mal tatsächlich eines meldet
 
 ## [1.1.4]
@@ -147,7 +147,7 @@
 
 ## [1.1.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.1.0]
 
@@ -163,11 +163,11 @@
 
 ## [1.0.2]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.1]
 
-- Kompatibilitätsupdate für die aktuelle ViON-Version
+- Kompatibilitätsupdate für die aktuelle VION-Version
 
 ## [1.0.0]
 

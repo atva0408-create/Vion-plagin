@@ -1,4 +1,4 @@
-// Tools the assistant can call on ViON Sensor boards: what a board feels now (motion level against its threshold,
+// Tools the assistant can call on VION Sensor boards: what a board feels now (motion level against its threshold,
 // presence, calibration, signal, firmware), a calibration on the empty room, and the threshold, the hold time and the
 // source of motion. Reading runs without asking; the changes declare `approval` and `adminOnly` and answer `__preview`
 // (set only by the server, for the confirmation card) with lines that say what they would do, doing nothing. The
@@ -12,7 +12,7 @@ import type { MotionSource } from './sensor.js';
 /** One board as the tools see it; kept narrow so they are testable without a board. */
 export interface AssistantBoard {
   name: string;
-  /** vion: the ViON firmware; espectre: an ESPectre board, which keeps its own threshold. */
+  /** vion: the VION firmware; espectre: an ESPectre board, which keeps its own threshold. */
   kind: 'vion' | 'espectre';
   live: VionSensorLive;
   firmware?: string;
@@ -48,7 +48,7 @@ export const SENSOR_TOOLS: AssistantToolSpec[] = [
   {
     name: 'live',
     description:
-      'What ViON Sensor boards feel now: state (quiet, motion, calibrating, blind, offline), motion level against the threshold (motion at 1), ' +
+      'What VION Sensor boards feel now: state (quiet, motion, calibrating, blind, offline), motion level against the threshold (motion at 1), ' +
       'presence, Wi-Fi signal, packets per second, the firmware and whether a newer one is out (installed on the settings page only).',
     inputSchema: { type: 'object', properties: { sensor: sensorField } },
     lazy: true,
@@ -92,7 +92,7 @@ const T: Record<Lang, Record<string, (v: Record<string, string>) => string>> = {
     hold: (v) => `Движение держится, с: ${v.from} → ${v.to}`,
     source: (v) => `Источник движения: ${v.from} → ${v.to}`,
     nothing: (v) => `${v.sensor}: всё уже так, ничего не меняется`,
-    vion: () => 'ViON', espressif: () => 'Espressif', any: () => 'любой из двух',
+    vion: () => 'VION', espressif: () => 'Espressif', any: () => 'любой из двух',
   },
   de: {
     calibrate: (v) => `${v.sensor}: Kalibrierung auf den leeren Raum`,
@@ -102,7 +102,7 @@ const T: Record<Lang, Record<string, (v: Record<string, string>) => string>> = {
     hold: (v) => `Bewegung hält, s: ${v.from} → ${v.to}`,
     source: (v) => `Quelle der Bewegung: ${v.from} → ${v.to}`,
     nothing: (v) => `${v.sensor}: alles ist schon so, nichts ändert sich`,
-    vion: () => 'ViON', espressif: () => 'Espressif', any: () => 'einer von beiden',
+    vion: () => 'VION', espressif: () => 'Espressif', any: () => 'einer von beiden',
   },
   en: {
     calibrate: (v) => `${v.sensor}: calibrate on the empty room`,
@@ -112,7 +112,7 @@ const T: Record<Lang, Record<string, (v: Record<string, string>) => string>> = {
     hold: (v) => `Motion lasts, s: ${v.from} → ${v.to}`,
     source: (v) => `Source of motion: ${v.from} → ${v.to}`,
     nothing: (v) => `${v.sensor}: all is so already, nothing changes`,
-    vion: () => 'ViON', espressif: () => 'Espressif', any: () => 'either of them',
+    vion: () => 'VION', espressif: () => 'Espressif', any: () => 'either of them',
   },
 };
 
@@ -167,7 +167,7 @@ function live(host: SensorAssistantHost, input: Input): AssistantToolResult {
     return 'error' in board ? board : { content: describe(board) };
   }
   const boards = host.boards();
-  return { content: boards.length ? boards.map(describe) : { note: 'No ViON Sensor is added.' } };
+  return { content: boards.length ? boards.map(describe) : { note: 'No VION Sensor is added.' } };
 }
 
 async function calibrate(host: SensorAssistantHost, input: Input, preview: boolean, t: (typeof T)['en']): Promise<AssistantToolResult> {
@@ -202,7 +202,7 @@ async function tune(host: SensorAssistantHost, input: Input, preview: boolean, t
     const source = input.motionSource as MotionSource;
     if (!SOURCES.includes(source)) return { error: `motionSource: ${SOURCES.join(', ')}. Nothing was changed.` };
     if (board.kind !== 'vion' || (!board.hasPresence && source !== 'vion')) {
-      return { error: `"${board.name}" has the ViON algorithm only (the Espressif one comes with firmware 1.1.0). Nothing was changed.` };
+      return { error: `"${board.name}" has the VION algorithm only (the Espressif one comes with firmware 1.1.0). Nothing was changed.` };
     }
     patch.motionSource = source;
   }

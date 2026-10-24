@@ -13,7 +13,7 @@ interface Delivery {
 }
 
 /**
- * The answer of sendNotification. The SDK says it answers nothing; ViON reads a delivery per device when there is one
+ * The answer of sendNotification. The SDK says it answers nothing; VION reads a delivery per device when there is one
  * (server manager/channels.ts, deliveriesOf) and falls back to another channel for what did not arrive. Without it
  * every notification counted as delivered, HA down or not.
  */

@@ -1,8 +1,8 @@
 /**
- * Speech models: archives on the ViON models mirror, fetched on first use, checked by size and sha256 and unpacked
+ * Speech models: archives on the VION models mirror, fetched on first use, checked by size and sha256 and unpacked
  * into the storage of the plugin that speaks. Nothing is fetched until a camera is to speak or listen.
  *
- * Where each file comes from and under which license: docs/VOICE_IMPLEMENTATION.md in the ViON repository.
+ * Where each file comes from and under which license: docs/VOICE_IMPLEMENTATION.md in the VION repository.
  */
 import { createHash } from 'node:crypto';
 import { closeSync, createReadStream, createWriteStream, mkdirSync, openSync, writeSync } from 'node:fs';
