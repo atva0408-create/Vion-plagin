@@ -336,6 +336,27 @@ function dbusInvoke( bus: MessageBus, destination: string, path: string, dbusInt
   });
 }
 
+/**
+ * dbus-native does not listen for the `error` event of its connection: the socket to the system bus failing while
+ * the Avahi or systemd-resolved advertiser runs crashed the process. It is reported instead. A failure to connect in
+ * the first place is reported through the calls made on the bus, so it is only logged for debugging.
+ */
+function systemBus(): MessageBus {
+  const bus = dbus.systemBus();
+  let connected = false;
+  bus.connection.once("connect", () => {
+    connected = true;
+  });
+  bus.connection.on("error", (error: Error) => {
+    if (connected) {
+      console.warn("The connection to the system D-Bus failed: " + error.message);
+    } else {
+      debug("Failed to connect to the system D-Bus: %s", error.message);
+    }
+  });
+  return bus;
+}
+
 
 /**
  * AvahiServerState.
@@ -381,7 +402,7 @@ export class AvahiAdvertiser extends EventEmitter implements Advertiser {
 
     debug(`Preparing Advertiser for '${this.accessoryInfo.displayName}' using Avahi backend!`);
 
-    this.bus = dbus.systemBus();
+    this.bus = systemBus();
 
     this.stateChangeHandler = this.handleStateChangedEvent.bind(this);
   }
@@ -498,7 +519,7 @@ export class AvahiAdvertiser extends EventEmitter implements Advertiser {
   }
 
   public static async isAvailable(): Promise<boolean> {
-    const bus = dbus.systemBus();
+    const bus = systemBus();
 
     try {
       try {
@@ -578,7 +599,7 @@ export class ResolvedAdvertiser extends EventEmitter implements Advertiser {
     this.accessoryInfo = accessoryInfo;
     this.setupHash = CiaoAdvertiser.computeSetupHash(accessoryInfo);
 
-    this.bus = dbus.systemBus();
+    this.bus = systemBus();
 
     debug(`Preparing Advertiser for '${this.accessoryInfo.displayName}' using systemd-resolved backend!`);
   }
@@ -669,7 +690,7 @@ export class ResolvedAdvertiser extends EventEmitter implements Advertiser {
   }
 
   public static async isAvailable(): Promise<boolean> {
-    const bus = dbus.systemBus();
+    const bus = systemBus();
 
     try {
       try {
