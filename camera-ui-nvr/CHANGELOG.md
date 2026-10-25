@@ -1,3 +1,7 @@
+## [0.24.8]
+
+- A Xiaomi recording plays in a browser that decodes H.265 itself (Chrome): the player spun for good on a delimiter of the camera's stream in front of every frame
+
 ## [0.24.7]
 
 - The name is written VION

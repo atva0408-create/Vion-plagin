@@ -1,3 +1,7 @@
+## [0.24.8]
+
+- Eine Aufnahme einer Xiaomi-Kamera wird in einem Browser abgespielt, der H.265 selbst dekodiert (Chrome): der Player lud endlos wegen eines Trennzeichens des Kamerastroms vor jedem Bild
+
 ## [0.24.7]
 
 - Der Name wird VION geschrieben
