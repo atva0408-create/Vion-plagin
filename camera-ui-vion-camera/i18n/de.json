@@ -1,6 +1,0 @@
-{
-  "Умная камера VION: находится в сети сама, добавляется в VION одним нажатием и отдаёт основной и второй поток. Распознавание объектов на самой камере — в следующих версиях.": "Eine VION-Smartkamera: findet sich selbst im Netzwerk, wird mit einem Klick zu VION hinzugefügt und liefert ihren Haupt- und Nebenstream. Objekterkennung auf der Kamera selbst folgt in den nächsten Versionen.",
-  "Camera addresses": "Kameraadressen",
-  "Cameras are found in the network by themselves. If yours does not appear in Cameras, Found, type its address here (several separated by commas), e.g. 192.168.1.60.": "Kameras werden im Netzwerk von selbst gefunden. Erscheint Ihre nicht unter Kameras, Gefunden, tragen Sie hier ihre Adresse ein (mehrere durch Kommas getrennt), z. B. 192.168.1.60.",
-  "192.168.1.60": "192.168.1.60"
-}
