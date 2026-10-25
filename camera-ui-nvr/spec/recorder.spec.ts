@@ -11,8 +11,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { nalType, nalUnits } from '../src/media/ts-demux.js';
-import { lastFrameUs, readKeyframe } from '../src/reader.js';
+import { nalType, nalUnits, withoutForeignLead } from '../src/media/ts-demux.js';
+import { lastFrameUs, readFrames, readKeyframe } from '../src/reader.js';
 import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio, StreamRetry } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
 
@@ -201,8 +201,22 @@ for (const seiBytes of [0, 200, 2400]) {
     const picture = [...nalUnits(frame?.data ?? Buffer.alloc(0))].find((n) => nalType(n, 'h265') === CODECS.h265.idr);
     assert.equal(picture?.[2], i + 1, 'the recorded keyframe can be read back for playback');
   }
+  // what goes to a player: a browser's HEVC decoder (WebCodecs) took the AVC delimiter in front of every access unit
+  // and gave no picture and no error, the player of a Xiaomi recording spun for good (2026-10-25)
+  let frames = 0;
+  for await (const frame of readFrames(segment, keyframes[0])) {
+    const [first] = nalUnits(frame.data);
+    assert.ok(first && first.length >= 2 && (first[1] & 0x07) !== 0, `${name}: frame ${frames} starts with a HEVC NAL, not ${first?.subarray(0, 2).toString('hex')}`);
+    assert.ok([...nalUnits(frame.data)].some((n) => nalType(n, 'h265') < 32), 'the picture of the frame is kept');
+    if (frame.keyframe) assert.deepEqual([...nalUnits(frame.data)].map((n) => nalType(n, 'h265')).filter((t) => t >= 32 && t <= 34), [32, 33, 34], 'a keyframe keeps its parameter sets');
+    frames++;
+  }
+  assert.ok(frames >= 4, `${name}: the frames are read (${frames})`);
   store.close();
 }
+// in H.264 the delimiter is a NAL of its own: kept
+const avc = Buffer.from('00000001' + '09f0' + '00000001' + '65888400', 'hex');
+assert.equal(withoutForeignLead(avc, 'h264'), avc, 'an H.264 access unit is read as it was recorded');
 
 // the rest runs on a clock the spec moves: the recorder reads the time for its flushes and its warning
 const realNow = Date.now;

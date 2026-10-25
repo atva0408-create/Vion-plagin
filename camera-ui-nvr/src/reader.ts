@@ -2,7 +2,7 @@ import { open } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { probeCodec, withParameterSets } from './media/codec.js';
-import { ptsDelta, TsDemuxer } from './media/ts-demux.js';
+import { ptsDelta, TsDemuxer, withoutForeignLead } from './media/ts-demux.js';
 import { parseKeyframes } from './store.js';
 
 import type { FileHandle } from 'node:fs/promises';
@@ -55,7 +55,7 @@ export async function *readFrames(
         base = { pts: au.pts, us: from.tsUs };
       }
       const tsUs = base.us + Math.round((ptsDelta(base.pts, au.pts) / 90) * 1000);
-      let data = au.data;
+      let data = withoutForeignLead(au.data, segment.codec);
       if (au.keyframe) {
         info ??= probeCodec(data, segment.codec);
         data = withParameterSets(data, segment.codec, info);

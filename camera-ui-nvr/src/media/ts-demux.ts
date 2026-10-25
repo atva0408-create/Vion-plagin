@@ -7,6 +7,7 @@
 
 export const TS_PACKET = 188;
 const SYNC = 0x47;
+const START_CODE = Buffer.from([0, 0, 1]);
 
 export type VideoCodec = 'h264' | 'h265';
 
@@ -249,6 +250,26 @@ export function keyframeStart(data: Buffer, codec: VideoCodec): boolean | undefi
     if (codec === 'h264' ? t >= 1 && t <= 5 : t < 32) return codec === 'h264' ? t === 5 : t >= 16 && t <= 21;
   }
   return undefined;
+}
+
+/**
+ * A HEVC access unit without the NAL units in front of it that are not HEVC: the AVC AUD 09 f0 go2rtc prefixes the
+ * HEVC of some cameras with (Xiaomi, keyframeStart), recorded as it came. A browser's HEVC decoder (WebCodecs in Chrome)
+ * took every frame with it and gave no picture and no error: the player of a Xiaomi recording spun for good once the
+ * browser could decode HEVC itself (2026-10-25). The rest of the unit is the same bytes.
+ */
+export function withoutForeignLead(data: Buffer, codec: VideoCodec): Buffer {
+  if (codec !== 'h265') return data;
+  let start = 0;
+  while (data[start] === 0 && data[start + 1] === 0) {
+    const header = data[start + 2] === 1 ? start + 3 : data[start + 2] === 0 && data[start + 3] === 1 ? start + 4 : -1;
+    // a HEVC header has the forbidden bit clear and temporal_id_plus1 above zero
+    if (header < 0 || header + 1 >= data.length || ((data[header] & 0x80) === 0 && (data[header + 1] & 0x07) !== 0)) break;
+    const next = data.indexOf(START_CODE, header);
+    if (next < 0) break;
+    start = next;
+  }
+  return start ? data.subarray(start) : data;
 }
 
 /** 33-bit PTS difference in ticks, tolerant of a single wrap-around. */
