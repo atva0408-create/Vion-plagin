@@ -92,7 +92,8 @@ export function matchesContent(ev: RecordedEvent, opts: GetEventsOptions): boole
 export function matchesEvent(ev: RecordedEvent, opts: GetEventsOptions): boolean {
   if (opts.startedSinceMs !== undefined && ev.startTime < opts.startedSinceMs) return false;
   if (opts.levels?.length && !opts.levels.includes(ev.level ?? 'green')) return false;
-  if (opts.hasDetections && !(ev.segments ?? []).some((s) => s?.detections?.length)) return false;
+  // a raised event is content of its own: a scream heard with nobody in the picture is what the lists are for
+  if (opts.hasDetections && !(ev.segments ?? []).some((s) => s?.detections?.length) && (ev.level ?? 'green') === 'green') return false;
   if (opts.minConfidence) {
     // events without scored detections (sensor triggers, motion) are not ruled out by confidence
     const best = bestScore(ev);

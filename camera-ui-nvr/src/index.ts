@@ -1442,7 +1442,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     opts: GetEventsOptions,
   ): { total: number; segments: number; byType: Record<string, number>; capped: boolean } | undefined {
     const inEvent = [opts.hasDetections, opts.minConfidence, opts.search].some(Boolean);
-    const chosen = [opts.triggers, opts.triggerLabels, opts.types, opts.attributes, ...Object.values(opts.hiddenTypes ?? {})].some((list) => list?.length);
+    const chosen = [opts.triggers, opts.triggerLabels, opts.types, opts.attributes, opts.levels, ...Object.values(opts.hiddenTypes ?? {})].some((list) => list?.length);
     if (inEvent || chosen) return undefined;
     const batch = Math.min(Math.max(STATS_CAP * 2 + 1, 200), 2000);
     const withRecording = opts.withRecordingInfo ?? opts.hasRecording;
@@ -2388,7 +2388,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   /** What this NVR supports beyond the basics; the UI hides the rest. */
   public async getNvrFeatures(): Promise<NvrFeatures> {
-    return { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true };
+    return { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true, eventLevels: true };
   }
 
   // ------------------------------------------------------------ people search

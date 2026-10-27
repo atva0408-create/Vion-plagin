@@ -101,6 +101,8 @@ export interface NvrFeatures {
   manualRecording: boolean;
   /** People who look alike can be searched for (`searchSimilarQuery`). */
   personSearch: boolean;
+  /** Events keep their level and are found by it (`levels`); an older recorder lists every event whatever is asked. */
+  eventLevels: boolean;
 }
 
 /**

@@ -117,5 +117,24 @@ assert.match((await nvr.callAssistantTool('query_events', { ...range, levels: ['
 const declared = (await import('../src/assistant.js')).ASSISTANT_TOOLS.find((tool) => tool.name === 'query_events');
 assert.deepEqual((declared?.inputSchema.properties as Record<string, { items?: { enum?: string[] } }>).levels?.items?.enum, ['green', 'yellow', 'red']);
 
+// ------------------------------------------------------- what the lists ask too
+// a raised event is content of its own: a scream or a crying child heard with nobody in the picture is the alarm the
+// lists show (they ask hasDetections to leave out bare motion), while a green event of a sound alone stays out
+const heardOnly = (id: string, level?: EventLevel) => ({ ...event(id, 30_000, level), types: ['audio'], segments: [] }) as unknown as RecordedEvent;
+assert.equal(matchesEvent(heardOnly('cry', 'red'), { hasDetections: true }), true, 'a red event of a sound alone is listed');
+assert.equal(matchesEvent(heardOnly('knock', 'yellow'), { hasDetections: true }), true);
+assert.equal(matchesEvent(heardOnly('hum', 'green'), { hasDetections: true }), false, 'a green one of a sound alone is not');
+assert.equal(matchesEvent(heardOnly('hum2'), { hasDetections: true }), false);
+
+// the count of the page («N из M») counts by level as the list does
+const stats = async (opts: GetEventsOptions) => (await nvr.getEventStats(['cam1'], opts)).total;
+assert.equal(await stats({ levels: ['red'] }), 2, 'scream and late');
+assert.equal(await stats({ levels: ['yellow'] }), 1);
+assert.equal(await stats({ levels: ['yellow', 'red'] }), 3);
+assert.equal(await stats({}), events.length + 450 + 1);
+
+// a client asks the recorder whether it knows levels: an older one leaves `levels` out and lists every event
+assert.equal((await nvr.getNvrFeatures()).eventLevels, true);
+
 console.log('levels.spec: event levels stored and found OK');
 process.exit(0);

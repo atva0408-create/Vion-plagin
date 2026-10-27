@@ -254,7 +254,7 @@ seg('low', 2_000_000, 'cam17', 1_300_000_000, 1_200_000_000);
 assert.equal((await nvr.nvrExportEstimate({ cameras: ['cam17'], slices: fiveMinutes, quality: 'smallest' })).totalBytes, 300_000_000, 'a row twice is counted once');
 
 // ---------------------------------------------------------------- feature flags
-assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true });
+assert.deepEqual(await nvr.getNvrFeatures(), { episodes: true, exportQuality: true, manualRecording: true, personSearch: true, h264: true, eventLevels: true });
 
 console.log('filters.spec: event filters, trace, export quality and features OK');
 process.exit(0);
