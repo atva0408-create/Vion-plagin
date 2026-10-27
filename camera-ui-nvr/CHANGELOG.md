@@ -1,3 +1,9 @@
+## [0.25.0]
+
+- Events keep their level (VION 2.6.46): green, yellow or red, and the rules of the camera that raised it. A level only rises, and a message read late does not make an alarm green again
+- The event lists find events by level (`levels`); a yellow or red event is listed with nobody in the picture (a scream heard), and the count of a page counts by level. `getNvrFeatures().eventLevels` tells a client the recorder knows levels
+- The assistant's query_events takes `levels` and names the level and the rules of a raised event
+
 ## [0.24.8]
 
 - A Xiaomi recording plays in a browser that decodes H.265 itself (Chrome): the player spun for good on a delimiter of the camera's stream in front of every frame

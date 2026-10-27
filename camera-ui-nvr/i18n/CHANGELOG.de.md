@@ -1,3 +1,9 @@
+## [0.25.0]
+
+- Ereignisse behalten ihre Stufe (VION 2.6.46): normal, Achtung oder Alarm — und die Regeln der Kamera, die sie angehoben haben. Die Stufe steigt nur: eine verspätet gelesene Nachricht macht einen Alarm nicht wieder normal
+- Die Ereignislisten finden Ereignisse nach Stufe (`levels`); ein Ereignis der Stufe Achtung oder Alarm steht in der Liste, auch wenn niemand im Bild ist (ein gehörter Schrei), und der Zähler der Seite zählt nach Stufe. `getNvrFeatures().eventLevels` sagt einem Client, dass die Aufnahme Stufen kennt
+- Das Assistentenwerkzeug query_events nimmt `levels` und nennt Stufe und Regeln eines angehobenen Ereignisses
+
 ## [0.24.8]
 
 - Eine Aufnahme einer Xiaomi-Kamera wird in einem Browser abgespielt, der H.265 selbst dekodiert (Chrome): der Player lud endlos wegen eines Trennzeichens des Kamerastroms vor jedem Bild
