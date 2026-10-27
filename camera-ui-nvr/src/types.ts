@@ -15,8 +15,22 @@ export interface RecordedSegment {
   [key: string]: unknown;
 }
 
+/** The level of an event (VION 2.6.46): green — seen; yellow — needs a look; red — an alarm. No level is green. */
+export type EventLevel = 'green' | 'yellow' | 'red';
+
+/** A rule of the camera that raised the event, once per rule, as the server keeps it. */
+export interface EventLevelReason {
+  rule: string;
+  name: string;
+  level: Exclude<EventLevel, 'green'>;
+  notify: boolean;
+  at: number;
+}
+
 export interface RecordedEvent extends Omit<DetectionEvent, 'segments'> {
   segments: RecordedSegment[];
+  level?: EventLevel;
+  levelReasons?: EventLevelReason[];
   thumbnailAt?: number;
   hasRecording?: boolean;
   episodeIds?: string[];
@@ -239,6 +253,8 @@ export interface GetEventsOptions {
   filterLogicAttributes?: 'and' | 'or';
   /** Per camera: types whose events are hidden when nothing else was seen. */
   hiddenTypes?: Record<string, string[]>;
+  /** Only events of these levels; an event of no level is green. Empty or none: every level. */
+  levels?: EventLevel[];
   state?: 'active' | 'ended';
   search?: string;
   hasDetections?: boolean;

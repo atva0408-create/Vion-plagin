@@ -14,7 +14,17 @@ import type { GoneAnswer, Place } from './gone.js';
 import type { PlaceHistoryAnswer, PlaceMode } from './place.js';
 import type { ThingAnswer } from './thing.js';
 import type { ClipSearchResult } from './semantic.js';
-import type { GetEventsOptions, ManualRecording, PersonRouteResult, RecordedEvent, RecordingSegment, StorageStats, StoredCrossing, SystemEvent } from './types.js';
+import type {
+  EventLevel,
+  GetEventsOptions,
+  ManualRecording,
+  PersonRouteResult,
+  RecordedEvent,
+  RecordingSegment,
+  StorageStats,
+  StoredCrossing,
+  SystemEvent,
+} from './types.js';
 
 /** An unknown face where it was seen: the event, the segment and the place among the segment's attributes. */
 export interface UnknownSighting {
@@ -144,6 +154,8 @@ const STATS_ROWS = 300_000;
 /** Series kept apart; the rest are added up as «other». */
 const STATS_GROUPS = 7;
 const HOUR_MS = 3600_000;
+/** The levels of events, lowest first (VION 2.6.46). */
+const LEVELS: readonly EventLevel[] = ['green', 'yellow', 'red'];
 
 export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
   {
@@ -172,6 +184,13 @@ export const ASSISTANT_TOOLS: AssistantToolSpec[] = [
         plate: { type: 'string', description: 'Only events with a license plate containing this text' },
         face: { type: 'string', description: 'Only events with this recognized person' },
         favorites: { type: 'boolean', description: 'Only events marked as favorite' },
+        levels: {
+          type: 'array',
+          items: { type: 'string', enum: [...LEVELS] },
+          description:
+            'Only events of these levels: red — alarms (a scream, a fall, someone in a zone), yellow — events that need a look (someone at ' +
+            'the door for minutes), green — the rest. The rules of each camera set them; a raised event names its level and the rules',
+        },
         limit: { type: 'integer', minimum: 1, maximum: MAX_EVENTS, description: `Events to return, default ${DEFAULT_EVENTS}` },
       },
     },
@@ -629,6 +648,9 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
     const unknown = labels.filter((label) => !classes.includes(label) && !seen.has(label));
     if (unknown.length) return { error: `Unknown label ${unknown.map((l) => `"${l}"`).join(', ')}. Labels of the events of the last 30 days: ${[...seen].join(', ')}` };
   }
+  const levels = stringList(input.levels);
+  const unknownLevel = levels.find((level) => !LEVELS.includes(level as EventLevel));
+  if (unknownLevel !== undefined) return { error: `Unknown level "${unknownLevel}": green, yellow or red` };
   const plate = normalizePlate(input.plate);
   const face = typeof input.face === 'string' ? input.face.trim().toLowerCase() : '';
   let question: Question | undefined;
@@ -651,6 +673,7 @@ function queryEvents(host: AssistantHost, input: Input, ctx: AssistantToolContex
       // labels and a question asked together: both must hold, the store takes either by default
       ...(attribute ? { attributes: [attribute], ...(labels.length ? { filterLogicAttributes: 'and' as const } : {}) } : {}),
       favoritesOnly: input.favorites === true || undefined,
+      ...(levels.length ? { levels: levels as EventLevel[] } : {}),
       limit: narrowed ? SUMMARY_SCAN : limit,
     },
     narrowed ? SUMMARY_SCAN : limit,
@@ -2477,6 +2500,8 @@ function brief(ev: RecordedEvent, names: Map<string, string>) {
     ...(unknownFacesOf(ev) ? { unknownFaces: unknownFacesOf(ev) } : {}),
     ...(ev.ai?.title ? { title: ev.ai.title } : {}),
     ...(ev.favorite ? { favorite: true } : {}),
+    // most events are green: a word on each would be noise
+    ...(ev.level && ev.level !== 'green' ? { level: ev.level, rules: (ev.levelReasons ?? []).map((reason) => reason.name) } : {}),
   };
 }
 

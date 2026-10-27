@@ -54,6 +54,7 @@ import type { Frame } from './reader.js';
 import type {
   DetectionEventMessage,
   EventAttachments,
+  EventLevel,
   EventTrace,
   FindInEventsResult,
   FoundInEvent,
@@ -4293,14 +4294,28 @@ function mergeEvent(prev: RecordedEvent, next: RecordedEvent): RecordedEvent {
   if (next.segmentIndex !== undefined && next.segments?.length === 1) {
     segments[next.segmentIndex] = keepPeople(segments[next.segmentIndex], next.segments[0]);
   } else if (next.segments?.length) {
-    return {
+    return keepLevel(prev, {
       ...base,
       ...next,
       segments: next.segments.map((segment, index) => keepPeople(base.segments?.[index], segment)),
       types: [...new Set([...(base.types ?? []), ...(next.types ?? [])])],
-    };
+    });
   }
-  return { ...base, ...next, segments, types: [...new Set([...(base.types ?? []), ...(next.types ?? [])])] };
+  return keepLevel(prev, { ...base, ...next, segments, types: [...new Set([...(base.types ?? []), ...(next.types ?? [])])] });
+}
+
+const LEVEL_RANK: Record<EventLevel, number> = { green: 0, yellow: 1, red: 2 };
+
+/**
+ * The level of an event only rises (the server never lowers it): a message read late — sent before the one that raised
+ * the event — would make an alarm green again in the list, and lose the rule that raised it.
+ */
+function keepLevel(prev: RecordedEvent, merged: RecordedEvent): RecordedEvent {
+  if (!prev.level) return merged;
+  const level = LEVEL_RANK[prev.level] > LEVEL_RANK[merged.level ?? 'green'] ? prev.level : merged.level;
+  const levelReasons = [...(prev.levelReasons ?? [])];
+  for (const reason of merged.levelReasons ?? []) if (!levelReasons.some((kept) => kept.rule === reason.rule)) levelReasons.push(reason);
+  return { ...merged, level, levelReasons };
 }
 
 /**
