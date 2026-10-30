@@ -228,7 +228,9 @@ export class Recorder {
     const restart =
       (opts.rtspUrl !== undefined && opts.rtspUrl !== this.opts.rtspUrl) ||
       (opts.tsUrl !== undefined && opts.tsUrl !== this.opts.tsUrl) ||
-      opts.audioUrl !== this.opts.audioUrl ||
+      // given as undefined when the sound is switched off; an update that does not name it (the ffmpeg the host found
+      // at the start) is no change of it: every recorder with sound was restarted a moment after each start
+      ('audioUrl' in opts && opts.audioUrl !== this.opts.audioUrl) ||
       (opts.audio !== undefined && opts.audio !== this.opts.audio);
     this.opts = { ...this.opts, ...opts };
     if (restart) {

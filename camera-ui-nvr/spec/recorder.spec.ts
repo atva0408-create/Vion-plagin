@@ -680,6 +680,58 @@ Date.now = realNow;
   server.close();
 }
 
+// ------------------------------------------------------------------ what restarts a recorder with sound
+{
+  // At every start the plugin hands the ffmpeg the host found to its recorders (update({ ffmpegPath })). An update that
+  // did not name the address of the sound was read as the sound switched off: every recorder with sound was restarted
+  // a moment after each start, its file cut and its pre-buffer lost.
+  const rec = new Recorder({
+    cameraId: 'restart',
+    role: 'high',
+    rtspUrl: 'rtsp://127.0.0.1:1/cam',
+    tsUrl: 'http://127.0.0.1:1/api/stream.ts?src=cam&video=all',
+    audioUrl: 'rtsp://127.0.0.1:1/cam?audio',
+    audio: true,
+    ffmpegPath: 'ffmpeg',
+    dir: join(dir, 'restart'),
+    store: new Store(join(dir, 'restart.db')),
+    mode: 'continuous',
+    preBufferSec: 0,
+    postBufferSec: 0,
+    segmentSec: 60,
+    log: noop,
+    onStateChange: noop,
+    onSegment: noop,
+  });
+  // the stream that runs: an ffmpeg (sound) and a reading of the MPEG-TS, as the recorder holds them
+  const kills: string[] = [];
+  const internals = rec as unknown as { proc?: { kill(signal: string): void }; httpAbort?: AbortController };
+  const running = () => {
+    internals.proc = { kill: (signal) => kills.push(signal) };
+    internals.httpAbort = new AbortController();
+    return internals.httpAbort;
+  };
+  let reading = running();
+  rec.update({ ffmpegPath: '/usr/lib/camera.ui/ffmpeg' });
+  assert.deepEqual(kills, [], 'the ffmpeg the host found restarts nothing');
+  assert.equal(reading.signal.aborted, false);
+  // what syncRecorders sends when nothing changed
+  rec.update({ rtspUrl: 'rtsp://127.0.0.1:1/cam', tsUrl: 'http://127.0.0.1:1/api/stream.ts?src=cam&video=all', audioUrl: 'rtsp://127.0.0.1:1/cam?audio', audio: true, segmentSec: 30 });
+  assert.deepEqual(kills, [], 'the same sources restart nothing');
+  // the sound switched off: the address of the sound is given as undefined (with `audio: false`, which restarts it too)
+  rec.update({ audioUrl: undefined });
+  assert.deepEqual(kills, ['SIGKILL'], 'the address of the sound gone restarts the stream');
+  assert.equal(reading.signal.aborted, true);
+  // and on again with another address
+  reading = running();
+  rec.update({ audioUrl: 'rtsp://127.0.0.1:1/cam?audio=2' });
+  assert.deepEqual(kills, ['SIGKILL', 'SIGKILL'], 'another address of the sound restarts it');
+  assert.equal(reading.signal.aborted, true);
+  internals.proc = undefined;
+  internals.httpAbort = undefined;
+  await rec.stop();
+}
+
 // ------------------------------------------------------------------ a camera that does not answer
 {
   // VION Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
@@ -947,6 +999,6 @@ Date.now = () => clock;
 Date.now = realNow;
 
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, a file ends with its last frame, the demuxer only until the codec is known — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, no restart by an update that does not name the sound, a file ends with its last frame, the demuxer only until the codec is known — ok',
 );
 process.exit(0);
