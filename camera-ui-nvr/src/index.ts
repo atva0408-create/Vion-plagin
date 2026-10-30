@@ -1,6 +1,6 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -418,6 +418,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private probeH264Encoder: (ffmpegPath: string) => Promise<H264Encoder> = (ffmpegPath) => findH264Encoder(ffmpegPath);
   private readonly cameras = new Map<string, ManagedCamera>();
   private retentionTimer: NodeJS.Timeout | undefined;
+  /** The retention pass that runs: the next tick of the timer waits for it instead of starting a second one over it. */
+  private retaining: Promise<void> | undefined;
+  /** Recorded files the retention could not delete, already told in the log: their next failures are not told again. */
+  private readonly undeletable = new Set<number>();
   private entitlementsTimer: NodeJS.Timeout | undefined;
   /** Unknown until the host answers (older hosts without the call: no limits). */
   private entitlements: Entitlements | undefined;
@@ -427,6 +431,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private markReady!: () => void;
 
   private readonly eventChains = new Map<string, Promise<void>>();
+  /** The adds and releases of each camera waiting for the one before (forCamera). */
+  private readonly cameraChains = new Map<string, Promise<void>>();
   private readonly detectionListeners = new Set<(m: DetectionEventMessage) => void>();
   private readonly deletedListeners = new Set<(ids: string[]) => void>();
   private readonly recordingsDeletedListeners = new Set<(e: RecordingsDeletedEvent) => void>();
@@ -826,8 +832,27 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const managed of this.cameras.values()) this.syncRecorders(managed);
   }
 
+  /**
+   * The server's backup copies the whole storage of a plugin and leaves out a folder with a `.backupignore` in it
+   * (server/src/api/services/backup.service.ts): every backup took the whole archive of recordings (199 GB on the
+   * bench) and the exports. Written at every start, so an install that recorded before has it too. The database, the
+   * pictures of events and faces stay in the backup: small, and not to be had again.
+   */
+  private keepVideoOutOfBackups(): void {
+    for (const dir of [this.recordingsDir, join(this.dataDir, 'exports')]) {
+      const marker = join(dir, '.backupignore');
+      try {
+        mkdirSync(dir, { recursive: true });
+        if (!existsSync(marker)) writeFileSync(marker, 'VION NVR: recorded video, left out of the backups of the server\n');
+      } catch (error) {
+        this.logger.warn(`${dir} goes into the backups of the server, ${marker} was not written: ${(error as Error).message}`);
+      }
+    }
+  }
+
   private init(): void {
     mkdirSync(this.recordingsDir, { recursive: true });
+    this.keepVideoOutOfBackups();
     this.store = new Store(join(this.dataDir, 'nvr.db'), this.recordingsDir);
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
@@ -977,18 +1002,38 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const camera of cameras) await this.onCameraAdded(camera);
   }
 
-  public async onCameraAdded(camera: CameraDevice): Promise<void> {
-    await this.ready;
-    await this.releaseCamera(camera.id);
-    const managed: ManagedCamera = { device: camera, recorders: new Map(), subscriptions: [] };
-    this.cameras.set(camera.id, managed);
-    managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncAll()));
-    this.syncRecorders(managed);
+  public onCameraAdded(camera: CameraDevice): Promise<void> {
+    return this.forCamera(camera.id, async () => {
+      await this.ready;
+      await this.releaseCamera(camera.id);
+      const managed: ManagedCamera = { device: camera, recorders: new Map(), subscriptions: [] };
+      this.cameras.set(camera.id, managed);
+      managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncAll()));
+      this.syncRecorders(managed);
+    });
   }
 
-  public async onCameraReleased(cameraId: string): Promise<void> {
-    await this.releaseCamera(cameraId);
-    this.syncAll();
+  public onCameraReleased(cameraId: string): Promise<void> {
+    return this.forCamera(cameraId, async () => {
+      await this.releaseCamera(cameraId);
+      this.syncAll();
+    });
+  }
+
+  /**
+   * The adds and releases of one camera, one after the other. Two adds of a camera in a row both released what was
+   * there before either had set its own (each awaits on the way), and the second one replaced the first: the
+   * recorders of the first went on recording beside it, with nothing left to stop them.
+   */
+  private forCamera(cameraId: string, job: () => Promise<void>): Promise<void> {
+    const previous = this.cameraChains.get(cameraId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(job);
+    this.cameraChains.set(cameraId, next);
+    const cleanup = () => {
+      if (this.cameraChains.get(cameraId) === next) this.cameraChains.delete(cameraId);
+    };
+    next.then(cleanup, cleanup);
+    return next;
   }
 
   private async releaseCamera(cameraId: string): Promise<void> {
@@ -2248,7 +2293,40 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     if (closed) this.logger.log(`Закрыто событий, к которым 10 минут не приходили обновления: ${closed}`);
   }
 
-  private async enforceRetention(): Promise<void> {
+  /**
+   * One pass at a time. The timer starts one every five minutes whatever the last one does, and a pass over a slow or
+   * failing disk can take longer than that: a second one went over the same files beside it.
+   */
+  private enforceRetention(): Promise<void> {
+    this.retaining ??= this.retain().finally(() => (this.retaining = undefined));
+    return this.retaining;
+  }
+
+  /**
+   * Deletes the file of a recorded segment and then its row; false when the file cannot be deleted. Its row then stays,
+   * and the next pass tries again: the file is still on the disk, played and counted. Before, the error ended the
+   * pass, and the next one began with the same file: one file the plugin may not delete (its rights, a bad sector)
+   * stopped the retention by days, the quota and the free-space guard for good, and the disk filled up.
+   */
+  private async deleteSegmentFile(seg: SegmentRow, failed: { count: number; first?: string }): Promise<boolean> {
+    try {
+      // `force` takes care of a file that is gone already (readers skip a missing file)
+      await rm(this.store.file(seg), { force: true });
+    } catch (error) {
+      // told once for a file, and the files of one pass in one line: a disk gone read-only fails every one of them
+      if (!this.undeletable.has(seg.id)) {
+        this.undeletable.add(seg.id);
+        failed.count++;
+        failed.first ??= `${this.store.file(seg)}: ${(error as Error).message}`;
+      }
+      return false;
+    }
+    this.undeletable.delete(seg.id);
+    this.store.deleteSegment(seg.id);
+    return true;
+  }
+
+  private async retain(): Promise<void> {
     if (!this.store) return;
     // apart: counts that fail to go (a busy or full disk) must not stop the video's retention and the free-space guard
     try {
@@ -2256,16 +2334,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Retention: the old line counts were not deleted: ${(error as Error).message}`);
     }
+    const failed: { count: number; first?: string } = { count: 0 };
     try {
       const s = this.setting;
       const cutoffUs = (Date.now() - s.retentionDays * 86_400_000) * 1000;
       let removed = 0;
-      for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200)) {
+      // read on past the rows whose file stayed: they are read again by the next pass, not by the next batch of this one
+      let kept: SegmentRow | undefined;
+      for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200, kept)) {
         for (const seg of batch) {
-          // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-          await rm(this.store.file(seg), { force: true });
-          this.store.deleteSegment(seg.id);
-          removed++;
+          if (await this.deleteSegmentFile(seg, failed)) removed++;
+          else kept = seg;
         }
       }
 
@@ -2273,14 +2352,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const GB = 1024 ** 3;
       // summed once and kept up to date below: a SUM over every segment for each deleted file made a big cleanup quadratic
       let usedBytes = s.quotaGB > 0 ? this.store.totalBytes() : 0;
+      kept = undefined;
       for (let guard = 0; guard < 10_000; guard++) {
-        const fs = await statfs(this.recordingsDir);
-        const freePct = (fs.bavail / fs.blocks) * 100;
+        // a disk that says nothing of its size (no blocks) has no free share to keep: the quota alone decides. Read as
+        // a share it was NaN, never enough, and the guard deleted up to 10 000 of the oldest files at every pass
+        const freePct = freePercent(await statfs(this.recordingsDir));
+        const low = freePct !== undefined && freePct < s.minFreePercent;
         const overQuota = s.quotaGB > 0 && usedBytes > s.quotaGB * GB;
-        if (!overQuota && freePct >= s.minFreePercent) break;
-        const [oldest] = this.store.oldestSegments(1);
+        if (!overQuota && !low) break;
+        const [oldest] = this.store.oldestSegments(1, kept);
         if (!oldest || this.isLiveSegment(oldest.id)) {
-          if (freePct < Math.max(1, s.minFreePercent / 3) && !this.paused) {
+          if (freePct !== undefined && freePct < Math.max(1, s.minFreePercent / 3) && !this.paused) {
             this.paused = true;
             this.pushSystemEvent({ type: 'storage', severity: 'error', message: 'Недостаточно места на диске: запись приостановлена' });
             this.announceManual();
@@ -2288,15 +2370,17 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
           }
           break;
         }
-        // file first: if removing it fails the row stays and retention retries (readers skip a missing file)
-        await rm(this.store.file(oldest), { force: true });
-        this.store.deleteSegment(oldest.id);
+        // a file that stays is still on the disk and in the quota: the next oldest goes in its place
+        if (!(await this.deleteSegmentFile(oldest, failed))) {
+          kept = oldest;
+          continue;
+        }
         usedBytes -= oldest.bytes;
         removed++;
       }
       if (this.paused) {
-        const fs = await statfs(this.recordingsDir);
-        if ((fs.bavail / fs.blocks) * 100 >= s.minFreePercent) {
+        const freePct = freePercent(await statfs(this.recordingsDir));
+        if (freePct !== undefined && freePct >= s.minFreePercent) {
           this.paused = false;
           this.pushSystemEvent({ type: 'storage', severity: 'success', message: 'Место на диске освободилось: запись возобновлена' });
           for (const c of this.cameras.values()) for (const r of c.recorders.values()) r.start();
@@ -2355,6 +2439,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       if (removed) this.logger.debug(`Retention removed ${removed} segment(s)`);
     } catch (error) {
       this.logger.warn(`Retention failed: ${(error as Error).message}`);
+    }
+    if (failed.count) {
+      this.logger.warn(`Retention: ${failed.count} recorded file(s) could not be deleted and stay, tried again at every pass (${failed.first})`);
     }
     await this.removeEmptyExportDirs();
   }
@@ -4434,4 +4521,10 @@ function fileStamp(us: number, zone?: Intl.DateTimeFormat): string {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/** The free share of a disk in percent; undefined when the disk does not tell its size (some network and FUSE mounts). */
+function freePercent(fs: { bavail: number; blocks: number }): number | undefined {
+  const pct = (fs.bavail / fs.blocks) * 100;
+  return Number.isFinite(pct) ? pct : undefined;
 }

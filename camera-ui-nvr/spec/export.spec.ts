@@ -297,7 +297,8 @@ const GB = 1024 ** 3;
   };
   for (const id of ['gate', 'door', 'yard', 'huge-1', 'huge-2', 'huge-3']) internals.cameras.set(id, { device: { id, name: id }, recorders: new Map(), subscriptions: [] });
   const exportsDir = join(api.storagePath, 'exports');
-  const leftovers = () => (existsSync(exportsDir) ? readdirSync(exportsDir) : []);
+  // the marker that keeps the exports out of the server's backups is no export (backup.spec)
+  const leftovers = () => (existsSync(exportsDir) ? readdirSync(exportsDir).filter((name) => name !== '.backupignore') : []);
   const add = (camera: string, path: string, startSec: number, endSec: number, bytes = 1000) => internals.store.addSegment({ ...row(path, startSec, endSec, bytes), camera_id: camera });
 
   // a single clip. The file of the yard broke off before its first picture (a power cut): ffmpeg opens the MP4 and

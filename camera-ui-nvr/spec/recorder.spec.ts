@@ -11,7 +11,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { nalType, nalUnits, withoutForeignLead } from '../src/media/ts-demux.js';
+import { nalType, nalUnits, TsDemuxer, withoutForeignLead } from '../src/media/ts-demux.js';
 import { lastFrameUs, readFrames, readKeyframe } from '../src/reader.js';
 import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio, StreamRetry } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
@@ -622,6 +622,116 @@ Date.now = realNow;
   server.close();
 }
 
+// ------------------------------------------------------------------ the source changes while go2rtc is asked
+{
+  // With sound on the recorder asks go2rtc whether the camera sends any (up to 15 s) before it starts. A new address
+  // of the stream came meanwhile (the camera's sources changed): there was no stream for update() to end, so nothing
+  // started one again, and the start that was waiting gave up as out of date. The recorder stood for good.
+  const seen: string[] = [];
+  let answer: (() => void) | undefined;
+  const server = createServer((req, res) => {
+    const url = new URL(req.url!, 'http://x');
+    const src = url.searchParams.get('src') ?? '';
+    seen.push(`${url.pathname} ${src}`);
+    if (url.pathname === '/api/streams') {
+      const send = () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ producers: [{ medias: ['video, recvonly, H264'] }] }));
+      // the first question hangs until the spec lets it answer
+      if (src === 'before') answer = send;
+      else send();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'video/mp2t' });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const tsUrl = (src: string) => `http://127.0.0.1:${port}/api/stream.ts?src=${src}&video=all`;
+  const waitFor = async (what: () => boolean) => {
+    for (let i = 0; i < 60 && !what(); i++) await new Promise((r) => setTimeout(r, 50));
+    return what();
+  };
+  const rec = new Recorder({
+    cameraId: 'moved',
+    role: 'high',
+    rtspUrl: 'rtsp://127.0.0.1:1/before',
+    tsUrl: tsUrl('before'),
+    audioUrl: 'rtsp://127.0.0.1:1/before?audio',
+    audio: true,
+    ffmpegPath: join(dir, 'no-ffmpeg'),
+    dir: join(dir, 'moved'),
+    store: new Store(join(dir, 'moved.db')),
+    mode: 'continuous',
+    preBufferSec: 0,
+    postBufferSec: 0,
+    segmentSec: 60,
+    log: noop,
+    onStateChange: noop,
+    onSegment: noop,
+  });
+  rec.start();
+  assert.ok(await waitFor(() => answer !== undefined), 'go2rtc is asked');
+  // what syncRecorders sends when the sources of the camera change
+  rec.update({ rtspUrl: 'rtsp://127.0.0.1:1/after', tsUrl: tsUrl('after'), audioUrl: 'rtsp://127.0.0.1:1/after?audio', audio: true });
+  answer!();
+  assert.ok(await waitFor(() => seen.includes('/api/stream.ts after')), `the stream is read from its new address: ${seen.join(', ')}`);
+  assert.ok(seen.includes('/api/streams after'), 'go2rtc is asked about the new one');
+  assert.ok(!seen.includes('/api/stream.ts before'), 'and the old address is not read');
+  await rec.stop();
+  server.closeAllConnections();
+  server.close();
+}
+
+// ------------------------------------------------------------------ what restarts a recorder with sound
+{
+  // At every start the plugin hands the ffmpeg the host found to its recorders (update({ ffmpegPath })). An update that
+  // did not name the address of the sound was read as the sound switched off: every recorder with sound was restarted
+  // a moment after each start, its file cut and its pre-buffer lost.
+  const rec = new Recorder({
+    cameraId: 'restart',
+    role: 'high',
+    rtspUrl: 'rtsp://127.0.0.1:1/cam',
+    tsUrl: 'http://127.0.0.1:1/api/stream.ts?src=cam&video=all',
+    audioUrl: 'rtsp://127.0.0.1:1/cam?audio',
+    audio: true,
+    ffmpegPath: 'ffmpeg',
+    dir: join(dir, 'restart'),
+    store: new Store(join(dir, 'restart.db')),
+    mode: 'continuous',
+    preBufferSec: 0,
+    postBufferSec: 0,
+    segmentSec: 60,
+    log: noop,
+    onStateChange: noop,
+    onSegment: noop,
+  });
+  // the stream that runs: an ffmpeg (sound) and a reading of the MPEG-TS, as the recorder holds them
+  const kills: string[] = [];
+  const internals = rec as unknown as { proc?: { kill(signal: string): void }; httpAbort?: AbortController };
+  const running = () => {
+    internals.proc = { kill: (signal) => kills.push(signal) };
+    internals.httpAbort = new AbortController();
+    return internals.httpAbort;
+  };
+  let reading = running();
+  rec.update({ ffmpegPath: '/usr/lib/camera.ui/ffmpeg' });
+  assert.deepEqual(kills, [], 'the ffmpeg the host found restarts nothing');
+  assert.equal(reading.signal.aborted, false);
+  // what syncRecorders sends when nothing changed
+  rec.update({ rtspUrl: 'rtsp://127.0.0.1:1/cam', tsUrl: 'http://127.0.0.1:1/api/stream.ts?src=cam&video=all', audioUrl: 'rtsp://127.0.0.1:1/cam?audio', audio: true, segmentSec: 30 });
+  assert.deepEqual(kills, [], 'the same sources restart nothing');
+  // the sound switched off: the address of the sound is given as undefined (with `audio: false`, which restarts it too)
+  rec.update({ audioUrl: undefined });
+  assert.deepEqual(kills, ['SIGKILL'], 'the address of the sound gone restarts the stream');
+  assert.equal(reading.signal.aborted, true);
+  // and on again with another address
+  reading = running();
+  rec.update({ audioUrl: 'rtsp://127.0.0.1:1/cam?audio=2' });
+  assert.deepEqual(kills, ['SIGKILL', 'SIGKILL'], 'another address of the sound restarts it');
+  assert.equal(reading.signal.aborted, true);
+  internals.proc = undefined;
+  internals.httpAbort = undefined;
+  await rec.stop();
+}
+
 // ------------------------------------------------------------------ a camera that does not answer
 {
   // VION Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
@@ -812,9 +922,117 @@ Date.now = () => clock;
   assert.deepEqual(quiet.store.segments('first-gop-event', 'high', 0, Number.MAX_SAFE_INTEGER), []);
   quiet.store.close();
 }
+
+// ------------------------------------------------------------------ the demuxer once the codec is known
+{
+  // The recorder's demuxer learns the codec and the size of the picture from the first keyframe. It was given every
+  // byte of every camera for as long as the recorder ran and put every frame together (a copy of each packet, another
+  // of each frame) though nothing read it after that. It reads only the program tables now, and the packets the
+  // recorder keeps are views of the chunk they came in.
+  const pushed = new Map<TsDemuxer, number>();
+  const realPush = TsDemuxer.prototype.push;
+  TsDemuxer.prototype.push = function (this: TsDemuxer, chunk: Buffer, startOffset?: number) {
+    pushed.set(this, (pushed.get(this) ?? 0) + chunk.length);
+    return realPush.call(this, chunk, startOffset);
+  };
+  const t0 = clock;
+  const { rec, store } = recorder('demux-after-codec');
+  const feed = (chunk: Buffer) => (rec as unknown as { onData(c: Buffer): void }).onData(chunk);
+  const internals = rec as unknown as { demux: TsDemuxer; codec?: { codec: string }; gop?: { packets: Buffer[] } };
+  let total = 0;
+  for (let n = 0; n < 10; n++) {
+    clock = t0 + n * 1000;
+    const gop = stream('h264', { gops: 1, firstGop: n });
+    // in chunks of 4000 bytes: packets split between two of them
+    for (let at = 0; at < gop.length; at += 4000) feed(gop.subarray(at, at + 4000));
+    total += gop.length;
+  }
+  assert.equal(internals.codec?.codec, 'h264', 'the codec is known');
+  const gopBytes = stream('h264', { gops: 1 }).length;
+  const read = pushed.get(internals.demux) ?? 0;
+  assert.ok(read < 2 * gopBytes, `the demuxer read the first GOP or so (${read} of ${total} bytes), not every one`);
+  // a chunk the recorder keeps packets of: they are views of it, not copies
+  clock = t0 + 10_000;
+  const chunk = stream('h264', { gops: 1, firstGop: 10 });
+  feed(chunk);
+  assert.ok(internals.gop!.packets.length > 10);
+  assert.ok(
+    internals.gop!.packets.every((pkt) => pkt.buffer === chunk.buffer),
+    'the packets of the GOP are views of the chunk',
+  );
+  await rec.stop();
+  const [row] = store.segments('demux-after-codec', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.equal(parseKeyframes(row.keyframes).length, 11, 'every keyframe is still indexed');
+  assert.equal(row.bytes, statSync(row.path).size, 'and every byte written');
+  assert.deepEqual([row.codec, row.width, row.height], ['h264', 320, 240]);
+  store.close();
+
+  // a sound that a later table names is still learned (the first one named none)
+  const AUDIO_PID = 0x101;
+  const video = [0x1b, 0xe0 | (VIDEO_PID >> 8), VIDEO_PID & 0xff, 0xf0, 0x00];
+  const audio = [0x0f, 0xe0 | (AUDIO_PID >> 8), AUDIO_PID & 0xff, 0xf0, 0x00];
+  const pmtWithSound = psi(PMT_PID, [0x02, 0xb0, 0x17, 0x00, 0x01, 0xc1, 0x00, 0x00, 0xe0 | (VIDEO_PID >> 8), VIDEO_PID & 0xff, 0xf0, 0x00, ...video, ...audio]);
+  const sound = recorder('demux-later-sound');
+  const soundDemux = () => (sound.rec as unknown as { demux: TsDemuxer }).demux;
+  sound.feed(stream('h264', { gops: 2 }));
+  assert.equal(soundDemux().audioPid, -1, 'no sound named yet');
+  sound.feed(Buffer.concat([pat(), pmtWithSound, stream('h264', { gops: 1, firstGop: 2 })]));
+  assert.equal(soundDemux().audioPid, AUDIO_PID, 'the sound of the later table is known');
+  await sound.rec.stop();
+  sound.store.close();
+
+  // another codec on the next connection is learned, as before: a camera set from H.264 to H.265
+  const changed = recorder('demux-codec-change');
+  changed.feed(stream('h264', { gops: 3 }));
+  (changed.rec as unknown as { onStreamEnd(reason: string, startedAt: number): void }).onStreamEnd('spec', clock);
+  clock += 5000;
+  changed.feed(stream('h265', { gops: 3, firstGop: 10 }));
+  await changed.rec.stop();
+  assert.deepEqual(
+    changed.store.segments('demux-codec-change', 'high', 0, Number.MAX_SAFE_INTEGER).map((s) => s.codec),
+    ['h264', 'h265'],
+    'the file of the new connection is H.265',
+  );
+  changed.store.close();
+  TsDemuxer.prototype.push = realPush;
+}
+
+// ------------------------------------------------------------------ a file closed without a keyframe
+{
+  // Its row is deleted (nothing in it can be played) and the file stayed on the disk for good, known to nobody: not
+  // to the retention, not to the quota. It goes with its row now, closed by the recorder or by a failed write. No file
+  // gets that far today (every one starts with a keyframe), so the spec takes its keyframes away.
+  const keyless = (rec: Recorder) => {
+    const segment = (rec as unknown as { segment?: { keyframes: unknown[]; path: string; stream: { destroy(error: Error): void } } }).segment!;
+    segment.keyframes = [];
+    return segment;
+  };
+  const closed = recorder('keyless-closed');
+  closed.feed(stream('h264', { gops: 2 }));
+  const first = keyless(closed.rec);
+  await settle();
+  assert.equal(existsSync(first.path), true, 'the file is on the disk');
+  await closed.rec.stop();
+  assert.deepEqual(closed.store.segments('keyless-closed', 'high', 0, Number.MAX_SAFE_INTEGER), [], 'the row is deleted');
+  assert.equal(existsSync(first.path), false, 'and its file with it');
+  closed.store.close();
+
+  const failed = recorder('keyless-failed');
+  failed.feed(stream('h264', { gops: 2 }));
+  const second = keyless(failed.rec);
+  await settle();
+  assert.equal(existsSync(second.path), true);
+  second.stream.destroy(Object.assign(new Error('EIO: i/o error, write'), { code: 'EIO' }));
+  await settle();
+  assert.deepEqual(failed.store.segments('keyless-failed', 'high', 0, Number.MAX_SAFE_INTEGER), [], 'a failed write: the row is deleted');
+  assert.equal(existsSync(second.path), false, 'and its file with it, once the failed stream is closed');
+  assert.ok(failed.logs.some((l) => l.level === 'error' && l.message.includes('write failed')), 'the failure is told');
+  await failed.rec.stop();
+  failed.store.close();
+}
 Date.now = realNow;
 
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a file ends with its last frame — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, no restart by an update that does not name the sound, a file ends with its last frame, the demuxer only until the codec is known, a file without a keyframe goes with its row — ok',
 );
 process.exit(0);

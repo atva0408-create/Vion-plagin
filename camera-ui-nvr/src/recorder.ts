@@ -228,7 +228,9 @@ export class Recorder {
     const restart =
       (opts.rtspUrl !== undefined && opts.rtspUrl !== this.opts.rtspUrl) ||
       (opts.tsUrl !== undefined && opts.tsUrl !== this.opts.tsUrl) ||
-      opts.audioUrl !== this.opts.audioUrl ||
+      // given as undefined when the sound is switched off; an update that does not name it (the ffmpeg the host found
+      // at the start) is no change of it: every recorder with sound was restarted a moment after each start
+      ('audioUrl' in opts && opts.audioUrl !== this.opts.audioUrl) ||
       (opts.audio !== undefined && opts.audio !== this.opts.audio);
     this.opts = { ...this.opts, ...opts };
     if (restart) {
@@ -283,8 +285,15 @@ export class Recorder {
   private async startWithAudio(tsUrl: string): Promise<void> {
     const probe = probeUrlOf(tsUrl);
     const audio = probe ? sendsAudio(await getJson(probe).catch(() => undefined)) : false;
-    // stopped meanwhile, or the options changed and a new start is on its way
-    if (this.stopped || this.proc || this.httpAbort || this.opts.tsUrl !== tsUrl) return;
+    // stopped meanwhile, or started again meanwhile (stop and start) and that start is running
+    if (this.stopped || this.proc || this.httpAbort) return;
+    // The address changed while go2rtc was asked (up to 15 s): update() had no stream to end, so no end started one
+    // again, and this start gave up as out of date. The recorder stood without a stream and without a retry until
+    // the plugin restarted. It starts now from what is set. Any other change is read from the options below.
+    if (this.opts.tsUrl !== tsUrl) {
+      this.spawn();
+      return;
+    }
     if (audio && this.opts.audioUrl) this.runFfmpeg(ffmpegArgs(this.opts, true));
     else this.fetchTs(tsUrl);
   }
@@ -368,7 +377,12 @@ export class Recorder {
   private onData(chunk: Buffer): void {
     const back = this.retry.data(Date.now());
     if (back) this.opts.log('log', back);
-    this.demux.push(chunk);
+    // The demuxer is there to learn the codec and the size of the picture from the first keyframe of a connection;
+    // after that it reads only the program tables (onPacket). It was given every byte of every camera for as long as
+    // the recorder ran and put each frame together (a copy of each packet, another of each frame), and nothing read
+    // what it made: the GOPs, the files and their index come from the packets below. Another codec or size is learned
+    // the same way as before, by the next connection (resetStream).
+    if (!this.codec) this.demux.push(chunk);
     const data = this.pending.length ? Buffer.concat([this.pending, chunk]) : chunk;
     let i = 0;
     while (i < data.length && data[i] !== 0x47) i++;
@@ -378,7 +392,10 @@ export class Recorder {
         i -= TS_PACKET;
         continue;
       }
-      this.onPacket(Buffer.from(data.subarray(i, i + TS_PACKET)));
+      // A view, not a copy: a chunk is a buffer of its own that nothing writes to again, and its packets are kept
+      // together (a GOP, the pre-buffer), so a view holds no more memory than its copy did. The copy was an
+      // allocation for each 188 bytes of every camera.
+      this.onPacket(data.subarray(i, i + TS_PACKET));
     }
     this.pending = Buffer.from(data.subarray(i));
     // after the chunk is read: video that waited in the socket while this process was busy comes in it, and is no hole
@@ -390,13 +407,17 @@ export class Recorder {
     const pid = ((pkt[1] & 0x1f) << 8) | pkt[2];
 
     if (pid === 0) {
-      this.patPacket = pkt;
+      // the tables are kept for as long as the connection runs: copies, not the whole chunks they came in
+      this.patPacket = Buffer.from(pkt);
       const s = 4 + 1 + pkt[4];
       this.pmtPid = ((pkt[s + 10] & 0x1f) << 8) | pkt[s + 11];
+      // the demuxer has the whole chunks only until the codec is known (onData): a sound a later table names is read still
+      if (this.codec) this.demux.tables(pkt);
       return;
     }
     if (pid === this.pmtPid) {
-      this.pmtPacket = pkt;
+      this.pmtPacket = Buffer.from(pkt);
+      if (this.codec) this.demux.tables(pkt);
       return;
     }
     const audio = this.opts.audio === true && pid === this.demux.audioPid;
@@ -622,7 +643,10 @@ export class Recorder {
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     try {
       if (seg.keyframes.length) this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
-      else this.opts.store.deleteSegment(seg.id);
+      else {
+        this.opts.store.deleteSegment(seg.id);
+        seg.stream.once('close', () => void this.removeFile(seg.path));
+      }
     } catch (error) {
       // the row keeps what the last flush wrote. Said once for a run of failures, like the flushes of this file (saveIndex)
       if (!seg.indexFailed) this.opts.log('error', `${this.label} cannot update the index: ${(error as Error).message}`);
@@ -677,9 +701,11 @@ export class Recorder {
     if (nextUs !== undefined) seg.endUs = Math.max(seg.endUs, nextUs);
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     await new Promise<void>((resolve) => seg.stream.end(() => resolve()));
+    let deleted = false;
     try {
       if (seg.keyframes.length === 0) {
         this.opts.store.deleteSegment(seg.id);
+        deleted = true;
       } else {
         this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
       }
@@ -687,8 +713,17 @@ export class Recorder {
       // the recorder goes on: the row keeps what the last flush wrote, the rest of this file is not in the archive
       this.opts.log('error', `${this.label} cannot save the index of ${seg.path}: ${(error as Error).message}`);
     }
+    if (deleted) await this.removeFile(seg.path);
     if (!this.segment) this.setRecording(false);
     this.opts.onSegment();
+  }
+
+  /**
+   * The file of a row that was deleted (a file without a keyframe holds nothing that can be played): nothing else
+   * knows of it, and it stayed on the disk for good, out of the retention and the quota.
+   */
+  private removeFile(path: string): Promise<void> {
+    return rm(path, { force: true }).catch((error: Error) => this.opts.log('error', `${this.label} cannot remove ${path}: ${error.message}`));
   }
 
   private setRecording(recording: boolean): void {

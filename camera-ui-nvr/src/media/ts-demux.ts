@@ -88,6 +88,15 @@ export class TsDemuxer {
     this.position = base + data.length;
   }
 
+  /**
+   * Reads one whole TS packet if it is a program table (PAT, PMT), nothing else: what a reader needs that knows the
+   * codec already and wants no access units (the recorder), without the reassembly of every frame.
+   */
+  public tables(pkt: Buffer): void {
+    const pid = ((pkt[1] & 0x1f) << 8) | pkt[2];
+    if (pid === 0 || pid === this.pmtPid) this.packet(pkt, 0);
+  }
+
   /** Emits the last pending access unit (end of file). */
   public flush(): void {
     this.emitPes();

@@ -1,3 +1,14 @@
+## [0.25.1]
+
+- Die Bereinigung des Archivs hält nicht mehr an einer Aufnahmedatei an, die sie nicht löschen kann (fehlende Rechte, ein defekter Sektor): die Datei behält ihre Zeile und wird beim nächsten Durchlauf erneut versucht, im Protokoll einmal genannt. Eine solche Datei hielt das Löschen nach Tagen, das Kontingent und den Schutz des freien Speichers für immer an, und die Platte lief voll. Ein Durchlauf startet nicht über einem laufenden, und auf einer Platte, die ihre Größe nicht nennt, gilt der Schutz des freien Speichers nicht: dort löschte er bis zu 10 000 der ältesten Dateien je Durchlauf
+- Ein Export auf eine volle Platte schlägt fehl und lässt kein unfertiges ZIP zurück; er beendete das Plugin und mit ihm die Aufnahme aller Kameras. Ein hängendes ffmpeg eines Exports wird nach zwei Minuten plus der Länge des Clips beendet (dem Vierfachen beim Umkodieren): zwei davon blockierten jeden Export für immer
+- Aufnahmen und Exporte kommen nicht mehr in die Sicherungen des Servers (je eine `.backupignore`, bei jedem Start geschrieben): jede Sicherung nahm das ganze Archiv mit. Datenbank und Bilder der Ereignisse bleiben darin
+- Eine Aufnahme mit Ton, deren Adresse sich änderte, während sie go2rtc nach dem Ton fragte, startet erneut; sie stand bis zum Neustart des Plugins ohne Strom. Und die Aufnahmen mit Ton werden nicht mehr einen Moment nach jedem Start neu gestartet
+- Die Aufnahme liest den Strom jeder Kamera einmal statt zweimal: ihr Demuxer hört auf, sobald der Codec bekannt ist, und die Pakete werden nicht einzeln kopiert. Ein Drittel bis ein Viertel der Rechenzeit je Byte
+- Eine pausierte Wiedergabe, deren Player zehn Minuten nichts gesagt hat, endet (ein in der Pause geschlossener Tab hielt die Datei bis zum Neustart des Plugins offen); fortgesetzt öffnet der Player sie an derselben Stelle neu
+- Zwei Hinzufügungen einer Kamera nacheinander lassen die Aufnahmen der ersten nicht mehr neben der zweiten weiterlaufen; ein Entfernen gleich nach dem Hinzufügen hat das letzte Wort
+- Eine ohne Schlüsselbild geschlossene Aufnahmedatei wird mit ihrer Zeile gelöscht, statt auf der Platte zu bleiben
+
 ## [0.25.0]
 
 - Ereignisse behalten ihre Stufe (VION 2.6.46): normal, Achtung oder Alarm — und die Regeln der Kamera, die sie angehoben haben. Die Stufe steigt nur: eine verspätet gelesene Nachricht macht einen Alarm nicht wieder normal

@@ -24,16 +24,28 @@ const YIELD_EVERY = 8;
 /** A client that pulls nothing for this long is gone: its playback ends. */
 let clientGoneMs = 5 * 60 * 1000;
 
+/**
+ * A paused playback whose player said nothing for this long is gone: its playback ends. A paused player pulls once and
+ * waits in the pace, so no pull tells whether it is still there; a tab closed while paused held its file and buffers
+ * until the plugin restarted. A player resumed after that opens its playback again where it stands (ui playback.ts).
+ */
+let pausedGoneMs = 10 * 60 * 1000;
+
 /** For the tests: how long a playback waits for its client's next pull. */
 export function setPlaybackClientGone(ms: number): void {
   clientGoneMs = ms;
+}
+
+/** For the tests: how long a paused playback waits for a word from its player. */
+export function setPlaybackPausedGone(ms: number): void {
+  pausedGoneMs = ms;
 }
 
 /**
  * The playback as its client pulls it, ended when the client pulls nothing for clientGoneMs. The RPC never tells the
  * plugin that a browser went away (a closed tab, a killed app, a lost network): the playback waited for the next pull
  * for good, its recording open (on the bench 25 minutes after the tab was closed). A paused player still pulls: its
- * playback waits in the pace, not here.
+ * playback waits in the pace, not here, and ends there (pausedGoneMs).
  */
 async function *untilClientGone<T>(inner: AsyncGenerator<T>): AsyncGenerator<T> {
   try {
@@ -63,6 +75,8 @@ interface Session {
   clock: { wallUs: number; tsUs: number } | undefined;
   /** The holes of the archive the player has jumped over so far: its position counts what is played, not these. */
   skippedUs: number;
+  /** When the player last said anything (the start, a command): a paused playback is gone after pausedGoneMs of none. */
+  heardMs: number;
   abort: AbortController;
 }
 
@@ -91,6 +105,7 @@ export class PlaybackManager {
     // of the player: every pause, resume or change of speed sent another 1.5 s × speed of frames on top of those
     // the player had not shown yet, and after a few of them it held many seconds of video it could only store.
     const now = Date.now() * 1000;
+    s.heardMs = now / 1000;
     if (s.clock) s.clock = { wallUs: now, tsUs: position(s, now) };
     if (cmd.cmd === 'pause') s.paused = true;
     else if (cmd.cmd === 'resume') s.paused = false;
@@ -101,6 +116,10 @@ export class PlaybackManager {
   private async pace(session: Session, playedUs: number): Promise<void> {
     while (!session.abort.signal.aborted) {
       if (session.paused) {
+        if (Date.now() - session.heardMs > pausedGoneMs) {
+          session.abort.abort();
+          return;
+        }
         await sleep(100);
         continue;
       }
@@ -143,7 +162,7 @@ export class PlaybackManager {
     let asH264 = opts.asH264;
     let then = opts.then;
     const sessionId = randomUUID();
-    const session: Session = { paused: false, speed: 1, clock: undefined, skippedUs: 0, abort: new AbortController() };
+    const session: Session = { paused: false, speed: 1, clock: undefined, skippedUs: 0, heardMs: Date.now(), abort: new AbortController() };
     this.sessions.set(sessionId, session);
     const call = <K extends 'onReady' | 'onVideo' | 'onAudio' | 'onNoData'>(method: K, payload: Parameters<NonNullable<NvrPlaybackCallbacks[K]>>[0]) => {
       try {
