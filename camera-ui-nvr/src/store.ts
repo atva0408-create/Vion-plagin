@@ -368,17 +368,29 @@ export class Store {
     return (this.db.prepare('SELECT * FROM segments WHERE id = ?').get(id) ?? undefined) as SegmentRow | undefined;
   }
 
-  public oldestSegments(limit: number): SegmentRow[] {
-    return this.db.prepare('SELECT * FROM segments ORDER BY start_us LIMIT ?').all(limit) as unknown as SegmentRow[];
+  /**
+   * `after`: only the rows past this one in the same order (start, then id). A file the retention cannot delete keeps
+   * its row, and without a place to go on from the next read began with that row again: a pass went round it for good.
+   */
+  public oldestSegments(limit: number, after?: Pick<SegmentRow, 'start_us' | 'id'>): SegmentRow[] {
+    if (!after) return this.db.prepare('SELECT * FROM segments ORDER BY start_us, id LIMIT ?').all(limit) as unknown as SegmentRow[];
+    return this.db
+      .prepare('SELECT * FROM segments WHERE start_us >= ? AND (start_us > ? OR id > ?) ORDER BY start_us, id LIMIT ?')
+      .all(after.start_us, after.start_us, after.id, limit) as unknown as SegmentRow[];
   }
 
-  public segmentsBefore(cutoffUs: number, limit: number): SegmentRow[] {
+  public segmentsBefore(cutoffUs: number, limit: number, after?: Pick<SegmentRow, 'start_us' | 'id'>): SegmentRow[] {
     // a segment that ended before the cutoff started before it: `start_us <` reads only the old end of segments_time.
     // With `end_us <` alone every row was read, on each retention pass: at a start on a cold HDD it held the recorder's
     // loop ~50 s, and every call to it timed out meanwhile
+    if (!after) {
+      return this.db
+        .prepare('SELECT * FROM segments WHERE start_us < ? AND end_us < ? ORDER BY start_us, id LIMIT ?')
+        .all(cutoffUs, cutoffUs, limit) as unknown as SegmentRow[];
+    }
     return this.db
-      .prepare('SELECT * FROM segments WHERE start_us < ? AND end_us < ? ORDER BY start_us LIMIT ?')
-      .all(cutoffUs, cutoffUs, limit) as unknown as SegmentRow[];
+      .prepare('SELECT * FROM segments WHERE start_us < ? AND end_us < ? AND start_us >= ? AND (start_us > ? OR id > ?) ORDER BY start_us, id LIMIT ?')
+      .all(cutoffUs, cutoffUs, after.start_us, after.start_us, after.id, limit) as unknown as SegmentRow[];
   }
 
   public deleteSegment(id: number): void {
