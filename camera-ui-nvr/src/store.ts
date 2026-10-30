@@ -393,6 +393,11 @@ export class Store {
       .all(cutoffUs, cutoffUs, after.start_us, after.start_us, after.id, limit) as unknown as SegmentRow[];
   }
 
+  /** The paths of the segments a page at a time, by id: what the look for files without a row reads (index.ts). */
+  public segmentPaths(afterId: number, limit: number): { id: number; path: string }[] {
+    return this.db.prepare('SELECT id, path FROM segments WHERE id > ? ORDER BY id LIMIT ?').all(afterId, limit) as unknown as { id: number; path: string }[];
+  }
+
   public deleteSegment(id: number): void {
     this.db.prepare('DELETE FROM segments WHERE id = ?').run(id);
   }

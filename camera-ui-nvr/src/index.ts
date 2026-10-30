@@ -1,7 +1,7 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
+import { lstat, readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
@@ -88,6 +88,16 @@ type Role = 'high' | 'mid' | 'low';
 type ExportQuality = 'best' | 'smallest';
 
 const RETENTION_INTERVAL_MS = 5 * 60_000;
+/**
+ * Recorded files without a row are looked for at the start and then once a day, not at every retention pass: it is a
+ * walk of the whole archive (199 GB, tens of thousands of files on the bench).
+ */
+const ORPHAN_SWEEP_MS = 24 * 3_600_000;
+/** A file without a row younger than this is never deleted as one: it may be written right now, its row not read yet. */
+const ORPHAN_MIN_AGE_MS = 3_600_000;
+/** The folders and files the recorder writes: recordings/<camera>/<day>/<start ms>-<stream>.ts (recorder.ts). */
+const RECORDED_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const RECORDED_FILE = /^\d+-(?:high|mid|low)\.ts$/;
 /** The counts of the lines are kept for a year and a month whatever the video's retention: a year is compared with the last. */
 const CROSSINGS_KEEP_MS = 400 * 86_400_000;
 /**
@@ -422,6 +432,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private retaining: Promise<void> | undefined;
   /** Recorded files the retention could not delete, already told in the log: their next failures are not told again. */
   private readonly undeletable = new Set<number>();
+  private orphanTimer: NodeJS.Timeout | undefined;
+  private sweeping = false;
+  /**
+   * The recorded files without a row the last look found within the days kept, the oldest first, and their bytes:
+   * the free-space guard and the quota delete them before any recording the archive knows (sweepOrphans).
+   */
+  private orphans: { path: string; bytes: number; mtimeMs: number }[] = [];
+  private orphanBytes = 0;
   private entitlementsTimer: NodeJS.Timeout | undefined;
   /** Unknown until the host answers (older hosts without the call: no limits). */
   private entitlements: Entitlements | undefined;
@@ -912,7 +930,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.episodeTimer = setInterval(() => this.episodes.sweep(Date.now()), EPISODE_SWEEP_MS);
     this.staleTimer = setInterval(() => this.closeStaleEvents(Date.now()), STALE_SWEEP_MS);
     this.clipAutoTimer = setInterval(() => void this.indexPending(), CLIP_AUTO_INTERVAL_MS);
+    this.orphanTimer = setInterval(() => void this.sweepOrphans(), ORPHAN_SWEEP_MS);
     void this.enforceRetention();
+    void this.sweepOrphans();
     void this.dropNoAnswerTypes();
     void this.endSegmentsAtLastFrame();
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
@@ -988,6 +1008,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     clearInterval(this.episodeTimer);
     clearInterval(this.staleTimer);
     clearInterval(this.clipAutoTimer);
+    clearInterval(this.orphanTimer);
     this.clipAutoTimer = undefined;
     clearTimeout(this.clipAutoSoon);
     for (const m of this.manual.values()) clearTimeout(m.timer);
@@ -2326,6 +2347,129 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return true;
   }
 
+  /**
+   * The oldest recorded file without a row the last look kept, deleted; false when there is none left. One that was
+   * written since (no file without a row should be) or is gone is passed over, one that cannot be deleted is left to
+   * the next look.
+   */
+  private async deleteOldestOrphan(room: { count: number; bytes: number; failed: number }): Promise<boolean> {
+    for (let orphan = this.orphans.shift(); orphan; orphan = this.orphans.shift()) {
+      this.orphanBytes -= orphan.bytes;
+      const now = await lstat(orphan.path).catch(() => undefined);
+      if (now?.mtimeMs !== orphan.mtimeMs) continue;
+      try {
+        await rm(orphan.path, { force: true });
+      } catch {
+        room.failed++;
+        continue;
+      }
+      room.count++;
+      room.bytes += orphan.bytes;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Recorded files without a row (sweepOrphans). The server restores a backup without the folders marked to be left
+   * out of it (keepVideoOutOfBackups): the recordings stay as they are on this machine and `nvr.db` comes from the
+   * backup. The files recorded after the backup then have no row, and the retention goes by the rows: they were
+   * deleted by nothing and the disk filled up. They follow the rules of the recordings now: deleted once past the days
+   * kept (by the time of their last write), and the first to go when the free-space guard or the quota needs room.
+   * Never a file younger than an hour or one being written, never anything the recorder does not write itself, and
+   * none as a file without a row when the database has no recordings at all: that is a database lost or broken, not
+   * a backup restored, and the days kept alone decide there.
+   */
+  private async sweepOrphans(): Promise<void> {
+    if (this.sweeping || !this.store) return;
+    this.sweeping = true;
+    try {
+      await this.sweepOrphansNow();
+    } catch (error) {
+      this.logger.warn(`The recorded files without a row were not looked for, the next look tries again: ${(error as Error).message}`);
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  private async sweepOrphansNow(): Promise<void> {
+    // a portion at a time, between the other work: the walk must not hold the recorders
+    const breathe = () => new Promise((resolve) => setImmediate(resolve));
+    const files: { path: string; place: string; bytes: number; mtimeMs: number }[] = [];
+    let seen = 0;
+    for (const camera of await readdir(this.recordingsDir, { withFileTypes: true })) {
+      if (!camera.isDirectory()) continue;
+      for (const day of await readdir(join(this.recordingsDir, camera.name), { withFileTypes: true }).catch(() => [])) {
+        if (!day.isDirectory() || !RECORDED_DAY.test(day.name)) continue;
+        for (const file of await readdir(join(this.recordingsDir, camera.name, day.name), { withFileTypes: true }).catch(() => [])) {
+          if (this.stopping) return;
+          if (++seen % 200 === 0) await breathe();
+          if (!file.isFile() || !RECORDED_FILE.test(file.name)) continue;
+          const path = join(this.recordingsDir, camera.name, day.name, file.name);
+          const info = await lstat(path).catch(() => undefined);
+          if (info?.isFile()) files.push({ path, place: `${camera.name}/${day.name}/${file.name}`, bytes: info.size, mtimeMs: info.mtimeMs });
+        }
+      }
+    }
+    // the rows read after the files: a file and its row made between the two are both seen
+    const known = new Set<string>();
+    let rows = 0;
+    for (let after = 0; ;) {
+      const page = this.store.segmentPaths(after, 5000);
+      if (!page.length) break;
+      for (const row of page) known.add(archivePlace(row.path));
+      rows += page.length;
+      after = page.at(-1)!.id;
+      await breathe();
+    }
+    for (const c of this.cameras.values()) {
+      for (const r of c.recorders.values()) {
+        const live = r.liveSegmentId === undefined ? undefined : this.store.segment(r.liveSegmentId);
+        if (live) known.add(archivePlace(live.path));
+      }
+    }
+    const now = Date.now();
+    const cutoffMs = now - this.setting.retentionDays * 86_400_000;
+    const orphans = files.filter((f) => !known.has(f.place) && f.mtimeMs < now - ORPHAN_MIN_AGE_MS).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const kept: typeof orphans = [];
+    let deleted = 0;
+    let deletedBytes = 0;
+    let failed = 0;
+    for (const orphan of orphans) {
+      if (this.stopping) return;
+      if (orphan.mtimeMs >= cutoffMs) {
+        kept.push(orphan);
+        continue;
+      }
+      // the retention that runs beside the look at the start deletes a file and then its row: such a file, read before
+      // and its row after, is gone already, and is no file without a row
+      if ((await lstat(orphan.path).catch(() => undefined))?.mtimeMs !== orphan.mtimeMs) continue;
+      try {
+        await rm(orphan.path, { force: true });
+        deleted++;
+        deletedBytes += orphan.bytes;
+      } catch {
+        failed++;
+        kept.push(orphan);
+      }
+    }
+    const lost = rows === 0;
+    const within = kept.filter((orphan) => orphan.mtimeMs >= cutoffMs);
+    // nothing to keep for the guard when the database has no recordings: they are not files a restore left
+    this.orphans = lost ? [] : within;
+    this.orphanBytes = this.orphans.reduce((sum, orphan) => sum + orphan.bytes, 0);
+    const count = kept.length + deleted;
+    if (!count) return;
+    const gb = (bytes: number) => round2(bytes / 1024 ** 3);
+    const total = kept.reduce((sum, orphan) => sum + orphan.bytes, deletedBytes);
+    const rest = lost
+      ? `the database has no recordings at all (lost or broken, not a backup restored): the ${within.length} within the days kept stay`
+      : `${within.length} within the days kept go first when room is needed`;
+    const found = `${count} found (${gb(total)} GB)`;
+    const gone = `${deleted} past the days kept deleted (${gb(deletedBytes)} GB)${failed ? `, ${failed} could not be deleted` : ''}`;
+    this.logger.log(`Recorded files without a row: ${found}, ${gone}; ${rest}`);
+  }
+
   private async retain(): Promise<void> {
     if (!this.store) return;
     // apart: counts that fail to go (a busy or full disk) must not stop the video's retention and the free-space guard
@@ -2352,14 +2496,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       const GB = 1024 ** 3;
       // summed once and kept up to date below: a SUM over every segment for each deleted file made a big cleanup quadratic
       let usedBytes = s.quotaGB > 0 ? this.store.totalBytes() : 0;
+      const room = { count: 0, bytes: 0, failed: 0 };
       kept = undefined;
       for (let guard = 0; guard < 10_000; guard++) {
         // a disk that says nothing of its size (no blocks) has no free share to keep: the quota alone decides. Read as
         // a share it was NaN, never enough, and the guard deleted up to 10 000 of the oldest files at every pass
         const freePct = freePercent(await statfs(this.recordingsDir));
         const low = freePct !== undefined && freePct < s.minFreePercent;
-        const overQuota = s.quotaGB > 0 && usedBytes > s.quotaGB * GB;
+        // the files without a row are on the archive disk too: in the quota, and the first to go
+        const overQuota = s.quotaGB > 0 && usedBytes + this.orphanBytes > s.quotaGB * GB;
         if (!overQuota && !low) break;
+        if (await this.deleteOldestOrphan(room)) {
+          removed++;
+          continue;
+        }
         const [oldest] = this.store.oldestSegments(1, kept);
         if (!oldest || this.isLiveSegment(oldest.id)) {
           if (freePct !== undefined && freePct < Math.max(1, s.minFreePercent / 3) && !this.paused) {
@@ -2377,6 +2527,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
         }
         usedBytes -= oldest.bytes;
         removed++;
+      }
+      if (room.count || room.failed) {
+        const could = room.failed ? `; ${room.failed} could not be deleted, looked for again at the next look` : '';
+        this.logger.log(`Retention: ${room.count} recorded file(s) without a row deleted first for room (${round2(room.bytes / GB)} GB)${could}`);
       }
       if (this.paused) {
         const freePct = freePercent(await statfs(this.recordingsDir));
@@ -4521,6 +4675,14 @@ function fileStamp(us: number, zone?: Intl.DateTimeFormat): string {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Where a segment's file lies in the archive, `<camera>/<day>/<file>`, from its stored path: relative to the
+ * recordings for new rows, absolute for rows of older versions and of an archive that was moved (Store.file).
+ */
+function archivePlace(path: string): string {
+  return path.split(/[\\/]/).slice(-3).join('/');
 }
 
 /** The free share of a disk in percent; undefined when the disk does not tell its size (some network and FUSE mounts). */
