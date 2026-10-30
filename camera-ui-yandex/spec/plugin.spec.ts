@@ -341,6 +341,16 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
   await plugin.read();
   assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: ' СВЕТ ' }, {})).content, /"Свет" started/, 'the exact name wins over the ones it is part of');
   assert.equal(state.ran.at(-1), 'sc-4');
+  // two of one name (two homes): the error gives their ids, the id picks one, and an id of another name is refused
+  state.scenarios.push({ id: 'sc-5', name: 'свет' });
+  await plugin.read();
+  const twins = state.ran.length;
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'Свет' }, {})).error, /2 scenarios are named "Свет", with the ids sc-4, sc-5/);
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'Свет', id: 'sc-2' }, {})).error, /None of the scenarios named "Свет" has the id sc-2: sc-4, sc-5/);
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'свет на', id: 'sc-2' }, {})).error, /has the id sc-2: no scenario has that name exactly/);
+  assert.equal(state.ran.length, twins, 'none run');
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'Свет', id: ' sc-5 ' }, {})).content, /"свет" started/);
+  assert.equal(state.ran.at(-1), 'sc-5');
   state.scenarios.splice(1);
   await plugin.read();
 

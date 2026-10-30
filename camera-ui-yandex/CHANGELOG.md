@@ -1,7 +1,7 @@
 ## [0.2.7]
 
 - The list of the devices and scenarios of the Smart Home (yandex_devices) is offered to the administrators of VION only: a user who sees some cameras read through the assistant every device of the house with its state
-- A scenario asked by part of its name runs only when no other scenario has those words: «свет» ran whichever of «Свет на кухне» and «Свет в спальне» came first, now the assistant hears both names and asks. The exact name still runs at once
+- A scenario asked by part of its name runs only when no other scenario has those words: «свет» ran whichever of «Свет на кухне» and «Свет в спальне» came first, now the assistant hears both names and asks. The exact name still runs at once; two scenarios of the very same name are told apart by their id, which the assistant is given
 
 ## [0.2.6]
 

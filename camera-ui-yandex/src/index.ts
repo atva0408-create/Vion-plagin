@@ -927,7 +927,14 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
       {
         name: 'yandex_run_scenario',
         description: 'Run a scenario of the Yandex Smart Home by its name.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Name of the scenario.' } }, required: ['name'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the scenario.' },
+            id: { type: 'string', description: 'Id of the scenario, only when several have that name: the error of a call by the name lists them.' },
+          },
+          required: ['name'],
+        },
         approval: true,
         adminOnly: true,
       },
@@ -956,14 +963,25 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         case 'yandex_run_scenario': {
           const asked = typeof input.name === 'string' ? input.name : '';
           const wanted = asked.trim().toLowerCase();
+          const id = typeof input.id === 'string' ? input.id.trim() : '';
           if (!this.complete) await this.read();
           // the exact name, else the one scenario the words are part of: the user confirms the name as asked, and the
           // first that held them made «свет» run whichever of «Свет на кухне» and «Свет в спальне» came first
           const exact = this.scenarioList.filter((s) => s.name.toLowerCase() === wanted);
           const near = exact.length ? exact : this.scenarioList.filter((s) => s.name.toLowerCase().includes(wanted));
           if (!wanted || !near.length) return { error: `No scenario "${asked}"; the scenarios are: ${this.scenarioList.map((s) => s.name).join(', ')}` };
-          if (near.length > 1) return { error: `"${asked}" may be any of the scenarios ${near.map((s) => `"${s.name}"`).join(', ')}: name one of them exactly` };
-          const scenario = near[0];
+          // scenarios of one name (in two homes) differ by the id only: it picks one of them, never one of another name,
+          // since the card the user confirms shows the name
+          const named = id ? exact.filter((s) => s.id === id) : exact;
+          const ids = (list: YScenario[]) => list.map((s) => s.id).join(', ');
+          if (id && !named.length) {
+            return { error: `None of the scenarios named "${asked}" has the id ${id}: ${ids(exact) || 'no scenario has that name exactly'}` };
+          }
+          if (named.length > 1) return { error: `${named.length} scenarios are named "${named[0].name}", with the ids ${ids(named)}: pass the id of one of them as id` };
+          if (!named.length && near.length > 1) {
+            return { error: `"${asked}" may be any of the scenarios ${near.map((s) => `"${s.name}"`).join(', ')}: name one of them exactly` };
+          }
+          const scenario = named[0] ?? near[0];
           await this.commandApi().runScenario(scenario.id);
           return { content: `Scenario "${scenario.name}" started` };
         }

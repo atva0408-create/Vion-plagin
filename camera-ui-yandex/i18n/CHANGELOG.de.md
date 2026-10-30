@@ -1,7 +1,7 @@
 ## [0.2.7]
 
 - Die Liste der Geräte und Szenarien des Smart Home (yandex_devices) steht nur den Administratoren von VION zur Verfügung: ein Benutzer, der nur einige Kameras sieht, las über den Assistenten jedes Gerät des Hauses mit seinem Zustand
-- Ein Szenario, das mit einem Teil seines Namens genannt wird, läuft nur, wenn kein anderes Szenario diese Wörter hat: «свет» startete das zuerst gelistete von «Свет на кухне» und «Свет в спальне», jetzt bekommt der Assistent beide Namen und fragt nach. Der genaue Name läuft weiterhin sofort
+- Ein Szenario, das mit einem Teil seines Namens genannt wird, läuft nur, wenn kein anderes Szenario diese Wörter hat: «свет» startete das zuerst gelistete von «Свет на кухне» und «Свет в спальне», jetzt bekommt der Assistent beide Namen und fragt nach. Der genaue Name läuft weiterhin sofort; zwei Szenarien mit genau demselben Namen unterscheidet ihre id, die der Assistent bekommt
 
 ## [0.2.6]
 
