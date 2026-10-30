@@ -431,6 +431,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private markReady!: () => void;
 
   private readonly eventChains = new Map<string, Promise<void>>();
+  /** The adds and releases of each camera waiting for the one before (forCamera). */
+  private readonly cameraChains = new Map<string, Promise<void>>();
   private readonly detectionListeners = new Set<(m: DetectionEventMessage) => void>();
   private readonly deletedListeners = new Set<(ids: string[]) => void>();
   private readonly recordingsDeletedListeners = new Set<(e: RecordingsDeletedEvent) => void>();
@@ -1000,18 +1002,38 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const camera of cameras) await this.onCameraAdded(camera);
   }
 
-  public async onCameraAdded(camera: CameraDevice): Promise<void> {
-    await this.ready;
-    await this.releaseCamera(camera.id);
-    const managed: ManagedCamera = { device: camera, recorders: new Map(), subscriptions: [] };
-    this.cameras.set(camera.id, managed);
-    managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncAll()));
-    this.syncRecorders(managed);
+  public onCameraAdded(camera: CameraDevice): Promise<void> {
+    return this.forCamera(camera.id, async () => {
+      await this.ready;
+      await this.releaseCamera(camera.id);
+      const managed: ManagedCamera = { device: camera, recorders: new Map(), subscriptions: [] };
+      this.cameras.set(camera.id, managed);
+      managed.subscriptions.push(camera.onPropertyChange(['recordingSettings', 'sources', 'disabled'] as never).subscribe(() => this.syncAll()));
+      this.syncRecorders(managed);
+    });
   }
 
-  public async onCameraReleased(cameraId: string): Promise<void> {
-    await this.releaseCamera(cameraId);
-    this.syncAll();
+  public onCameraReleased(cameraId: string): Promise<void> {
+    return this.forCamera(cameraId, async () => {
+      await this.releaseCamera(cameraId);
+      this.syncAll();
+    });
+  }
+
+  /**
+   * The adds and releases of one camera, one after the other. Two adds of a camera in a row both released what was
+   * there before either had set its own (each awaits on the way), and the second one replaced the first: the
+   * recorders of the first went on recording beside it, with nothing left to stop them.
+   */
+  private forCamera(cameraId: string, job: () => Promise<void>): Promise<void> {
+    const previous = this.cameraChains.get(cameraId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(job);
+    this.cameraChains.set(cameraId, next);
+    const cleanup = () => {
+      if (this.cameraChains.get(cameraId) === next) this.cameraChains.delete(cameraId);
+    };
+    next.then(cleanup, cleanup);
+    return next;
   }
 
   private async releaseCamera(cameraId: string): Promise<void> {
