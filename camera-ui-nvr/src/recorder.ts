@@ -375,7 +375,12 @@ export class Recorder {
   private onData(chunk: Buffer): void {
     const back = this.retry.data(Date.now());
     if (back) this.opts.log('log', back);
-    this.demux.push(chunk);
+    // The demuxer is there to learn the codec and the size of the picture from the first keyframe of a connection;
+    // after that it reads only the program tables (onPacket). It was given every byte of every camera for as long as
+    // the recorder ran and put each frame together (a copy of each packet, another of each frame), and nothing read
+    // what it made: the GOPs, the files and their index come from the packets below. Another codec or size is learned
+    // the same way as before, by the next connection (resetStream).
+    if (!this.codec) this.demux.push(chunk);
     const data = this.pending.length ? Buffer.concat([this.pending, chunk]) : chunk;
     let i = 0;
     while (i < data.length && data[i] !== 0x47) i++;
@@ -385,7 +390,10 @@ export class Recorder {
         i -= TS_PACKET;
         continue;
       }
-      this.onPacket(Buffer.from(data.subarray(i, i + TS_PACKET)));
+      // A view, not a copy: a chunk is a buffer of its own that nothing writes to again, and its packets are kept
+      // together (a GOP, the pre-buffer), so a view holds no more memory than its copy did. The copy was an
+      // allocation for each 188 bytes of every camera.
+      this.onPacket(data.subarray(i, i + TS_PACKET));
     }
     this.pending = Buffer.from(data.subarray(i));
     // after the chunk is read: video that waited in the socket while this process was busy comes in it, and is no hole
@@ -397,13 +405,17 @@ export class Recorder {
     const pid = ((pkt[1] & 0x1f) << 8) | pkt[2];
 
     if (pid === 0) {
-      this.patPacket = pkt;
+      // the tables are kept for as long as the connection runs: copies, not the whole chunks they came in
+      this.patPacket = Buffer.from(pkt);
       const s = 4 + 1 + pkt[4];
       this.pmtPid = ((pkt[s + 10] & 0x1f) << 8) | pkt[s + 11];
+      // the demuxer has the whole chunks only until the codec is known (onData): a sound a later table names is read still
+      if (this.codec) this.demux.tables(pkt);
       return;
     }
     if (pid === this.pmtPid) {
-      this.pmtPacket = pkt;
+      this.pmtPacket = Buffer.from(pkt);
+      if (this.codec) this.demux.tables(pkt);
       return;
     }
     const audio = this.opts.audio === true && pid === this.demux.audioPid;

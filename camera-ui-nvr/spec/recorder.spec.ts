@@ -11,7 +11,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { nalType, nalUnits, withoutForeignLead } from '../src/media/ts-demux.js';
+import { nalType, nalUnits, TsDemuxer, withoutForeignLead } from '../src/media/ts-demux.js';
 import { lastFrameUs, readFrames, readKeyframe } from '../src/reader.js';
 import { ffmpegArgs, probeUrlOf, Recorder, sendsAudio, StreamRetry } from '../src/recorder.js';
 import { parseKeyframes, Store } from '../src/store.js';
@@ -870,9 +870,83 @@ Date.now = () => clock;
   assert.deepEqual(quiet.store.segments('first-gop-event', 'high', 0, Number.MAX_SAFE_INTEGER), []);
   quiet.store.close();
 }
+
+// ------------------------------------------------------------------ the demuxer once the codec is known
+{
+  // The recorder's demuxer learns the codec and the size of the picture from the first keyframe. It was given every
+  // byte of every camera for as long as the recorder ran and put every frame together (a copy of each packet, another
+  // of each frame) though nothing read it after that. It reads only the program tables now, and the packets the
+  // recorder keeps are views of the chunk they came in.
+  const pushed = new Map<TsDemuxer, number>();
+  const realPush = TsDemuxer.prototype.push;
+  TsDemuxer.prototype.push = function (this: TsDemuxer, chunk: Buffer, startOffset?: number) {
+    pushed.set(this, (pushed.get(this) ?? 0) + chunk.length);
+    return realPush.call(this, chunk, startOffset);
+  };
+  const t0 = clock;
+  const { rec, store } = recorder('demux-after-codec');
+  const feed = (chunk: Buffer) => (rec as unknown as { onData(c: Buffer): void }).onData(chunk);
+  const internals = rec as unknown as { demux: TsDemuxer; codec?: { codec: string }; gop?: { packets: Buffer[] } };
+  let total = 0;
+  for (let n = 0; n < 10; n++) {
+    clock = t0 + n * 1000;
+    const gop = stream('h264', { gops: 1, firstGop: n });
+    // in chunks of 4000 bytes: packets split between two of them
+    for (let at = 0; at < gop.length; at += 4000) feed(gop.subarray(at, at + 4000));
+    total += gop.length;
+  }
+  assert.equal(internals.codec?.codec, 'h264', 'the codec is known');
+  const gopBytes = stream('h264', { gops: 1 }).length;
+  const read = pushed.get(internals.demux) ?? 0;
+  assert.ok(read < 2 * gopBytes, `the demuxer read the first GOP or so (${read} of ${total} bytes), not every one`);
+  // a chunk the recorder keeps packets of: they are views of it, not copies
+  clock = t0 + 10_000;
+  const chunk = stream('h264', { gops: 1, firstGop: 10 });
+  feed(chunk);
+  assert.ok(internals.gop!.packets.length > 10);
+  assert.ok(
+    internals.gop!.packets.every((pkt) => pkt.buffer === chunk.buffer),
+    'the packets of the GOP are views of the chunk',
+  );
+  await rec.stop();
+  const [row] = store.segments('demux-after-codec', 'high', 0, Number.MAX_SAFE_INTEGER);
+  assert.equal(parseKeyframes(row.keyframes).length, 11, 'every keyframe is still indexed');
+  assert.equal(row.bytes, statSync(row.path).size, 'and every byte written');
+  assert.deepEqual([row.codec, row.width, row.height], ['h264', 320, 240]);
+  store.close();
+
+  // a sound that a later table names is still learned (the first one named none)
+  const AUDIO_PID = 0x101;
+  const video = [0x1b, 0xe0 | (VIDEO_PID >> 8), VIDEO_PID & 0xff, 0xf0, 0x00];
+  const audio = [0x0f, 0xe0 | (AUDIO_PID >> 8), AUDIO_PID & 0xff, 0xf0, 0x00];
+  const pmtWithSound = psi(PMT_PID, [0x02, 0xb0, 0x17, 0x00, 0x01, 0xc1, 0x00, 0x00, 0xe0 | (VIDEO_PID >> 8), VIDEO_PID & 0xff, 0xf0, 0x00, ...video, ...audio]);
+  const sound = recorder('demux-later-sound');
+  const soundDemux = () => (sound.rec as unknown as { demux: TsDemuxer }).demux;
+  sound.feed(stream('h264', { gops: 2 }));
+  assert.equal(soundDemux().audioPid, -1, 'no sound named yet');
+  sound.feed(Buffer.concat([pat(), pmtWithSound, stream('h264', { gops: 1, firstGop: 2 })]));
+  assert.equal(soundDemux().audioPid, AUDIO_PID, 'the sound of the later table is known');
+  await sound.rec.stop();
+  sound.store.close();
+
+  // another codec on the next connection is learned, as before: a camera set from H.264 to H.265
+  const changed = recorder('demux-codec-change');
+  changed.feed(stream('h264', { gops: 3 }));
+  (changed.rec as unknown as { onStreamEnd(reason: string, startedAt: number): void }).onStreamEnd('spec', clock);
+  clock += 5000;
+  changed.feed(stream('h265', { gops: 3, firstGop: 10 }));
+  await changed.rec.stop();
+  assert.deepEqual(
+    changed.store.segments('demux-codec-change', 'high', 0, Number.MAX_SAFE_INTEGER).map((s) => s.codec),
+    ['h264', 'h265'],
+    'the file of the new connection is H.265',
+  );
+  changed.store.close();
+  TsDemuxer.prototype.push = realPush;
+}
 Date.now = realNow;
 
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, a file ends with its last frame — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, a file ends with its last frame, the demuxer only until the codec is known — ok',
 );
 process.exit(0);
