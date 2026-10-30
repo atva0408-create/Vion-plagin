@@ -1,3 +1,8 @@
+## [0.2.2]
+
+- A speech model of the door agent is no longer unloaded while a phrase is being said or recognized with it, and the objects of a recognition are kept until it ends
+- The voice activity of the agent's listening is reset between phrases before the sample counters of sherpa-onnx overflow (2^31 samples, 37 hours), as in VOICE 0.5.5
+
 ## [0.2.1]
 
 - The name is written VION

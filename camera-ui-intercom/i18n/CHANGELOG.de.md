@@ -1,3 +1,8 @@
+## [0.2.2]
+
+- Ein Sprachmodell des Türassistenten wird nicht mehr entladen, während damit ein Satz gesprochen oder erkannt wird, und die Objekte einer Erkennung bleiben bis zu ihrem Ende erhalten
+- Die Sprachaktivitätserkennung, mit der der Assistent zuhört, wird zwischen zwei Sätzen zurückgesetzt, bevor die Samplezähler von sherpa-onnx überlaufen (2^31 Samples, 37 Stunden), wie in VOICE 0.5.5
+
 ## [0.2.1]
 
 - Der Name wird VION geschrieben
