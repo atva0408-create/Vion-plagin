@@ -33,6 +33,8 @@ const noop = () => undefined;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const now = Date.now();
+// a file of 40 KiB: what the disk below frees for each one deleted (10 blocks of 4 KiB, a hundredth of it)
+const FILE = 10 * 4096;
 
 function plugin(name: string, values: Record<string, unknown>) {
   const storagePath = mkdtempSync(join(tmpdir(), `nvr-orphans-${name}-`));
@@ -89,14 +91,14 @@ await restored.internals.ready;
 const { file, row, recordings } = restored;
 // what the restored database knows: a file written long ago whose row still covers a recent time, and a row of an
 // older version with the absolute path of the archive where it was before
-const withRow = file('cam/2026-10-01/1790000000000-high.ts', 30 * DAY);
-row(withRow, now - 2 * HOUR);
-const moved = file('cam/2026-10-01/1790000060000-low.ts', 30 * DAY);
-row('D:/old-disk/vion/recordings/cam/2026-10-01/1790000060000-low.ts', now - 2 * HOUR);
+const withRow = file('cam/2026-10-01/1790000000000-high.ts', 30 * DAY, FILE);
+row(withRow, now - 2 * HOUR, FILE);
+const moved = file('cam/2026-10-01/1790000060000-low.ts', 30 * DAY, FILE);
+row('D:/old-disk/vion/recordings/cam/2026-10-01/1790000060000-low.ts', now - 2 * HOUR, FILE);
 // what was recorded after the backup: no row
 const pastDays = file('cam/2026-10-20/1792000000000-high.ts', 10 * DAY);
-const withinDays = file('door/2026-10-28/1793000000000-high.ts', 2 * DAY);
-const young = file('door/2026-10-30/1793100000000-high.ts', 10 * 60_000);
+const withinDays = file('door/2026-10-28/1793000000000-high.ts', 2 * DAY, FILE);
+const young = file('door/2026-10-30/1793100000000-high.ts', 10 * 60_000, FILE);
 // what the recorder does not write: left alone whatever its age
 const foreign = [
   file('cam/2026-10-20/notes.txt', 30 * DAY),
@@ -157,7 +159,7 @@ assert.match(summary[0], /^Recorded files without a row: 2 found \(0 GB\), 1 pas
   const lost = plugin('lost', { retentionDays: 7, quotaGB: 0, minFreePercent: 5 });
   await lost.internals.ready;
   const old = lost.file('cam/2026-10-10/1791000000000-high.ts', 20 * DAY);
-  const files = Array.from({ length: 30 }, (_, i) => lost.file(`cam/2026-10-28/${1793000000000 + i * 60_000}-high.ts`, 2 * DAY));
+  const files = Array.from({ length: 30 }, (_, i) => lost.file(`cam/2026-10-28/${1793000000000 + i * 60_000}-high.ts`, 2 * DAY, FILE));
   await lost.internals.sweepOrphans();
   assert.equal(existsSync(old), false, 'past the days kept a file goes, as it would with a row');
   assert.ok(

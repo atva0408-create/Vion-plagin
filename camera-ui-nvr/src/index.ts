@@ -85,9 +85,24 @@ import type {
 
 type Unsubscribe = () => void;
 type Role = 'high' | 'mid' | 'low';
+/** What one retention pass met of files it could not delete (deleteSegmentFile). */
+interface RetentionPass {
+  /** files that failed for the first time, and the first of them with its error */
+  newFailures: number;
+  first?: string;
+  /** deletions refused one after another, and whether that ended them (by days, then again for room) */
+  inARow: number;
+  refused: boolean;
+  /** how many in a row ended them, for the message */
+  refusals: number;
+}
 type ExportQuality = 'best' | 'smallest';
 
 const RETENTION_INTERVAL_MS = 5 * 60_000;
+/** A recorded file that could not be deleted is tried again this long after, not at every pass: a folder of them held every pass up. */
+const UNDELETABLE_RETRY_MS = 3_600_000;
+/** This many deletions refused in a row end those of a pass (by days, for room): a read-only or failing disk refuses every one. */
+const REFUSED_IN_A_ROW = 20;
 /**
  * Recorded files without a row are looked for at the start and then once a day, not at every retention pass: it is a
  * walk of the whole archive (199 GB, tens of thousands of files on the bench).
@@ -430,8 +445,13 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private retentionTimer: NodeJS.Timeout | undefined;
   /** The retention pass that runs: the next tick of the timer waits for it instead of starting a second one over it. */
   private retaining: Promise<void> | undefined;
-  /** Recorded files the retention could not delete, already told in the log: their next failures are not told again. */
-  private readonly undeletable = new Set<number>();
+  /**
+   * Recorded files the retention could not delete, by the id of their row: when it last tried and their size. Told
+   * once, tried again an hour later, and out of the quota: the recorder cannot make room with them.
+   */
+  private readonly undeletable = new Map<number, { atMs: number; bytes: number }>();
+  /** A pass ended with the disk refusing every deletion: told once, until a deletion goes through again. */
+  private refusing = false;
   private orphanTimer: NodeJS.Timeout | undefined;
   private sweeping = false;
   /**
@@ -2329,22 +2349,70 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * pass, and the next one began with the same file: one file the plugin may not delete (its rights, a bad sector)
    * stopped the retention by days, the quota and the free-space guard for good, and the disk filled up.
    */
-  private async deleteSegmentFile(seg: SegmentRow, failed: { count: number; first?: string }): Promise<boolean> {
+  private async deleteSegmentFile(seg: SegmentRow, pass: RetentionPass): Promise<boolean> {
     try {
       // `force` takes care of a file that is gone already (readers skip a missing file)
       await rm(this.store.file(seg), { force: true });
     } catch (error) {
       // told once for a file, and the files of one pass in one line: a disk gone read-only fails every one of them
       if (!this.undeletable.has(seg.id)) {
-        this.undeletable.add(seg.id);
-        failed.count++;
-        failed.first ??= `${this.store.file(seg)}: ${(error as Error).message}`;
+        pass.newFailures++;
+        pass.first ??= `${this.store.file(seg)}: ${(error as Error).message}`;
+      }
+      this.undeletable.set(seg.id, { atMs: Date.now(), bytes: seg.bytes });
+      pass.inARow++;
+      // the rest of the pass would be refused the same way: a read-only disk refused every row and 10 000 tries of the
+      // guard at every pass
+      if ((error as NodeJS.ErrnoException).code === 'EROFS' || pass.inARow >= REFUSED_IN_A_ROW) {
+        pass.refused = true;
+        pass.refusals = Math.max(pass.refusals, pass.inARow);
       }
       return false;
     }
+    pass.inARow = 0;
+    this.refusing = false;
     this.undeletable.delete(seg.id);
     this.store.deleteSegment(seg.id);
     return true;
+  }
+
+  /** A file that could not be deleted waits an hour before it is tried again: until then it is passed over. */
+  private waitsForRetry(seg: SegmentRow): boolean {
+    const failed = this.undeletable.get(seg.id);
+    return failed !== undefined && Date.now() - failed.atMs < UNDELETABLE_RETRY_MS;
+  }
+
+  /** The bytes of the files that could not be deleted and are still in the archive; the rest are forgotten. */
+  private undeletableBytes(): number {
+    const rows = this.store.segmentBytes([...this.undeletable.keys()]);
+    const there = new Set(rows.map((row) => row.id));
+    for (const id of this.undeletable.keys()) if (!there.has(id)) this.undeletable.delete(id);
+    return rows.reduce((sum, row) => sum + row.bytes, 0);
+  }
+
+  /** Says what a pass could not delete: the files new to it once, a disk that refuses everything once for a series. */
+  private tellUndeletable(pass: RetentionPass): void {
+    if (pass.refused) {
+      // told when it begins, not again at every pass while it lasts
+      if (!this.refusing && pass.newFailures) {
+        const what = `${pass.refusals} deletions refused in a row (${pass.first})`;
+        this.logger.warn(`Retention: ${what}: the pass stopped, the next one goes on; the files stay out of the quota`);
+        this.pushSystemEvent({
+          type: 'storage',
+          severity: 'error',
+          message: `Записи не удаляются: ${pass.refusals} отказ(ов) подряд (${pass.first}). Очистка архива остановлена до следующего прохода — проверьте права и диск`,
+        });
+      }
+      this.refusing = true;
+      return;
+    }
+    if (!pass.newFailures) return;
+    this.logger.warn(`Retention: ${pass.newFailures} recorded file(s) could not be deleted and stay, out of the quota, tried again in an hour (${pass.first})`);
+    this.pushSystemEvent({
+      type: 'storage',
+      severity: 'warning',
+      message: `Не удаётся удалить файлы записи: ${pass.newFailures} (${pass.first}). Они остаются на диске и не считаются в квоте — удалите их или дайте права`,
+    });
   }
 
   /**
@@ -2478,56 +2546,93 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Retention: the old line counts were not deleted: ${(error as Error).message}`);
     }
-    const failed: { count: number; first?: string } = { count: 0 };
+    const pass: RetentionPass = { newFailures: 0, inARow: 0, refused: false, refusals: 0 };
     try {
       const s = this.setting;
       const cutoffUs = (Date.now() - s.retentionDays * 86_400_000) * 1000;
       let removed = 0;
-      // read on past the rows whose file stayed: they are read again by the next pass, not by the next batch of this one
+      // read on past the rows whose file stayed: they are read again by a later pass, not by the next batch of this one
       let kept: SegmentRow | undefined;
-      for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length; batch = this.store.segmentsBefore(cutoffUs, 200, kept)) {
+      for (let batch = this.store.segmentsBefore(cutoffUs, 200); batch.length && !pass.refused; batch = this.store.segmentsBefore(cutoffUs, 200, kept)) {
         for (const seg of batch) {
-          if (await this.deleteSegmentFile(seg, failed)) removed++;
+          if (pass.refused) break;
+          if (!this.waitsForRetry(seg) && (await this.deleteSegmentFile(seg, pass))) removed++;
           else kept = seg;
         }
+        await new Promise((resolve) => setImmediate(resolve));
       }
 
       // quota and free-space guard: drop the oldest files first
       const GB = 1024 ** 3;
-      // summed once and kept up to date below: a SUM over every segment for each deleted file made a big cleanup quadratic
-      let usedBytes = s.quotaGB > 0 ? this.store.totalBytes() : 0;
+      // Files that cannot be deleted are out of the quota: counted, the guard went on past them to the next oldest, and
+      // when they alone were over the quota it deleted every recording of every camera, today's too, at every pass.
+      // Summed once and kept up to date below: a SUM over every segment for each deleted file made a big cleanup
+      // quadratic.
+      const stuckBytes = this.undeletableBytes();
+      let deletableBytes = this.store.totalBytes() - stuckBytes;
+      let usedBytes = s.quotaGB > 0 ? deletableBytes : 0;
       const room = { count: 0, bytes: 0, failed: 0 };
-      kept = undefined;
-      for (let guard = 0; guard < 10_000; guard++) {
+      const pauseIfFull = async (freePct: number | undefined) => {
+        if (freePct === undefined || freePct >= Math.max(1, s.minFreePercent / 3) || this.paused) return;
+        this.paused = true;
+        this.pushSystemEvent({ type: 'storage', severity: 'error', message: 'Недостаточно места на диске: запись приостановлена' });
+        this.announceManual();
+        for (const c of this.cameras.values()) for (const r of c.recorders.values()) await r.stop();
+      };
+      // the oldest rows a batch at a time; a file waiting to be tried again is passed over without a look at the disk
+      let rows: SegmentRow[] = [];
+      let read: SegmentRow | undefined;
+      const nextRow = () => {
+        if (!rows.length) {
+          rows = this.store.oldestSegments(200, read);
+          read = rows.at(-1) ?? read;
+        }
+        return rows.shift();
+      };
+      let disk = await statfs(this.recordingsDir);
+      // a series of its own: refusals of the files past their days must not keep the guard from the room it needs
+      const refusedByDays = pass.refused;
+      Object.assign(pass, { inARow: 0, refused: false });
+      for (let tries = 0; tries < 10_000 && !pass.refused;) {
         // a disk that says nothing of its size (no blocks) has no free share to keep: the quota alone decides. Read as
         // a share it was NaN, never enough, and the guard deleted up to 10 000 of the oldest files at every pass
-        const freePct = freePercent(await statfs(this.recordingsDir));
+        const freePct = freePercent(disk);
         const low = freePct !== undefined && freePct < s.minFreePercent;
         // the files without a row are on the archive disk too: in the quota, and the first to go
         const overQuota = s.quotaGB > 0 && usedBytes + this.orphanBytes > s.quotaGB * GB;
         if (!overQuota && !low) break;
-        if (await this.deleteOldestOrphan(room)) {
-          removed++;
-          continue;
-        }
-        const [oldest] = this.store.oldestSegments(1, kept);
-        if (!oldest || this.isLiveSegment(oldest.id)) {
-          if (freePct !== undefined && freePct < Math.max(1, s.minFreePercent / 3) && !this.paused) {
-            this.paused = true;
-            this.pushSystemEvent({ type: 'storage', severity: 'error', message: 'Недостаточно места на диске: запись приостановлена' });
-            this.announceManual();
-            for (const c of this.cameras.values()) for (const r of c.recorders.values()) await r.stop();
-          }
+        // For room alone, only what can make it: when all that can be deleted would not free the share (files that
+        // cannot be deleted, or others', hold the disk), nothing is, and recording pauses once the disk is nearly full.
+        // Deleting the whole archive did not reach the share either.
+        if (!overQuota && (s.minFreePercent / 100) * disk.blocks * disk.bsize - disk.bavail * disk.bsize > deletableBytes + this.orphanBytes) {
+          await pauseIfFull(freePct);
           break;
         }
-        // a file that stays is still on the disk and in the quota: the next oldest goes in its place
-        if (!(await this.deleteSegmentFile(oldest, failed))) {
-          kept = oldest;
+        if (await this.deleteOldestOrphan(room)) {
+          removed++;
+          disk = await statfs(this.recordingsDir);
           continue;
         }
-        usedBytes -= oldest.bytes;
+        const oldest = nextRow();
+        if (!oldest || this.isLiveSegment(oldest.id)) {
+          await pauseIfFull(freePct);
+          break;
+        }
+        // already out of the quota and of what can be deleted
+        if (this.waitsForRetry(oldest)) continue;
+        const counted = !this.undeletable.has(oldest.id);
+        tries++;
+        const deleted = await this.deleteSegmentFile(oldest, pass);
+        // one that stays leaves the quota and what can be deleted; the next oldest goes in its place
+        if (counted) {
+          usedBytes -= oldest.bytes;
+          deletableBytes -= oldest.bytes;
+        }
+        if (!deleted) continue;
         removed++;
+        disk = await statfs(this.recordingsDir);
       }
+      pass.refused ||= refusedByDays;
       if (room.count || room.failed) {
         const could = room.failed ? `; ${room.failed} could not be deleted, looked for again at the next look` : '';
         this.logger.log(`Retention: ${room.count} recorded file(s) without a row deleted first for room (${round2(room.bytes / GB)} GB)${could}`);
@@ -2594,9 +2699,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     } catch (error) {
       this.logger.warn(`Retention failed: ${(error as Error).message}`);
     }
-    if (failed.count) {
-      this.logger.warn(`Retention: ${failed.count} recorded file(s) could not be deleted and stay, tried again at every pass (${failed.first})`);
-    }
+    this.tellUndeletable(pass);
     await this.removeEmptyExportDirs();
   }
 

@@ -393,6 +393,15 @@ export class Store {
       .all(cutoffUs, cutoffUs, after.start_us, after.start_us, after.id, limit) as unknown as SegmentRow[];
   }
 
+  /** The sizes of the segments of these ids that are still there (the files the retention could not delete). */
+  public segmentBytes(ids: number[]): { id: number; bytes: number }[] {
+    if (!ids.length) return [];
+    return this.db.prepare('SELECT id, bytes FROM segments WHERE id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as unknown as {
+      id: number;
+      bytes: number;
+    }[];
+  }
+
   /** The paths of the segments a page at a time, by id: what the look for files without a row reads (index.ts). */
   public segmentPaths(afterId: number, limit: number): { id: number; path: string }[] {
     return this.db.prepare('SELECT id, path FROM segments WHERE id > ? ORDER BY id LIMIT ?').all(afterId, limit) as unknown as { id: number; path: string }[];
