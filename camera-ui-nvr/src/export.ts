@@ -205,7 +205,7 @@ export async function exportClip(opts: {
   try {
     if (runs.length > 1 && !mixed) await writeFile(list, concatList(runs));
     try {
-      await exportGate.run(() => run(opts.ffmpegPath, argsWith(madeBy), exportTimeoutMs(durationSec, !!timelapse || !!madeBy)));
+      await exportGate.run(() => run(opts.ffmpegPath, argsWith(madeBy), exportWatch(durationSec, !!timelapse, Date.now())));
     } catch (error) {
       // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it. Only a
       // failure before much was written: one later (a full disk, a file the retention removed) would fail again after
@@ -216,7 +216,7 @@ export async function exportClip(opts: {
       );
       if (!madeBy || madeBy.name === LIBX264.name || written > 1024 * 1024) throw error;
       try {
-        await exportGate.run(() => run(opts.ffmpegPath, argsWith(LIBX264), exportTimeoutMs(durationSec, true)));
+        await exportGate.run(() => run(opts.ffmpegPath, argsWith(LIBX264), exportWatch(durationSec, !!timelapse, Date.now())));
       } catch (again) {
         throw new Error(`${(again as Error).message} (${madeBy.name} first: ${(error as Error).message})`);
       }
@@ -320,34 +320,103 @@ export async function mosaic(ffmpegPath: string, pictures: Uint8Array[]): Promis
   }
 }
 
+/** The ffmpeg of an export that shows no work for this long is stopped. */
+export const EXPORT_QUIET_MS = 10 * 60_000;
+/** How often it is looked at. */
+const EXPORT_WATCH_MS = 30_000;
+
 /**
- * How long the ffmpeg of an export may run: two minutes and the length of the clip, four times that when it is
- * encoded (made H.264, a timelapse, two codecs joined), which a small CPU does at a quarter of real time. An ffmpeg
- * that hung (a network disk gone, an input that never ends) held its place in the gate for good, and after two of
- * them every export was refused as too many.
+ * Whether the ffmpeg of an export still works. An ffmpeg that hung (a network disk gone, an input that never ends) held
+ * its place in the gate for good, and after two of them every export was refused as too many. A time limit by the
+ * length of the clip stopped a slow machine instead (a small ARM board makes H.264 of 4K H.265 at 0.15 of real time):
+ * the work is watched, not the time. Work is what ffmpeg says of its output (`-progress`) and, where the system tells
+ * it (/proc on Linux), the bytes it reads. A timelapse says nothing of its output until its end however long it
+ * decodes (a picture an interval, held by the encoder), so without the bytes read its silence is allowed twenty times
+ * the range: a machine at a twentieth of real time.
  */
-export function exportTimeoutMs(durationSec: number, encoded: boolean): number {
-  return 120_000 + Math.ceil(durationSec * (encoded ? 4 : 1) * 1000);
+export class ExportWatch {
+  private output = '';
+  private reads: number | undefined;
+  private readsKnown = false;
+  private lastWorkMs: number;
+  private pending = '';
+  private readonly latest = new Map<string, string>();
+
+  constructor(
+    private readonly quietMs: number,
+    private readonly quietWithoutReadsMs: number,
+    now: number,
+  ) {
+    this.lastWorkMs = now;
+  }
+
+  /** The `-progress` lines as they come, cut anywhere: what was made so far (frames, bytes, time of the output). */
+  public progress(text: string, now: number): void {
+    const lines = (this.pending + text).split('\n');
+    this.pending = lines.pop() ?? '';
+    for (const line of lines) {
+      const [key, value] = line.trim().split('=', 2);
+      if (key === 'frame' || key === 'total_size' || key === 'out_time_us') this.latest.set(key, value);
+    }
+    const output = [...this.latest.values()].join('|');
+    if (output !== this.output) {
+      this.output = output;
+      this.lastWorkMs = now;
+    }
+  }
+
+  /** The bytes read so far, or undefined where the system does not tell them. */
+  public read(bytes: number | undefined, now: number): void {
+    if (bytes === undefined) return;
+    this.readsKnown = true;
+    if (bytes !== this.reads) {
+      this.reads = bytes;
+      this.lastWorkMs = now;
+    }
+  }
+
+  /** How long it has shown no work, when that is more than it is allowed; undefined while it works. */
+  public stalled(now: number): number | undefined {
+    const quiet = this.readsKnown ? this.quietMs : this.quietWithoutReadsMs;
+    return now - this.lastWorkMs > quiet ? now - this.lastWorkMs : undefined;
+  }
 }
 
-function run(bin: string, args: string[], timeoutMs?: number): Promise<void> {
+/** The watch of an export's ffmpeg: a timelapse of `durationSec` is quiet longer where its reads cannot be seen. */
+export function exportWatch(durationSec: number, timelapse: boolean, now: number): ExportWatch {
+  return new ExportWatch(EXPORT_QUIET_MS, timelapse ? Math.max(EXPORT_QUIET_MS, durationSec * 20_000) : EXPORT_QUIET_MS, now);
+}
+
+/** The bytes a process has read, from /proc on Linux; undefined elsewhere. */
+async function bytesRead(pid: number | undefined): Promise<number | undefined> {
+  if (pid === undefined) return undefined;
+  const io = await readFile(`/proc/${pid}/io`, 'utf8').catch(() => undefined);
+  const rchar = io && /^rchar:\s*(\d+)/m.exec(io);
+  return rchar ? Number(rchar[1]) : undefined;
+}
+
+function run(bin: string, args: string[], watch?: ExportWatch): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    // what it made so far, on stdout (`-progress`): the watch reads it
+    const proc = spawn(bin, watch ? ['-progress', 'pipe:1', ...args] : args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
-    let timedOut = false;
-    const stop = () => {
-      timedOut = true;
-      proc.kill('SIGKILL');
+    let stalledMs: number | undefined;
+    proc.stdout.on('data', (d: Buffer) => watch?.progress(d.toString(), Date.now()));
+    const look = async () => {
+      if (!watch) return;
+      watch.read(await bytesRead(proc.pid), Date.now());
+      stalledMs ??= watch.stalled(Date.now());
+      if (stalledMs !== undefined) proc.kill('SIGKILL');
     };
-    const timer = timeoutMs === undefined ? undefined : setTimeout(stop, timeoutMs);
+    const timer = watch ? setInterval(() => void look(), EXPORT_WATCH_MS) : undefined;
     proc.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
     proc.on('error', (error) => {
-      clearTimeout(timer);
+      clearInterval(timer);
       reject(error);
     });
     proc.on('close', (code) => {
-      clearTimeout(timer);
-      if (timedOut) reject(new Error(`ffmpeg did not finish in ${Math.round(timeoutMs! / 1000)} s and was stopped`));
+      clearInterval(timer);
+      if (stalledMs !== undefined) reject(new Error(`ffmpeg showed no work for ${Math.round(stalledMs / 60_000)} min and was stopped`));
       else if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').pop() ?? ''}`));
     });

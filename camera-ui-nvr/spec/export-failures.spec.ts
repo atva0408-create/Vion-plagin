@@ -2,18 +2,19 @@
 // 'error' listener: ENOSPC under it was an uncaught exception that ended the plugin, and with it every camera's
 // recording; the stream stayed open and the unfinished archive on the disk when a file of it could not be read. The
 // export fails now, by what the disk said, with its file closed and removed. And ffmpeg ran without a time limit: one
-// that hung held its place in the gate for good, after two of them every export was refused. It is stopped after a
-// time that grows with the length of the clip, more for one that is encoded, and its place is free again.
+// that hung held its place in the gate for good, after two of them every export was refused. It is stopped when it
+// shows no work for ten minutes (its output, the bytes it reads), and its place is free again; a slow machine finishes.
 // Run: npx tsx spec/export-failures.spec.ts
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs, { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { exportClip, exportTimeoutMs, writeZip } from '../src/export.js';
+import { exportClip, writeZip } from '../src/export.js';
 
 import type { WriteStream } from 'node:fs';
 import type { SegmentRow } from '../src/store.js';
@@ -31,7 +32,7 @@ process.on('uncaughtException', (error) => {
 let finished = false;
 process.on('exit', (code) => {
   if (!finished && code === 0) {
-    console.error('the spec ended before its last check: something waits for what never comes');
+    console.error('the spec ended before its last check: something waits for what never comes', uncaught);
     process.exitCode = 1;
   }
 });
@@ -127,42 +128,67 @@ syncBuiltinESMExports();
 fs.createWriteStream = realCreateWriteStream;
 syncBuiltinESMExports();
 
-// ------------------------------------------------------------------ an ffmpeg that never ends
-
-assert.equal(exportTimeoutMs(30, false), 150_000, 'two minutes and the clip');
-assert.equal(exportTimeoutMs(30, true), 240_000, 'two minutes and four times the clip, encoded');
-assert.equal(exportTimeoutMs(3600, true), 120_000 + 4 * 3_600_000, 'an hour encoded');
+// ------------------------------------------------------------------ an ffmpeg that never ends, one that is slow
 
 {
-  // every ffmpeg hangs: it ends only when it is killed
-  const spawned: { args: string[]; killed: string[] }[] = [];
+  // the ffmpeg of the spec does what each case says: what it writes of its output (`-progress`), the bytes it reads
+  // (/proc/<pid>/io on Linux), and it ends only when it is killed
+  type Fake = EventEmitter & { pid: number; stdout: EventEmitter; stderr: EventEmitter; killed: string[]; args: string[] };
+  const spawned: Fake[] = [];
   const realSpawn = childProcess.spawn;
   childProcess.spawn = ((_bin: string, args: string[]) => {
-    const proc = Object.assign(new EventEmitter(), { stderr: new EventEmitter(), killed: [] as string[] });
-    spawned.push({ args, killed: proc.killed });
+    const proc = Object.assign(new EventEmitter(), { pid: 9000 + spawned.length, stdout: new EventEmitter(), stderr: new EventEmitter(), killed: [] as string[], args });
     (proc as unknown as { kill(signal: string): boolean }).kill = (signal: string) => {
       proc.killed.push(signal);
       setImmediate(() => proc.emit('close', null, signal));
       return true;
     };
+    spawned.push(proc);
     return proc;
   }) as unknown as typeof realSpawn;
+  const reads = new Map<number, number>();
+  const realReadFile = fsp.readFile;
+  fsp.readFile = (async (path: string, ...rest: unknown[]) => {
+    const pid = /^\/proc\/(\d+)\/io$/.exec(String(path))?.[1];
+    if (pid === undefined) return (realReadFile as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
+    if (!reads.has(Number(pid))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    return `rchar: ${reads.get(Number(pid))}\nwchar: 0\n`;
+  }) as typeof fsp.readFile;
   syncBuiltinESMExports();
-  // the long waits of the spec come at once; what they were set to is kept
-  const delays: number[] = [];
-  globalThis.setTimeout = ((fn: () => void, ms?: number, ...rest: unknown[]) => {
-    if ((ms ?? 0) < 60_000) return realSetTimeout(fn, ms, ...rest);
-    delays.push(ms!);
-    return realSetTimeout(fn, 20);
-  }) as typeof setTimeout;
-
+  // the clock of the plugin and its looks at the ffmpeg, both in the hands of the spec
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+  const looks = new Set<() => void>();
+  const realSetInterval = globalThis.setInterval;
+  const realClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = ((fn: () => void, ms?: number) => {
+    if (ms !== 30_000) return realSetInterval(fn, ms);
+    looks.add(fn);
+    return fn as unknown as NodeJS.Timeout;
+  }) as typeof setInterval;
+  globalThis.clearInterval = ((handle: unknown) => {
+    if (looks.has(handle as () => void)) looks.delete(handle as () => void);
+    else realClearInterval(handle as NodeJS.Timeout);
+  }) as typeof clearInterval;
+  /** Time goes by in steps of the looks; `each` is what the ffmpeg does in each step. */
+  const pass = async (ms: number, each: () => void = () => undefined) => {
+    for (let t = 0; t < ms; t += 30_000) {
+      clock += 30_000;
+      each();
+      for (const look of [...looks]) look();
+      for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const progress = (proc: Fake, outUs: number) =>
+    proc.stdout.emit('data', Buffer.from(`frame=${Math.round(outUs / 40_000)}\ntotal_size=${outUs}\nout_time_us=${outUs}\nprogress=continue\n`));
   const S = 1_000_000;
-  const segment: SegmentRow = {
+  const segment = (endSec: number): SegmentRow => ({
     id: 1,
     camera_id: 'cam',
     role: 'high',
     start_us: 0,
-    end_us: 30 * S,
+    end_us: endSec * S,
     path: one,
     bytes: 1000,
     codec: 'h264',
@@ -172,40 +198,85 @@ assert.equal(exportTimeoutMs(3600, true), 120_000 + 4 * 3_600_000, 'an hour enco
     video_pid: 256,
     audio_pid: -1,
     keyframes: '[]',
+  });
+  const clip = (name: string, endSec: number, extra: { timelapseIntervalSec?: number } = {}) => {
+    const outcome = { value: undefined as string | undefined };
+    void exportClip({
+      ffmpegPath: 'ffmpeg',
+      segments: [segment(endSec)],
+      startUs: 0,
+      endUs: endSec * S,
+      outDir: join(dir, 'exports'),
+      filename: `${name}.mp4`,
+      ...extra,
+    }).then(
+      () => (outcome.value = 'done'),
+      (error: Error) => (outcome.value = error.message),
+    );
+    return outcome;
   };
-  const clip = (name: string, extra: { timelapseIntervalSec?: number } = {}) =>
-    exportClip({ ffmpegPath: 'ffmpeg', segments: [segment], startUs: 0, endUs: 30 * S, outDir: join(dir, 'exports'), filename: `${name}.mp4`, ...extra });
-  const outcome = (p: Promise<unknown>) =>
-    Promise.race([
-      p.then(
-        () => 'done',
-        (error: Error) => error.message,
-      ),
-      sleep(3000).then(() => 'hang'),
-    ]);
+  const started = async (count: number) => {
+    for (let i = 0; i < 300 && spawned.length < count; i++) await sleep(10);
+    assert.equal(spawned.length, count, 'ffmpeg started');
+    return spawned[count - 1];
+  };
 
-  // two at once, the places of the gate
-  const [a, b] = await Promise.all([outcome(clip('a')), outcome(clip('b'))]);
-  assert.match(a, /ffmpeg did not finish in 150 s and was stopped/, 'a copy of 30 s is stopped after two and a half minutes');
-  assert.match(b, /did not finish/);
-  assert.deepEqual(delays.slice(0, 2), [150_000, 150_000]);
-  assert.deepEqual(
-    spawned.map((s) => s.killed),
-    [['SIGKILL'], ['SIGKILL']],
-    'the hung ffmpeg is killed',
-  );
-  assert.equal(existsSync(join(dir, 'exports', 'a.mp4')), false, 'nothing of it stays');
-  // their places are free: the next export is not refused as too many, it runs (and is stopped the same way)
-  const lapse = await outcome(clip('c', { timelapseIntervalSec: 1 }));
-  assert.match(lapse, /did not finish in 240 s/, `a timelapse is encoded: four times the clip (${lapse})`);
-  assert.equal(spawned.length, 3);
-  globalThis.setTimeout = realSetTimeout;
+  // a slow machine: an hour of H.265 made H.264 at 0.15 of real time takes more than six hours, its output grows all
+  // the while. A limit by the length of the clip stopped it; it goes on as long as it works
+  const slow = clip('slow', 3600);
+  const slowProc = await started(1);
+  assert.deepEqual(slowProc.args.slice(0, 2), ['-progress', 'pipe:1'], 'ffmpeg tells what it made');
+  let made = 0;
+  await pass(7 * 3_600_000, () => progress(slowProc, (made += 4_500_000)));
+  assert.equal(slow.value, undefined, `seven hours of work, still running: ${slow.value}`);
+  assert.deepEqual(slowProc.killed, []);
+  // then it stops making anything: ten minutes later it is stopped
+  await pass(9 * 60_000, () => progress(slowProc, made));
+  assert.equal(slow.value, undefined, 'nine minutes without work: not yet');
+  await pass(2 * 60_000, () => progress(slowProc, made));
+  for (let i = 0; i < 300 && slow.value === undefined; i++) await sleep(10);
+  assert.match(slow.value ?? '', /ffmpeg showed no work for 1[01] min and was stopped/, `stopped: ${slow.value}`);
+  assert.deepEqual(slowProc.killed, ['SIGKILL']);
+  assert.equal(existsSync(join(dir, 'exports', 'slow.mp4')), false, 'nothing of it stays');
+
+  // two that hang from the start hold both places of the gate; stopped, they free them
+  const a = clip('a', 30);
+  const b = clip('b', 30);
+  await started(3);
+  await pass(11 * 60_000);
+  for (let i = 0; i < 300 && (a.value === undefined || b.value === undefined); i++) await sleep(10);
+  assert.match(a.value ?? '', /no work for/);
+  assert.match(b.value ?? '', /no work for/);
+
+  // a timelapse says nothing of its output until its end; where the reads cannot be seen it is allowed twenty times
+  // its range (an hour: twenty hours), where they can (Linux) it works as long as it reads
+  const blind = clip('blind', 3600, { timelapseIntervalSec: 60 });
+  await started(4);
+  await pass(19 * 3_600_000);
+  assert.equal(blind.value, undefined, 'nineteen hours of a timelapse of an hour without its reads: still running');
+  await pass(2 * 3_600_000);
+  for (let i = 0; i < 300 && blind.value === undefined; i++) await sleep(10);
+  assert.match(blind.value ?? '', /no work for 12\d\d min/, `stopped after twenty hours: ${blind.value}`);
+  const seen = clip('seen', 3600, { timelapseIntervalSec: 60 });
+  const seenProc = await started(5);
+  let read = 0;
+  reads.set(seenProc.pid, 0);
+  await pass(5 * 3_600_000, () => reads.set(seenProc.pid, (read += 1_000_000)));
+  assert.equal(seen.value, undefined, 'five hours of reading: still running');
+  await pass(11 * 60_000);
+  for (let i = 0; i < 300 && seen.value === undefined; i++) await sleep(10);
+  assert.match(seen.value ?? '', /no work for 1[01] min/, `it stopped reading: stopped ten minutes later (${seen.value})`);
+
+  Date.now = realNow;
+  globalThis.setInterval = realSetInterval;
+  globalThis.clearInterval = realClearInterval;
   childProcess.spawn = realSpawn;
+  fsp.readFile = realReadFile;
   syncBuiltinESMExports();
 }
 
 finished = true;
 console.log(
-  'export-failures.spec: a full disk under a ZIP fails the export, closed and removed, the plugin goes on; a hung ffmpeg is stopped in a time by the clip — ok',
+  'export-failures.spec: a full disk under a ZIP fails the export, closed and removed, the plugin goes on; a hung ffmpeg is stopped after ten minutes without work, a slow one goes on — ok',
 );
 process.exit(0);
