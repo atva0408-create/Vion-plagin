@@ -996,9 +996,43 @@ Date.now = () => clock;
   changed.store.close();
   TsDemuxer.prototype.push = realPush;
 }
+
+// ------------------------------------------------------------------ a file closed without a keyframe
+{
+  // Its row is deleted (nothing in it can be played) and the file stayed on the disk for good, known to nobody: not
+  // to the retention, not to the quota. It goes with its row now, closed by the recorder or by a failed write. No file
+  // gets that far today (every one starts with a keyframe), so the spec takes its keyframes away.
+  const keyless = (rec: Recorder) => {
+    const segment = (rec as unknown as { segment?: { keyframes: unknown[]; path: string; stream: { destroy(error: Error): void } } }).segment!;
+    segment.keyframes = [];
+    return segment;
+  };
+  const closed = recorder('keyless-closed');
+  closed.feed(stream('h264', { gops: 2 }));
+  const first = keyless(closed.rec);
+  await settle();
+  assert.equal(existsSync(first.path), true, 'the file is on the disk');
+  await closed.rec.stop();
+  assert.deepEqual(closed.store.segments('keyless-closed', 'high', 0, Number.MAX_SAFE_INTEGER), [], 'the row is deleted');
+  assert.equal(existsSync(first.path), false, 'and its file with it');
+  closed.store.close();
+
+  const failed = recorder('keyless-failed');
+  failed.feed(stream('h264', { gops: 2 }));
+  const second = keyless(failed.rec);
+  await settle();
+  assert.equal(existsSync(second.path), true);
+  second.stream.destroy(Object.assign(new Error('EIO: i/o error, write'), { code: 'EIO' }));
+  await settle();
+  assert.deepEqual(failed.store.segments('keyless-failed', 'high', 0, Number.MAX_SAFE_INTEGER), [], 'a failed write: the row is deleted');
+  assert.equal(existsSync(second.path), false, 'and its file with it, once the failed stream is closed');
+  assert.ok(failed.logs.some((l) => l.level === 'error' && l.message.includes('write failed')), 'the failure is told');
+  await failed.rec.stop();
+  failed.store.close();
+}
 Date.now = realNow;
 
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, no restart by an update that does not name the sound, a file ends with its last frame, the demuxer only until the codec is known — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, no restart by an update that does not name the sound, a file ends with its last frame, the demuxer only until the codec is known, a file without a keyframe goes with its row — ok',
 );
 process.exit(0);

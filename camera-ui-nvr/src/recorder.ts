@@ -643,7 +643,10 @@ export class Recorder {
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     try {
       if (seg.keyframes.length) this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
-      else this.opts.store.deleteSegment(seg.id);
+      else {
+        this.opts.store.deleteSegment(seg.id);
+        seg.stream.once('close', () => void this.removeFile(seg.path));
+      }
     } catch (error) {
       // the row keeps what the last flush wrote. Said once for a run of failures, like the flushes of this file (saveIndex)
       if (!seg.indexFailed) this.opts.log('error', `${this.label} cannot update the index: ${(error as Error).message}`);
@@ -698,9 +701,11 @@ export class Recorder {
     if (nextUs !== undefined) seg.endUs = Math.max(seg.endUs, nextUs);
     this.lastWrittenGopUs = Math.max(this.lastWrittenGopUs, seg.keyframes.at(-1)?.[1] ?? -1);
     await new Promise<void>((resolve) => seg.stream.end(() => resolve()));
+    let deleted = false;
     try {
       if (seg.keyframes.length === 0) {
         this.opts.store.deleteSegment(seg.id);
+        deleted = true;
       } else {
         this.opts.store.updateSegment(seg.id, seg.endUs, seg.bytes, JSON.stringify(seg.keyframes));
       }
@@ -708,8 +713,17 @@ export class Recorder {
       // the recorder goes on: the row keeps what the last flush wrote, the rest of this file is not in the archive
       this.opts.log('error', `${this.label} cannot save the index of ${seg.path}: ${(error as Error).message}`);
     }
+    if (deleted) await this.removeFile(seg.path);
     if (!this.segment) this.setRecording(false);
     this.opts.onSegment();
+  }
+
+  /**
+   * The file of a row that was deleted (a file without a keyframe holds nothing that can be played): nothing else
+   * knows of it, and it stayed on the disk for good, out of the retention and the quota.
+   */
+  private removeFile(path: string): Promise<void> {
+    return rm(path, { force: true }).catch((error: Error) => this.opts.log('error', `${this.label} cannot remove ${path}: ${error.message}`));
   }
 
   private setRecording(recording: boolean): void {
