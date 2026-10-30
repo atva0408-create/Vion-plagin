@@ -622,6 +622,64 @@ Date.now = realNow;
   server.close();
 }
 
+// ------------------------------------------------------------------ the source changes while go2rtc is asked
+{
+  // With sound on the recorder asks go2rtc whether the camera sends any (up to 15 s) before it starts. A new address
+  // of the stream came meanwhile (the camera's sources changed): there was no stream for update() to end, so nothing
+  // started one again, and the start that was waiting gave up as out of date. The recorder stood for good.
+  const seen: string[] = [];
+  let answer: (() => void) | undefined;
+  const server = createServer((req, res) => {
+    const url = new URL(req.url!, 'http://x');
+    const src = url.searchParams.get('src') ?? '';
+    seen.push(`${url.pathname} ${src}`);
+    if (url.pathname === '/api/streams') {
+      const send = () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ producers: [{ medias: ['video, recvonly, H264'] }] }));
+      // the first question hangs until the spec lets it answer
+      if (src === 'before') answer = send;
+      else send();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'video/mp2t' });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const tsUrl = (src: string) => `http://127.0.0.1:${port}/api/stream.ts?src=${src}&video=all`;
+  const waitFor = async (what: () => boolean) => {
+    for (let i = 0; i < 60 && !what(); i++) await new Promise((r) => setTimeout(r, 50));
+    return what();
+  };
+  const rec = new Recorder({
+    cameraId: 'moved',
+    role: 'high',
+    rtspUrl: 'rtsp://127.0.0.1:1/before',
+    tsUrl: tsUrl('before'),
+    audioUrl: 'rtsp://127.0.0.1:1/before?audio',
+    audio: true,
+    ffmpegPath: join(dir, 'no-ffmpeg'),
+    dir: join(dir, 'moved'),
+    store: new Store(join(dir, 'moved.db')),
+    mode: 'continuous',
+    preBufferSec: 0,
+    postBufferSec: 0,
+    segmentSec: 60,
+    log: noop,
+    onStateChange: noop,
+    onSegment: noop,
+  });
+  rec.start();
+  assert.ok(await waitFor(() => answer !== undefined), 'go2rtc is asked');
+  // what syncRecorders sends when the sources of the camera change
+  rec.update({ rtspUrl: 'rtsp://127.0.0.1:1/after', tsUrl: tsUrl('after'), audioUrl: 'rtsp://127.0.0.1:1/after?audio', audio: true });
+  answer!();
+  assert.ok(await waitFor(() => seen.includes('/api/stream.ts after')), `the stream is read from its new address: ${seen.join(', ')}`);
+  assert.ok(seen.includes('/api/streams after'), 'go2rtc is asked about the new one');
+  assert.ok(!seen.includes('/api/stream.ts before'), 'and the old address is not read');
+  await rec.stop();
+  server.closeAllConnections();
+  server.close();
+}
+
 // ------------------------------------------------------------------ a camera that does not answer
 {
   // VION Sensor 89C0, unreachable all night: a warning every minute (177 a night, each one an event of the system
@@ -815,6 +873,6 @@ Date.now = () => clock;
 Date.now = realNow;
 
 console.log(
-  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a file ends with its last frame — ok',
+  'recorder.spec: keyframes behind parameter sets and a long SEI (H.264, HEVC), no-keyframe warning, failing index database, broken file, stop() waits for a closing file, frame times (healthy stream as before, stalls, drift), sound on: the MPEG-TS video with the sound of the camera, the MPEG-TS alone without sound, a new address while go2rtc is asked, a file ends with its last frame — ok',
 );
 process.exit(0);

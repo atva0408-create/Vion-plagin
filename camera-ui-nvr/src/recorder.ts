@@ -283,8 +283,15 @@ export class Recorder {
   private async startWithAudio(tsUrl: string): Promise<void> {
     const probe = probeUrlOf(tsUrl);
     const audio = probe ? sendsAudio(await getJson(probe).catch(() => undefined)) : false;
-    // stopped meanwhile, or the options changed and a new start is on its way
-    if (this.stopped || this.proc || this.httpAbort || this.opts.tsUrl !== tsUrl) return;
+    // stopped meanwhile, or started again meanwhile (stop and start) and that start is running
+    if (this.stopped || this.proc || this.httpAbort) return;
+    // The address changed while go2rtc was asked (up to 15 s): update() had no stream to end, so no end started one
+    // again, and this start gave up as out of date. The recorder stood without a stream and without a retry until
+    // the plugin restarted. It starts now from what is set. Any other change is read from the options below.
+    if (this.opts.tsUrl !== tsUrl) {
+      this.spawn();
+      return;
+    }
     if (audio && this.opts.audioUrl) this.runFfmpeg(ffmpegArgs(this.opts, true));
     else this.fetchTs(tsUrl);
   }
