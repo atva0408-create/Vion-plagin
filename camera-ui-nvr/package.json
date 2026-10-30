@@ -40,7 +40,7 @@
     "url": "https://github.com/atva0408-create/Vion-plagin/issues"
   },
   "engines": {
-    "camera.ui": ">=2.6.48",
+    "camera.ui": ">=2.2.8",
     "node": ">=22.13.0"
   },
   "os": [],

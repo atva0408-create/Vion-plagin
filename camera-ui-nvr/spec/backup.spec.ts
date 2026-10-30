@@ -199,10 +199,9 @@ function backedUp(root: string): string[] {
 // ------------------------------------------------------------------ the server it needs
 
 {
-  // A server before VION 2.6.48 restores a backup by replacing the whole storage of the plugins: the folders left out
-  // of the backup are not in it, and the archive of this machine was deleted with them. 2.6.48 keeps them. The
-  // recorder says so in its requirements (engines): the install dialog of the store and the plugin page show it against
-  // the server, a warning to accept, not a refusal
+  // A server before VION 2.6.48 restores a backup by replacing the whole storage of the plugins, so the recorder leaves
+  // nothing out there (above). It does not ask for 2.6.48 in its requirements: the store only warns, «update all» does
+  // not even look, and the rest of this release (retention, exports, recorders) must reach the older servers too
   const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { engines: Record<string, string> };
   const lock = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package-lock.json'), 'utf8')) as {
     packages: Record<string, { engines?: Record<string, string> }>;
@@ -216,8 +215,8 @@ function backedUp(root: string): string[] {
     for (let i = 0; i < 3; i++) if (v[i] !== lowest[i]) return v[i] > lowest[i];
     return true;
   };
-  assert.equal(allows('2.6.47'), false, `not on a server that deletes the archive at a restore: ${range}`);
-  assert.equal(allows('2.6.48'), true, range);
+  assert.equal(allows('2.6.47'), true, `an older server takes this release without a warning: ${range}`);
+  assert.equal(allows('2.2.8'), true, range);
   assert.equal(lock.packages[''].engines?.['camera.ui'], range, 'the lockfile says the same');
 }
 
