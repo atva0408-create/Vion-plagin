@@ -7,6 +7,7 @@ import { crc32 } from 'node:zlib';
 
 import { LIBX264 } from './media/transcode.js';
 
+import type { WriteStream } from 'node:fs';
 import type { H264Encoder } from './media/transcode.js';
 import type { SegmentRow } from './store.js';
 
@@ -204,7 +205,7 @@ export async function exportClip(opts: {
   try {
     if (runs.length > 1 && !mixed) await writeFile(list, concatList(runs));
     try {
-      await exportGate.run(() => run(opts.ffmpegPath, argsWith(madeBy)));
+      await exportGate.run(() => run(opts.ffmpegPath, argsWith(madeBy), exportTimeoutMs(durationSec, !!timelapse || !!madeBy)));
     } catch (error) {
       // a hardware encoder that worked at the start can fail now (NVENC counts its sessions): libx264 makes it. Only a
       // failure before much was written: one later (a full disk, a file the retention removed) would fail again after
@@ -215,7 +216,7 @@ export async function exportClip(opts: {
       );
       if (!madeBy || madeBy.name === LIBX264.name || written > 1024 * 1024) throw error;
       try {
-        await exportGate.run(() => run(opts.ffmpegPath, argsWith(LIBX264)));
+        await exportGate.run(() => run(opts.ffmpegPath, argsWith(LIBX264), exportTimeoutMs(durationSec, true)));
       } catch (again) {
         throw new Error(`${(again as Error).message} (${madeBy.name} first: ${(error as Error).message})`);
       }
@@ -319,13 +320,37 @@ export async function mosaic(ffmpegPath: string, pictures: Uint8Array[]): Promis
   }
 }
 
-function run(bin: string, args: string[]): Promise<void> {
+/**
+ * How long the ffmpeg of an export may run: two minutes and the length of the clip, four times that when it is
+ * encoded (made H.264, a timelapse, two codecs joined), which a small CPU does at a quarter of real time. An ffmpeg
+ * that hung (a network disk gone, an input that never ends) held its place in the gate for good, and after two of
+ * them every export was refused as too many.
+ */
+export function exportTimeoutMs(durationSec: number, encoded: boolean): number {
+  return 120_000 + Math.ceil(durationSec * (encoded ? 4 : 1) * 1000);
+}
+
+function run(bin: string, args: string[], timeoutMs?: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
+    let timedOut = false;
+    const stop = () => {
+      timedOut = true;
+      proc.kill('SIGKILL');
+    };
+    const timer = timeoutMs === undefined ? undefined : setTimeout(stop, timeoutMs);
     proc.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-2000)));
-    proc.on('error', reject);
-    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').pop() ?? ''}`))));
+    proc.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) reject(new Error(`ffmpeg did not finish in ${Math.round(timeoutMs! / 1000)} s and was stopped`));
+      else if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited with ${code}: ${stderr.trim().split('\n').pop() ?? ''}`));
+    });
   });
 }
 
@@ -338,6 +363,23 @@ export async function writeZip(target: string, files: { path: string; name: stri
   if (bytes >= ZIP_MAX_BYTES) throw zipTooLarge(bytes);
 
   const out = createWriteStream(target);
+  // a write that fails (ENOSPC on a full disk, EIO) is an 'error' of the stream too: without a listener it was an
+  // uncaught exception that ended the plugin, and with it the recording of every camera. The export fails instead,
+  // by what the disk said, with its file closed and removed
+  let failed: Error | undefined;
+  out.on('error', (error) => (failed ??= error));
+  try {
+    return await writeEntries(out, files);
+  } catch (error) {
+    out.destroy();
+    if (!out.closed) await new Promise((resolve) => out.once('close', resolve));
+    const reason = failed ?? (error as Error);
+    await rm(target, { force: true }).catch((e: Error) => (reason.message += ` (the unfinished file stays: ${e.message})`));
+    throw reason;
+  }
+}
+
+async function writeEntries(out: WriteStream, files: { path: string; name: string }[]): Promise<number> {
   const central: Buffer[] = [];
   let offset = 0;
   const write = (b: Buffer) =>
@@ -400,7 +442,8 @@ export async function writeZip(target: string, files: { path: string; name: stri
   end.writeUInt32LE(cd.length, 12);
   end.writeUInt32LE(cdOffset, 16);
   await write(end);
-  await new Promise<void>((resolve) => out.end(resolve));
+  // the bytes still buffered reach the file here: a failure of them is a failure of the archive too
+  await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
   return offset;
 }
 
