@@ -4,7 +4,7 @@
 // too; the database and the pictures of events and faces stay in the backup.
 // Run: npx tsx spec/backup.spec.ts
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 
@@ -118,5 +118,32 @@ function backedUp(root: string): string[] {
   nvr.store.close();
 }
 
-console.log('backup.spec: recordings and exports left out of the server backup, marked at the start of an older install too; database and pictures kept — ok');
+// ------------------------------------------------------------------ the server it needs
+
+{
+  // A server before VION 2.6.48 restores a backup by replacing the whole storage of the plugins: the folders left out
+  // of the backup are not in it, and the archive of this machine was deleted with them. 2.6.48 keeps them. The
+  // recorder says so in its requirements (engines): the install dialog of the store and the plugin page show it against
+  // the server, a warning to accept, not a refusal
+  const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { engines: Record<string, string> };
+  const lock = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package-lock.json'), 'utf8')) as {
+    packages: Record<string, { engines?: Record<string, string> }>;
+  };
+  const range = manifest.engines['camera.ui'];
+  const at = /^>=(\d+)\.(\d+)\.(\d+)$/.exec(range);
+  assert.ok(at, `a lowest version: ${range}`);
+  const lowest = at.slice(1).map(Number);
+  const allows = (version: string) => {
+    const v = version.split('.').map(Number);
+    for (let i = 0; i < 3; i++) if (v[i] !== lowest[i]) return v[i] > lowest[i];
+    return true;
+  };
+  assert.equal(allows('2.6.47'), false, `not on a server that deletes the archive at a restore: ${range}`);
+  assert.equal(allows('2.6.48'), true, range);
+  assert.equal(lock.packages[''].engines?.['camera.ui'], range, 'the lockfile says the same');
+}
+
+console.log(
+  'backup.spec: recordings and exports left out of the server backup, marked at the start of an older install too; database and pictures kept; VION 2.6.48 and later — ok',
+);
 process.exit(0);
