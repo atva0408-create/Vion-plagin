@@ -1,6 +1,6 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -830,8 +830,27 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     for (const managed of this.cameras.values()) this.syncRecorders(managed);
   }
 
+  /**
+   * The server's backup copies the whole storage of a plugin and leaves out a folder with a `.backupignore` in it
+   * (server/src/api/services/backup.service.ts): every backup took the whole archive of recordings (199 GB on the
+   * bench) and the exports. Written at every start, so an install that recorded before has it too. The database, the
+   * pictures of events and faces stay in the backup: small, and not to be had again.
+   */
+  private keepVideoOutOfBackups(): void {
+    for (const dir of [this.recordingsDir, join(this.dataDir, 'exports')]) {
+      const marker = join(dir, '.backupignore');
+      try {
+        mkdirSync(dir, { recursive: true });
+        if (!existsSync(marker)) writeFileSync(marker, 'VION NVR: recorded video, left out of the backups of the server\n');
+      } catch (error) {
+        this.logger.warn(`${dir} goes into the backups of the server, ${marker} was not written: ${(error as Error).message}`);
+      }
+    }
+  }
+
   private init(): void {
     mkdirSync(this.recordingsDir, { recursive: true });
+    this.keepVideoOutOfBackups();
     this.store = new Store(join(this.dataDir, 'nvr.db'), this.recordingsDir);
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
