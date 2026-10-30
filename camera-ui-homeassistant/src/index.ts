@@ -256,16 +256,21 @@ export default class HomeAssistant extends BasePlugin<StorageValues> implements 
   }
 
   private commandFor(nativeId: string, kind: ControlKind): CommandFn {
+    // a command not carried out is thrown: the server tells whoever gave it. Dropped and logged, it was answered
+    // «done» to the assistant and the page while Home Assistant was never asked or said no
     return async (property, value) => {
       const entityId = this.bound.get(nativeId)?.entityId;
-      if (!entityId || !this.client) return;
+      if (!entityId) throw new Error('The entity is not found in Home Assistant');
+      if (!this.client) throw new Error('Home Assistant is not connected');
       const call = commandToService(kind, entityId, property, value);
-      if (!call) return;
+      if (!call) throw new Error(`${property} of ${entityId} is not sent to Home Assistant`);
       try {
         await this.client.callService(call.domain, call.service, call.data ?? {});
       } catch (error) {
         this.logger.error(`Command for ${entityId} failed:`, error);
+        throw error;
       }
+      return call.value;
     };
   }
 
