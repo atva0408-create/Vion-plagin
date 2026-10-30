@@ -1,3 +1,8 @@
+## [0.5.5]
+
+- VOICE no longer crashes after 37 hours of listening for «ВиОН» without a break: the voice activity of sherpa-onnx counted the samples in a number that overflows at 2^31 (37 h 17 min at 16 kHz). It is now reset between two phrases about every 18 hours
+- A speech model is no longer unloaded while a phrase is being said or recognized with it
+
 ## [0.5.4]
 
 - The name is written VION

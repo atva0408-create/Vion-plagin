@@ -1,3 +1,8 @@
+## [0.5.5]
+
+- VOICE stürzt nach 37 Stunden ununterbrochenen Lauschens auf «ВиОН» nicht mehr ab: die Sprachaktivitätserkennung von sherpa-onnx zählte die Samples in einer Zahl, die bei 2^31 überläuft (37 h 17 min bei 16 kHz). Jetzt wird sie etwa alle 18 Stunden zwischen zwei Sätzen zurückgesetzt
+- Ein Sprachmodell wird nicht mehr entladen, während damit ein Satz gesprochen oder erkannt wird
+
 ## [0.5.4]
 
 - Der Name wird VION geschrieben

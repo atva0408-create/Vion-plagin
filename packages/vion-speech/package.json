@@ -1,6 +1,6 @@
 {
   "name": "@vionvision/speech",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Speech of VION plugins on the server: synthesis, recognition and voice activity (sherpa-onnx), the camera's speaker as G.711 RTP, listening through ffmpeg, the speech models from the VION mirror. Shared by VOICE and the intercom; bundled into each of them, never published.",
   "author": "VION (https://vionvision.tech)",
@@ -15,7 +15,7 @@
     "build": "tsc --noEmit",
     "format": "prettier --write \"src/\" --ignore-unknown --no-error-on-unmatched-pattern",
     "lint": "eslint --fix .",
-    "test": "tsx spec/speaker.spec.ts && tsx spec/models.spec.ts && tsx spec/text.spec.ts && tsx spec/listen.spec.ts"
+    "test": "tsx spec/speaker.spec.ts && tsx spec/models.spec.ts && tsx spec/text.spec.ts && tsx spec/listen.spec.ts && tsx spec/engine.spec.ts"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",

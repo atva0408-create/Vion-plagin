@@ -34,6 +34,16 @@ export interface SpeechEngine {
 export const LISTEN_RATE = 16_000;
 const IDLE_UNLOAD_MS = 3 * 60_000;
 const THREADS = 2;
+/**
+ * sherpa-onnx 1.13.8 counts the samples a voice activity was given in int32 that never wrap: the head and the tail of
+ * its buffer (circular-buffer.h) and the silero model's current_sample_. Past 2^31, 37 hours at 16 kHz, it writes
+ * outside the buffer: VOICE listening for a call died of SIGSEGV 37 h after it opened the microphone (bench,
+ * 2026-10-30). Its reset() zeroes them all (VoiceActivityDetector::Reset), so the voice activity is reset after half
+ * of that, at the first moment nobody speaks...
+ */
+const RESET_AFTER = 2 ** 30;
+/** ...and at this many anyway when it hears speech all the time (a TV): the phrase is cut, still far below 2^31. */
+const RESET_BY = RESET_AFTER + 2 ** 29;
 
 type Sherpa = any;
 
@@ -54,21 +64,30 @@ function loadSherpa(load: SherpaLoader): Sherpa {
 interface Loaded<T> {
   value: T;
   timer?: NodeJS.Timeout;
+  /** Syntheses or recognitions running on the model now. */
+  users: number;
 }
 
 export class SherpaEngine implements SpeechEngine {
   private sherpa: Sherpa | undefined;
   private tts = new Map<Language, Loaded<Promise<any>>>();
   private stt = new Map<string, Loaded<Promise<any>>>();
+  /**
+   * The objects of the native work running now. It runs on another thread with bare pointers to them, which the
+   * garbage collector does not see: unreachable from here, they could be freed under it.
+   */
+  private running = new Set<unknown[]>();
 
   constructor(
     private store: ModelStore,
     private log: (message: string) => void,
     private load: SherpaLoader,
+    /** How long a model stays loaded without use; the specs shorten it. */
+    private idleMs = IDLE_UNLOAD_MS,
   ) {}
 
   async synthesize(text: string, language: Language, speed: number): Promise<Audio> {
-    const tts = await this.use(this.tts, language, async () => {
+    const load = async () => {
       const voice = VOICES[language];
       const [dir, espeak] = await Promise.all([this.store.ensure(voice.pack), this.store.ensure(PACKS.espeak)]);
       return this.lib().OfflineTts.createAsync({
@@ -79,14 +98,14 @@ export class SherpaEngine implements SpeechEngine {
         },
         maxNumSentences: 2,
       });
-    });
-    const audio = await tts.generateAsync({ text, sid: 0, speed });
+    };
+    const audio = await this.use(this.tts, language, load, (tts) => this.native<any>([tts], tts.generateAsync({ text, sid: 0, speed })));
     return { samples: audio.samples as Float32Array, sampleRate: audio.sampleRate as number };
   }
 
   async transcribe(samples: Float32Array, language: Language): Promise<string> {
     const key = language === 'ru' ? 'ru' : `whisper-${language}`;
-    const recognizer = await this.use(this.stt, key, async () => {
+    const load = async () => {
       const feat = { sampleRate: LISTEN_RATE, featureDim: 80 };
       if (language === 'ru') {
         const dir = await this.store.ensure(PACKS.sttRu);
@@ -112,11 +131,14 @@ export class SherpaEngine implements SpeechEngine {
           provider: 'cpu',
         },
       });
+    };
+    return this.use(this.stt, key, load, async (recognizer) => {
+      const stream = recognizer.createStream();
+      stream.acceptWaveform({ sampleRate: LISTEN_RATE, samples });
+      // the decoding reads the stream once more when it ends, for the text
+      const result = await this.native<any>([recognizer, stream], recognizer.decodeAsync(stream));
+      return String(result?.text ?? '').trim();
     });
-    const stream = recognizer.createStream();
-    stream.acceptWaveform({ sampleRate: LISTEN_RATE, samples });
-    const result = await recognizer.decodeAsync(stream);
-    return String(result?.text ?? '').trim();
   }
 
   async voiceActivity(): Promise<VoiceActivity> {
@@ -131,20 +153,39 @@ export class SherpaEngine implements SpeechEngine {
       30,
     );
     let pending = new Float32Array(0);
+    /** Samples the native voice activity was given since it was made or reset. */
+    let fed = 0;
+    /** Utterances taken out before a reset, which drops the ones it holds. */
+    const ready: Float32Array[] = [];
+    const take = () => {
+      const segment = vad.front();
+      vad.pop();
+      return new Float32Array(segment.samples);
+    };
+    const reset = () => {
+      // a phrase still heard comes out as if the sound ended there
+      vad.flush();
+      while (!vad.isEmpty()) ready.push(take());
+      vad.reset();
+      fed = 0;
+    };
     return {
       accept(samples) {
         const joined = new Float32Array(pending.length + samples.length);
         joined.set(pending);
         joined.set(samples, pending.length);
         let offset = 0;
-        for (; offset + 512 <= joined.length; offset += 512) vad.acceptWaveform(joined.subarray(offset, offset + 512));
+        for (; offset + 512 <= joined.length; offset += 512) {
+          vad.acceptWaveform(joined.subarray(offset, offset + 512));
+          fed += 512;
+          if (fed >= RESET_BY || (fed >= RESET_AFTER && !vad.isDetected())) reset();
+        }
         pending = joined.slice(offset);
       },
       utterance() {
+        if (ready.length) return ready.shift();
         if (vad.isEmpty()) return undefined;
-        const segment = vad.front();
-        vad.pop();
-        return new Float32Array(segment.samples);
+        return take();
       },
       speaking: () => vad.isDetected(),
       flush: () => vad.flush(),
@@ -156,8 +197,21 @@ export class SherpaEngine implements SpeechEngine {
     return this.sherpa;
   }
 
-  /** The loaded model, shared by callers that come while it loads; let go after a while without use. */
-  private async use<K, T>(cache: Map<K, Loaded<Promise<T>>>, key: K, create: () => Promise<T>): Promise<T> {
+  /** Native work on another thread: the objects it was given stay reachable until it ends. */
+  private async native<R>(objects: unknown[], work: Promise<R>): Promise<R> {
+    this.running.add(objects);
+    try {
+      return await work;
+    } finally {
+      this.running.delete(objects);
+    }
+  }
+
+  /**
+   * Runs the work on the loaded model, shared by callers that come while it loads. The model is let go after a while
+   * without use, counted from the end of the last work on it: never under a synthesis or a recognition still running.
+   */
+  private async use<K, T, R>(cache: Map<K, Loaded<Promise<T>>>, key: K, create: () => Promise<T>, work: (model: T) => Promise<R>): Promise<R> {
     let entry = cache.get(key);
     if (!entry) {
       const started = Date.now();
@@ -165,7 +219,7 @@ export class SherpaEngine implements SpeechEngine {
         this.log(`speech model ${String(key)} loaded in ${Date.now() - started} ms`);
         return loaded;
       });
-      const created: Loaded<Promise<T>> = { value };
+      const created: Loaded<Promise<T>> = { value, users: 0 };
       entry = created;
       cache.set(key, created);
       // only this entry: the timer of a load that failed later took out the good one loaded after it
@@ -174,15 +228,22 @@ export class SherpaEngine implements SpeechEngine {
         if (cache.get(key) === created) cache.delete(key);
       });
     }
-    clearTimeout(entry.timer);
     const current = entry;
-    // the native memory goes with the object
-    entry.timer = setTimeout(() => {
-      if (cache.get(key) !== current) return;
-      cache.delete(key);
-      this.log(`speech model ${String(key)} unloaded`);
-    }, IDLE_UNLOAD_MS);
-    entry.timer.unref();
-    return entry.value;
+    clearTimeout(current.timer);
+    current.users++;
+    try {
+      return await work(await current.value);
+    } finally {
+      current.users--;
+      if (current.users === 0 && cache.get(key) === current) {
+        // the native memory goes with the object
+        current.timer = setTimeout(() => {
+          if (cache.get(key) !== current) return;
+          cache.delete(key);
+          this.log(`speech model ${String(key)} unloaded`);
+        }, this.idleMs);
+        current.timer.unref();
+      }
+    }
   }
 }

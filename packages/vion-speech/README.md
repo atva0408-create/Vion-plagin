@@ -5,7 +5,7 @@ Speech of VION plugins on the server, without a cloud. Shared by **VOICE** (`cam
 
 | Module | What |
 |---|---|
-| `engine.ts` | `SherpaEngine`: synthesis (Piper voices), recognition (zipformer ru, Whisper en/de), Silero VAD; models load on first use and are let go after 3 idle minutes. The plugin passes the loader of `sherpa-onnx-node`, installed with the plugin |
+| `engine.ts` | `SherpaEngine`: synthesis (Piper voices), recognition (zipformer ru, Whisper en/de), Silero VAD, reset between phrases after 2^30 samples (its int32 counters overflow at 2^31, 37 hours); models load on first use and are let go after 3 idle minutes, never while they work. The plugin passes the loader of `sherpa-onnx-node`, installed with the plugin |
 | `models.ts` | the model packs on `<VION_MODELS_HOST>/v1/voice/`, downloaded once, checked by size and sha256, unpacked as they stream |
 | `speaker.ts` | `CameraSpeaker`: PCM → G.711 A-law → RTP, 20 ms packets at the pace of real time, into the camera's talk channel |
 | `listen.ts` | `FfmpegListener` (one answer in a window, VOICE), `Hearing` and `listenToCamera` (a conversation, the intercom) |
