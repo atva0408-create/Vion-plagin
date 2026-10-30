@@ -107,8 +107,9 @@ const foreign = [
   file('1792000000000-high.ts', 30 * DAY),
   file('cam/1792000000000-high.ts', 30 * DAY),
 ];
+// the marker that leaves the recordings out of the backups (a server of 2.6.48 and later has it written; none runs here)
 const marker = join(recordings, '.backupignore');
-assert.ok(existsSync(marker), 'the marker of the backups is there');
+writeFileSync(marker, 'VION NVR: recorded video, left out of the backups of the server');
 
 await restored.internals.sweepOrphans();
 assert.equal(existsSync(pastDays), false, 'a file without a row past the days kept is deleted');

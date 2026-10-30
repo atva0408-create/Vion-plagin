@@ -1,8 +1,8 @@
 import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { lstat, readdir, readFile, rm, rmdir, statfs, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { ASSISTANT_TOOLS, callAssistantTool } from './assistant.js';
 import { EventDescriber } from './describer.js';
@@ -110,6 +110,13 @@ const REFUSED_IN_A_ROW = 20;
 const ORPHAN_SWEEP_MS = 24 * 3_600_000;
 /** A file without a row younger than this is never deleted as one: it may be written right now, its row not read yet. */
 const ORPHAN_MIN_AGE_MS = 3_600_000;
+/** The first VION that keeps the folders left out of a backup when it restores one (keepVideoOutOfBackups). */
+const BACKUP_KEEPS_FOLDERS = '2.6.48';
+/** What the recorder writes into its `.backupignore`: a marker that starts so is its own. */
+const BACKUP_MARKER_MARK = 'VION NVR:';
+const BACKUP_MARKER = `${BACKUP_MARKER_MARK} recorded video, left out of the backups of the server (VION ${BACKUP_KEEPS_FOLDERS} and later keep it at a restore)\n`;
+/** The package of the VION server, whose runner starts the process of a plugin. */
+const SERVER_PACKAGE = '@vionvision/server';
 /** The folders and files the recorder writes: recordings/<camera>/<day>/<start ms>-<stream>.ts (recorder.ts). */
 const RECORDED_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RECORDED_FILE = /^\d+-(?:high|mid|low)\.ts$/;
@@ -875,16 +882,33 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    * (server/src/api/services/backup.service.ts): every backup took the whole archive of recordings (199 GB on the
    * bench) and the exports. Written at every start, so an install that recorded before has it too. The database, the
    * pictures of events and faces stay in the backup: small, and not to be had again.
+   *
+   * Only on a server that keeps such folders when it restores a backup (VION 2.6.48): an older one replaces the whole
+   * storage of the plugins with the backup's, and the archive left out of it was deleted. The store installs the
+   * recorder there all the same (its requirement is a warning to accept, and «update all» does not read it), so the
+   * recorder looks itself; a server it cannot tell the version of is taken for an older one. There the marker of an
+   * earlier start (the server put back to an older version) is taken away again, one set by hand is left.
    */
   private keepVideoOutOfBackups(): void {
+    const version = serverVersion(process.argv[1]);
+    const keeps = version !== undefined && versionAtLeast(version, BACKUP_KEEPS_FOLDERS);
     for (const dir of [this.recordingsDir, join(this.dataDir, 'exports')]) {
       const marker = join(dir, '.backupignore');
       try {
-        mkdirSync(dir, { recursive: true });
-        if (!existsSync(marker)) writeFileSync(marker, 'VION NVR: recorded video, left out of the backups of the server\n');
+        if (keeps) {
+          mkdirSync(dir, { recursive: true });
+          if (!existsSync(marker)) writeFileSync(marker, BACKUP_MARKER);
+        } else if (existsSync(marker) && readFileSync(marker, 'utf8').startsWith(BACKUP_MARKER_MARK)) {
+          rmSync(marker);
+        }
       } catch (error) {
-        this.logger.warn(`${dir} goes into the backups of the server, ${marker} was not written: ${(error as Error).message}`);
+        const what = keeps ? `goes into the backups of the server, ${marker} was not written` : `is left out of the backups, ${marker} was not removed`;
+        this.logger.warn(`${dir} ${what}: ${(error as Error).message}`);
       }
+    }
+    if (!keeps) {
+      const server = `VION ${version ?? 'of a version the recorder cannot read'}`;
+      this.logger.log(`${server}: the recordings stay in the backups of the server; one before ${BACKUP_KEEPS_FOLDERS} deletes what a backup leaves out at a restore`);
     }
   }
 
@@ -4778,6 +4802,36 @@ function fileStamp(us: number, zone?: Intl.DateTimeFormat): string {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * The version of the VION server this process runs under. Neither the API of the SDK nor the environment of the
+ * plugin's process tells it; the process is started by the server's own runner (plugins/runtime/node/child.js,
+ * `script`), and the server's package.json is above it. Undefined when there is none to read (a remote worker, an
+ * install laid out otherwise).
+ */
+export function serverVersion(script: string | undefined): string | undefined {
+  if (!script) return undefined;
+  for (let dir = dirname(script), up = 0; up < 8; dir = dirname(dir), up++) {
+    try {
+      const pjson = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: unknown; version?: unknown };
+      if (pjson.name === SERVER_PACKAGE) return typeof pjson.version === 'string' ? pjson.version : undefined;
+    } catch {
+      // no package.json here (or not one to read): the next folder up
+    }
+    if (dirname(dir) === dir) break;
+  }
+  return undefined;
+}
+
+/** `version` (x.y.z, a prerelease below its release) is `least` or later. */
+function versionAtLeast(version: string, least: string): boolean {
+  const parse = (v: string) => /^(\d+)\.(\d+)\.(\d+)(-.*)?$/.exec(v.trim());
+  const have = parse(version);
+  const need = parse(least);
+  if (!have || !need) return false;
+  for (let i = 1; i <= 3; i++) if (Number(have[i]) !== Number(need[i])) return Number(have[i]) > Number(need[i]);
+  return !have[4];
 }
 
 /**
