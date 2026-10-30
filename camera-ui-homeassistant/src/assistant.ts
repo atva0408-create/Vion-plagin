@@ -1,7 +1,8 @@
 // Tools the assistant can call on Home Assistant: the entities with their area and state, and a service call — a
-// scene, a script, an automation, a light — the pair of yandex_run_scenario. Reading runs without asking; the call
-// declares `approval` and `adminOnly` and answers `__preview` (set only by the server, for the confirmation card) with
-// what it would do. Only the domains of DEFAULT_DOMAINS, and the ones the admin added in the settings of the plugin,
+// scene, a script, an automation, a light — the pair of yandex_run_scenario. Both are an admin's (`adminOnly`): the
+// entities are the whole house, every lock, alarm panel and presence, while a user limited to some cameras sees only
+// their sensors in VION. Reading runs without asking; the call declares `approval` and answers `__preview` (set only
+// by the server, for the confirmation card) with what it would do. Only the domains of DEFAULT_DOMAINS, and the ones the admin added in the settings of the plugin,
 // can be called: a service of another domain (a lock, an alarm panel, a restart of Home Assistant) is refused.
 // i18n-skip-file: the descriptions are read by the model; the card lines below carry their own three languages.
 
@@ -51,6 +52,7 @@ export const HA_TOOLS: AssistantToolSpec[] = [
         search: { type: 'string', description: 'Words of the name or of the entity id.' },
       },
     },
+    adminOnly: true,
     lazy: true,
   },
   {
@@ -122,10 +124,10 @@ export function allowedDomains(host: HaAssistantHost): Set<string> {
 export async function callHaTool(host: HaAssistantHost, name: string, input: Input, ctx: AssistantToolContext): Promise<AssistantToolResult> {
   try {
     if (!host.connected()) return { error: 'Home Assistant is not connected: check the address and the token in the settings of the plugin.' };
-    if (name === 'entities') return await entities(host, input);
-    if (name !== 'call_service') return { error: `Unknown tool ${name}` };
-    // the server offers it to admins only; a call that gets here otherwise is refused here too
+    if (name !== 'entities' && name !== 'call_service') return { error: `Unknown tool ${name}` };
+    // the server offers both to admins only; a call that gets here otherwise is refused here too
     if (ctx.role !== 'admin' && ctx.role !== 'master') return { error: 'Only an administrator can do this.' };
+    if (name === 'entities') return await entities(host, input);
     return await callService(host, input, input.__preview === true, T[langOf(ctx.language)]);
   } catch (error) {
     return { error: errorText(error) };

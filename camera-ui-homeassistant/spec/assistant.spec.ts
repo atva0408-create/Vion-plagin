@@ -1,7 +1,8 @@
-// The entities of Home Assistant and a service call through the assistant: reading runs for anyone, a call is an
-// admin's and asked first. The card (`__preview`) says what would happen and calls nothing; a domain outside the list
-// (a lock, the alarm panel, homeassistant.restart) is refused unless the admin added it; a service acts only on an
-// entity of its own domain that exists.
+// The entities of Home Assistant and a service call through the assistant: both are an admin's (the entities are the
+// whole house, a user limited to some cameras must not read them); reading runs without asking, a call is asked
+// first. The card (`__preview`) says what would happen and calls nothing; a domain outside the list (a lock, the
+// alarm panel, homeassistant.restart) is refused unless the admin added it; a service acts only on an entity of its
+// own domain that exists.
 // Run: npx tsx spec/assistant.spec.ts
 import assert from 'node:assert/strict';
 
@@ -33,27 +34,31 @@ async function run(name: string, input: Record<string, unknown>, ctx = admin) {
 }
 const content = (r: { content?: unknown }) => r.content as Record<string, any>;
 
-// declared: reading is free, the call is an admin's and confirmed
+// declared: both are an admin's; reading runs without asking, the call is confirmed
 {
   const read = HA_TOOLS.find((t) => t.name === 'entities')!;
   const call = HA_TOOLS.find((t) => t.name === 'call_service')!;
-  assert.ok(!read.approval && !read.adminOnly);
+  assert.ok(!read.approval);
+  assert.equal(read.adminOnly, true);
   assert.equal(call.approval, true);
   assert.equal(call.adminOnly, true);
 }
 
 // entities: narrowed by area and domain; out-of-list domains are marked read only
 {
-  const kitchen = content(await run('entities', { area: 'кухня' }, user));
+  const kitchen = content(await run('entities', { area: 'кухня' }));
   assert.deepEqual(kitchen.entities, [{ entity_id: 'light.kitchen', name: 'Свет на кухне', state: 'off', area: 'Кухня' }]);
-  const locks = content(await run('entities', { domain: 'lock' }, user));
+  const locks = content(await run('entities', { domain: 'lock' }));
   assert.equal(locks.entities[0].readOnly, true);
-  const byWords = content(await run('entities', { search: 'вечер' }, user));
+  const byWords = content(await run('entities', { search: 'вечер' }));
   assert.deepEqual(byWords.entities.map((e: any) => e.entity_id), ['scene.evening']);
 }
 
-// a plain user may not call
+// a plain user may neither read the house nor call
 {
+  const read = await run('entities', {}, user);
+  assert.match(read.error ?? '', /administrator/);
+  assert.equal(read.content, undefined);
   const r = await run('call_service', { domain: 'light', service: 'turn_on', entity_id: 'light.kitchen' }, user);
   assert.match(r.error ?? '', /administrator/);
   assert.equal(calls.length, 0);
@@ -137,7 +142,7 @@ const content = (r: { content?: unknown }) => r.content as Record<string, any>;
 // not connected: said, nothing called
 {
   connected = false;
-  const r = await run('entities', {}, user);
+  const r = await run('entities', {});
   assert.match(r.error ?? '', /not connected/);
   connected = true;
 }

@@ -935,6 +935,9 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
         name: 'yandex_devices',
         description: 'List the devices of the Yandex Smart Home with their rooms and current state, and its scenarios.',
         inputSchema: { type: 'object', properties: {} },
+        // the whole house, its locks and sensors among them, while a user limited to some cameras sees only their
+        // sensors in VION: an admin's, though it only reads
+        adminOnly: true,
       },
     ];
   }
@@ -954,8 +957,13 @@ export default class YandexPlugin extends BasePlugin<YandexConfig> implements Se
           const asked = typeof input.name === 'string' ? input.name : '';
           const wanted = asked.trim().toLowerCase();
           if (!this.complete) await this.read();
-          const scenario = this.scenarioList.find((s) => s.name.toLowerCase() === wanted) ?? this.scenarioList.find((s) => s.name.toLowerCase().includes(wanted));
-          if (!wanted || !scenario) return { error: `No scenario "${asked}"; the scenarios are: ${this.scenarioList.map((s) => s.name).join(', ')}` };
+          // the exact name, else the one scenario the words are part of: the user confirms the name as asked, and the
+          // first that held them made «свет» run whichever of «Свет на кухне» and «Свет в спальне» came first
+          const exact = this.scenarioList.filter((s) => s.name.toLowerCase() === wanted);
+          const near = exact.length ? exact : this.scenarioList.filter((s) => s.name.toLowerCase().includes(wanted));
+          if (!wanted || !near.length) return { error: `No scenario "${asked}"; the scenarios are: ${this.scenarioList.map((s) => s.name).join(', ')}` };
+          if (near.length > 1) return { error: `"${asked}" may be any of the scenarios ${near.map((s) => `"${s.name}"`).join(', ')}: name one of them exactly` };
+          const scenario = near[0];
           await this.commandApi().runScenario(scenario.id);
           return { content: `Scenario "${scenario.name}" started` };
         }

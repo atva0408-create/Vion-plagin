@@ -2,6 +2,7 @@
 
 - Ein Schloss, das der VION-Assistent auf «locked» stellen soll, wird verriegelt: jeder Wert außer der Zahl 0 entriegelte es, und der Assistent nennt die Zustände locked und unlocked. Schloss, Garagentor und Alarmanlage nehmen die Nummern ihrer Zustände und die Namen, die VION zeigt (locked, unlocked; open, closed; armed_home, armed_away, armed_night, disarmed); Schalter, Licht und Sirene nehmen on und off, und «off» schaltet sie nicht mehr ein. Jeder andere Wert wird abgelehnt
 - Ein Befehl, den das Plugin nicht ausgeführt hat (unbekannter Wert, Home Assistant nicht verbunden oder lehnt ab), wird VION als fehlgeschlagen gemeldet, und das Gerät behält seinen Zustand; zuvor sagten VION und der Assistent, er sei erledigt
+- Die Entitäten von Home Assistant (das Werkzeug entities des Assistenten) stehen wie der Dienstaufruf nur den Administratoren von VION zur Verfügung: ein Benutzer, der nur einige Kameras sieht, las über den Assistenten jede Entität des Hauses, auch Schlösser und Alarmanlage
 
 ## [1.1.3]
 

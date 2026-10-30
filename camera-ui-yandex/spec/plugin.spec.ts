@@ -313,13 +313,14 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
   const tools = plugin.assistantTools().map((t: any) => t.name);
   assert.deepEqual(tools, ['yandex_say', 'yandex_command', 'yandex_run_scenario', 'yandex_devices']);
   // Everything that acts asks in the chat and is an admin's: the server leaves such tools out of a user's chat and
-  // out of schedules and Alice. Only the list of devices reads.
+  // out of schedules and Alice. The list of devices only reads, but it is the whole house: an admin's too.
   const specs = Object.fromEntries(plugin.assistantTools().map((t: any) => [t.name, t]));
   for (const name of ['yandex_say', 'yandex_command', 'yandex_run_scenario']) {
     assert.equal(specs[name].approval, true, `${name} asks for approval`);
     assert.equal(specs[name].adminOnly, true, `${name} is an admin's`);
   }
-  assert.ok(!specs.yandex_devices.approval && !specs.yandex_devices.adminOnly, 'yandex_devices only reads');
+  assert.ok(!specs.yandex_devices.approval, 'yandex_devices only reads');
+  assert.equal(specs.yandex_devices.adminOnly, true, 'yandex_devices is for admins: a user limited to some cameras does not read the house');
   assert.match((await plugin.callAssistantTool('yandex_say', { text: 'Ужин готов', station: 'кухня' }, {})).content, /done \(cloud\)/);
   assert.match((await plugin.callAssistantTool('yandex_say', { text: 'x', station: 'Ванная' }, {})).error, /No station "Ванная"/);
   assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'ушёл' }, {})).content, /Я ушёл/);
@@ -327,6 +328,21 @@ test('the whole way: sign-in by code, sensors, commands, a camera, the QR sign-i
   const listed = (await plugin.callAssistantTool('yandex_devices', {}, {})).content;
   assert.equal(listed.devices.find((d: any) => d.name === 'Лампа').state.on, true);
   assert.deepEqual(listed.scenarios, ['Я ушёл']);
+  // a scenario by part of its name only when no other has it: the user confirmed the words, not one of the names
+  state.scenarios.push({ id: 'sc-2', name: 'Свет на кухне' }, { id: 'sc-3', name: 'Свет в спальне' });
+  await plugin.read();
+  const ran = state.ran.length;
+  const either = (await plugin.callAssistantTool('yandex_run_scenario', { name: 'свет' }, {})).error;
+  assert.match(either, /"Свет на кухне", "Свет в спальне"/, 'several have the words: named, none run');
+  assert.equal(state.ran.length, ran);
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: 'свет на' }, {})).content, /"Свет на кухне" started/, 'one has them');
+  assert.equal(state.ran.at(-1), 'sc-2');
+  state.scenarios.push({ id: 'sc-4', name: 'Свет' });
+  await plugin.read();
+  assert.match((await plugin.callAssistantTool('yandex_run_scenario', { name: ' СВЕТ ' }, {})).content, /"Свет" started/, 'the exact name wins over the ones it is part of');
+  assert.equal(state.ran.at(-1), 'sc-4');
+  state.scenarios.splice(1);
+  await plugin.read();
 
   // ---- the app as the source: live updates
   await h.set('source', 'app');

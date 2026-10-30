@@ -2,6 +2,7 @@
 
 - A lock asked to be «locked» by the VION assistant is locked: any value but the number 0 unlocked it, and the assistant names the states locked and unlocked. A lock, a garage door and an alarm panel take the numbers of their states and the names VION shows (locked, unlocked; open, closed; armed_home, armed_away, armed_night, disarmed); a switch, a light and a siren take on and off, and «off» no longer turns them on. Any other value is refused
 - A command the plugin did not carry out (a value it does not know, Home Assistant not connected or saying no) is reported to VION as failed, and the control keeps its state; before, VION and the assistant said it was done
+- The entities of Home Assistant (the assistant's entities) are offered to the administrators of VION only, like the service call: a user who sees some cameras read through the assistant every entity of the house, its locks and alarm panel among them
 
 ## [1.1.3]
 
