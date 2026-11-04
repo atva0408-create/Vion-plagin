@@ -1,0 +1,966 @@
+package bridge
+
+import (
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"time"
+
+	gortsplib "github.com/bluenviron/gortsplib/v5"
+	"github.com/bluenviron/gortsplib/v5/pkg/base"
+	"github.com/bluenviron/gortsplib/v5/pkg/description"
+	"github.com/bluenviron/gortsplib/v5/pkg/format"
+	"github.com/bluenviron/gortsplib/v5/pkg/format/rtplpcm"
+	"github.com/bluenviron/gortsplib/v5/pkg/format/rtpmpeg4audio"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
+	"github.com/pion/rtp"
+	"github.com/shareed2k/reolinkproxy/pkg/codec"
+	"github.com/shareed2k/reolinkproxy/pkg/media"
+)
+
+type rtspServerHandler struct {
+	log Logger
+
+	mu      sync.RWMutex
+	streams map[string]*rtspStreamHandler
+	talks   map[string]*rtspTalkPublisher
+	talkSDP map[string]*rtspTalkPublisher
+	server  *gortsplib.Server
+
+	writeErrMu      sync.Mutex
+	lastWriteErrLog time.Time
+}
+
+func newRTSPServerHandler(log Logger) *rtspServerHandler {
+	return &rtspServerHandler{
+		log:     log,
+		streams: make(map[string]*rtspStreamHandler),
+		talks:   make(map[string]*rtspTalkPublisher),
+		talkSDP: make(map[string]*rtspTalkPublisher),
+	}
+}
+
+func (h *rtspServerHandler) addStream(path string, stream *rtspStreamHandler) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.streams[strings.TrimPrefix(path, "/")] = stream
+}
+
+func (h *rtspServerHandler) getStream(path string) *rtspStreamHandler {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for p, s := range h.streams {
+		if samePath(path, p) {
+			return s
+		}
+	}
+	return nil
+}
+
+func (h *rtspServerHandler) addTalk(path string, talk *rtspTalkPublisher) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	path = strings.TrimPrefix(path, "/")
+	h.talks[path] = talk
+	h.talkSDP[path] = talk
+}
+
+func (h *rtspServerHandler) addTalkAlias(path string, talk *rtspTalkPublisher) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.talks[strings.TrimPrefix(path, "/")] = talk
+}
+
+// removePaths drops every stream and talk registration whose path was
+// registered for a removed camera. Active RTSP sessions on those paths keep
+// their ServerStream until they disconnect; new requests get 404.
+func (h *rtspServerHandler) removePaths(paths []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, path := range paths {
+		path = strings.TrimPrefix(path, "/")
+		delete(h.streams, path)
+		delete(h.talks, path)
+		delete(h.talkSDP, path)
+	}
+}
+
+func (h *rtspServerHandler) getTalk(path string) *rtspTalkPublisher {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for p, talk := range h.talks {
+		if samePath(path, p) {
+			return talk
+		}
+	}
+	return nil
+}
+
+func (h *rtspServerHandler) getTalkSDP(path string) *rtspTalkPublisher {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for p, talk := range h.talkSDP {
+		if samePath(path, p) {
+			return talk
+		}
+	}
+	return nil
+}
+
+func shouldUseTalkSetup(session *gortsplib.ServerSession) bool {
+	if session == nil {
+		return false
+	}
+	if session.AnnouncedDescription() != nil {
+		return true
+	}
+
+	switch session.State() {
+	case gortsplib.ServerSessionStatePreRecord, gortsplib.ServerSessionStateRecord:
+		return true
+	default:
+		return false
+	}
+}
+
+func sessionHasBackChannel(session *gortsplib.ServerSession) bool {
+	if session == nil {
+		return false
+	}
+
+	for _, media := range session.Medias() {
+		if media != nil && media.Type == description.MediaTypeAudio && media.IsBackChannel {
+			return true
+		}
+	}
+
+	return false
+}
+
+// OnStreamWriteError fires when a reader's write queue overflowed and gortsplib
+// dropped a packet for it. Without this hook the drop only reaches the stdlib
+// logger, and a stalled consumer corrupts its stream invisibly.
+func (h *rtspServerHandler) OnStreamWriteError(ctx *gortsplib.ServerHandlerOnStreamWriteErrorCtx) {
+	h.writeErrMu.Lock()
+	defer h.writeErrMu.Unlock()
+	now := time.Now()
+	if now.Sub(h.lastWriteErrLog) < 60*time.Second {
+		return
+	}
+	h.lastWriteErrLog = now
+	h.log.Warnf("rtsp reader %s cannot keep up, dropping packets for it: %v", ctx.Session.Path(), ctx.Error)
+}
+
+func (h *rtspServerHandler) OnDescribe(ctx *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
+	stream := h.getStream(ctx.Path)
+	if stream != nil {
+		stream.touchInterest()
+
+		// Wait for the stream to become ready (parameter sets extracted, audio decided)
+		deadline := time.Now().Add(describeReadyTimeout)
+		for time.Now().Before(deadline) {
+			stream.touchInterest()
+			stream.mu.RLock()
+			readyStream := stream.stream
+			stream.mu.RUnlock()
+
+			if readyStream != nil {
+				_ = readyStream.Desc
+				res := &base.Response{StatusCode: base.StatusOK}
+				if isTwoWayPath(ctx.Path) {
+					if res.Header == nil {
+						res.Header = make(base.Header)
+					}
+					res.Header["Require"] = base.HeaderValue{"www.onvif.org/ver20/backchannel"}
+				}
+				return res, readyStream, nil
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		h.log.Warnf("RTSP Client DESCRIBE: path=%s (503 Service Unavailable - not ready)", ctx.Path)
+		return &base.Response{StatusCode: base.StatusServiceUnavailable}, nil, fmt.Errorf("stream not ready yet")
+	}
+
+	if talk := h.getTalkSDP(ctx.Path); talk != nil {
+		desc, err := talk.describe(h.server)
+		if err != nil {
+			h.log.Warnf("RTSP Client DESCRIBE: path=%s (400 Bad Request - talk error: %v)", ctx.Path, err)
+			return &base.Response{StatusCode: base.StatusBadRequest}, nil, err
+		}
+		h.log.Debugf("RTSP Client DESCRIBE: path=%s (200 OK - talk)", ctx.Path)
+		return &base.Response{StatusCode: base.StatusOK}, desc, nil
+	}
+
+	h.log.Debugf("RTSP Client DESCRIBE: path=%s (404 Not Found)", ctx.Path)
+	return &base.Response{StatusCode: base.StatusNotFound}, nil, nil
+}
+
+func (h *rtspServerHandler) OnSetup(ctx *gortsplib.ServerHandlerOnSetupCtx) (*base.Response, *gortsplib.ServerStream, error) {
+	if shouldUseTalkSetup(ctx.Session) {
+		if talk := h.getTalk(ctx.Path); talk != nil {
+			desc, err := talk.describe(h.server)
+			if err != nil {
+				h.log.Warnf("RTSP Client SETUP: path=%s (400 Bad Request - talk error: %v)", ctx.Path, err)
+				return &base.Response{StatusCode: base.StatusBadRequest}, nil, err
+			}
+			h.log.Debugf("RTSP Client SETUP: path=%s (200 OK - talk)", ctx.Path)
+			return &base.Response{StatusCode: base.StatusOK}, desc, nil
+		}
+	}
+
+	stream := h.getStream(ctx.Path)
+	if stream != nil {
+		attachSessionToStream(ctx.Session, stream)
+		stream.touchInterest()
+
+		// Wait up to 10 seconds for the stream to become ready (VPS/SPS/PPS extracted)
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			stream.touchInterest()
+			stream.mu.RLock()
+			readyStream := stream.stream
+			stream.mu.RUnlock()
+
+			if readyStream != nil {
+				res := &base.Response{StatusCode: base.StatusOK}
+
+				// If this is a two-way path, we should inform the client
+				// that we support the ONVIF backchannel protocol in the response.
+				if isTwoWayPath(ctx.Path) {
+					if res.Header == nil {
+						res.Header = make(base.Header)
+					}
+					res.Header["Require"] = base.HeaderValue{"www.onvif.org/ver20/backchannel"}
+				}
+
+				return res, readyStream, nil
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Fallback: If the stream isn't ready but it's a talk-capable path,
+		// we should still allow it to fall through to the talk handler
+		// instead of returning 503, because backchannels don't need the video stream to be ready.
+		if h.getTalk(ctx.Path) == nil {
+			h.log.Warnf("RTSP Client SETUP: path=%s (503 Service Unavailable - not ready)", ctx.Path)
+			return &base.Response{StatusCode: base.StatusServiceUnavailable}, nil, fmt.Errorf("stream not ready yet")
+		}
+	}
+
+	if talk := h.getTalk(ctx.Path); talk != nil {
+		desc, err := talk.describe(h.server)
+		if err != nil {
+			h.log.Warnf("RTSP Client SETUP: path=%s (400 Bad Request - talk error: %v)", ctx.Path, err)
+			return &base.Response{StatusCode: base.StatusBadRequest}, nil, err
+		}
+		h.log.Debugf("RTSP Client SETUP: path=%s (200 OK - talk fallback)", ctx.Path)
+		return &base.Response{StatusCode: base.StatusOK}, desc, nil
+	}
+
+	h.log.Debugf("RTSP Client SETUP: path=%s (404 Not Found)", ctx.Path)
+	return &base.Response{StatusCode: base.StatusNotFound}, nil, nil
+}
+
+func (h *rtspServerHandler) OnPlay(ctx *gortsplib.ServerHandlerOnPlayCtx) (*base.Response, error) {
+	stream := h.getStream(ctx.Path)
+	if stream == nil && h.getTalk(ctx.Path) != nil {
+		return &base.Response{StatusCode: base.StatusBadRequest}, fmt.Errorf("rtsp play: talk path %q does not support PLAY", ctx.Path)
+	}
+
+	if stream == nil {
+		return &base.Response{StatusCode: base.StatusNotFound}, fmt.Errorf("rtsp play: stream not found for path %q", ctx.Path)
+	}
+
+	state := attachSessionToStream(ctx.Session, stream)
+	if state == nil || state.stream == nil {
+		return &base.Response{StatusCode: base.StatusNotFound}, fmt.Errorf("rtsp play: no stream state for path %q", ctx.Path)
+	}
+
+	if !state.playing {
+		h.log.Debugf("RTSP Client PLAY: path=%s", ctx.Path)
+		state.stream.addClient(ctx.Session)
+		state.playing = true
+	}
+
+	if talk := h.getTalk(ctx.Path); talk != nil && sessionHasBackChannel(ctx.Session) {
+		if err := talk.startBackChannel(ctx.Session, ctx.Path); err != nil {
+			talk.log.Warnf("talk backchannel unavailable for path %s: %v", ctx.Path, err)
+		}
+	}
+
+	return &base.Response{StatusCode: base.StatusOK}, nil
+}
+
+func (h *rtspServerHandler) OnPause(ctx *gortsplib.ServerHandlerOnPauseCtx) (*base.Response, error) {
+	state, ok := ctx.Session.UserData().(*rtspSessionState)
+	hadTalk := ok && state != nil && state.talk != nil
+	if hadTalk {
+		state.talk.publisher.release(state.talk)
+		state.talk = nil
+	}
+	if hadTalk && (state == nil || state.stream == nil) {
+		return &base.Response{StatusCode: base.StatusOK}, nil
+	}
+
+	if !ok || state == nil || state.stream == nil {
+		return &base.Response{StatusCode: base.StatusNotFound}, fmt.Errorf("rtsp pause: session has no associated stream")
+	}
+
+	if state.playing {
+		state.stream.removeClient(ctx.Session)
+		state.playing = false
+	}
+	return &base.Response{StatusCode: base.StatusOK}, nil
+}
+
+func (h *rtspServerHandler) OnSessionClose(ctx *gortsplib.ServerHandlerOnSessionCloseCtx) {
+	h.log.Debugf("RTSP Client CLOSE: err=%v", ctx.Error)
+	if state, ok := ctx.Session.UserData().(*rtspSessionState); ok && state != nil {
+		if state.stream != nil && state.playing {
+			state.stream.removeClient(ctx.Session)
+			state.playing = false
+		}
+		if state.talk != nil {
+			if state.talk.publisher != nil {
+				state.talk.publisher.log.Debugf("talk rtsp session closed: %v", ctx.Error)
+				state.talk.publisher.release(state.talk)
+			}
+			state.talk = nil
+		}
+	}
+}
+
+//nolint:unparam
+func (h *rtspServerHandler) OnGetParameter(_ *gortsplib.ServerHandlerOnGetParameterCtx) (*base.Response, error) {
+	return &base.Response{StatusCode: base.StatusOK}, nil
+}
+
+type rtspStreamHandler struct {
+	server *gortsplib.Server
+	path   string
+
+	mu           sync.RWMutex
+	stream       *gortsplib.ServerStream
+	clients      map[*gortsplib.ServerSession]struct{}
+	extras       []*description.Media
+	mirrors      []*rtspStreamHandler
+	lastInterest time.Time
+}
+
+func newRTSPStreamHandler(path string) *rtspStreamHandler {
+	return &rtspStreamHandler{
+		path:    strings.TrimPrefix(path, "/"),
+		clients: make(map[*gortsplib.ServerSession]struct{}),
+	}
+}
+
+func (h *rtspStreamHandler) attachServer(server *gortsplib.Server) {
+	h.server = server
+}
+
+func (h *rtspStreamHandler) setExtraMedias(medias ...*description.Media) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	filtered := make([]*description.Media, 0, len(medias))
+	for _, media := range medias {
+		if media != nil {
+			filtered = append(filtered, media)
+		}
+	}
+	h.extras = filtered
+}
+
+func (h *rtspStreamHandler) addMirror(mirror *rtspStreamHandler) {
+	if mirror == nil {
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.mirrors = append(h.mirrors, mirror)
+}
+
+func (h *rtspStreamHandler) ready() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.stream != nil
+}
+
+func (h *rtspStreamHandler) addClient(session *gortsplib.ServerSession) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.clients[session] = struct{}{}
+}
+
+func (h *rtspStreamHandler) removeClient(session *gortsplib.ServerSession) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.clients, session)
+}
+
+func (h *rtspStreamHandler) hasClients() bool {
+	h.mu.RLock()
+	clients := len(h.clients)
+	mirrors := append([]*rtspStreamHandler(nil), h.mirrors...)
+	h.mu.RUnlock()
+
+	if clients > 0 {
+		return true
+	}
+	for _, mirror := range mirrors {
+		if mirror.hasClients() {
+			return true
+		}
+	}
+	return false
+}
+
+// touchInterest records a DESCRIBE/SETUP on this path so idle-disconnect
+// keeps the preview alive while a client is still negotiating (before it
+// counts as a playing client).
+func (h *rtspStreamHandler) touchInterest() {
+	h.mu.Lock()
+	h.lastInterest = time.Now()
+	h.mu.Unlock()
+}
+
+// interestedSince reports whether this handler or any mirror saw client
+// interest (DESCRIBE/SETUP) after t.
+func (h *rtspStreamHandler) interestedSince(t time.Time) bool {
+	h.mu.RLock()
+	interest := h.lastInterest
+	mirrors := append([]*rtspStreamHandler(nil), h.mirrors...)
+	h.mu.RUnlock()
+
+	if interest.After(t) {
+		return true
+	}
+	for _, mirror := range mirrors {
+		if mirror.interestedSince(t) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *rtspStreamHandler) setReady(medias ...*description.Media) error {
+	h.mu.Lock()
+	if h.server == nil {
+		h.mu.Unlock()
+		return fmt.Errorf("rtsp server is not attached")
+	}
+
+	if h.stream == nil {
+		filtered := make([]*description.Media, 0, len(medias))
+		for _, media := range medias {
+			if media != nil {
+				filtered = append(filtered, media)
+			}
+		}
+		filtered = append(filtered, h.extras...)
+		if len(filtered) == 0 {
+			h.mu.Unlock()
+			return fmt.Errorf("rtsp session requires at least one media")
+		}
+
+		desc := &description.Session{Medias: filtered}
+		h.stream = &gortsplib.ServerStream{Desc: desc, Server: h.server}
+		if err := h.stream.Initialize(); err != nil {
+			return fmt.Errorf("initialize stream: %w", err)
+		}
+	}
+	mirrors := append([]*rtspStreamHandler(nil), h.mirrors...)
+	h.mu.Unlock()
+
+	for _, mirror := range mirrors {
+		if err := mirror.setReady(medias...); err != nil {
+			return fmt.Errorf("prepare rtsp mirror %s: %w", mirror.path, err)
+		}
+	}
+
+	return nil
+}
+
+// reset drops the current session so the next setReady rebuilds it with a
+// different media set. Readers are disconnected and reconnect on their own.
+func (h *rtspStreamHandler) reset() {
+	h.mu.Lock()
+	stream := h.stream
+	h.stream = nil
+	mirrors := append([]*rtspStreamHandler(nil), h.mirrors...)
+	h.mu.Unlock()
+
+	if stream != nil {
+		stream.Close()
+	}
+	for _, mirror := range mirrors {
+		mirror.reset()
+	}
+}
+
+func (h *rtspStreamHandler) writePacket(media *description.Media, pkt *rtp.Packet) {
+	h.mu.RLock()
+	stream := h.stream
+	mirrors := append([]*rtspStreamHandler(nil), h.mirrors...)
+	h.mu.RUnlock()
+	// late audio is configured and starts publishing before the rebuild that
+	// adds its media to the session runs (it waits for the next keyframe);
+	// gortsplib dereferences a nil stream-media for a media it doesn't carry,
+	// so only write a media the current session actually holds
+	if stream != nil && streamCarriesMedia(stream, media) {
+		_ = stream.WritePacketRTP(media, pkt)
+	}
+	for _, mirror := range mirrors {
+		mirror.writePacket(media, pkt)
+	}
+}
+
+func streamCarriesMedia(stream *gortsplib.ServerStream, media *description.Media) bool {
+	if stream.Desc == nil {
+		return false
+	}
+	for _, m := range stream.Desc.Medias {
+		if m == media {
+			return true
+		}
+	}
+	return false
+}
+
+type audioPublisher struct {
+	media          *description.Media
+	aacEncoder     *rtpmpeg4audio.Encoder
+	g711Encoder    *rtplpcm.Encoder
+	adpcmDecoder   *codec.ADPCMDecoder
+	log            Logger
+	onLateAudio    func()
+	nextTimestamp  uint32
+	anchored       bool
+	declaredRate   int
+	declaredChans  int
+	published      bool
+	timestampGuard rtpTimestampGuard
+	unsupported    bool
+	rebuildAsked   bool
+}
+
+// aacChannelConfig maps a channel count onto the 4-bit configuration field.
+// 7.1 is the one layout that is not its own count, everything the cameras send
+// is mono or stereo.
+func aacChannelConfig(channels int) uint8 {
+	switch {
+	case channels == 8:
+		return 7
+	case channels >= 1 && channels <= 6:
+		return uint8(channels) //#nosec G115
+	default:
+		return 0
+	}
+}
+
+// declareAAC builds the audio media from what a previous run observed, so the
+// session can start with the track in place instead of waiting for the first
+// packet. The stream corrects itself if the camera turns out to send something
+// else, or nothing at all.
+func (p *audioPublisher) declareAAC(sampleRate int, channels int) error {
+	cfg := &mpeg4audio.AudioSpecificConfig{
+		Type:          mpeg4audio.ObjectTypeAACLC,
+		SampleRate:    sampleRate,
+		ChannelConfig: aacChannelConfig(channels),
+	}
+	audioFormat := &format.MPEG4Audio{
+		PayloadTyp:       97,
+		Config:           cfg,
+		SizeLength:       13,
+		IndexLength:      3,
+		IndexDeltaLength: 3,
+	}
+	encoder, err := audioFormat.CreateEncoder()
+	if err != nil {
+		return fmt.Errorf("create AAC RTP encoder: %w", err)
+	}
+
+	p.media = &description.Media{
+		Type:    description.MediaTypeAudio,
+		Control: "trackID=1",
+		Formats: []format.Format{audioFormat},
+	}
+	p.aacEncoder = encoder
+	p.declaredRate = sampleRate
+	p.declaredChans = channels
+	return nil
+}
+
+// mismatchesDeclared reports whether the arriving audio differs from what was
+// declared upfront. The SDP would then describe something the packets are not.
+func (p *audioPublisher) mismatchesDeclared(sampleRate int, channels int) bool {
+	return p.declaredRate != 0 && (p.declaredRate != sampleRate || p.declaredChans != channels)
+}
+
+// dropDeclaration clears a wrong or unconfirmed declaration so the next
+// configure rebuilds the track from what the camera actually sends.
+func (p *audioPublisher) dropDeclaration() {
+	p.media = nil
+	p.aacEncoder = nil
+	p.g711Encoder = nil
+	p.declaredRate = 0
+	p.declaredChans = 0
+}
+
+// hint describes the publisher's current audio for the next run. A publisher
+// without audio reports the zero hint, which means "this profile is silent".
+func (p *audioPublisher) hint() AudioHint {
+	if !p.ready() {
+		return AudioHint{}
+	}
+	if p.aacEncoder != nil {
+		return AudioHint{Codec: "aac", SampleRate: p.declaredRate, Channels: p.declaredChans}
+	}
+	return AudioHint{Codec: "pcma", SampleRate: p.declaredRate, Channels: p.declaredChans}
+}
+
+// requestRebuildIfLate reports audio that showed up after the session was
+// already exposed video-only. The session is rebuilt once so the track is
+// carried for the rest of its life instead of being dropped; a stream whose
+// audio starts late otherwise stays mute for as long as it runs.
+func (p *audioPublisher) requestRebuildIfLate(handler *rtspStreamHandler) {
+	if !handler.ready() || p.rebuildAsked {
+		return
+	}
+	p.rebuildAsked = true
+	p.log.Infof("audio started late; rebuilding the RTSP session to carry it")
+	if p.onLateAudio != nil {
+		p.onLateAudio()
+	}
+}
+
+type mediaTimestamp struct {
+	Microseconds  uint64
+	Valid         bool
+	Authoritative bool
+}
+
+func (p *audioPublisher) ready() bool {
+	return p.media != nil && (p.aacEncoder != nil || p.g711Encoder != nil)
+}
+
+func (p *audioPublisher) mediaDescription() *description.Media {
+	return p.media
+}
+
+func (p *audioPublisher) awaitingStartupDecision(deadline time.Time) bool {
+	return !p.ready() && !p.unsupported && time.Now().Before(deadline)
+}
+
+func (p *audioPublisher) markUnsupported(reason string) {
+	if p.unsupported {
+		return
+	}
+	p.unsupported = true
+	p.log.Warnf("audio passthrough disabled: %s", reason)
+}
+
+func (p *audioPublisher) processAAC(data []byte, timestamp mediaTimestamp, handler *rtspStreamHandler, meta *streamMetadata, publish bool) error {
+	aus, cfg, err := media.ParseAACAccessUnits(data)
+	if err != nil {
+		p.markUnsupported(fmt.Sprintf("invalid AAC/ADTS payload: %v", err))
+		return nil
+	}
+
+	expectedTS, hasExpectedTS := rtpTimestampForMediaTime(timestamp, cfg.SampleRate)
+
+	if p.mismatchesDeclared(cfg.SampleRate, int(cfg.ChannelConfig)) {
+		p.log.Infof("audio is %d Hz/%d ch, not the %d Hz/%d ch carried over from the last run",
+			cfg.SampleRate, cfg.ChannelConfig, p.declaredRate, p.declaredChans)
+		p.dropDeclaration()
+	}
+
+	if !p.ready() {
+		audioFormat := &format.MPEG4Audio{
+			PayloadTyp:       97,
+			Config:           cfg,
+			SizeLength:       13,
+			IndexLength:      3,
+			IndexDeltaLength: 3,
+		}
+		encoder, err := audioFormat.CreateEncoder()
+		if err != nil {
+			return fmt.Errorf("create AAC RTP encoder: %w", err)
+		}
+
+		p.media = &description.Media{
+			Type:    description.MediaTypeAudio,
+			Control: "trackID=1",
+			Formats: []format.Format{audioFormat},
+		}
+		p.aacEncoder = encoder
+		p.declaredRate = cfg.SampleRate
+		p.declaredChans = int(cfg.ChannelConfig)
+		p.nextTimestamp = 0
+		if hasExpectedTS {
+			p.nextTimestamp = expectedTS
+		}
+		meta.setAudioAAC(cfg.SampleRate, int(cfg.ChannelConfig))
+
+		p.log.Debugf("audio configured codec=AAC sample_rate=%d channels=%d", cfg.SampleRate, cfg.ChannelConfig)
+		p.requestRebuildIfLate(handler)
+	}
+
+	if !handler.ready() {
+		return nil
+	}
+	if !publish {
+		return nil
+	}
+
+	pkts, err := p.aacEncoder.Encode(aus)
+	if err != nil {
+		return fmt.Errorf("encode AAC RTP: %w", err)
+	}
+
+	duration := uint32(len(aus)) * mpeg4audio.SamplesPerAccessUnit //#nosec G115
+	baseTimestamp := p.nextTimestamp
+	if hasExpectedTS && (timestamp.Authoritative || !p.anchored) {
+		baseTimestamp = expectedTS
+		p.anchored = true
+	}
+	baseTimestamp = p.timestampGuard.applyBaseToPackets(pkts, baseTimestamp, duration)
+	for _, pkt := range pkts {
+		pkt.Timestamp += baseTimestamp
+		handler.writePacket(p.media, pkt)
+	}
+	p.published = true
+
+	p.nextTimestamp = baseTimestamp + duration
+	return nil
+}
+
+func (p *audioPublisher) processADPCM(data []byte, timestamp mediaTimestamp, handler *rtspStreamHandler, meta *streamMetadata, publish bool) error {
+	if p.adpcmDecoder == nil {
+		p.adpcmDecoder = &codec.ADPCMDecoder{}
+	}
+
+	pcm := p.adpcmDecoder.Decode(data)
+	pcma := codec.EncodePCMA(pcm)
+
+	sampleRate := 8000 // Reolink usually sends ADPCM at 8kHz
+	channelCount := 1
+
+	expectedTS, hasExpectedTS := rtpTimestampForMediaTime(timestamp, sampleRate)
+
+	if !p.ready() {
+		audioFormat := &format.G711{
+			PayloadTyp:   8, // PCMA
+			MULaw:        false,
+			SampleRate:   sampleRate,
+			ChannelCount: channelCount,
+		}
+		encoder, err := audioFormat.CreateEncoder()
+		if err != nil {
+			return fmt.Errorf("create G711 RTP encoder: %w", err)
+		}
+
+		p.media = &description.Media{
+			Type:    description.MediaTypeAudio,
+			Control: "trackID=1",
+			Formats: []format.Format{audioFormat},
+		}
+		p.g711Encoder = encoder
+		p.declaredRate = sampleRate
+		p.declaredChans = channelCount
+		p.nextTimestamp = 0
+		if hasExpectedTS {
+			p.nextTimestamp = expectedTS
+		}
+		meta.setAudioG711(sampleRate, channelCount)
+
+		p.log.Debugf("audio configured codec=PCMA sample_rate=%d channels=%d", sampleRate, channelCount)
+		p.requestRebuildIfLate(handler)
+	}
+
+	if !handler.ready() {
+		return nil
+	}
+	if !publish {
+		return nil
+	}
+
+	pkts, err := p.g711Encoder.Encode(pcma)
+	if err != nil {
+		return fmt.Errorf("encode G711 RTP: %w", err)
+	}
+
+	duration := uint32(len(pcm)) //#nosec G115
+	baseTimestamp := p.nextTimestamp
+	if hasExpectedTS && (timestamp.Authoritative || !p.anchored) {
+		baseTimestamp = expectedTS
+		p.anchored = true
+	}
+	baseTimestamp = p.timestampGuard.applyBaseToPackets(pkts, baseTimestamp, duration)
+	for _, pkt := range pkts {
+		pkt.Timestamp += baseTimestamp
+		handler.writePacket(p.media, pkt)
+	}
+	p.published = true
+
+	p.nextTimestamp = baseTimestamp + duration
+	return nil
+}
+
+type streamMetadata struct {
+	mu sync.RWMutex
+
+	cameraName      string
+	name            string
+	path            string
+	width           uint32
+	height          uint32
+	fps             uint8
+	audioCodec      string
+	audioSampleRate int
+	audioChannels   int
+	videoCodec      string
+}
+
+type streamMetadataSnapshot struct {
+	Name            string
+	Path            string
+	Width           uint32
+	Height          uint32
+	FPS             uint8
+	AudioCodec      string
+	AudioSampleRate int
+	AudioChannels   int
+	VideoCodec      string
+}
+
+func (m *streamMetadata) setVideoInfo(width uint32, height uint32, fps uint8, codec string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.width = width
+	m.height = height
+	m.fps = fps
+	if codec != "" {
+		m.videoCodec = codec
+	}
+}
+
+func (m *streamMetadata) setVideoCodec(codec string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.videoCodec = codec
+}
+
+func (m *streamMetadata) setAudioAAC(sampleRate int, channels int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.audioCodec = "AAC"
+	m.audioSampleRate = sampleRate
+	m.audioChannels = channels
+}
+
+func (m *streamMetadata) setAudioG711(sampleRate int, channels int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.audioCodec = "PCMA"
+	m.audioSampleRate = sampleRate
+	m.audioChannels = channels
+}
+
+func (m *streamMetadata) snapshot() streamMetadataSnapshot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return streamMetadataSnapshot{
+		Name:            m.name,
+		Path:            m.path,
+		Width:           m.width,
+		Height:          m.height,
+		FPS:             m.fps,
+		AudioCodec:      m.audioCodec,
+		AudioSampleRate: m.audioSampleRate,
+		AudioChannels:   m.audioChannels,
+		VideoCodec:      m.videoCodec,
+	}
+}
+
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
+}
+
+func advertisedAuthority(address string, overrideHost string) string {
+	host := ""
+	port := ""
+
+	if parsedHost, parsedPort, err := net.SplitHostPort(address); err == nil {
+		host = parsedHost
+		port = parsedPort
+	} else if strings.HasPrefix(address, ":") {
+		port = strings.TrimPrefix(address, ":")
+	} else {
+		host = address
+	}
+
+	if overrideHost != "" {
+		host = overrideHost
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		if outbound := getOutboundIP(); outbound != "" {
+			host = outbound
+		} else {
+			host = "127.0.0.1"
+		}
+	}
+	if port == "" {
+		return host
+	}
+	return net.JoinHostPort(host, port)
+}
+
+func buildURL(scheme string, authority string, path string) string {
+	path = "/" + strings.TrimPrefix(path, "/")
+	return fmt.Sprintf("%s://%s%s", scheme, authority, path)
+}
+
+func samePath(got string, want string) bool {
+	got = strings.Trim(strings.TrimSpace(got), "/")
+	want = strings.Trim(strings.TrimSpace(want), "/")
+	return got == want
+}
+
+func isTwoWayPath(path string) bool {
+	return strings.HasSuffix(strings.ToLower(path), "_twoway")
+}
+
+func coalesce(next []byte, fallback []byte) []byte {
+	// A valid H264/H265 parameter set (SPS, PPS, VPS) is at least 4 bytes long.
+	// Reolink cameras often send truncated or empty NALUs (e.g. length 1)
+	// over UDP/TCP streams due to network jitter or bugs.
+	// If we cache a truncated SPS, FFmpeg fails to determine the stream's
+	// width/height, causing "unspecified size" errors.
+	if len(next) >= 4 {
+		return next
+	}
+	return fallback
+}
+
+func rtpTimestampForClock(microseconds uint64, clockRate int) uint32 {
+	seconds := microseconds / 1_000_000
+	rem := microseconds % 1_000_000
+	return uint32(seconds*uint64(clockRate) + (rem*uint64(clockRate))/1_000_000) //#nosec G115
+}
+
+func rtpTimestampForMediaTime(timestamp mediaTimestamp, clockRate int) (uint32, bool) {
+	if !timestamp.Valid {
+		return 0, false
+	}
+	return rtpTimestampForClock(timestamp.Microseconds, clockRate), true
+}

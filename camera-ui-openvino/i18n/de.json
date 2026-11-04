@@ -33,5 +33,8 @@
   "Обнаружение объектов": "Objekterkennung",
   "Модель, обводящая людей, транспорт и животных": "Das Modell, das Personen, Fahrzeuge und Tiere umreißt",
   "Сегментация": "Segmentierung",
-  "Модель сегментации для проверки": "Segmentierungsmodell zum Ausprobieren"
+  "Модель сегментации для проверки": "Segmentierungsmodell zum Ausprobieren",
+  "Поза людей": "Haltung von Personen",
+  "Определять, стоит, сидит или лежит человек, по рамкам людей обнаружения объектов. Ответ добавляется к событию признаком «поза».": "Erkennt anhand der Personenrahmen der Objekterkennung, ob eine Person steht, sitzt oder liegt. Die Antwort kommt als Merkmal „Haltung“ zum Ereignis.",
+  "Признаки": "Merkmale"
 }

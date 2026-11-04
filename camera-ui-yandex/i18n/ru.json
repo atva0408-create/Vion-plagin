@@ -36,7 +36,7 @@
   "Backlight": "Подсветка",
   "Keep warm": "Поддерживать тепло",
   "Child lock": "Защита от детей",
-  "Auto": "Авто",
+  "Auto": "Автоматически",
   "Cooling": "Охлаждение",
   "Drying": "Осушение",
   "Fan only": "Вентиляция",
@@ -125,5 +125,6 @@
   "Station": "Станция",
   "The station that speaks.": "Станция, которая скажет фразу.",
   "Phrase": "Фраза",
-  "What the station says.": "Что скажет станция."
+  "What the station says.": "Что скажет станция.",
+  "Id of the scenario, only when several have that name: the error of a call by the name lists them.": "Id сценария — только если это имя у нескольких: ошибка вызова по имени их перечислит."
 }

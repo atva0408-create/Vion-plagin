@@ -3,14 +3,14 @@ requires = ["setuptools>=80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "camera-ui-ml"
-version = "1.2.15"
-description = "Shared ML inference framework for camera.ui detection plugins (onnx, openvino, coreml, ncnn)"
-keywords = ["camera.ui", "python", "ml", "inference", "detection"]
+name = "vion-ml"
+version = "1.3.0"
+description = "The ML inference shared by the detection plugins of VION (ONNX, OpenVINO, CoreML, NCNN, Coral)"
+keywords = ["vion", "python", "ml", "inference", "detection"]
 readme = "README.md"
 license-files = ["LICENSE.md"]
 authors = [{ name = "seydx", email = "hi@seydx.dev" }]
-maintainers = [{ name = "seydx", email = "hi@seydx.dev" }]
+maintainers = [{ name = "VION", email = "hi@vionvision.tech" }]
 requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -21,18 +21,20 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
-dependencies = ["typing_extensions>=4.16.0", "camera-ui-sdk>=1.3.4", "numpy>=2.5.3", "pillow>=12.3.0", "aiohttp>=3.14.3"]
+# camera_ui_sdk is not a dependency: the server gives its plugins their own (vion-sdk in its Python environment, first in
+# a plugin's PYTHONPATH); named here, pip fetched camera-ui-sdk from the author's project on pypi.org at every client
+# the floors camera-ui-ml 1.2.15 asked for, which every ML plugin installs with (openvino-legacy pins numpy 2.1.3); pillow
+# 13.0.0 the fixed one. Floors of a version no plugin pins made pip refuse to install the plugin at all.
+dependencies = ["typing_extensions>=4.15.0", "numpy>=2.0", "pillow>=13.0.0", "aiohttp>=3.12"]
 
 [project.optional-dependencies]
 test = ["pytest>=9.1.1"]
 clip = ["transformers>=5.17.0"]
 
 [project.urls]
-Homepage = "https://github.com/cameraui/ml"
-Documentation = "https://github.com/cameraui/ml"
-Repository = "https://github.com/cameraui/ml"
-"Bug Tracker" = "https://github.com/cameraui/ml/issues"
-Changelog = "https://github.com/cameraui/ml/blob/main/CHANGELOG.md"
+Homepage = "https://vionvision.tech"
+Repository = "https://github.com/atva0408-create/Vion-plagin/tree/main/packages/camera_ui_ml"
+"Bug Tracker" = "https://github.com/atva0408-create/Vion-plagin/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

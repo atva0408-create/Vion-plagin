@@ -1,0 +1,75 @@
+:root {
+  --cui-primary-50:  #fdf4f6;
+  --cui-primary-100: #f7ccd4;
+  --cui-primary-200: #f1a3b2;
+  --cui-primary-300: #eb7b90;
+  --cui-primary-400: #e5526e;
+  --cui-primary-500: #df2a4c;
+  --cui-primary-600: #be2441;
+  --cui-primary-700: #9c1d35;
+  --cui-primary-800: #7b172a;
+  --cui-primary-900: #59111e;
+  --cui-primary-950: #380b13;
+
+  /* Dark surface — mirror ui/src/plugins/preset.ts */
+  --cui-surface-900: #1a1a1a;
+  --cui-surface-925: #161616;
+  --cui-surface-950: #101010;
+  --cui-surface-1000: #0d0d0d;
+}
+
+/* Light mode — white body, pink accents, dark header */
+[data-md-color-scheme="default"][data-md-color-primary="custom"] {
+  --md-primary-fg-color:        var(--cui-surface-900);
+  --md-primary-fg-color--light: var(--cui-surface-900);
+  --md-primary-fg-color--dark:  var(--cui-surface-950);
+  --md-primary-bg-color:        #ffffff;
+  --md-typeset-a-color:         var(--cui-primary-600);
+}
+
+[data-md-color-scheme="default"][data-md-color-accent="custom"] {
+  --md-accent-fg-color:         var(--cui-primary-600);
+  --md-accent-fg-color--transparent: rgba(190, 36, 65, 0.10);
+  --md-accent-bg-color:         #ffffff;
+}
+
+/* Dark mode — neutral grey body, dark header */
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color:        var(--cui-surface-950);
+  --md-primary-fg-color--light: var(--cui-surface-900);
+  --md-primary-fg-color--dark:  var(--cui-surface-1000);
+  --md-primary-bg-color:        #ffffff;
+  --md-typeset-a-color:         var(--cui-primary-300);
+  --md-default-bg-color:        var(--cui-surface-900);
+  --md-default-fg-color:        rgba(255, 255, 255, 0.92);
+  --md-default-fg-color--light: rgba(255, 255, 255, 0.66);
+  --md-default-fg-color--lighter: rgba(255, 255, 255, 0.42);
+  --md-default-fg-color--lightest: rgba(255, 255, 255, 0.12);
+  --md-code-bg-color:           var(--cui-surface-925);
+  --md-code-fg-color:           rgba(255, 255, 255, 0.86);
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color:         var(--cui-primary-400);
+  --md-accent-fg-color--transparent: rgba(229, 82, 110, 0.12);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-footer-bg-color:         var(--cui-surface-950);
+  --md-footer-bg-color--dark:   var(--cui-surface-1000);
+}
+
+/* Tabs sit under the header — keep them aligned */
+.md-tabs {
+  background-color: var(--md-primary-fg-color);
+}
+
+/* Active tab indicator + active nav link in brand pink */
+.md-tabs__link--active,
+.md-nav__link--active {
+  color: var(--cui-primary-400) !important;
+}
+
+.md-tabs__item--active .md-tabs__link::after {
+  background-color: var(--cui-primary-500);
+}

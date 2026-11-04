@@ -1,3 +1,13 @@
+## [1.7.9]
+
+- Der gemeinsame ML-Code ist VIONs eigenes Paket vion-ml 1.3.0 aus VIONs Paketindex: seine Korrekturen (die alte Version eines Moduls vergessen, „Zurücksetzen“) erreichen jetzt die Installation; nichts davon kommt mehr aus den Paketen des Autors auf pypi.org
+
+## [1.7.8]
+
+- Bilder werden nur als JPEG, PNG oder WebP geöffnet: ein Gesichtsfoto oder ein Suchbild in einem anderen Format wird abgelehnt, die Decoder anderer Formate werden nie erreicht
+- Pillow 13.0.0: die bekannten Schwachstellen von 12.3.0 sind behoben
+- Ein Wechsel des Execution Providers oder ein erneutes Laden der Modelle lädt auch das Modell der Gesichtsmerkmale neu: es lief bis zum Neustart des Plugins mit der alten Einstellung weiter
+
 ## [1.7.7]
 
 - Der Name wird VION geschrieben

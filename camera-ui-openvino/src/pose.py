@@ -14,6 +14,7 @@ Kept identical in camera-ui-onnx and camera-ui-openvino (the legacy plugins copy
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 from camera_ui_ml.backend import InputSpec
@@ -38,7 +39,7 @@ KNEES = (13, 14)
 POSTURES = ("стоит", "сидит", "лежит")
 
 
-def fit_to_input(rgb: np.ndarray) -> np.ndarray:
+def fit_to_input(rgb: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     """The crop fitted whole into 192x256, centred, black bars around: no stretching of the person."""
     height, width = rgb.shape[:2]
     scale = min(INPUT_WIDTH / width, INPUT_HEIGHT / height)
@@ -54,7 +55,7 @@ def fit_to_input(rgb: np.ndarray) -> np.ndarray:
     return canvas
 
 
-def decode(simcc_x: np.ndarray, simcc_y: np.ndarray) -> list[tuple[float, float, float]]:
+def decode(simcc_x: np.ndarray[Any, Any], simcc_y: np.ndarray[Any, Any]) -> list[tuple[float, float, float]]:
     """The keypoints (x, y in the model's input, score) of one person from the SimCC outputs."""
     xs = np.asarray(simcc_x).reshape(-1, np.asarray(simcc_x).shape[-1])
     ys = np.asarray(simcc_y).reshape(-1, np.asarray(simcc_y).shape[-1])
@@ -123,7 +124,7 @@ class PoseEstimator(BaseDetector):
 
     name = "pose model"
 
-    async def estimate(self, rgb: np.ndarray) -> tuple[str, float] | None:
+    async def estimate(self, rgb: np.ndarray[Any, Any]) -> tuple[str, float] | None:
         if not self._ready() or rgb.size == 0:
             return None
         assert self.backend is not None
