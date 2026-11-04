@@ -63,12 +63,16 @@ from defaults import (
     OCR_PAD_CHAR,
     resolve_model,
 )
+from image_formats import limit_image_formats
 from model_manager import NcnnModelManager
 from sensors.face_embedder_sensor import NCNNFaceEmbedderSensor
 from sensors.face_sensor import NCNNFaceSensor
 from sensors.lpd_sensor import NCNNLPDSensor
 from sensors.object_sensor import NCNNObjectSensor
 from vulkan import gpu_count, gpu_devices
+
+# before a picture is opened (image_formats.py)
+limit_image_formats()
 
 
 class NCNNPlugin(

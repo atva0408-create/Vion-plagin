@@ -92,6 +92,7 @@ from defaults import (
     resolve_model,
 )
 from gpu_fault import LIMIT as GPU_FAULT_LIMIT
+from image_formats import limit_image_formats
 from model_manager import OnnxModelManager, ProviderList
 from modules import installed_modules, is_module, usable_choice
 from pose import POSE_MODEL, PoseEstimator
@@ -111,6 +112,9 @@ from textfind import CLIP_TRANSLATE_WAIT_S, OWL_MODEL, TextFinder, Translators, 
 from textfind import IDLE_S as TEXT_FINDER_IDLE_S
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
+
+# before a picture is opened (image_formats.py)
+limit_image_formats()
 
 TRYOUT_THRESHOLD_MIN = 0.05
 

@@ -72,12 +72,16 @@ from defaults import (
     clip_text_for,
     resolve_model,
 )
+from image_formats import limit_image_formats
 from model_manager import CoreMlModelManager
 from sensors.clip_sensor import CoreMLClipSensor
 from sensors.face_embedder_sensor import CoreMLFaceEmbedderSensor
 from sensors.face_sensor import CoreMLFaceSensor
 from sensors.lpd_sensor import CoreMLLPDSensor
 from sensors.object_sensor import CoreMLObjectSensor
+
+# before a picture is opened (image_formats.py)
+limit_image_formats()
 
 
 class CoreMLPlugin(
