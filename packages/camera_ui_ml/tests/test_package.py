@@ -37,3 +37,23 @@ def test_every_ml_plugin_installs_this_version_and_not_camera_ui_ml() -> None:
         requirements = (PLUGINS / f"camera-ui-{plugin}" / "requirements.txt").read_text(encoding="utf-8")
         assert f"vion-ml=={version}" in requirements.splitlines(), plugin
         assert not re.search(r"^camera[-_]ui[-_]ml\b", requirements, re.I | re.M), plugin
+
+
+def _version(text: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", text)[:3])
+
+
+def test_every_ml_plugin_s_pins_meet_the_floors_of_the_package() -> None:
+    """A floor above what a plugin pins (numpy>=2.5.3 against numpy==2.4.6) left pip no way to install the plugin."""
+    floors = {}
+    for dependency in project()["dependencies"]:  # type: ignore[attr-defined]
+        name, floor = re.fullmatch(r"([A-Za-z0-9_.-]+)>=([\d.]+)", str(dependency)).groups()  # type: ignore[union-attr]
+        floors[name.lower().replace("_", "-")] = _version(floor)
+    for plugin in ML_PLUGINS:
+        requirements = (PLUGINS / f"camera-ui-{plugin}" / "requirements.txt").read_text(encoding="utf-8")
+        for name, pinned in re.findall(r"^([A-Za-z0-9_.-]+)==([\d.]+)", requirements, re.M):
+            floor = floors.get(name.lower().replace("_", "-"))
+            if floor is not None:
+                assert _version(pinned) >= floor, (
+                    f"camera-ui-{plugin}: {name}=={pinned} under the floor {floor}"
+                )
