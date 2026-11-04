@@ -1,3 +1,7 @@
+## [1.5.9]
+
+- Der gemeinsame ML-Code ist VIONs eigenes Paket vion-ml 1.3.0 aus VIONs Paketindex: seine Korrekturen (die alte Version eines Moduls vergessen, „Zurücksetzen“) erreichen jetzt die Installation; nichts davon kommt mehr aus den Paketen des Autors auf pypi.org
+
 ## [1.5.8]
 
 - Bilder werden nur als JPEG, PNG oder WebP geöffnet: ein Gesichtsfoto oder ein Suchbild in einem anderen Format wird abgelehnt, die Decoder anderer Formate werden nie erreicht

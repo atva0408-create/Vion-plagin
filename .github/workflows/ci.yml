@@ -210,8 +210,13 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      # vion-ml is served by VION's own index, not pypi.org: the ML plugins are checked against the copy in this
+      # repository (packages/camera_ui_ml), the very version their requirements pin
       - name: Install deps (lint/type tools + plugin requirements)
-        run: pip install ruff mypy -r ${{ matrix.plugin }}/requirements.txt
+        run: |
+          ours=""
+          if grep -qE '^vion-ml==' ${{ matrix.plugin }}/requirements.txt; then ours=./packages/camera_ui_ml; fi
+          pip install ruff mypy $ours -r ${{ matrix.plugin }}/requirements.txt
 
       - name: Format (ruff)
         run: cd ${{ matrix.plugin }} && ruff format
