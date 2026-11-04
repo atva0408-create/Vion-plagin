@@ -52,14 +52,17 @@ def model_file(model_name: str) -> str | None:
     return f"{SAM_MODEL}/vision_encoder.onnx" if model_name == SAM_MODEL else None
 
 
-def pixels(image: Image.Image) -> np.ndarray:
+def pixels(image: Image.Image) -> np.ndarray[Any, Any]:
     """The picture as the encoder takes it: 1024x1024 (stretched, as the model was trained), normalized, [1, 3, H, W]."""
     rgb = image.convert("RGB").resize((SIDE, SIDE), Image.Resampling.BILINEAR)
     x = np.asarray(rgb, dtype=np.float32).transpose(2, 0, 1) / 255.0
-    return ((x - MEAN) / STD)[None].astype(np.float32)
+    normalized: np.ndarray[Any, Any] = ((x - MEAN) / STD)[None].astype(np.float32)
+    return normalized
 
 
-def prompt_inputs(prompt: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def prompt_inputs(
+    prompt: dict[str, Any],
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], np.ndarray[Any, Any]]:
     """A box and points given in shares of the picture, in the encoder's 1024 x 1024: points [1, 1, n, 2] with their
     labels (1 the thing, 0 not it), boxes [1, 1, 4] corner to corner; a box alone gets one point that is none."""
     points = [
@@ -80,7 +83,7 @@ def prompt_inputs(prompt: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.nd
     return coords, labels, boxes
 
 
-def outline(logits: np.ndarray, size: tuple[int, int]) -> dict[str, Any] | None:
+def outline(logits: np.ndarray[Any, Any], size: tuple[int, int]) -> dict[str, Any] | None:
     """The outline of one low resolution mask (logits) on a picture of `size`: the box it covers in shares, the mask
     over that box (0-255, more than 127 the thing), its share of the picture; nothing when the mask is empty."""
     width, height = size
@@ -104,14 +107,15 @@ def outline(logits: np.ndarray, size: tuple[int, int]) -> dict[str, Any] | None:
     }
 
 
-Run = Callable[[dict[str, np.ndarray]], list[np.ndarray]]
+Run = Callable[[dict[str, np.ndarray[Any, Any]]], list[np.ndarray[Any, Any]]]
 
 
 def runner(path: str) -> Run:
     """A model on the CPU as a function of its inputs by name to its outputs in its order: ONNX Runtime when the plugin
     has it, else OpenVINO (whose compiled model names two of the encoder's outputs by inner tensors: by order, then)."""
     try:
-        import onnxruntime as ort
+        # the OpenVINO plugins do not install ONNX Runtime, nor the ONNX ones OpenVINO: one of the two is missing
+        import onnxruntime as ort  # type: ignore[import-not-found]
     except ImportError:
         ort = None
     # one kind of separator: OpenVINO 2024.6 (OpenVINO Legacy) found no external data beside a path of both
@@ -125,7 +129,7 @@ def runner(path: str) -> Run:
         options.enable_cpu_mem_arena = False
         session = ort.InferenceSession(path, options, providers=["CPUExecutionProvider"])
         return lambda feeds: list(session.run(None, feeds))
-    import openvino as ov
+    import openvino as ov  # type: ignore[import-not-found]
 
     compiled = ov.Core().compile_model(path, "CPU", {"INFERENCE_NUM_THREADS": THREADS})
     return lambda feeds: [np.asarray(value) for value in compiled(feeds).values()]
