@@ -1,0 +1,1159 @@
+import { EventEmitter } from 'node:events'
+import type {
+  AudioEventData,
+  CreatePullPointOptions,
+  DetectionEventData,
+  EventCategory,
+  EventLoopOptions,
+  EventProperties,
+  EventServiceCapabilities,
+  MotionEventData,
+  NotificationMessage,
+  ParsedTopic,
+  PullMessagesOptions,
+  PullMessagesResult,
+  PullPointSubscription
+} from './interfaces/events.types.js'
+import type { Onvif } from './onvif.js'
+import { linerase } from './utils/xml.js'
+
+// Re-export types for consumers
+export type {
+  AudioEventData,
+  CreatePullPointOptions,
+  DetectionEventData,
+  EventCategory,
+  EventLoopOptions,
+  EventProperties,
+  EventServiceCapabilities,
+  MotionEventData,
+  NotificationMessage,
+  ParsedTopic,
+  PullMessagesOptions,
+  PullMessagesResult,
+  PullPointSubscription
+}
+
+/** Error codes that warrant automatic reconnection */
+const RETRY_ERROR_CODES = [
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+  // undici: dropped keep-alive sockets and timeouts ("other side closed"),
+  // the subscription is usually still alive, tearing it down churns the camera
+  'UND_ERR_SOCKET',
+  'UND_ERR_CLOSED',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT'
+]
+
+/** Minimum delay before retrying after any event-loop error */
+const MIN_RECONNECT_MS = 1000
+
+/** Maximum reconnection delay in milliseconds (2 minutes) */
+const MAX_RECONNECT_MS = 2 * 60 * 1000
+
+/** Default termination time for subscriptions */
+// long window so the loop rarely needs a renew round trip between pulls;
+// devices are free to grant less, the granted time drives the renew logic
+const DEFAULT_TERMINATION_TIME = 'PT10M'
+
+// retry window for devices that reject a long InitialTerminationTime outright
+const FALLBACK_TERMINATION_TIME = 'PT2M'
+
+// short enough to answer before aggressive idle cutoffs; events still arrive
+// instantly, the timeout only caps the idle wait
+const DEFAULT_PULL_TIMEOUT = 'PT15S'
+
+// retry timeout for devices whose http server kills any request it hasn't
+// answered yet: tapo drops the connection ~10s after the request no matter the
+// pull timeout, so only a sub-10s poll ever gets a response (C210: PT5S answers
+// after ~6s, PT15S dies with "other side closed")
+const FALLBACK_PULL_TIMEOUT = 'PT5S'
+
+// must exceed the pull timeout, otherwise the subscription can expire mid-poll
+const RENEW_MARGIN_MS = 90_000
+
+/** Default message limit per pull */
+const DEFAULT_MESSAGE_LIMIT = 10
+
+/**
+ * Convert various date formats to Date object
+ *
+ * @param value - The value to convert to a Date object
+ */
+function toDate(value: unknown): Date {
+  if (value instanceof Date) {
+    return value
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    return new Date(value)
+  }
+  // Handle linerase converted dates (they come as Date objects already)
+  return new Date()
+}
+
+/**
+ * ONVIF Events Service
+ *
+ * Provides access to camera events via PullPoint Subscription.
+ * Supports motion detection, tamper, audio, and other ONVIF event types.
+ *
+ * @example
+ * ```typescript
+ * const device = new Onvif({ hostname: '192.168.1.100', username: 'admin', password: 'admin' })
+ * await device.connect()
+ *
+ * // Listen for events
+ * device.events.on('event', (message) => {
+ *   console.log('Event received:', message.topic._)
+ * })
+ *
+ * // Start event loop
+ * device.events.startEventLoop()
+ *
+ * // Later, stop the event loop
+ * device.events.stopEventLoop()
+ * ```
+ */
+export class Events extends EventEmitter {
+  private readonly onvif: Onvif
+  private subscription: PullPointSubscription | undefined
+  private terminationTime: Date | undefined
+  private shouldPoll = false
+  private reconnectMs = 10
+  private messageLimit = DEFAULT_MESSAGE_LIMIT
+  private subscribeTerminationTime = DEFAULT_TERMINATION_TIME
+  private pullTimeout = DEFAULT_PULL_TIMEOUT
+  private eventProperties: EventProperties | undefined
+
+  /** Set of observed event categories during event loop */
+  private observedCategories = new Set<EventCategory>()
+
+  constructor(onvif: Onvif) {
+    super()
+    this.onvif = onvif
+  }
+
+  /**
+   * Get event service capabilities
+   */
+  async getServiceCapabilities(): Promise<EventServiceCapabilities> {
+    const [data] = await this.onvif.request<{ getServiceCapabilitiesResponse?: { capabilities?: unknown } }>({
+      service: 'events',
+      body: '<GetServiceCapabilities xmlns="http://www.onvif.org/ver10/events/wsdl"/>'
+    })
+
+    const capabilities = data.getServiceCapabilitiesResponse?.capabilities
+    if (!capabilities) {
+      return {}
+    }
+
+    // Capabilities come as attributes, need to handle them properly
+    const result = linerase(capabilities)
+    return result as EventServiceCapabilities
+  }
+
+  /**
+   * Get event properties including supported topics
+   */
+  async getEventProperties(): Promise<EventProperties> {
+    const [data] = await this.onvif.request<{ getEventPropertiesResponse?: unknown }>({
+      service: 'events',
+      body: '<GetEventProperties xmlns="http://www.onvif.org/ver10/events/wsdl"/>'
+    })
+
+    this.eventProperties = linerase(data.getEventPropertiesResponse) as EventProperties
+    return this.eventProperties
+  }
+
+  /**
+   * Create a PullPoint subscription for receiving events
+   *
+   * @param options - Options for creating the subscription
+   */
+  async createPullPointSubscription(options: CreatePullPointOptions = {}): Promise<PullPointSubscription> {
+    const terminationTime = options.initialTerminationTime ?? DEFAULT_TERMINATION_TIME
+
+    let filterXml = ''
+    if (options.filter) {
+      filterXml = `<Filter>${typeof options.filter === 'string' ? options.filter : ''}</Filter>`
+    }
+
+    const [data] = await this.onvif.request<{ createPullPointSubscriptionResponse?: unknown }>({
+      service: 'events',
+      body: `
+        <CreatePullPointSubscription xmlns="http://www.onvif.org/ver10/events/wsdl">
+          ${filterXml}
+          <InitialTerminationTime>${terminationTime}</InitialTerminationTime>
+        </CreatePullPointSubscription>
+      `.trim()
+    })
+
+    const response = data.createPullPointSubscriptionResponse
+    if (!response) {
+      throw new Error('Invalid CreatePullPointSubscription response')
+    }
+
+    // Response can be array or object depending on camera
+    const responseObj = Array.isArray(response) ? response[0] : response
+    const raw = linerase(responseObj) as {
+      subscriptionReference?: { address?: string; referenceParameters?: { subscriptionId?: string } }
+      currentTime?: unknown
+      terminationTime?: unknown
+    }
+
+    // Parse the subscription reference address
+    const address = typeof raw.subscriptionReference?.address === 'string' ? raw.subscriptionReference.address : ''
+
+    const subscription: PullPointSubscription = {
+      subscriptionReference: {
+        address: this.onvif.parseUrl(address),
+        referenceParameters: raw.subscriptionReference?.referenceParameters
+      },
+      currentTime: toDate(raw.currentTime),
+      terminationTime: toDate(raw.terminationTime)
+    }
+
+    this.subscription = subscription
+    this.terminationTime = this.calculateTerminationTime(subscription)
+    return subscription
+  }
+
+  /**
+   * Pull messages from the subscription
+   *
+   * @param options - Options for pulling messages
+   */
+  async pullMessages(options: PullMessagesOptions = {}): Promise<PullMessagesResult> {
+    if (!this.subscription) {
+      throw new Error('No active subscription. Call createPullPointSubscription first.')
+    }
+
+    const timeout = options.timeout ?? this.pullTimeout
+    const messageLimit = options.messageLimit ?? this.messageLimit
+
+    const subscriptionId = this.subscription.subscriptionReference.referenceParameters?.subscriptionId
+    const urlAddress = this.subscription.subscriptionReference.address
+
+    const body = this.buildSubscriptionBody(urlAddress, subscriptionId, `
+      <PullMessages xmlns="http://www.onvif.org/ver10/events/wsdl">
+        <Timeout>${timeout}</Timeout>
+        <MessageLimit>${messageLimit}</MessageLimit>
+      </PullMessages>
+    `)
+
+    const [data] = await this.onvif.request<{ pullMessagesResponse?: unknown }>({
+      url: urlAddress.href,
+      raw: true,
+      body
+    })
+
+    const response = data.pullMessagesResponse
+    if (!response) {
+      throw new Error('Invalid PullMessages response')
+    }
+
+    // Response can be array or object depending on camera
+    const responseObj = Array.isArray(response) ? response[0] : response
+    const raw = linerase(responseObj) as {
+      currentTime?: unknown
+      terminationTime?: unknown
+      notificationMessage?: NotificationMessage | NotificationMessage[]
+    }
+
+    // Normalize notification messages to array
+    let notifications: NotificationMessage[] = []
+    if (raw.notificationMessage) {
+      notifications = Array.isArray(raw.notificationMessage) ? raw.notificationMessage : [raw.notificationMessage]
+    }
+
+    // Track observed categories from pulled messages
+    for (const message of notifications) {
+      const topic = message.topic?._
+      if (topic) {
+        const category = categorizeEvent(topic)
+        if (category !== 'unknown') {
+          this.observedCategories.add(category)
+        }
+      }
+    }
+
+    return {
+      currentTime: toDate(raw.currentTime),
+      terminationTime: toDate(raw.terminationTime),
+      notificationMessage: notifications
+    }
+  }
+
+  /**
+   * Renew the subscription
+   */
+  async renew(): Promise<{ currentTime: Date; terminationTime: Date }> {
+    if (!this.subscription) {
+      throw new Error('No active subscription. Call createPullPointSubscription first.')
+    }
+
+    const subscriptionId = this.subscription.subscriptionReference.referenceParameters?.subscriptionId
+    const urlAddress = this.subscription.subscriptionReference.address
+
+    const body = this.buildSubscriptionBody(urlAddress, subscriptionId, `
+      <Renew xmlns="http://docs.oasis-open.org/wsn/b-2">
+        <TerminationTime>${this.subscribeTerminationTime}</TerminationTime>
+      </Renew>
+    `)
+
+    const [data] = await this.onvif.request<{ renewResponse?: unknown }>({
+      url: urlAddress.href,
+      raw: true,
+      body
+    })
+
+    const raw = linerase(data.renewResponse) as { currentTime?: unknown; terminationTime?: unknown }
+
+    return {
+      currentTime: toDate(raw.currentTime),
+      terminationTime: toDate(raw.terminationTime)
+    }
+  }
+
+  /**
+   * Unsubscribe from events
+   */
+  async unsubscribe(): Promise<void> {
+    if (!this.subscription) {
+      return
+    }
+
+    const subscriptionId = this.subscription.subscriptionReference.referenceParameters?.subscriptionId
+    const urlAddress = this.subscription.subscriptionReference.address
+
+    try {
+      const body = this.buildSubscriptionBody(urlAddress, subscriptionId, `
+        <Unsubscribe xmlns="http://docs.oasis-open.org/wsn/b-2"/>
+      `)
+
+      await this.onvif.request({
+        url: urlAddress.href,
+        raw: true,
+        body
+      })
+    } catch {
+      // Ignore unsubscribe errors
+    } finally {
+      this.subscription = undefined
+      this.terminationTime = undefined
+    }
+  }
+
+  /**
+   * Start the event polling loop
+   *
+   * @param options - Options for the event loop
+   */
+  startEventLoop(options: EventLoopOptions = {}): void {
+    if (this.shouldPoll) {
+      return // Already running
+    }
+
+    this.shouldPoll = true
+    this.messageLimit = options.messageLimit ?? DEFAULT_MESSAGE_LIMIT
+    void this.runEventLoop()
+  }
+
+  /**
+   * Stop the event polling loop
+   */
+  stopEventLoop(): void {
+    this.shouldPoll = false
+    // Unsubscribe in background
+    void this.unsubscribe()
+  }
+
+  /**
+   * Check if event loop is running
+   */
+  get isRunning(): boolean {
+    return this.shouldPoll
+  }
+
+  /**
+   * Test if the camera actually supports PullPoint events.
+   * Some cameras advertise event support but fail when trying to pull.
+   * Call this before starting the event loop to verify support.
+   *
+   * @returns true if events are supported and working, false otherwise
+   */
+  async testEventSupport(): Promise<boolean> {
+    try {
+      // Try to create a subscription and pull once with short timeout
+      await this.createPullPointSubscription()
+      await this.pullMessages({ timeout: 'PT1S', messageLimit: 1 })
+      await this.unsubscribe()
+      return true
+    } catch {
+      // Cleanup subscription if it was created
+      try {
+        await this.unsubscribe()
+      } catch {
+        // Ignore cleanup errors
+      }
+      return false
+    }
+  }
+
+  /**
+   * Get event categories that have been observed (actually received)
+   * More reliable than TopicSet-based detection for cameras that don't advertise all capabilities
+   */
+  getObservedCategories(): EventCategory[] {
+    return Array.from(this.observedCategories)
+  }
+
+  /**
+   * Clear observed categories (e.g., when reconnecting or resetting)
+   */
+  clearObservedCategories(): void {
+    this.observedCategories.clear()
+  }
+
+  /**
+   * Check if a specific category has been observed
+   *
+   * @param category - The event category to check
+   */
+  hasObservedCategory(category: EventCategory): boolean {
+    return this.observedCategories.has(category)
+  }
+
+  /**
+   * Get current subscription (if any)
+   */
+  get currentSubscription(): PullPointSubscription | undefined {
+    return this.subscription
+  }
+
+  // -------------------- Private Methods --------------------
+
+  /**
+   * Main event loop using async/await
+   */
+  private async runEventLoop(): Promise<void> {
+    while (this.shouldPoll) {
+      try {
+        // Check if we need to create/renew subscription
+        if (!this.subscription || !this.terminationTime || Date.now() > this.terminationTime.getTime()) {
+          try {
+            await this.createPullPointSubscription({ initialTerminationTime: this.subscribeTerminationTime })
+          } catch (error) {
+            if (this.subscribeTerminationTime !== FALLBACK_TERMINATION_TIME) {
+              this.subscribeTerminationTime = FALLBACK_TERMINATION_TIME
+              await this.createPullPointSubscription({ initialTerminationTime: this.subscribeTerminationTime })
+            } else {
+              throw error
+            }
+          }
+          this.reconnectMs = 10
+          // a healthy loop resubscribes once at start and then never again;
+          // consumers can watch this to spot subscription churn (each new
+          // subscription re-emits Initialized property states)
+          this.emit('resubscribed')
+        }
+
+        // Pull messages
+        let result: PullMessagesResult
+        try {
+          result = await this.pullMessages({ messageLimit: this.messageLimit })
+        } catch (error) {
+          // the http client already retried once, so a surfaced socket error
+          // means two dead polls in a row: assume the device kills unanswered
+          // requests early and poll shorter from now on
+          if (this.pullTimeout !== FALLBACK_PULL_TIMEOUT && this.isRetryableError(error)) {
+            this.pullTimeout = FALLBACK_PULL_TIMEOUT
+            this.emit('pulltimeoutfallback', FALLBACK_PULL_TIMEOUT)
+          }
+          throw error
+        }
+        this.reconnectMs = 10
+        this.emit('pull', result.notificationMessage?.length ?? 0)
+
+        // Emit events and track observed categories
+        if (result.notificationMessage && result.notificationMessage.length > 0) {
+          for (const message of result.notificationMessage) {
+            // Track observed category
+            const topic = message.topic?._
+            if (topic) {
+              const category = categorizeEvent(topic)
+              if (category !== 'unknown') {
+                this.observedCategories.add(category)
+              }
+            }
+
+            this.emit('event', message)
+          }
+        }
+
+        // Update termination time
+        this.terminationTime = this.calculateTerminationTime(result)
+
+        // renew only when the window runs short: state-based cameras (thingino)
+        // collapse an on/off pulse that falls between two pulls into a single
+        // stale state, and a renew round trip after every pull is exactly such
+        // a gap. During event bursts the pulls return fast, termination stays
+        // far out and the loop goes straight back to pulling.
+        if (this.terminationTime.getTime() - Date.now() < RENEW_MARGIN_MS) {
+          try {
+            const renewResult = await this.renew()
+            this.terminationTime = this.calculateTerminationTime(renewResult)
+          } catch (renewError) {
+            // renew failure is not fatal (subscription may still be valid) but
+            // consumers need to see it: some cameras tear the subscription down
+            // on a failed renew and every later pull dies silently
+            this.emit('renewfailed', renewError)
+          }
+        }
+      } catch (error) {
+        this.emit('error', error)
+
+        if (!this.isRetryableError(error)) {
+          // subscription is likely dead (e.g. HTTP 400 on pull), drop it so
+          // the next iteration resubscribes
+          try {
+            await this.unsubscribe()
+          } catch {
+            // Ignore
+          }
+        }
+
+        // always back off: a delay-free retry loop hammers embedded onvif
+        // daemons until discovery and ptz stop answering camera-wide
+        const delay = Math.max(this.reconnectMs, MIN_RECONNECT_MS)
+        await this.sleep(delay)
+        this.reconnectMs = Math.min(delay * 1.5, MAX_RECONNECT_MS)
+      }
+    }
+  }
+
+  /**
+   * Sleep helper
+   *
+   * @param ms - Milliseconds to sleep
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Check if error is retryable
+   *
+   * @param error - The error object to check
+   */
+  private isRetryableError(error: unknown): boolean {
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      const code = (error as { code: string }).code
+      return RETRY_ERROR_CODES.includes(code)
+    }
+    return false
+  }
+
+  /**
+   * Calculate local termination time accounting for clock drift
+   *
+   * @param response - The response containing currentTime and terminationTime
+   */
+  private calculateTerminationTime(response: { currentTime: Date; terminationTime: Date }): Date {
+    // some cameras omit or garble these dates; a crash here kills the loop
+    // iteration, forces a resubscribe on every cycle and drops real Changed
+    // events into the gaps while Initialized dumps spam the consumer
+    const termination = response.terminationTime instanceof Date ? response.terminationTime.getTime() : NaN
+    if (Number.isNaN(termination)) {
+      return new Date(Date.now() + 60_000)
+    }
+    const current = response.currentTime instanceof Date ? response.currentTime.getTime() : NaN
+    const serverOffset = Number.isNaN(current) ? 0 : current - Date.now()
+    return new Date(termination - serverOffset)
+  }
+
+  /**
+   * Build SOAP envelope for subscription-related operations
+   *
+   * @param urlAddress - The URL address for the subscription
+   * @param subscriptionId - The subscription ID (if any)
+   * @param bodyContent - The body content XML
+   */
+  private buildSubscriptionBody(urlAddress: URL, subscriptionId: string | undefined, bodyContent: string): string {
+    // Build security header if credentials are available
+    let securitySection = ''
+    if (this.onvif.username && this.onvif.password) {
+      const digest = this.onvif.passwordDigest()
+      securitySection = `
+        <Security s:mustUnderstand="1" xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+          <UsernameToken>
+            <Username>${this.onvif.username}</Username>
+            <Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest.passDigest}</Password>
+            <Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">${digest.nonce}</Nonce>
+            <Created xmlns="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">${digest.timestamp}</Created>
+          </UsernameToken>
+        </Security>`
+    }
+
+    // Build addressing header
+    let addressingContent: string
+    if (!subscriptionId) {
+      addressingContent = `<a:To>${urlAddress.href}</a:To>`
+    } else {
+      // Axis cameras use subscription ID in reference parameters
+      addressingContent = `<a:To mustUnderstand="1">${urlAddress.href}</a:To>
+        <SubscriptionId xmlns="http://www.axis.com/2009/event" a:IsReferenceParameter="true">${subscriptionId}</SubscriptionId>`
+    }
+
+    return `
+      <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://www.w3.org/2005/08/addressing">
+        <s:Header>
+          ${securitySection}
+          ${addressingContent}
+        </s:Header>
+        <s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+          ${bodyContent}
+        </s:Body>
+      </s:Envelope>
+    `.trim()
+  }
+}
+
+// -------------------- Utility Functions --------------------
+
+/**
+ * Parse an ONVIF event topic string into structured data
+ *
+ * @param topic - The event topic string
+ */
+export function parseEventTopic(topic: string): ParsedTopic {
+  const parts = topic.split('/')
+  const firstPart = parts[0] ?? ''
+  const colonIndex = firstPart.indexOf(':')
+
+  const namespace = colonIndex > 0 ? firstPart.substring(0, colonIndex) : ''
+  const firstPartWithoutNs = colonIndex > 0 ? firstPart.substring(colonIndex + 1) : firstPart
+
+  const cleanParts = [firstPartWithoutNs, ...parts.slice(1)].map((p) => {
+    // Remove namespace prefix from each part
+    const idx = p.indexOf(':')
+    return idx > 0 ? p.substring(idx + 1) : p
+  })
+
+  return {
+    full: topic,
+    namespace,
+    parts: cleanParts,
+    category: categorizeEvent(topic)
+  }
+}
+
+/**
+ * Categorize an event based on its topic
+ *
+ * @param topic - The event topic string
+ */
+export function categorizeEvent(topic: string): EventCategory {
+  const topicLower = topic.toLowerCase()
+
+  // Face detection patterns (check before generic analytics)
+  if (topicLower.includes('facedetect') || topicLower.includes('facedetection')) {
+    return 'face'
+  }
+
+  // Person/People detection patterns (check before generic analytics)
+  if (
+    topicLower.includes('peopledetect') ||
+    topicLower.includes('persondetect') ||
+    topicLower.includes('humandetect')
+  ) {
+    return 'person'
+  }
+
+  // Vehicle detection patterns (check before generic analytics)
+  if (topicLower.includes('vehicledetect') || topicLower.includes('cardetect')) {
+    return 'vehicle'
+  }
+
+  // Animal detection patterns (check before generic analytics)
+  if (
+    topicLower.includes('dogcatdetect') ||
+    topicLower.includes('animaldetect') ||
+    topicLower.includes('petdetect')
+  ) {
+    return 'animal'
+  }
+
+  // License plate detection patterns (check before generic analytics)
+  if (topicLower.includes('licenseplate') || topicLower.includes('anpr')) {
+    return 'license_plate'
+  }
+
+  // Motion detection patterns
+  if (
+    topicLower.includes('motiondetect') ||
+    topicLower.includes('cellmotion') ||
+    topicLower.includes('linedetect') ||
+    topicLower.includes('fielddetect') ||
+    topicLower.includes('motionalarm')
+  ) {
+    return 'motion'
+  }
+
+  // Tamper detection patterns
+  if (
+    topicLower.includes('imagetooblurry') ||
+    topicLower.includes('imagetoodark') ||
+    topicLower.includes('imagetoobright') ||
+    topicLower.includes('globalscenechange') ||
+    topicLower.includes('tamper')
+  ) {
+    return 'tamper'
+  }
+
+  // Audio patterns
+  if (
+    topicLower.includes('audioanalytics') ||
+    topicLower.includes('audiodetect') ||
+    topicLower.includes('sounddetect')
+  ) {
+    return 'audio'
+  }
+
+  // Digital input patterns
+  if (topicLower.includes('digitalinput') || topicLower.includes('trigger/digitalinput')) {
+    return 'digital_input'
+  }
+
+  // Relay patterns
+  if (topicLower.includes('relay') || topicLower.includes('relayoutput')) {
+    return 'relay'
+  }
+
+  // PTZ patterns
+  if (topicLower.includes('ptzcontroller') || topicLower.includes('ptzstatus')) {
+    return 'ptz'
+  }
+
+  // Recording patterns
+  if (topicLower.includes('recording')) {
+    return 'recording'
+  }
+
+  // Analytics patterns (generic fallback)
+  if (topicLower.includes('videoanalytics') || topicLower.includes('analytics')) {
+    return 'analytics'
+  }
+
+  // Device patterns
+  if (topicLower.includes('device/')) {
+    return 'device'
+  }
+
+  return 'unknown'
+}
+
+/**
+ * Extract motion event data from a notification message
+ *
+ * @param message - The notification message
+ */
+/**
+ * Resolve the actual event payload of a notification message.
+ *
+ * ONVIF nests the payload twice: the WS-Notification `wsnt:Message` element
+ * wraps the ONVIF `tt:Message` that carries PropertyOperation, Source and
+ * Data. Reading `message.message` directly yields the wrapper and every
+ * field parses to its default. Tolerates already-flattened shapes.
+ *
+ * @param message - The notification message
+ */
+export function messagePayload(message: NotificationMessage): NotificationMessage['message'] {
+  const outer = message.message as NotificationMessage['message'] & { message?: NotificationMessage['message'] }
+  return outer?.message ?? outer
+}
+
+export function parseMotionEvent(message: NotificationMessage): MotionEventData | undefined {
+  const topic = message.topic?._
+  if (!topic) {
+    return undefined
+  }
+
+  const category = categorizeEvent(topic)
+  if (category !== 'motion') {
+    return undefined
+  }
+
+  // Extract motion state from data
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
+
+  let isMotion = false
+  let videoSourceToken: string | undefined
+  let rule: string | undefined
+
+  // Parse data simple items
+  if (data?.simpleItem) {
+    const items = Array.isArray(data.simpleItem) ? data.simpleItem : [data.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'ismotion' || name === 'state') {
+        isMotion = item.value === true || item.value === 'true' || item.value === '1'
+      }
+    }
+  }
+
+  // Parse source simple items
+  if (source?.simpleItem) {
+    const items = Array.isArray(source.simpleItem) ? source.simpleItem : [source.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'videosourcetoken' || name === 'videosourceconfigurationtoken') {
+        videoSourceToken = String(item.value)
+      }
+      if (name === 'rule') {
+        rule = String(item.value)
+      }
+    }
+  }
+
+  const result: MotionEventData = {
+    isMotion
+  }
+
+  if (videoSourceToken !== undefined) {
+    result.videoSourceToken = videoSourceToken
+  }
+  if (rule !== undefined) {
+    result.rule = rule
+  }
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
+  }
+
+  return result
+}
+
+/**
+ * Extract detection event data from a notification message
+ * Handles face, person, vehicle, animal, and license plate detection
+ *
+ * @param message - The notification message
+ */
+export function parseDetectionEvent(message: NotificationMessage): DetectionEventData | undefined {
+  const topic = message.topic?._
+  if (!topic) {
+    return undefined
+  }
+
+  const category = categorizeEvent(topic)
+
+  // Only handle detection categories
+  if (category !== 'face' && category !== 'person' && category !== 'vehicle' && category !== 'animal' && category !== 'license_plate') {
+    return undefined
+  }
+
+  // Extract detection state from data
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
+
+  let isDetected = false
+  let videoSourceToken: string | undefined
+  let rule: string | undefined
+  const additionalData: Record<string, unknown> = {}
+
+  // Parse data simple items
+  if (data?.simpleItem) {
+    const items = Array.isArray(data.simpleItem) ? data.simpleItem : [data.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'isdetected' || name === 'state' || name === 'isactive') {
+        isDetected = item.value === true || item.value === 'true' || item.value === '1'
+      }
+      // Capture additional data like license plate text
+      if (name === 'platetext' || name === 'licenseplatenumber') {
+        additionalData['plateText'] = String(item.value)
+      }
+      if (name === 'confidence') {
+        additionalData['confidence'] = Number(item.value)
+      }
+    }
+  }
+
+  // Parse source simple items
+  if (source?.simpleItem) {
+    const items = Array.isArray(source.simpleItem) ? source.simpleItem : [source.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'videosourcetoken' || name === 'videosourceconfigurationtoken') {
+        videoSourceToken = String(item.value)
+      }
+      if (name === 'rule') {
+        rule = String(item.value)
+      }
+    }
+  }
+
+  const result: DetectionEventData = {
+    category,
+    isDetected
+  }
+
+  if (videoSourceToken !== undefined) {
+    result.videoSourceToken = videoSourceToken
+  }
+  if (rule !== undefined) {
+    result.rule = rule
+  }
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
+  }
+  if (Object.keys(additionalData).length > 0) {
+    result.data = additionalData
+  }
+
+  return result
+}
+
+/**
+ * Extract audio event data from a notification message
+ *
+ * @param message - The notification message
+ */
+export function parseAudioEvent(message: NotificationMessage): AudioEventData | undefined {
+  const topic = message.topic?._
+  if (!topic) {
+    return undefined
+  }
+
+  const category = categorizeEvent(topic)
+  if (category !== 'audio') {
+    return undefined
+  }
+
+  // Extract audio state from data
+  const payload = messagePayload(message)
+  const data = payload?.data
+  const source = payload?.source
+
+  let isAudioDetected = false
+  let audioSourceToken: string | undefined
+  let audioType: string | undefined
+  let level: number | undefined
+  let rule: string | undefined
+
+  // Parse data simple items
+  if (data?.simpleItem) {
+    const items = Array.isArray(data.simpleItem) ? data.simpleItem : [data.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'isaudiodetected' || name === 'state' || name === 'isactive' || name === 'issound') {
+        isAudioDetected = item.value === true || item.value === 'true' || item.value === '1'
+      }
+      if (name === 'audiotype' || name === 'soundtype' || name === 'type') {
+        audioType = String(item.value)
+      }
+      if (name === 'level' || name === 'soundlevel' || name === 'audiolevel') {
+        level = Number(item.value)
+      }
+    }
+  }
+
+  // Parse source simple items
+  if (source?.simpleItem) {
+    const items = Array.isArray(source.simpleItem) ? source.simpleItem : [source.simpleItem]
+    for (const item of items) {
+      const name = (item.name ?? '').toLowerCase()
+      if (name === 'audiosourcetoken' || name === 'audiosourceconfigurationtoken') {
+        audioSourceToken = String(item.value)
+      }
+      if (name === 'rule') {
+        rule = String(item.value)
+      }
+    }
+  }
+
+  // Try to extract audio type from topic if not in data
+  if (!audioType) {
+    const topicLower = topic.toLowerCase()
+    if (topicLower.includes('scream')) audioType = 'scream'
+    else if (topicLower.includes('gunshot')) audioType = 'gunshot'
+    else if (topicLower.includes('glass') || topicLower.includes('break')) audioType = 'glass_break'
+    else if (topicLower.includes('cry') || topicLower.includes('baby')) audioType = 'cry'
+    else if (topicLower.includes('bark') || topicLower.includes('dog')) audioType = 'bark'
+    else if (topicLower.includes('alarm')) audioType = 'alarm'
+    else audioType = 'generic'
+  }
+
+  const result: AudioEventData = {
+    isAudioDetected
+  }
+
+  if (audioSourceToken !== undefined) {
+    result.audioSourceToken = audioSourceToken
+  }
+  if (audioType !== undefined) {
+    result.audioType = audioType
+  }
+  if (level !== undefined) {
+    result.level = level
+  }
+  if (rule !== undefined) {
+    result.rule = rule
+  }
+  if (payload?.utcTime) {
+    result.timestamp = toDate(payload.utcTime)
+  }
+
+  return result
+}
+
+const DETECTION_CATEGORIES: EventCategory[] = [
+  'motion',
+  'face',
+  'person',
+  'vehicle',
+  'animal',
+  'license_plate',
+  'audio'
+]
+
+/**
+ * Extract all advertised topic paths from a parsed TopicSet tree
+ *
+ * @param topicSet - The topicSet from getEventProperties()
+ */
+export function extractTopicPaths(topicSet: unknown): string[] {
+  const paths: string[] = []
+  const walk = (node: unknown, path: string): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+    const record = node as Record<string, unknown>
+    const childKeys = Object.keys(record).filter((key) => {
+      const value = record[key]
+      return (
+        value !== null &&
+        typeof value === 'object' &&
+        key !== 'messageDescription' &&
+        key !== 'topicNamespaceLocation'
+      )
+    })
+    if ((record.messageDescription || childKeys.length === 0) && path) {
+      paths.push(path)
+    }
+    for (const key of childKeys) {
+      walk(record[key], path ? `${path}/${key}` : key)
+    }
+  }
+  walk(topicSet, '')
+  return paths
+}
+
+/**
+ * Get all supported detection types for a device.
+ *
+ * Walks the advertised topic paths through categorizeEvent so sensor creation
+ * and event routing share one heuristic. Substring-matching the whole topicSet
+ * JSON created phantom sensors: Dahua/Amcrest advertise face/recognition
+ * topics their firmware never fires.
+ *
+ * @param properties - The event properties
+ */
+export function getSupportedDetectionTypes(properties: EventProperties): EventCategory[] {
+  if (!properties.topicSet) {
+    return []
+  }
+  const categories = new Set(
+    extractTopicPaths(properties.topicSet).map((topic) => categorizeEvent(topic))
+  )
+  return DETECTION_CATEGORIES.filter((category) => categories.has(category))
+}
+
+/**
+ * Check if device supports motion detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsMotionDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('motion')
+}
+
+/**
+ * Check if device supports face detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsFaceDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('face')
+}
+
+/**
+ * Check if device supports person/people detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsPersonDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('person')
+}
+
+/**
+ * Check if device supports vehicle detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsVehicleDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('vehicle')
+}
+
+/**
+ * Check if device supports animal detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsAnimalDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('animal')
+}
+
+/**
+ * Check if device supports license plate detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsLicensePlateDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('license_plate')
+}
+
+/**
+ * Check if device supports audio detection based on event properties
+ *
+ * @param properties - The event properties
+ */
+export function supportsAudioDetection(properties: EventProperties): boolean {
+  return getSupportedDetectionTypes(properties).includes('audio')
+}
+
+/**
+ * Get all supported detection types combining TopicSet and observed events
+ * This is more reliable than TopicSet alone for cameras like Reolink
+ * that send events they don't advertise in the TopicSet
+ *
+ * @param properties - The event properties from getEventProperties()
+ * @param observed - The observed categories from events.getObservedCategories()
+ */
+export function getAllSupportedDetectionTypes(
+  properties: EventProperties,
+  observed: EventCategory[]
+): EventCategory[] {
+  const fromTopicSet = getSupportedDetectionTypes(properties)
+  const combined = new Set([...fromTopicSet, ...observed])
+  return Array.from(combined)
+}
