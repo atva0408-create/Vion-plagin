@@ -21,8 +21,8 @@
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./ && cupdate"
   },
   "devDependencies": {
-    "@camera.ui/cli": "^0.0.116",
-    "@camera.ui/sdk": "^1.4.1",
+    "@camera.ui/cli": "npm:@vionvision/cli@0.0.116",
+    "@camera.ui/sdk": "npm:@vionvision/sdk@1.4.1",
     "cross-env": "^10.1.0"
   },
   "bugs": {
@@ -63,5 +63,9 @@
     "type": "git",
     "url": "git+https://github.com/atva0408-create/Vion-plagin.git",
     "directory": "camera-ui-onnx-legacy"
+  },
+  "overrides": {
+    "@camera.ui/cli": "npm:@vionvision/cli@0.0.116",
+    "@camera.ui/sdk": "npm:@vionvision/sdk@1.4.1"
   }
 }
