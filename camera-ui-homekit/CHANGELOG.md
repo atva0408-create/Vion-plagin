@@ -1,3 +1,7 @@
+## [1.3.6]
+
+- 19 fixes of the HomeKit layer against what comes from the local network: a malformed request address, a request body too large before pairing, a truncated TLV entry, a pair-verify again on a verified connection, an encrypted frame split across packets, malformed data stream frames and camera stream setups no longer crash the plugin or go unanswered; a pairing's key is compared byte for byte; a D-Bus error no longer crashes it
+
 ## [1.3.5]
 
 - The name is written VION

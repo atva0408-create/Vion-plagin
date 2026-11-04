@@ -1,3 +1,8 @@
+## [1.2.10]
+
+- Eine Mail wird bis 25 MB angenommen, eine größere wird abgelehnt (552), statt ganz in den Speicher gelesen zu werden
+- Die Verarbeitung von Adressen in Mails ist behoben (smtp-server 3.21.3, mailparser 3.14.1)
+
 ## [1.2.9]
 
 - Der Name wird VION geschrieben

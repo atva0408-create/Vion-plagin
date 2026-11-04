@@ -1,3 +1,8 @@
+## [1.2.10]
+
+- A mail is taken up to 25 MB, a larger one is refused (552) instead of being read into memory whole
+- The parsing of addresses in mails is fixed (smtp-server 3.21.3, mailparser 3.14.1)
+
 ## [1.2.9]
 
 - The name is written VION

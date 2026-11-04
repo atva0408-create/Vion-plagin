@@ -1,3 +1,7 @@
+## [1.3.6]
+
+- 19 Korrekturen der HomeKit-Schicht gegen das, was aus dem lokalen Netz kommt: eine fehlerhafte Anfrageadresse, ein zu großer Anfragekörper vor der Kopplung, ein abgeschnittener TLV-Eintrag, ein erneutes Pair-Verify auf einer geprüften Verbindung, ein über Pakete verteilter verschlüsselter Frame, fehlerhafte Datenstrom-Frames und Kamera-Stream-Einrichtungen bringen das Plugin nicht mehr zum Absturz und bleiben nicht unbeantwortet; der Schlüssel einer Kopplung wird Byte für Byte verglichen; ein D-Bus-Fehler bringt es nicht mehr zum Absturz
+
 ## [1.3.5]
 
 - Der Name wird VION geschrieben

@@ -2,6 +2,7 @@ import { API_EVENT, BasePlugin } from '@camera.ui/sdk';
 import { simpleParser } from 'mailparser';
 import * as smtp from 'smtp-server';
 
+import { MAX_MAIL_BYTES, readMail } from './mail.js';
 import { SMTPMotionSensor } from './sensor.js';
 
 import type { CameraDevice, DeviceStorage, JsonSchema, LoggerService, PluginAPI } from '@camera.ui/sdk';
@@ -105,6 +106,8 @@ export default class SMTPPlugin extends BasePlugin<StorageValues> {
       authOptional: true,
       logger: false,
       disabledCommands: this.storage.values.tls ? ['STARTTLS'] : undefined,
+      // said in EHLO: a client that names a larger SIZE is refused before it sends
+      size: MAX_MAIL_BYTES,
       onConnect: (_session, callback) => {
         callback();
       },
@@ -119,8 +122,13 @@ export default class SMTPPlugin extends BasePlugin<StorageValues> {
       },
       onData: async (stream, _session, callback) => {
         try {
-          const parsed = await simpleParser(stream);
-          this.handleMail(parsed);
+          const mail = await readMail(stream);
+          if (!mail) {
+            this.logger.warn(`A mail larger than ${MAX_MAIL_BYTES} bytes was refused`);
+            callback(Object.assign(new Error(`Message exceeds the maximum of ${MAX_MAIL_BYTES} bytes`), { responseCode: 552 }));
+            return;
+          }
+          this.handleMail(await simpleParser(mail));
         } catch (error) {
           this.logger.error('Error parsing mail', error);
         }

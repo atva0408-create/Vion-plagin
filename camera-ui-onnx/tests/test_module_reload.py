@@ -142,6 +142,7 @@ def plugin(request: pytest.FixtureRequest) -> Any:
         "face_detectors",
         "plate_detectors",
         "face_embedders",
+        "face_landmarkers",
         "clip_encoders",
         "ocr_models",
         "person_embedders",

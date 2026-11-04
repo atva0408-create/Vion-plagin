@@ -23,8 +23,14 @@ def frame_to_rgb(data: bytes, width: int, height: int, fmt: str = "rgb") -> NDAr
     raise ValueError(f"Unsupported frame format for detection: {fmt}")
 
 
+# what a picture given to the models is: the snapshots of the cameras, and the photos uploaded for faces and for a
+# search by picture (WebP the interface lets through for a face). Pillow tries every format it knows when none is named
+# (EPS through Ghostscript among them): an upload reaches those decoders no more.
+READ_FORMATS = ("JPEG", "PNG", "WEBP")
+
+
 def decode_image(data: bytes) -> NDArray:
-    return np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))
+    return np.asarray(Image.open(io.BytesIO(data), formats=READ_FORMATS).convert("RGB"))
 
 
 def resize_rgb(rgb: NDArray, width: int, height: int) -> NDArray:
