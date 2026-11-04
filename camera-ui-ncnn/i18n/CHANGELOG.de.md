@@ -1,3 +1,9 @@
+## [1.2.17]
+
+- Bilder werden nur als JPEG, PNG oder WebP geöffnet: ein Gesichtsfoto oder ein Suchbild in einem anderen Format wird abgelehnt, die Decoder anderer Formate werden nie erreicht
+- Pillow 13.0.0: die bekannten Schwachstellen von 12.3.0 sind behoben
+- Ein Wechsel des Execution Providers oder ein erneutes Laden der Modelle lädt auch das Modell der Gesichtsmerkmale neu: es lief bis zum Neustart des Plugins mit der alten Einstellung weiter
+
 ## [1.2.16]
 
 - Der Name wird VION geschrieben

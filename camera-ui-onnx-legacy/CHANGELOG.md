@@ -1,3 +1,9 @@
+## [1.5.12]
+
+- Pictures are opened as JPEG, PNG or WebP only: a face photo or a picture for a search in another format is refused, and the decoders of other formats are never reached
+- Pillow 13.0.0: the known vulnerabilities of 12.3.0 are fixed
+- Changing the execution provider or downloading the models again also reloads the face landmark model: it went on with the old setting until the plugin restarted
+
 ## [1.5.11]
 
 - The name is written VION

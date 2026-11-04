@@ -30,8 +30,12 @@ from defaults import (
     OBJECT_MODELS,
     resolve_model,
 )
+from image_formats import limit_image_formats
 from model_manager import CoralModelManager
 from sensors.object_sensor import CoralObjectSensor
+
+# before a picture is opened (image_formats.py)
+limit_image_formats()
 
 
 def _edgetpu_status() -> str:

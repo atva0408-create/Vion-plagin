@@ -92,6 +92,7 @@ from defaults import (
     resolve_model,
 )
 from gpu_fault import LIMIT as GPU_FAULT_LIMIT
+from image_formats import limit_image_formats
 from model_manager import OnnxModelManager, ProviderList
 from modules import installed_modules, is_module, usable_choice
 from pose import POSE_MODEL, PoseEstimator
@@ -111,6 +112,9 @@ from textfind import CLIP_TRANSLATE_WAIT_S, OWL_MODEL, TextFinder, Translators, 
 from textfind import IDLE_S as TEXT_FINDER_IDLE_S
 from trained import is_trained, resolve_object_model, trained_models
 from trained import model_name as trained_model_name
+
+# before a picture is opened (image_formats.py)
+limit_image_formats()
 
 TRYOUT_THRESHOLD_MIN = 0.05
 
@@ -1338,6 +1342,7 @@ class ONNXPlugin(
         obj = list(self.object_detectors)
         fdet = list(self.face_detectors)
         femb = list(self.face_embedders)
+        lmk = list(self.face_landmarkers)
         pdet = list(self.plate_detectors)
         ocr = list(self.ocr_models)
         clip = list(self.clip_encoders)
@@ -1353,6 +1358,7 @@ class ONNXPlugin(
             *(self.get_object_detector(n) for n in obj),
             *(self.get_face_detector(n) for n in fdet),
             *(self.get_face_embedder(n) for n in femb),
+            *(self.get_face_landmarker() for _ in lmk),
             *(self.get_plate_detector(n) for n in pdet),
             *(self.get_ocr(n) for n in ocr),
             *(self.get_clip_encoder(n) for n in clip),
@@ -1618,6 +1624,7 @@ class ONNXPlugin(
             *(d.close() for d in self.face_detectors.values()),
             *(d.close() for d in self.plate_detectors.values()),
             *(e.close() for e in self.face_embedders.values()),
+            *(m.close() for m in self.face_landmarkers.values()),
             *(e.close() for e in self.clip_encoders.values()),
             *(o.close() for o in self.ocr_models.values()),
             *(e.close() for e in self.person_embedders.values()),
@@ -1637,6 +1644,7 @@ class ONNXPlugin(
         self.object_detectors.clear()
         self.face_detectors.clear()
         self.face_embedders.clear()
+        self.face_landmarkers.clear()
         self.plate_detectors.clear()
         self.ocr_models.clear()
         self.clip_encoders.clear()

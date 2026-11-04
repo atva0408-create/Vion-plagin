@@ -1,3 +1,8 @@
+## [1.2.15]
+
+- Bilder werden nur als JPEG, PNG oder WebP geöffnet: ein Gesichtsfoto oder ein Suchbild in einem anderen Format wird abgelehnt, die Decoder anderer Formate werden nie erreicht
+- Pillow 13.0.0: die bekannten Schwachstellen von 12.3.0 sind behoben
+
 ## [1.2.14]
 
 - Der Name wird VION geschrieben
