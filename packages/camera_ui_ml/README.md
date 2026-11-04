@@ -1,9 +1,13 @@
-# camera-ui-ml
+# vion-ml
 
-[![PyPI](https://img.shields.io/pypi/v/camera-ui-ml?label=pypi&logo=pypi&logoColor=white)](https://pypi.org/project/camera-ui-ml/)
+The ML inference the detection plugins of VION share (ONNX, OpenVINO, CoreML, NCNN, Coral): model management, pre- and
+post-processing, box and face pipelines. The module is `camera_ui_ml`, as the plugins import it.
 
-Shared ML inference framework for camera.ui's detection plugins.
+Installed from VION's own index, never from pypi.org:
 
----
+```sh
+pip install --index-url https://pypi.vionvision.tech/simple --extra-index-url https://pypi.org/simple vion-ml
+```
 
-_Part of the camera.ui ecosystem - A comprehensive camera management solution._
+`camera_ui_sdk` is not a dependency: the server gives its plugins their own. Build: `python scripts/build.py` (wheel
+and sdist in `dist/`); the index itself is built by `deploy/pypi-index/build-index.sh` in VIONN-.

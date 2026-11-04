@@ -1,3 +1,7 @@
+## [1.5.9]
+
+- The shared ML code is VION's own vion-ml 1.3.0, installed from VION's package index: the fixes made to it (forgetting a module's old version, «Reset») now reach the installation; nothing of it comes from the author's packages on pypi.org any more
+
 ## [1.5.8]
 
 - Pictures are opened as JPEG, PNG or WebP only: a face photo or a picture for a search in another format is refused, and the decoders of other formats are never reached
