@@ -211,7 +211,10 @@ export class P2pConnections {
       if (!sessions.size && this.active.get(did) === sessions) this.active.delete(did);
     };
     try {
-      const bridge = await P2pBridge.open(credentials, { signal: session.abort.signal, timeoutMs: deadline === undefined ? undefined : Math.max(1, deadline - Date.now()) });
+      const bridge = await P2pBridge.open(credentials, {
+        signal: session.abort.signal,
+        timeoutMs: deadline === undefined ? undefined : Math.max(1, deadline - Date.now()),
+      });
       session.bridge = bridge;
       bridge.onClose = remove;
       bridge.onUnread = (channel) => this.say?.(`CS2 P2P ${did}: the camera sends on channel ${channel}, which go2rtc does not read; acknowledged here`);
