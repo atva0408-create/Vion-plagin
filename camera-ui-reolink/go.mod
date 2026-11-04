@@ -32,3 +32,9 @@ require (
 )
 
 replace github.com/shareed2k/reolinkproxy => ../externals/reolinkproxy
+
+// the Go SDK and RPC client of VION's own copy (externals/, the same bytes as v1.3.5 and v1.0.19 of the module proxy):
+// nothing of the camera.ui author is downloaded to build this plugin
+replace github.com/cameraui/sdk/go => ../externals/sdk-go
+
+replace github.com/cameraui/rpc/go => ../externals/rpc-go

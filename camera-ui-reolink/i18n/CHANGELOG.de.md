@@ -1,3 +1,7 @@
+## [1.2.29]
+
+- Wird mit dem Go-SDK und dem RPC-Client aus VIONs eigener Kopie gebaut; an der Arbeit der Erweiterung ändert sich nichts
+
 ## [1.2.28]
 
 - Der Name wird VION geschrieben

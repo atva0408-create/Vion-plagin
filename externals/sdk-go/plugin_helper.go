@@ -1,0 +1,218 @@
+package sdk
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+)
+
+var validSensorTypes = []SensorType{
+	SensorTypeMotion, SensorTypeObject, SensorTypeAudio,
+	SensorTypeFace, SensorTypeFaceEmbedder, SensorTypeLicensePlate, SensorTypeClassifier,
+	SensorTypeContact, SensorTypeTemperature, SensorTypeHumidity, SensorTypeOccupancy,
+	SensorTypeSmoke, SensorTypeLeak, SensorTypeGas, SensorTypeCarbonMonoxide,
+	SensorTypeHeat, SensorTypeCold, SensorTypeVibration, SensorTypeTamper,
+	SensorTypeProblem, SensorTypePower, SensorTypeIlluminance, SensorTypeCarbonDioxide,
+	SensorTypeLight, SensorTypeSiren, SensorTypeSwitch, SensorTypeLock, SensorTypeGarage,
+	SensorTypePTZ, SensorTypeSecuritySystem, SensorTypeDoorbell, SensorTypeBattery,
+	SensorTypeClip, SensorTypeObjectAssist,
+}
+
+var validRoles = []PluginRole{
+	PluginRoleHub, PluginRoleSensorProvider,
+	PluginRoleCameraController, PluginRoleCameraAndSensorProvider,
+}
+
+var validInterfaces = []PluginInterface{
+	PluginInterfaceMotionDetection, PluginInterfaceObjectDetection,
+	PluginInterfaceAudioDetection, PluginInterfaceFaceDetection,
+	PluginInterfaceLicensePlateDetection, PluginInterfaceClassifierDetection,
+	PluginInterfaceClipDetection,
+	PluginInterfaceDiscoveryProvider,
+	PluginInterfaceSensorDiscovery,
+	PluginInterfaceNotifier,
+	PluginInterfaceNVR,
+	PluginInterfaceOAuthCapable, PluginInterfaceOAuthDeviceFlow,
+	PluginInterfaceOAuthAuthCodeFlow, PluginInterfaceOAuthClientCredentials,
+}
+
+var validCapabilities = []PluginCapability{
+	CapabilityPublishNotifications,
+}
+
+// GetContractValidationErrors checks a typed contract's values: the name is
+// non-empty and the role, provided/consumed sensor types, interfaces and
+// capabilities are all members of their accepted enum sets. It returns one
+// human-readable error per problem found, or an empty slice when the
+// contract is valid.
+//
+// Example:
+//
+//	errs := GetContractValidationErrors(contract)
+//	if len(errs) > 0 {
+//	    return fmt.Errorf("invalid contract: %s", strings.Join(errs, "; "))
+//	}
+func GetContractValidationErrors(c *PluginContract) []string {
+	var errors []string
+
+	if c.Name == "" {
+		errors = append(errors, `field "name" cannot be empty`)
+	}
+
+	if !containsRole(validRoles, c.Role) {
+		errors = append(errors, fmt.Sprintf(`invalid role %q, valid roles: %v`, c.Role, validRoles))
+	}
+
+	for _, st := range c.Provides {
+		if !containsSensorType(validSensorTypes, st) {
+			errors = append(errors, fmt.Sprintf(`invalid sensor type in "provides": %q`, st))
+		}
+	}
+
+	for _, st := range c.Consumes {
+		if !containsSensorType(validSensorTypes, st) {
+			errors = append(errors, fmt.Sprintf(`invalid sensor type in "consumes": %q`, st))
+		}
+	}
+
+	for _, iface := range c.Interfaces {
+		if !containsInterface(validInterfaces, iface) {
+			errors = append(errors, fmt.Sprintf(`invalid interface in "interfaces": %q`, iface))
+		}
+	}
+
+	for _, cap := range c.Capabilities {
+		if !containsCapability(validCapabilities, cap) {
+			errors = append(errors, fmt.Sprintf(`invalid capability in "capabilities": %q`, cap))
+		}
+	}
+
+	return errors
+}
+
+// ValidateContractConsistency enforces role-specific consistency rules on top
+// of the structural check (e.g. SensorProvider plugins must declare at least
+// one provided sensor; Hub plugins cannot expose sensors). Returns a non-nil
+// error on the first violation.
+//
+// Example:
+//
+//	if err := ValidateContractConsistency(contract, "my-plugin"); err != nil {
+//	    return err
+//	}
+func ValidateContractConsistency(c *PluginContract, pluginName string) error {
+	prefix := ""
+	if pluginName != "" {
+		prefix = "Plugin \"" + pluginName + "\": "
+	}
+	switch c.Role {
+	case PluginRoleHub:
+		if len(c.Provides) > 0 {
+			return errors.New(prefix + "Hub plugins cannot provide sensors.")
+		}
+	case PluginRoleSensorProvider:
+		if len(c.Provides) == 0 {
+			return errors.New(prefix + "SensorProvider plugins must provide at least one sensor type.")
+		}
+	case PluginRoleCameraAndSensorProvider:
+		if len(c.Provides) == 0 {
+			return errors.New(prefix + "CameraAndSensorProvider plugins must provide at least one sensor type.")
+		}
+	case PluginRoleService:
+		if len(c.Provides) > 0 || len(c.Consumes) > 0 {
+			return errors.New(prefix + "Service plugins cannot provide or consume sensors.")
+		}
+	}
+	return nil
+}
+
+// IsHub reports whether the plugin's role is Hub (a cross-camera aggregator
+// such as a smart-home bridge or recorder, which owns no cameras of its own).
+//
+// Example:
+//
+//	if IsHub(contract) {
+//	    skipLocalDiscovery()
+//	}
+func IsHub(c *PluginContract) bool {
+	return c.Role == PluginRoleHub
+}
+
+// IsService reports whether the plugin only serves camera.ui itself (role
+// Service), which means it never appears in a camera's plugin list.
+//
+// Example:
+//
+//	if IsService(contract) {
+//	    skipCameraAssignment()
+//	}
+func IsService(c *PluginContract) bool {
+	return c.Role == PluginRoleService
+}
+
+// CanCreateCameras reports whether the plugin can create cameras (role is
+// CameraController or CameraAndSensorProvider). Used to gate camera-creating
+// operations such as DiscoveryProvider adoption.
+//
+// Example:
+//
+//	if CanCreateCameras(contract) {
+//	    enableAdoption()
+//	}
+func CanCreateCameras(c *PluginContract) bool {
+	return c.Role == PluginRoleCameraController || c.Role == PluginRoleCameraAndSensorProvider
+}
+
+// CanProvideSensorsToAnyCameras reports whether the plugin is allowed to add
+// sensors to cameras owned by other plugins (true for SensorProvider and
+// CameraAndSensorProvider). Hub and pure CameraController plugins only see
+// their own cameras.
+//
+// Example:
+//
+//	if CanProvideSensorsToAnyCameras(contract) {
+//	    listAllCameras()
+//	}
+func CanProvideSensorsToAnyCameras(c *PluginContract) bool {
+	return c.Role == PluginRoleSensorProvider || c.Role == PluginRoleCameraAndSensorProvider
+}
+
+// HasInterface reports whether the plugin implements the given capability
+// (i.e. iface is listed in the contract's Interfaces).
+//
+// Example:
+//
+//	if HasInterface(contract, PluginInterfaceDiscoveryProvider) {
+//	    startScan()
+//	}
+func HasInterface(c *PluginContract, iface PluginInterface) bool {
+	return slices.Contains(c.Interfaces, iface)
+}
+
+// HasCapability reports whether the plugin requested the given capability
+// (i.e. cap is listed in the contract's Capabilities).
+//
+// Example:
+//
+//	if HasCapability(contract, CapabilityPublishNotifications) {
+//	    allowPublish()
+//	}
+func HasCapability(c *PluginContract, cap PluginCapability) bool {
+	return slices.Contains(c.Capabilities, cap)
+}
+
+func containsSensorType(slice []SensorType, val SensorType) bool {
+	return slices.Contains(slice, val)
+}
+
+func containsRole(slice []PluginRole, val PluginRole) bool {
+	return slices.Contains(slice, val)
+}
+
+func containsInterface(slice []PluginInterface, val PluginInterface) bool {
+	return slices.Contains(slice, val)
+}
+
+func containsCapability(slice []PluginCapability, val PluginCapability) bool {
+	return slices.Contains(slice, val)
+}

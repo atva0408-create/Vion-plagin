@@ -1,0 +1,107 @@
+package sdk
+
+// GarageState defines garage door states.
+type GarageState int
+
+const (
+	GarageStateOpen    GarageState = 0 // Door is fully open
+	GarageStateClosed  GarageState = 1 // Door is fully closed
+	GarageStateOpening GarageState = 2 // Door is moving towards open
+	GarageStateClosing GarageState = 3 // Door is moving towards closed
+	GarageStateStopped GarageState = 4 // Door stopped part-way
+)
+
+const (
+	garagePropertyCurrentState        = "currentState"
+	garagePropertyTargetState         = "targetState"
+	garagePropertyObstructionDetected = "obstructionDetected"
+)
+
+// GarageControl is a garage door control sensor. Override SetTargetState (by
+// embedding GarageControl in your own type and shadowing the method) to drive
+// hardware and call the embedded GarageControl's SetTargetState once the
+// hardware confirms: the base implementation updates both targetState and
+// currentState.
+//
+// For long-running transitions (Opening/Closing intermediate states) override
+// SetTargetState and write currentState separately as the door moves.
+type GarageControl struct{ BaseSensor }
+
+// NewGarageControl creates a garage door control with the given name and options.
+func NewGarageControl(name string, opts ...SensorOption) *GarageControl {
+	s := &GarageControl{BaseSensor: NewBaseSensor(name, opts...)}
+	s.writeState(map[string]any{
+		garagePropertyCurrentState:        int(GarageStateClosed),
+		garagePropertyTargetState:         int(GarageStateClosed),
+		garagePropertyObstructionDetected: false,
+	})
+	return s
+}
+
+func (s *GarageControl) GetType() SensorType         { return SensorTypeGarage }
+func (s *GarageControl) GetCategory() SensorCategory { return SensorCategoryControl }
+func (s *GarageControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
+
+func (s *GarageControl) GetCurrentState() GarageState {
+	if v, ok := s.GetValue(garagePropertyCurrentState).(int); ok {
+		return GarageState(v)
+	}
+	return GarageStateClosed
+}
+
+func (s *GarageControl) GetTargetState() GarageState {
+	if v, ok := s.GetValue(garagePropertyTargetState).(int); ok {
+		return GarageState(v)
+	}
+	return GarageStateClosed
+}
+
+func (s *GarageControl) IsObstructionDetected() bool {
+	v, _ := s.GetValue(garagePropertyObstructionDetected).(bool)
+	return v
+}
+
+// SetTargetState sets the target state. Writes both targetState and currentState.
+//
+// Example:
+//
+//	garage.SetTargetState(GarageStateOpen)
+func (s *GarageControl) SetTargetState(value GarageState) {
+	s.writeState(map[string]any{
+		garagePropertyTargetState:  int(value),
+		garagePropertyCurrentState: int(value),
+	})
+}
+
+// SetCurrentState publishes the actual door state. Use this to drive
+// long-running transitions (Open, then Closing, then Closed) independently of
+// the user-requested target state. Read-only from cross-process consumers,
+// UpdateValue ignores it.
+//
+// Example:
+//
+//	garage.SetCurrentState(GarageStateClosing)
+func (s *GarageControl) SetCurrentState(value GarageState) {
+	s.writeState(map[string]any{garagePropertyCurrentState: int(value)})
+}
+
+// SetObstructionDetected publishes the obstruction-detected state. Read-only
+// from cross-process consumers, UpdateValue ignores it.
+//
+// Example:
+//
+//	garage.SetObstructionDetected(true)
+func (s *GarageControl) SetObstructionDetected(detected bool) {
+	s.writeState(map[string]any{garagePropertyObstructionDetected: detected})
+}
+
+// UpdateValue routes generic property writes to the semantic setters.
+// Only targetState is externally writable.
+func (s *GarageControl) UpdateValue(property string, value any) error {
+	if property == garagePropertyTargetState {
+		if v, ok := toInt64(value); ok {
+			s.SetTargetState(GarageState(v))
+		}
+	}
+	return nil
+}

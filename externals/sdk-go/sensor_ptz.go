@@ -1,0 +1,251 @@
+package sdk
+
+// PTZCapability is an optional capability of a PTZ control.
+type PTZCapability string
+
+// Optional capabilities of a PTZ control.
+const (
+	PTZCapabilityPan              PTZCapability = "pan"              // Camera supports panning (horizontal movement)
+	PTZCapabilityTilt             PTZCapability = "tilt"             // Camera supports tilting (vertical movement)
+	PTZCapabilityZoom             PTZCapability = "zoom"             // Camera supports zoom
+	PTZCapabilityPresets          PTZCapability = "presets"          // Camera supports named position presets
+	PTZCapabilityHome             PTZCapability = "home"             // Camera supports a home position
+	PTZCapabilityRelativeMove     PTZCapability = "relativeMove"     // Camera executes relative displacement moves
+	PTZCapabilityAbsolutePosition PTZCapability = "absolutePosition" // Camera accepts absolute position writes via `setPosition()`
+	PTZCapabilityVelocityControl  PTZCapability = "velocityControl"  // Camera accepts continuous-move commands via `setVelocity()`
+)
+
+const (
+	ptzPropertyPosition     = "position"
+	ptzPropertyMoving       = "moving"
+	ptzPropertyPresets      = "presets"
+	ptzPropertyVelocity     = "velocity"
+	ptzPropertyTargetPreset = "targetPreset"
+	ptzPropertyRelativeMove = "relativeMove"
+	ptzPropertyHome         = "home"
+)
+
+// PTZDirection represents PTZ movement speed for continuous move commands.
+//
+// Speeds are in normalized range [-1, 1] where -1 is maximum speed in the
+// negative direction, 0 stops movement, and 1 is maximum speed in the positive
+// direction. Conventions: positive PanSpeed = right, positive TiltSpeed = up,
+// positive ZoomSpeed = zoom in. Plugins should clamp values to [-1, 1] and map
+// them to hardware-specific speeds.
+type PTZDirection struct {
+	PanSpeed  float64 `msgpack:"panSpeed" json:"panSpeed"`
+	TiltSpeed float64 `msgpack:"tiltSpeed" json:"tiltSpeed"`
+	ZoomSpeed float64 `msgpack:"zoomSpeed" json:"zoomSpeed"`
+}
+
+// PTZPosition represents an absolute PTZ position.
+type PTZPosition struct {
+	Pan  float64 `msgpack:"pan" json:"pan"`
+	Tilt float64 `msgpack:"tilt" json:"tilt"`
+	Zoom float64 `msgpack:"zoom" json:"zoom"`
+}
+
+// PTZRelativeMove represents a relative displacement for a single PTZ move.
+//
+// Deltas are normalized to the camera's field of view: PanDelta 1 moves the
+// view by one full frame width, TiltDelta 1 by one full frame height.
+// Conventions match PTZDirection: positive PanDelta = right, positive
+// TiltDelta = up, positive ZoomDelta = zoom in. Plugins map the deltas to
+// hardware-specific translation spaces (e.g. ONVIF RelativeMove).
+type PTZRelativeMove struct {
+	PanDelta  float64 `msgpack:"panDelta" json:"panDelta"`
+	TiltDelta float64 `msgpack:"tiltDelta" json:"tiltDelta"`
+	ZoomDelta float64 `msgpack:"zoomDelta" json:"zoomDelta"`
+}
+
+// PTZControl is a pan-tilt-zoom camera control sensor. Override SetPosition /
+// SetVelocity / SetTargetPreset (by embedding PTZControl in your own type and
+// shadowing the methods) to drive hardware, then call the corresponding
+// embedded method after success to sync the SDK state. For hardware-pushed
+// state updates (e.g. PTZ position change events), call the embedded methods
+// directly from your event handler. That bypasses any plugin override and only
+// syncs state.
+//
+// Set capabilities to advertise supported axes and features. Use SetPresets to
+// publish the discovered preset list and SetMoving to publish movement state.
+type PTZControl struct{ BaseSensor }
+
+func NewPTZControl(name string, opts ...SensorOption) *PTZControl {
+	s := &PTZControl{BaseSensor: NewBaseSensor(name, opts...)}
+	s.writeState(map[string]any{
+		ptzPropertyPosition: PTZPosition{Pan: 0, Tilt: 0, Zoom: 0},
+		ptzPropertyMoving:   false,
+		ptzPropertyPresets:  []string{},
+	})
+	return s
+}
+
+func (s *PTZControl) GetType() SensorType         { return SensorTypePTZ }
+func (s *PTZControl) GetCategory() SensorCategory { return SensorCategoryControl }
+func (s *PTZControl) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
+
+func (s *PTZControl) GetPosition() PTZPosition {
+	if v, ok := s.GetValue(ptzPropertyPosition).(PTZPosition); ok {
+		return v
+	}
+	return PTZPosition{}
+}
+
+func (s *PTZControl) IsMoving() bool {
+	v, _ := s.GetValue(ptzPropertyMoving).(bool)
+	return v
+}
+
+func (s *PTZControl) GetPresets() []string {
+	if v, ok := s.GetValue(ptzPropertyPresets).([]string); ok {
+		return v
+	}
+	return nil
+}
+
+func (s *PTZControl) GetVelocity() (PTZDirection, bool) {
+	v, ok := s.GetValue(ptzPropertyVelocity).(PTZDirection)
+	return v, ok
+}
+
+func (s *PTZControl) GetTargetPreset() (string, bool) {
+	v, ok := s.GetValue(ptzPropertyTargetPreset).(string)
+	return v, ok
+}
+
+// SetPosition sets the absolute PTZ position.
+//
+// Example:
+//
+//	ptz.SetPosition(PTZPosition{Pan: 0.25, Tilt: -0.1, Zoom: 0.5})
+func (s *PTZControl) SetPosition(value PTZPosition) {
+	s.writeState(map[string]any{ptzPropertyPosition: value})
+}
+
+// SetVelocity sets the continuous-move velocity. The velocity property is unset
+// until the first continuous move is issued.
+//
+// Example:
+//
+//	ptz.SetVelocity(PTZDirection{PanSpeed: 0.5, TiltSpeed: 0, ZoomSpeed: 0})
+//	ptz.SetVelocity(PTZDirection{}) // stop
+func (s *PTZControl) SetVelocity(value PTZDirection) {
+	s.writeState(map[string]any{ptzPropertyVelocity: value})
+}
+
+// SetRelativeMove issues a relative displacement move. Shadow this method to
+// drive hardware (e.g. ONVIF RelativeMove in a translation space) and call the
+// embedded method after success to sync the SDK state. Advertise
+// PTZCapabilityRelativeMove when the camera supports it.
+//
+// Example:
+//
+//	// move the view a third of a frame to the right, a tenth down
+//	ptz.SetRelativeMove(PTZRelativeMove{PanDelta: 0.33, TiltDelta: -0.1, ZoomDelta: 0})
+func (s *PTZControl) SetRelativeMove(value PTZRelativeMove) {
+	s.writeState(map[string]any{ptzPropertyRelativeMove: value})
+}
+
+// SetTargetPreset sets the target preset ID. The property is unset until this
+// runs.
+//
+// Example:
+//
+//	ptz.SetTargetPreset("Driveway")
+func (s *PTZControl) SetTargetPreset(value string) {
+	s.writeState(map[string]any{ptzPropertyTargetPreset: value})
+}
+
+// SetPresets publishes the discovered preset list. The preset list stays empty
+// until this runs.
+//
+// Example:
+//
+//	ptz.SetPresets([]string{"Home", "Driveway", "Backyard"})
+func (s *PTZControl) SetPresets(value []string) {
+	s.writeState(map[string]any{ptzPropertyPresets: value})
+}
+
+// SetMoving publishes the movement state.
+//
+// Example:
+//
+//	ptz.SetMoving(true)
+func (s *PTZControl) SetMoving(value bool) {
+	s.writeState(map[string]any{ptzPropertyMoving: value})
+}
+
+// GoHome moves the PTZ to the home position (0, 0, 0). To drive a hardware home
+// command, shadow UpdateValue and handle "home" there: UpdateValue calls the
+// embedded GoHome, so shadowing GoHome alone is never reached.
+//
+// Example:
+//
+//	ptz.GoHome()
+func (s *PTZControl) GoHome() {
+	s.SetPosition(PTZPosition{Pan: 0, Tilt: 0, Zoom: 0})
+}
+
+// UpdateValue routes generic property writes to the semantic setters.
+func (s *PTZControl) UpdateValue(property string, value any) error {
+	switch property {
+	case ptzPropertyPosition:
+		if pos, ok := coercePTZPosition(value); ok {
+			s.SetPosition(pos)
+		}
+	case ptzPropertyVelocity:
+		if dir, ok := coercePTZDirection(value); ok {
+			s.SetVelocity(dir)
+		}
+	case ptzPropertyTargetPreset:
+		if str, ok := value.(string); ok {
+			s.SetTargetPreset(str)
+		}
+	case ptzPropertyRelativeMove:
+		if move, ok := coercePTZRelativeMove(value); ok {
+			s.SetRelativeMove(move)
+		}
+	case ptzPropertyHome:
+		s.GoHome()
+	}
+	return nil
+}
+
+func coercePTZPosition(value any) (PTZPosition, bool) {
+	switch v := value.(type) {
+	case PTZPosition:
+		return v, true
+	case map[string]any:
+		pan, _ := toFloat64(v["pan"])
+		tilt, _ := toFloat64(v["tilt"])
+		zoom, _ := toFloat64(v["zoom"])
+		return PTZPosition{Pan: pan, Tilt: tilt, Zoom: zoom}, true
+	}
+	return PTZPosition{}, false
+}
+
+func coercePTZDirection(value any) (PTZDirection, bool) {
+	switch v := value.(type) {
+	case PTZDirection:
+		return v, true
+	case map[string]any:
+		pan, _ := toFloat64(v["panSpeed"])
+		tilt, _ := toFloat64(v["tiltSpeed"])
+		zoom, _ := toFloat64(v["zoomSpeed"])
+		return PTZDirection{PanSpeed: pan, TiltSpeed: tilt, ZoomSpeed: zoom}, true
+	}
+	return PTZDirection{}, false
+}
+
+func coercePTZRelativeMove(value any) (PTZRelativeMove, bool) {
+	switch v := value.(type) {
+	case PTZRelativeMove:
+		return v, true
+	case map[string]any:
+		pan, _ := toFloat64(v["panDelta"])
+		tilt, _ := toFloat64(v["tiltDelta"])
+		zoom, _ := toFloat64(v["zoomDelta"])
+		return PTZRelativeMove{PanDelta: pan, TiltDelta: tilt, ZoomDelta: zoom}, true
+	}
+	return PTZRelativeMove{}, false
+}
