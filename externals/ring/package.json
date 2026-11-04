@@ -1,0 +1,37 @@
+{
+  "name": "ring",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "test:watch": "npm run test:watch -w ring-client-api",
+    "example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/example.ts",
+    "api-example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/api-example.ts",
+    "record-example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/record-example.ts",
+    "return-audio-example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/return-audio-example.ts",
+    "stream-example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/stream-example.ts",
+    "browser-example": "turbo build --filter=ring-client-api && DEBUG=ring node --experimental-strip-types ./packages/examples/browser-example.ts",
+    "auth-cli": "turbo build --filter=ring-client-api && ./packages/ring-client-api/lib/ring-auth-cli.js",
+    "device-data-cli": "turbo build --filter=ring-client-api && ./packages/ring-client-api/lib/ring-device-data-cli.js",
+    "push-with-tags": "git push --follow-tags",
+    "predeploy": "git pull -r && turbo run build test lint",
+    "postdeploy": "npm run push-with-tags",
+    "deploy": "changeset version && git commit -am 'Bump versions for release' && changeset publish",
+    "release": "turbo run build test lint && changeset publish",
+    "prepare-beta": "changeset pre enter beta && changeset version && git add .changeset/pre.json && git commit -am 'Prepare for beta release' && git push --follow-tags",
+    "exit-beta": "changeset pre exit && changeset version && commit -am 'Exit beta release and create main release' && git push --follow-tags"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/cli": "^2.29.8",
+    "turbo": "^2.8.1"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "npm@11.8.0"
+}
