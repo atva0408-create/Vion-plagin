@@ -125,5 +125,6 @@
   "Station": "Station",
   "The station that speaks.": "The station that speaks.",
   "Phrase": "Phrase",
-  "What the station says.": "What the station says."
+  "What the station says.": "What the station says.",
+  "Id of the scenario, only when several have that name: the error of a call by the name lists them.": "Id of the scenario, only when several have that name: the error of a call by the name lists them."
 }

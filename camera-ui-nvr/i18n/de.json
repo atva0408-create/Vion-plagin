@@ -35,5 +35,10 @@
   "Переход между камерами: за сколько минут": "Wechsel zwischen Kameras: innerhalb von Minuten",
   "Сколько минут после конца остановки (и до её начала) ищется человек на другой камере.": "Wie viele Minuten nach dem Ende eines Aufenthalts (und vor seinem Beginn) die Person auf einer anderen Kamera gesucht wird.",
   "Переходов подряд, не больше": "Wechsel hintereinander, höchstens",
-  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Jeder Wechsel vergrößert den Fehler: eine Kette endet nach so vielen. 0: der Weg nur nach Ähnlichkeit, ohne Wechsel."
+  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Jeder Wechsel vergrößert den Fehler: eine Kette endet nach so vielen. 0: der Weg nur nach Ähnlichkeit, ohne Wechsel.",
+  "Предел базы событий, ГБ": "Grenze der Ereignisdatenbank, GB",
+  "Больше этого — стираются следы обнаружений (рамки поверх записи) самых старых событий. События и записи остаются. 0 — без предела.": "Darüber werden die Erkennungsspuren (die Rahmen über der Aufnahme) der ältesten Ereignisse gelöscht. Ereignisse und Aufnahmen bleiben. 0 bedeutet keine Grenze.",
+  "Движок поиска по картинкам": "Engine der Suche in Bildern",
+  "Какой движок распознавания ищет слова в кадрах архива. «Автоматически» — первый ответивший; выбранный, если он недоступен, заменяет другой.": "Welche Erkennungs-Engine Wörter in den Bildern des Archivs sucht. „Automatisch“: die erste, die antwortet; eine gewählte, die nicht verfügbar ist, wird durch eine andere ersetzt.",
+  "Автоматически": "Automatisch"
 }

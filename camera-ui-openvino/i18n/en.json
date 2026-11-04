@@ -33,5 +33,8 @@
   "Обнаружение объектов": "Object Detection",
   "Модель, обводящая людей, транспорт и животных": "The model that outlines people, vehicles and animals",
   "Сегментация": "Segmentation",
-  "Модель сегментации для проверки": "Segmentation model to try out"
+  "Модель сегментации для проверки": "Segmentation model to try out",
+  "Поза людей": "Pose of people",
+  "Определять, стоит, сидит или лежит человек, по рамкам людей обнаружения объектов. Ответ добавляется к событию признаком «поза».": "Tells whether a person stands, sits or lies, from the person boxes of object detection. The answer is added to the event as the attribute \"pose\".",
+  "Признаки": "Attributes"
 }

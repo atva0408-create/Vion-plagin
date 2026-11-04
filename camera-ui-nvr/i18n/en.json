@@ -35,5 +35,10 @@
   "Переход между камерами: за сколько минут": "Hop between cameras: within minutes",
   "Сколько минут после конца остановки (и до её начала) ищется человек на другой камере.": "How many minutes after the end of a stay (and before its start) the person is looked for on another camera.",
   "Переходов подряд, не больше": "Hops in a row, at most",
-  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Every hop adds to the error: a chain stops after this many. 0: the route by likeness alone, without hops."
+  "Каждый переход прибавляет ошибку: цепочка обрывается после стольких. 0 — маршрут только по сходству, без переходов.": "Every hop adds to the error: a chain stops after this many. 0: the route by likeness alone, without hops.",
+  "Предел базы событий, ГБ": "Event database limit, GB",
+  "Больше этого — стираются следы обнаружений (рамки поверх записи) самых старых событий. События и записи остаются. 0 — без предела.": "Above this, the detection traces (the boxes over the recording) of the oldest events are erased. The events and recordings stay. 0 means no limit.",
+  "Движок поиска по картинкам": "Engine of the search in pictures",
+  "Какой движок распознавания ищет слова в кадрах архива. «Автоматически» — первый ответивший; выбранный, если он недоступен, заменяет другой.": "Which recognition engine looks for words in the frames of the archive. \"Automatically\": the first that answers; a chosen one that is not available is replaced by another.",
+  "Автоматически": "Automatically"
 }
