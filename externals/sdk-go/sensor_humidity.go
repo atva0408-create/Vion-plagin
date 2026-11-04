@@ -1,0 +1,45 @@
+package sdk
+
+const (
+	humidityPropertyCurrent = "current"
+)
+
+// HumidityInfo reports current relative humidity (0-100%).
+type HumidityInfo struct{ BaseSensor }
+
+func NewHumidityInfo(name string, opts ...SensorOption) *HumidityInfo {
+	s := &HumidityInfo{BaseSensor: NewBaseSensor(name, opts...)}
+	s.writeState(map[string]any{
+		humidityPropertyCurrent: 50.0,
+	})
+	return s
+}
+
+func (s *HumidityInfo) GetType() SensorType         { return SensorTypeHumidity }
+func (s *HumidityInfo) GetCategory() SensorCategory { return SensorCategoryInfo }
+func (s *HumidityInfo) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
+
+func (s *HumidityInfo) GetCurrent() float64 {
+	v, _ := s.GetValue(humidityPropertyCurrent).(float64)
+	return v
+}
+
+// SetCurrent sets the current relative humidity (clamped to [0,100]).
+//
+// Example:
+//
+//	humidity.SetCurrent(63)
+func (s *HumidityInfo) SetCurrent(value float64) {
+	if value < 0 {
+		value = 0
+	}
+	if value > 100 {
+		value = 100
+	}
+	s.writeState(map[string]any{humidityPropertyCurrent: value})
+}
+
+// UpdateValue on a read-only sensor: external writes are ignored.
+func (s *HumidityInfo) UpdateValue(property string, value any) error {
+	return nil
+}
