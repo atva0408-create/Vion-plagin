@@ -2,6 +2,7 @@
 
 - Eine Kamera in einem anderen Netz, die sich nicht erreichen lässt, sagt jetzt, warum. Das Plugin suchte nach den Schlüsseln aus Mi Home (bis zu 15 s) noch 25 s nach einem Xiaomi-Relay, VION wartet aber 30 s auf die Adresse eines Streams: Der Grund, etwa «Xiaomi did not return a relay; the camera may be offline», kam zu spät und erreichte niemanden. Die ganze Suche bleibt jetzt innerhalb von 25 s.
 - Das Protokoll der Kamera nennt den Grund einer fehlgeschlagenen Verbindung einmal, danach alle 10 Minuten, solange er besteht, und sofort, wenn er sich ändert; die Wiederholungen der Stream-Engine alle paar Sekunden wiederholen ihn nicht.
+- Antwortet eine Region von Mi Home nicht, sagt eine Kamera daraus, dass die Region nicht gelesen wurde, und nicht, dass das Mi-Konto die Kamera nicht mehr hat.
 
 ## [0.4.2]
 
