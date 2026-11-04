@@ -1,3 +1,7 @@
+## [1.2.29]
+
+- Built with the Go SDK and RPC client of VION's own copy; nothing changes in how the plugin works
+
 ## [1.2.28]
 
 - The name is written VION
