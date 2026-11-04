@@ -942,6 +942,29 @@ test('the relay of a remote camera gets what is left of 25 s: the address, or wh
   await h.shutdown();
 });
 
+test('a camera that cannot be reached says why in its log, once per reason, not at every try of the engine', async () => {
+  globalThis.fetch = fakeXiaomi(remoteScenario()).fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const { lines, logger } = recorder();
+  const { camera, stream } = device('1001', {}, logger);
+  await h.plugin.onCameraAdded(camera);
+  let reason = 'CS2 P2P: Xiaomi did not return a relay; the camera may be offline';
+  const p2p = (h.plugin as unknown as { p2p: { open: () => Promise<string> } }).p2p;
+  p2p.open = async () => {
+    throw new Error(reason);
+  };
+  for (let i = 0; i < 3; i++) await assert.rejects(stream());
+  assert.equal((lines.warn ?? []).length, 1, `said ${(lines.warn ?? []).length} times: ${JSON.stringify(lines.warn)}`);
+  assert.match(lines.warn![0]!, /Hall/);
+  assert.match(lines.warn![0]!, /Xiaomi did not return a relay; the camera may be offline/);
+  reason = 'CS2 P2P: The camera did not join the Xiaomi relay; check its connection in Mi Home';
+  await assert.rejects(stream());
+  assert.equal(lines.warn!.length, 2, 'another reason was not said');
+  assert.match(lines.warn![1]!, /did not join the Xiaomi relay/);
+  await h.shutdown();
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
