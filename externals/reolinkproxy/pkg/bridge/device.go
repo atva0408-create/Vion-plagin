@@ -1,0 +1,849 @@
+package bridge
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/shareed2k/reolinkproxy/pkg/baichuan"
+)
+
+// uidReprobeInterval bounds how long a Host camera stays on the UID fallback
+// before a reconnect retries direct TCP; a re-probe of an unreachable host
+// costs one dial timeout, so this stays well above it.
+const uidReprobeInterval = 5 * time.Minute
+
+type cameraDevice struct {
+	cameraName string
+	cfg        baichuan.Config
+	log        Logger
+	// reconnectBackoff spaces reconnect attempts; battery cameras use a much
+	// longer backoff so a sleeping camera is not woken over and over.
+	reconnectBackoff time.Duration
+
+	// onState, when set, is invoked with true after a successful login and
+	// false when the connection is dropped. Write-once before use.
+	onState func(connected bool)
+
+	// state changes are queued and delivered by a single goroutine: a
+	// reconnect fires false and true a moment apart, and delivering them out
+	// of order would leave a live camera marked offline
+	stateMu       sync.Mutex
+	statePending  []bool
+	stateDraining bool
+
+	// webhookFailed latches after the camera rejected the webhook
+	// subscription (unsupported firmware) so it is not retried on every reconnect.
+	webhookFailed atomic.Bool
+
+	// onConnect, when set, prepares every freshly logged-in client the same
+	// way the first one was.
+	onConnect func(*baichuan.Client)
+
+	// pushSeen closes once the camera has reached the webhook address, which
+	// proves the whole path end to end. Silence proves nothing, so this is the
+	// only signal that may decide to drop the connection.
+	pushSeen chan struct{}
+	pushOnce sync.Once
+
+	mu     sync.Mutex
+	client *baichuan.Client
+	// preferUIDSince stamps when the UID fallback was last set or re-probed, so
+	// a camera with a configured Host retries direct TCP instead of staying on
+	// UID forever after a transient TCP failure
+	preferUIDSince time.Time
+	// dualLens caches the last login's dual-lens flag so webhook pushes can
+	// be parsed while the camera sleeps
+	dualLens bool
+	// audioSeen remembers per stream whether audio ever showed up, so a stream
+	// that carries audio gets the patient startup window on every restart
+	audioSeen map[baichuan.Stream]bool
+}
+
+// audioKnown reports the remembered audio verdict for a stream, and whether
+// one exists yet.
+func (m *cameraDevice) audioKnown(stream baichuan.Stream) (bool, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen, ok := m.audioSeen[stream]
+	return seen, ok
+}
+
+func (m *cameraDevice) setAudioKnown(stream baichuan.Stream, seen bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.audioSeen == nil {
+		m.audioSeen = make(map[baichuan.Stream]bool)
+	}
+	m.audioSeen[stream] = seen
+}
+
+func newCameraDevice(cameraName string, cfg baichuan.Config, reconnectBackoff time.Duration, log Logger) *cameraDevice {
+	if reconnectBackoff <= 0 {
+		reconnectBackoff = 2 * time.Second
+	}
+	if log != nil {
+		cfg.Debugf = log.Debugf
+		cfg.Warnf = log.Warnf
+	}
+	return &cameraDevice{
+		cameraName:       cameraName,
+		cfg:              cfg,
+		reconnectBackoff: reconnectBackoff,
+		log:              log,
+		pushSeen:         make(chan struct{}),
+	}
+}
+
+// notePush records that a webhook push arrived from this camera.
+func (m *cameraDevice) notePush() {
+	m.pushOnce.Do(func() {
+		close(m.pushSeen)
+	})
+}
+
+// awaitPush waits for the camera to reach the webhook address. The camera
+// sends a test push right after the subscription, so the wait covers a round
+// trip, not a guess about how long events take to happen.
+func (m *cameraDevice) awaitPush(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-m.pushSeen:
+		return true
+	case <-timer.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (m *cameraDevice) Ensure(ctx context.Context) (*baichuan.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.client != nil {
+		if err := m.client.Err(); err == nil {
+			return m.client, nil
+		}
+		m.closeLocked("")
+	}
+
+	dialCfg := m.cfg
+	if m.shouldReprobeTCPLocked() {
+		dialCfg.PreferUID = false
+		m.preferUIDSince = time.Now()
+	}
+
+	client, err := baichuan.Dial(ctx, dialCfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.Login(ctx); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+
+	m.client = client
+	m.noteTransportLocked(client.UsedUID())
+	m.dualLens = client.LoginDeviceInfo().IsDualLens()
+	m.notifyState(true)
+	if m.onConnect != nil {
+		go m.onConnect(client)
+	}
+	return client, nil
+}
+
+func (m *cameraDevice) shouldReprobeTCPLocked() bool {
+	return m.cfg.Host != "" && m.cfg.PreferUID && time.Since(m.preferUIDSince) >= uidReprobeInterval
+}
+
+// noteTransportLocked reconciles the sticky UID preference with the transport
+// the connection actually used. A configured Host keeps direct TCP as the
+// intended path, so a UID fallback is dropped again the moment TCP answers.
+func (m *cameraDevice) noteTransportLocked(usedUID bool) {
+	if usedUID == m.cfg.PreferUID {
+		return
+	}
+	m.cfg.PreferUID = usedUID
+	if usedUID {
+		m.preferUIDSince = time.Now()
+		m.log.Debugf("camera %s answers over its UID, using that first from now on", m.cameraName)
+		return
+	}
+	m.log.Debugf("camera %s reached over TCP again, leaving the UID fallback", m.cameraName)
+}
+
+// setOnConnect installs the preparation every later connection needs.
+func (m *cameraDevice) setOnConnect(fn func(*baichuan.Client)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onConnect = fn
+}
+
+func (m *cameraDevice) DualLens() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.dualLens
+}
+
+func (m *cameraDevice) WithClient(ctx context.Context, fn func(*baichuan.Client) error) error {
+	client, err := m.Ensure(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = fn(client)
+	if err != nil {
+		if closeErr := client.Err(); closeErr != nil {
+			m.ResetIfCurrent(client, fmt.Sprintf("client closed: %v", closeErr))
+		}
+	}
+	return err
+}
+
+func (m *cameraDevice) ResetIfCurrent(client *baichuan.Client, reason string) {
+	if client == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.client != client {
+		return
+	}
+	m.closeLocked(reason)
+}
+
+func (m *cameraDevice) Close(reason string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closeLocked(reason)
+}
+
+func (m *cameraDevice) closeLocked(reason string) {
+	if m.client == nil {
+		return
+	}
+	if reason != "" {
+		m.log.Infof("camera %s reconnecting: %s", m.cameraName, reason)
+	}
+	// a connection we dropped on purpose to let the camera sleep never was a
+	// loss, so it must not surface as a camera going offline
+	idle := errors.Is(m.client.Err(), baichuan.ErrIdle)
+	_ = m.client.Close()
+	m.client = nil
+	if !idle {
+		m.notifyState(false)
+	}
+}
+
+// notifyState hands a connection state to the callback without blocking the
+// caller, which holds the device lock, while keeping the order of the states.
+func (m *cameraDevice) notifyState(connected bool) {
+	if m.onState == nil {
+		return
+	}
+
+	m.stateMu.Lock()
+	m.statePending = append(m.statePending, connected)
+	if m.stateDraining {
+		m.stateMu.Unlock()
+		return
+	}
+	m.stateDraining = true
+	m.stateMu.Unlock()
+
+	go func() {
+		for {
+			m.stateMu.Lock()
+			if len(m.statePending) == 0 {
+				m.stateDraining = false
+				m.stateMu.Unlock()
+				return
+			}
+			next := m.statePending[0]
+			m.statePending = m.statePending[1:]
+			m.stateMu.Unlock()
+
+			m.onState(next)
+		}
+	}()
+}
+
+// StreamPackets pulls preview media for one channel/stream, reconnecting on
+// failures. wantStream gates the preview session: while it returns false, the
+// current session is torn down and no reconnect is attempted (idle
+// disconnect); pass nil to always stream.
+func (m *cameraDevice) StreamPackets(ctx context.Context, channel uint8, stream baichuan.Stream, wantStream func() bool) <-chan baichuan.MediaPacket {
+	out := make(chan baichuan.MediaPacket, 50)
+
+	go func() {
+		defer close(out)
+
+		for ctx.Err() == nil {
+			if wantStream != nil && !wantStream() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+				}
+				continue
+			}
+
+			client, err := m.Ensure(ctx)
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(m.reconnectBackoff):
+				}
+				continue
+			}
+
+			reader, err := client.StartPreview(ctx, channel, stream)
+			if err != nil {
+				// A status error means the connection is fine but this stream
+				// is rejected (e.g. profile not supported by the model). The
+				// client is shared with the other streams and the event
+				// listener, so don't reset it — just retry this stream slowly.
+				var statusErr *baichuan.StatusError
+				if errors.As(err, &statusErr) {
+					m.log.Warnf("stream %s channel %d rejected by camera (%v), retrying in 5m", m.cameraName, channel, err)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(5 * time.Minute):
+					}
+					continue
+				}
+
+				m.ResetIfCurrent(client, fmt.Sprintf("start preview failed: %v", err))
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(m.reconnectBackoff):
+				}
+				continue
+			}
+
+			switch m.pumpPreview(ctx, client, channel, stream, reader, out, wantStream) {
+			case previewContextDone:
+				return
+			case previewResetClient:
+				if wantStream == nil || wantStream() {
+					m.ResetIfCurrent(client, "preview stream ended")
+				}
+			case previewRestart:
+			}
+			time.Sleep(100 * time.Millisecond) // brief wait before reconnect
+		}
+	}()
+
+	return out
+}
+
+// previewOutcome says what the caller has to do after a preview session ended.
+type previewOutcome int
+
+const (
+	previewContextDone previewOutcome = iota
+	// previewRestart affects this stream only: the camera-side session is
+	// already stopped, just start a new preview on the same client
+	previewRestart
+	// previewResetClient means the shared connection itself looks broken
+	previewResetClient
+)
+
+// pumpPreview forwards media packets from one preview session until it ends.
+func (m *cameraDevice) pumpPreview(
+	ctx context.Context,
+	client *baichuan.Client,
+	channel uint8,
+	stream baichuan.Stream,
+	reader *baichuan.MediaReader,
+	out chan<- baichuan.MediaPacket,
+	wantStream func() bool,
+) previewOutcome {
+	stallTimer := time.NewTimer(15 * time.Second)
+	defer stallTimer.Stop()
+	idleTicker := time.NewTicker(time.Second)
+	defer idleTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return previewContextDone
+		case packet, ok := <-reader.Packets:
+			if !ok {
+				// A media desync only affects this stream — keep the shared
+				// client (event listener, other streams) and restart the
+				// preview with a fresh parser.
+				if err := reader.Err(); err != nil {
+					m.log.Warnf("stream %s channel %d media desync, restarting preview: %v", m.cameraName, channel, err)
+					_ = client.StopPreview(ctx, channel, stream)
+					return previewRestart
+				}
+				return previewResetClient
+			}
+			select {
+			case <-ctx.Done():
+				return previewContextDone
+			case out <- packet:
+			}
+			if !stallTimer.Stop() {
+				select {
+				case <-stallTimer.C:
+				default:
+				}
+			}
+			stallTimer.Reset(15 * time.Second)
+		case <-stallTimer.C:
+			// one silent stream says nothing about the connection: the
+			// keepalive owns that verdict, so only this preview restarts
+			m.log.Warnf("stream %s channel %d stalled for 15s, restarting preview", m.cameraName, channel)
+			_ = client.StopPreview(ctx, channel, stream)
+			return previewRestart
+		case <-idleTicker.C:
+			if wantStream != nil && !wantStream() {
+				m.log.Debugf("stream %s channel %d idle, stopping preview", m.cameraName, channel)
+				if err := client.StopPreview(ctx, channel, stream); err != nil {
+					m.ResetIfCurrent(client, fmt.Sprintf("idle preview stop failed: %v", err))
+				}
+				return previewRestart
+			}
+		}
+	}
+}
+
+// eventHandlers receives decoded camera events from WatchEvents. Nil fields
+// are skipped.
+type eventHandlers struct {
+	alarm             func(baichuan.AlarmState)
+	battery           func(baichuan.BatteryInfo)
+	sleep             func(sleeping bool)
+	floodlight        func(on bool)
+	motionUnsupported func()
+	// pollBattery queries the battery state once per (re)connect so the
+	// consumer has a value before the first spontaneous push.
+	pollBattery bool
+	// letSleep marks a camera that has to be left alone between events, so
+	// nothing renews a subscription it did not ask for.
+	letSleep bool
+	// webhookURL, when set, is registered with the camera on every
+	// (re)connect so it pushes events itself (battery cameras).
+	webhookURL string
+	// lowPower keeps the camera asleep: no persistent event session, no
+	// keepalive, and the connection is dropped as soon as it sits unused.
+	lowPower bool
+}
+
+const (
+	// lowPowerIdle is how long a battery camera's connection may sit unused
+	// before it is closed. Everything below the wake-up cost of a reconnect is
+	// fine; reolink_aio settled on the same 5s.
+	lowPowerIdle = 5 * time.Second
+	// webhookConfirmWait covers the camera's test push, which it sends right
+	// after the subscription.
+	webhookConfirmWait = 30 * time.Second
+)
+
+// WatchEvents starts event delivery for the camera: a battery camera is set
+// up to push on its own, every other camera gets a listener session that lives
+// as long as the connection and reconnects when it drops. Only the camera-side
+// subscription is renewed there, so no push falls into a teardown gap.
+func (m *cameraDevice) WatchEvents(ctx context.Context, channel uint8, handlers eventHandlers) {
+	if handlers.lowPower {
+		go m.watchLowPower(ctx, channel, handlers)
+		return
+	}
+	go m.watchEventsLoop(ctx, channel, handlers)
+}
+
+// watchLowPower prepares a battery camera to push its events over the webhook
+// and then lets the connection go. An open connection is what keeps the
+// camera's radio out of deep sleep, pinged or not, and costs a doorbell its
+// charge within a day. Later connections re-register the webhook through
+// onConnect, so a camera that rebooted gets it back the next time anything
+// talks to it.
+//
+// The connection is only dropped once the camera has actually reached the
+// webhook address. A camera that is currently plugged in gets the same
+// treatment: whether it sleeps is the camera's business, and the power state
+// can change under us at any time.
+func (m *cameraDevice) watchLowPower(ctx context.Context, channel uint8, handlers eventHandlers) {
+	warned := false
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		client, err := m.Ensure(ctx)
+		if err != nil {
+			// A sleeping camera refuses the connection, which is normal here:
+			// say it once, then keep trying quietly.
+			if !warned {
+				warned = true
+				m.log.Warnf("events: camera connect error for %s: %v. retrying in %v...", m.cameraName, err, m.reconnectBackoff)
+			} else {
+				m.log.Debugf("events: camera connect error for %s: %v", m.cameraName, err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.reconnectBackoff):
+			}
+			continue
+		}
+
+		err = m.setupWebhookAndBatteryPoll(ctx, client, channel, handlers)
+
+		if m.webhookFailed.Load() {
+			// Without webhook support the camera can only report over a
+			// connection, so it has to be kept open. That is the firmware's
+			// price, not a choice we can make for the user.
+			m.log.Warnf("events: camera %s cannot push events on its own, keeping the connection open costs battery life", m.cameraName)
+			m.watchEventsLoop(ctx, channel, handlers)
+			return
+		}
+		if err != nil {
+			// letting the connection go now would leave the camera with no
+			// way to reach us at all
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.reconnectBackoff):
+			}
+			continue
+		}
+
+		if !m.awaitPush(ctx, webhookConfirmWait) {
+			if ctx.Err() != nil {
+				return
+			}
+			m.log.Warnf("events: camera %s has not reached %s yet, keeping the connection open until it does, which costs battery life", m.cameraName, handlers.webhookURL)
+
+			sessionCtx, endSession := context.WithCancel(ctx)
+			go m.endSessionWhenReachable(sessionCtx, endSession)
+			m.watchEventsLoop(sessionCtx, channel, handlers)
+			endSession()
+			continue
+		}
+
+		m.log.Infof("events: camera %s reached %s, letting it sleep between events", m.cameraName, handlers.webhookURL)
+		m.setOnConnect(func(next *baichuan.Client) {
+			next.CloseWhenIdle(lowPowerIdle)
+			_ = m.setupWebhookAndBatteryPoll(ctx, next, channel, handlers)
+		})
+		client.CloseWhenIdle(lowPowerIdle)
+		return
+	}
+}
+
+// endSessionWhenReachable ends a session that is only held open because the
+// camera never reached the webhook. The first push it manages proves it can.
+func (m *cameraDevice) endSessionWhenReachable(ctx context.Context, endSession context.CancelFunc) {
+	select {
+	case <-ctx.Done():
+	case <-m.pushSeen:
+		m.log.Infof("events: camera %s reached the push address, letting it sleep again", m.cameraName)
+		endSession()
+	}
+}
+
+func (m *cameraDevice) watchEventsLoop(ctx context.Context, channel uint8, handlers eventHandlers) {
+	motionUnsupported := false
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		client, err := m.Ensure(ctx)
+		if err != nil {
+			m.log.Warnf("events: camera connect error for %s: %v. retrying in %v...", m.cameraName, err, m.reconnectBackoff)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.reconnectBackoff):
+			}
+			continue
+		}
+
+		// a session that has to stay open needs the pings to notice a dead
+		// link, even on a camera Login left silent
+		client.StartKeepAlive()
+
+		cancelAlarms, alarmsOK := m.setupAlarmListener(ctx, client, channel, handlers, &motionUnsupported)
+		if !alarmsOK {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.reconnectBackoff):
+			}
+			continue
+		}
+
+		cancelBattery := func() {}
+		if handlers.battery != nil {
+			cancelBattery = client.ListenForBattery(ctx, channel, handlers.battery)
+		}
+
+		cancelSleep := func() {}
+		if handlers.sleep != nil {
+			cancelSleep = client.ListenForSleep(ctx, channel, handlers.sleep)
+		}
+
+		cancelFloodlight := func() {}
+		if handlers.floodlight != nil {
+			cancelFloodlight = client.ListenForFloodlight(ctx, channel, handlers.floodlight)
+		}
+
+		_ = m.setupWebhookAndBatteryPoll(ctx, client, channel, handlers)
+
+		if motionUnsupported && handlers.battery == nil {
+			return
+		}
+
+		m.runEventSession(ctx, client, handlers, motionUnsupported)
+
+		cancelAlarms()
+		cancelBattery()
+		cancelSleep()
+		cancelFloodlight()
+	}
+}
+
+// runEventSession keeps the camera-side subscription alive until the
+// connection drops. A camera that has not pushed anything yet is asked again
+// quickly for a while, because some firmwares need a second ask; after that
+// the slow renewal is enough. Silence itself is no reason to keep asking: a
+// camera watching a quiet scene has nothing to report.
+func (m *cameraDevice) runEventSession(ctx context.Context, client *baichuan.Client, handlers eventHandlers, motionUnsupported bool) {
+	const (
+		alarmRetryInterval   = 30 * time.Second
+		alarmFastRetryWindow = 5 * time.Minute
+		alarmRenewInterval   = 5 * time.Minute
+	)
+
+	// A battery camera must not be poked while it sleeps; its events come over
+	// the webhook anyway.
+	var renew <-chan time.Time
+	if handlers.alarm != nil && !motionUnsupported && !handlers.letSleep {
+		ticker := time.NewTicker(alarmRetryInterval)
+		defer ticker.Stop()
+		renew = ticker.C
+	}
+
+	sessionStart := time.Now()
+	lastRenew := sessionStart
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-client.Done():
+			if err := client.Err(); err != nil && ctx.Err() == nil {
+				m.ResetIfCurrent(client, fmt.Sprintf("event listener disconnected: %v", err))
+				m.log.Warnf("events: listener disconnected for %s: %v. reconnecting...", m.cameraName, err)
+			}
+			return
+		case now := <-renew:
+			fastRetry := !client.AlarmPushSeen() && now.Sub(sessionStart) < alarmFastRetryWindow
+			if !fastRetry && now.Sub(lastRenew) < alarmRenewInterval {
+				continue
+			}
+			lastRenew = now
+
+			if err := client.RefreshAlarmSubscription(ctx); err != nil {
+				m.log.Debugf("events: renewing the subscription failed for %s: %v", m.cameraName, err)
+			}
+		}
+	}
+}
+
+// setupAlarmListener subscribes the alarm listener. ok=false signals a
+// transient error that warrants a reconnect; a permanently unsupported motion
+// ability flips motionUnsupported instead.
+func (m *cameraDevice) setupAlarmListener(ctx context.Context, client *baichuan.Client, channel uint8, handlers eventHandlers, motionUnsupported *bool) (cancel func(), ok bool) {
+	if handlers.alarm == nil || *motionUnsupported {
+		return func() {}, true
+	}
+
+	m.log.Debugf("events: establishing alarm listener for %s...", m.cameraName)
+	cancelAlarms, err := client.ListenForAlarms(ctx, channel, handlers.alarm)
+	if err == nil {
+		return cancelAlarms, true
+	}
+
+	// Only a camera that lacks the ability outright is hopeless. A rejected
+	// subscription is retried by ListenForAlarms and the renewal ticker, so it
+	// must never disable events for the rest of the session.
+	var missingAbility *baichuan.MissingAbilityError
+	if errors.As(err, &missingAbility) && missingAbility.Name == "motion" {
+		m.log.Warnf("events: alarm listener unsupported for %s: %v", m.cameraName, err)
+		*motionUnsupported = true
+		if handlers.motionUnsupported != nil {
+			handlers.motionUnsupported()
+		}
+		return func() {}, true
+	}
+
+	m.ResetIfCurrent(client, fmt.Sprintf("alarm listener error: %v", err))
+	m.log.Warnf("events: alarm listener error for %s: %v. retrying in %v...", m.cameraName, err, m.reconnectBackoff)
+	return nil, false
+}
+
+// setupWebhookAndBatteryPoll registers the event webhook (battery cameras)
+// and kicks off the initial battery query for the current connection. The
+// error says whether the camera pushes events on its own now; webhookFailed
+// separates a firmware that never will from a try worth repeating.
+func (m *cameraDevice) setupWebhookAndBatteryPoll(ctx context.Context, client *baichuan.Client, channel uint8, handlers eventHandlers) error {
+	var webhookErr error
+	if handlers.webhookURL != "" && !m.webhookFailed.Load() {
+		if err := m.subscribeWebhook(ctx, client, handlers.webhookURL); err != nil {
+			webhookErr = err
+			var statusErr *baichuan.StatusError
+			if errors.As(err, &statusErr) {
+				m.log.Warnf("events: camera %s does not support webhooks: %v", m.cameraName, err)
+				m.webhookFailed.Store(true)
+			} else {
+				m.log.Warnf("events: webhook subscription failed for %s: %v", m.cameraName, err)
+			}
+		}
+	}
+
+	if handlers.pollBattery && handlers.battery != nil {
+		go func() {
+			pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			if info, err := client.GetBattery(pollCtx, channel); err == nil {
+				handlers.battery(*info)
+			}
+		}()
+	}
+
+	return webhookErr
+}
+
+// subscribeWebhook enables the camera's event push webhook, verifying the
+// registered URL like reolink_aio does.
+func (m *cameraDevice) subscribeWebhook(ctx context.Context, client *baichuan.Client, url string) error {
+	if _, _, err := client.GetWebhook(ctx); err != nil {
+		return err
+	}
+	if err := client.SetWebhook(ctx, true, url); err != nil {
+		return err
+	}
+
+	enabled, gotURL, err := client.GetWebhook(ctx)
+	if err != nil {
+		return err
+	}
+	if !enabled || gotURL != url {
+		return fmt.Errorf("webhook verification failed: enabled=%t url=%q", enabled, gotURL)
+	}
+	m.log.Infof("events: camera %s pushes events to %s", m.cameraName, url)
+	return nil
+}
+
+type resilientTalkSession struct {
+	device     *cameraDevice
+	channel    uint8
+	mu         sync.Mutex
+	session    *baichuan.TalkSession
+	sampleRate int
+	samplesPB  int
+	bytesPB    int
+	closed     bool
+}
+
+func (s *resilientTalkSession) SampleRate() int {
+	return s.sampleRate
+}
+
+func (s *resilientTalkSession) SamplesPerBlock() int {
+	return s.samplesPB
+}
+
+func (s *resilientTalkSession) BytesPerBlock() int {
+	return s.bytesPB
+}
+
+func (s *resilientTalkSession) WriteADPCMBlock(ctx context.Context, block []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return errors.New("talk session closed")
+	}
+
+	if s.session != nil {
+		err := s.session.WriteADPCMBlock(ctx, block)
+		if err == nil {
+			return nil
+		}
+		// Failure, clear session and fall through to reconnect
+		client, _ := s.device.Ensure(ctx)
+		s.device.ResetIfCurrent(client, fmt.Sprintf("talk write error: %v", err))
+		s.session = nil
+	}
+
+	// Try to reconnect once
+	client, err := s.device.Ensure(ctx)
+	if err != nil {
+		return nil // Drop audio quietly while reconnecting
+	}
+
+	newSession, err := client.StartTalk(ctx, s.channel)
+	if err != nil {
+		s.device.ResetIfCurrent(client, fmt.Sprintf("talk restart error: %v", err))
+		return nil // Drop audio quietly
+	}
+
+	s.session = newSession
+	// Discard error on fresh write; if it fails, it'll retry next time
+	_ = s.session.WriteADPCMBlock(ctx, block)
+	return nil
+}
+
+func (s *resilientTalkSession) Close(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	if s.session != nil {
+		return s.session.Close(ctx)
+	}
+	return nil
+}
+
+func (m *cameraDevice) StartTalk(ctx context.Context, channel uint8) (*resilientTalkSession, error) {
+	client, err := m.Ensure(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := client.StartTalk(ctx, channel)
+	if err != nil {
+		m.ResetIfCurrent(client, fmt.Sprintf("initial talk start error: %v", err))
+		return nil, err
+	}
+
+	return &resilientTalkSession{
+		device:     m,
+		channel:    channel,
+		session:    session,
+		sampleRate: session.SampleRate(),
+		samplesPB:  session.SamplesPerBlock(),
+		bytesPB:    session.BytesPerBlock(),
+	}, nil
+}
