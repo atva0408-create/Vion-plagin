@@ -1,0 +1,131 @@
+package sdk
+
+const (
+	facePropertyDetected   = "detected"
+	facePropertyDetections = "detections"
+	facePropertyIdentities = "identities"
+)
+
+// FaceDetection is a face detection result, extending Detection with
+// face-specific fields. The Attribute field of the embedded Detection is
+// fixed to "face".
+type FaceDetection struct {
+	Detection
+	Identity string `msgpack:"identity,omitempty" json:"identity,omitempty"` // Recognized identity name, if matched against known faces
+}
+
+// FaceResult is the return value of FaceDetector.DetectFaces.
+type FaceResult struct {
+	Detected   bool            `msgpack:"detected" json:"detected"`     // Whether any face is detected in this frame
+	Detections []FaceDetection `msgpack:"detections" json:"detections"` // Detections emitted for this frame
+}
+
+// FaceDetector is implemented by plugins that perform face detection and
+// recognition.
+type FaceDetector interface {
+	// ModelSpec declares the expected input dimensions and trigger labels. The
+	// runtime scales frames to match.
+	ModelSpec() ModelSpec
+	// DetectFaces analyzes a batch of frames, each scaled to ModelSpec().Input:
+	// normally a person region cropped by the upstream object detector, but the
+	// whole scene when no decoded frame is available. Must return exactly one
+	// FaceResult per input frame, in the same order.
+	DetectFaces(frames []VideoFrameData) ([]FaceResult, error)
+}
+
+// FaceSensor reports detected faces and optional identity matches.
+//
+// Plugin authors call ReportDetections to push detected faces. The
+// detected flag is auto-derived from the detection list.
+type FaceSensor struct{ BaseSensor }
+
+// NewFaceSensor creates a face sensor with the given name and options.
+func NewFaceSensor(name string, opts ...SensorOption) *FaceSensor {
+	s := &FaceSensor{BaseSensor: NewBaseSensor(name, opts...)}
+	s.writeState(map[string]any{
+		facePropertyDetected:   false,
+		facePropertyDetections: []FaceDetection{},
+		facePropertyIdentities: []string{},
+	})
+	return s
+}
+
+func (s *FaceSensor) GetType() SensorType         { return SensorTypeFace }
+func (s *FaceSensor) GetCategory() SensorCategory { return SensorCategorySensor }
+func (s *FaceSensor) ToJSON() sensorJSON          { return s.toBaseJSON(s.GetType(), s.GetCategory()) }
+
+func (s *FaceSensor) IsDetected() bool {
+	v, _ := s.GetValue(facePropertyDetected).(bool)
+	return v
+}
+
+func (s *FaceSensor) GetDetections() []FaceDetection {
+	v, _ := s.GetValue(facePropertyDetections).([]FaceDetection)
+	return v
+}
+
+// GetIdentities returns the names of the faces recognized during the active
+// detection phase.
+func (s *FaceSensor) GetIdentities() []string {
+	v, _ := s.GetValue(facePropertyIdentities).([]string)
+	return v
+}
+
+// ReportDetections reports detected faces.
+//
+//   - ReportDetections(true, nil): face detected without specifics. The SDK
+//     synthesizes a single full-frame face detection without identity.
+//   - ReportDetections(true, [...]): explicit face detections, with an
+//     identity where the plugin recognizes the face itself.
+//   - ReportDetections(false, nil): clear.
+//
+// Example:
+//
+//	sensor.ReportDetections(true, []FaceDetection{
+//	    {Detection: Detection{Label: "person", Confidence: 0.94, Box: &BoundingBox{X: 0.4, Y: 0.2, Width: 0.15, Height: 0.25}, Attribute: "face"}, Identity: "Alice"},
+//	})
+//	sensor.ReportDetections(false, nil)
+func (s *FaceSensor) ReportDetections(detected bool, detections []FaceDetection) {
+	list := normalizeReportedDetections(detected, detections, func(d *FaceDetection) *Detection { return &d.Detection }, "person", "face")
+	state := map[string]any{
+		facePropertyDetected:   detected,
+		facePropertyDetections: list,
+	}
+	// recognized names accumulate while faces stay visible, so automations
+	// don't flap when a face is momentarily unrecognized mid-presence
+	recognized := make([]string, 0, len(list))
+	for _, d := range list {
+		if d.Identity != "" {
+			recognized = append(recognized, d.Identity)
+		}
+	}
+	if !detected {
+		state[facePropertyIdentities] = []string{}
+	} else if len(recognized) > 0 {
+		state[facePropertyIdentities] = mergeSortedUnique(s.GetIdentities(), recognized)
+	}
+	s.writeState(state)
+}
+
+// ClearDetections explicitly clears face detection state (detected = false, detections = []).
+func (s *FaceSensor) ClearDetections() {
+	s.ReportDetections(false, nil)
+}
+
+// UpdateValue on a read-only sensor: external writes are ignored.
+func (s *FaceSensor) UpdateValue(property string, value any) error {
+	return nil
+}
+
+// FaceDetectorSensor is a face sensor that consumes video frames from the
+// backend pipeline. Pair with a FaceDetector implementation.
+type FaceDetectorSensor struct {
+	FaceSensor
+}
+
+// NewFaceDetectorSensor creates a face detector sensor with the given name and options.
+func NewFaceDetectorSensor(name string, opts ...SensorOption) *FaceDetectorSensor {
+	s := &FaceDetectorSensor{FaceSensor: *NewFaceSensor(name, opts...)}
+	s.requiresFrames = true
+	return s
+}
