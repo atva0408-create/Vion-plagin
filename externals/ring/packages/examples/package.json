@@ -1,0 +1,16 @@
+{
+  "name": "examples",
+  "version": "0.0.0-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "dotenv": "17.2.3",
+    "eslint-config-shared": "*",
+    "ring-client-api": "14.3.0",
+    "tsconfig": "*"
+  }
+}
