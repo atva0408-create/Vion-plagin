@@ -120,7 +120,7 @@ def ordered(backend: Any, named: dict[str, Any]) -> list[Any]:
     return values
 
 
-def pixels(image: Image.Image) -> np.ndarray:
+def pixels(image: Image.Image) -> np.ndarray[Any, Any]:
     """OWL-ViT's input: the picture stretched to a square of OWL_SIZE (bicubic), CLIP's mean and deviation."""
     x = (
         np.asarray(
@@ -131,7 +131,7 @@ def pixels(image: Image.Image) -> np.ndarray:
     return ((x - CLIP_MEAN) / CLIP_STD).transpose(2, 0, 1)[None].astype(np.float32)
 
 
-def boxes_of(logits: np.ndarray, pred_boxes: np.ndarray) -> list[dict[str, float]]:
+def boxes_of(logits: np.ndarray[Any, Any], pred_boxes: np.ndarray[Any, Any]) -> list[dict[str, float]]:
     """The best boxes of one query in one picture: OWL's logits (one per patch) and boxes (cx, cy, w, h of the square,
     which is the picture stretched), as shares of the picture from MIN_SCORE, overlapping ones taken once."""
     scores = 1 / (1 + np.exp(-np.asarray(logits, dtype=np.float64)))
