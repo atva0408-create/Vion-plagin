@@ -2,6 +2,33 @@
 
 All notable changes to `@homebridge/hap-nodejs` will be documented in this file. This project tries to adhere to [Semantic Versioning](http://semver.org/).
 
+## v2.2.3 with fixes (VION)
+
+The fixes taken from the later history of this fork, on f844d29: each is its commit cherry-picked (`git log`
+names the commit it came from); the D-Bus one was written again for the advertisers as they are here.
+
+### Changes
+
+- fix(datastream): stop a stray unidentified frame from crashing the process
+- fix(datastream): drop malformed frame payloads instead of crashing the process
+- fix(datastream): destroy closed sockets when the remote never closes its side
+- fix(camera): reject malformed SetupEndpoints writes before marking the stream busy
+- fix(camera): answer SetupEndpoints with an error when the prepared stream response is invalid
+- fix(datastream): answer requests that have no handler instead of leaving them unanswered
+- fix(server): answer a malformed request URL with 400 instead of crashing
+- fix(server): only accept the proxy socket on the internal loopback HTTP server
+- fix(server): wait for the whole HTTP response before writing event notifications
+- fix(server): cap the size of request bodies, with a lower limit before pair-verify
+- fix(crypto): keep a frame whose length header arrived split across two TCP packets
+- fix(server): refuse pair-verify on a connection that is already verified
+- fix(server): answer /pairings requests with an unexpected state or method
+- fix(server): check idle connections again when the first one reaches the idle time
+- fix(server): limit the timed write ttl, unref its timer and clear it when the connection closes
+- fix(advertiser): warn about a system D-Bus connection error instead of crashing
+- fix(tlv): reject a truncated entry in decodeWithLists instead of cutting it short
+- fix(server): skip an event notification whose events were all unregistered
+- fix(accessory): compare a pairing's public key byte for byte instead of as text
+
 ## v2.2.3 (2026-08-22)
 
 ### Changes
