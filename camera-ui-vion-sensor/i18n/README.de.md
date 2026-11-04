@@ -42,7 +42,7 @@ Dreimal schnell hintereinander einschalten (jeweils kürzer als 10 Sekunden) set
 
 ## Platinen mit der ESPectre-Firmware
 
-Statt der VION-Sensor-Firmware kann auf einer Platine [ESPectre](https://github.com/francescopace/espectre) laufen (von
+Statt der VION-Sensor-Firmware kann auf einer Platine ESPectre laufen (von
 Francesco Pace, freie Software unter GPLv3): die offizielle Version, unverändert. ESPectre erkennt Bewegung mit einem
 statistischen Detektor oder einem kleinen neuronalen Netz, das seine Autoren trainiert haben. Dieses Plugin spricht mit
 der Platine nur über das Netzwerk.

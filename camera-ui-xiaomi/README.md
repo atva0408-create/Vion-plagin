@@ -42,7 +42,7 @@ The camera's plugin settings include **Connection**:
 
 The setting applies to the next video or PTZ connection. Remote P2P currently supports CS2 cameras; TUTK and legacy cameras retain LAN playback. The encrypted MISS channel passes through a loopback-only UDP bridge to the existing go2rtc producer, preserving video, sound and the normal player. Pending connections are cancelled on sign-out, camera removal and shutdown; unused sessions expire. Relay availability and bandwidth depend on Xiaomi and the camera's uplink.
 
-Verified remotely with `xiaomi.camera.c01a01`: HEVC 2304×1296 at **Maximum** quality. Other models may require another quality setting. Protocol references: [CS2/PPPP](https://github.com/magicus/pppp-dissector/blob/main/PPPP.md), [Xiaomi relay exchange](https://github.com/eugeneRover/micam#how-it-works).
+Verified remotely with `xiaomi.camera.c01a01`: HEVC 2304×1296 at **Maximum** quality. Other models may require another quality setting.
 
 ## Pan, tilt and zoom
 

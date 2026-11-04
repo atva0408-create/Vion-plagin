@@ -23,5 +23,8 @@
   "Visits, their snapshots and voice messages are removed after this. The video stays as long as the recorder keeps it.": "Visits, their snapshots and voice messages are removed after this. The video stays as long as the recorder keeps it.",
   "Archive": "Archive",
   "Assistant": "Assistant",
-  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases."
+  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.",
+  "SIP port": "SIP port",
+  "Panels that call over SIP (RUBITEK path B) call this UDP port directly. Only the panels added here are answered; never forward it to the internet.": "Panels that call over SIP (RUBITEK path B) call this UDP port directly. Only the panels added here are answered; never forward it to the internet.",
+  "Panels": "Panels"
 }

@@ -36,7 +36,7 @@
   "Backlight": "Beleuchtung",
   "Keep warm": "Warmhalten",
   "Child lock": "Kindersicherung",
-  "Auto": "Auto",
+  "Auto": "Automatisch",
   "Cooling": "Kühlen",
   "Drying": "Entfeuchten",
   "Fan only": "Nur Lüfter",
@@ -125,5 +125,6 @@
   "Station": "Station",
   "The station that speaks.": "Die Station, die spricht.",
   "Phrase": "Satz",
-  "What the station says.": "Was die Station sagt."
+  "What the station says.": "Was die Station sagt.",
+  "Id of the scenario, only when several have that name: the error of a call by the name lists them.": "Id des Szenarios, nur wenn mehrere diesen Namen tragen: der Fehler eines Aufrufs mit dem Namen listet sie auf."
 }
