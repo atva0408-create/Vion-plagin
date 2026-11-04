@@ -1,3 +1,8 @@
+## [0.4.3]
+
+- A camera in another network that cannot be reached now says why. The plugin kept looking for a Xiaomi relay for 25 s after the keys from Mi Home (up to 15 s more) while VION waits 30 s for the address of a stream: the reason, such as «Xiaomi did not return a relay; the camera may be offline», came too late and reached nobody. The search now keeps within 25 s in all.
+- The camera's log says the reason a connection failed, once and again after 10 minutes while it lasts, and at once when it changes; the stream engine's retries every few seconds do not repeat it.
+
 ## [0.4.2]
 
 - A camera behind a Xiaomi P2P relay keeps its video while you talk through it. The bridge to go2rtc dropped the camera's frames on channels go2rtc does not read (the speaker's among them) without acknowledging them, so the camera kept sending them again; its video stopped seconds after talk started. They are acknowledged now, and the plugin log says once per connection on which channel the camera sent them.
