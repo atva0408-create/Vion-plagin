@@ -1,4 +1,21 @@
-import { CiaoAdvertiser, PairingFeatureFlag, StatusFlag } from "./Advertiser";
+import { EventEmitter } from "events";
+import { AvahiAdvertiser, CiaoAdvertiser, PairingFeatureFlag, ResolvedAdvertiser, StatusFlag } from "./Advertiser";
+import { AccessoryInfo } from "./model/AccessoryInfo";
+
+const mockBuses: { connection: EventEmitter }[] = [];
+
+// the system bus, as @homebridge/dbus-native gives it: a connection that emits "connect" on the next tick, and
+// "error" with nobody of its own listening
+jest.mock("@homebridge/dbus-native", () => ({
+  ...jest.requireActual("@homebridge/dbus-native"),
+  systemBus: () => {
+    const connection = Object.assign(new EventEmitter(), { stream: { destroy: jest.fn() } });
+    process.nextTick(() => connection.emit("connect"));
+    const bus = { connection, invoke: jest.fn() };
+    mockBuses.push(bus);
+    return bus;
+  },
+}));
 
 describe(CiaoAdvertiser, () => {
   describe("ff and sf", () => {
@@ -27,12 +44,18 @@ describe(CiaoAdvertiser, () => {
     });
   });
 });
+
+describe("D-Bus advertisers", () => {
+  beforeEach(() => {
+    mockBuses.length = 0;
+  });
+
   it("should warn about a connection error on every system bus it opens instead of crashing", async () => {
     const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       new AvahiAdvertiser(AccessoryInfo.create("AA:BB:CC:DD:EE:FF"));
       new ResolvedAdvertiser(AccessoryInfo.create("AA:BB:CC:DD:EE:FF"));
-      await new Promise(resolve => process.nextTick(resolve)); // the fake buses connect on the next tick
+      await new Promise(resolve => process.nextTick(resolve)); // the buses connect on the next tick
 
       expect(mockBuses).toHaveLength(2);
       for (const bus of mockBuses) {
@@ -48,13 +71,15 @@ describe(CiaoAdvertiser, () => {
   it("should not warn when the system bus cannot be reached while checking availability", async () => {
     const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
-      const available = AvahiAdvertiser.isAvailable();
-      // fails before the fake bus connects on the next tick
-      mockBuses[0].connection.emit("error", new Error("connect ENOENT /var/run/dbus/system_bus_socket"));
-      await expect(available).resolves.toBe(false);
+      for (const advertiser of [AvahiAdvertiser, ResolvedAdvertiser]) {
+        const available = advertiser.isAvailable();
+        // fails before the bus connects on the next tick
+        mockBuses[mockBuses.length - 1].connection.emit("error", new Error("connect ENOENT /var/run/dbus/system_bus_socket"));
+        await expect(available).resolves.toBe(false);
+      }
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();
     }
   });
-
+});
