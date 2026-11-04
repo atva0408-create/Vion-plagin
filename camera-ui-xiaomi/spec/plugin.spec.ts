@@ -965,6 +965,30 @@ test('a camera that cannot be reached says why in its log, once per reason, not 
   await h.shutdown();
 });
 
+test('a camera whose region of Mi Home could not be read says so, not that the account has it no more', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const first = host();
+  await first.submit({ username: 'user@example.com', password: PASSWORD });
+  const values = first.values;
+  await first.shutdown();
+  // the plugin starts again with the token kept, and the region of the camera does not answer
+  const down = fakeXiaomi(scenario({ devices: { cn: [] } }));
+  globalThis.fetch = down.fetch;
+  const h = host(values);
+  await h.launch();
+  const { camera, stream } = device();
+  await h.plugin.onCameraAdded(camera);
+  const error = await stream().then(
+    () => undefined,
+    (e: Error) => e,
+  );
+  assert.ok(error, 'the camera opened with its region down');
+  assert.doesNotMatch(error.message, /has no camera/, 'a region not read is said to be a camera removed');
+  assert.match(error.message, /Mi Home region ru/);
+  await h.shutdown();
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

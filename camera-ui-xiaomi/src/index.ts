@@ -74,6 +74,8 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   /** Cameras the cloud connects over a vendor VION plays: it is not asked about them again. */
   private playable = new Set<string>();
   private camerasReadAt = 0;
+  /** the regions of Mi Home the last reading of the list could not read, with why: a camera there is unknown, not gone */
+  private unreadRegions = new Map<string, string>();
   private refreshing?: Promise<void>;
   private refreshTimer?: NodeJS.Timeout;
 
@@ -311,9 +313,14 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   private async refreshCameras(): Promise<void> {
     this.refreshing ??= (async () => {
       const signOuts = this.signOuts;
+      const unread = new Map<string, string>();
       const { cameras, complete } = await this.withSession((cloud) =>
-        listCameras(cloud, (region, error) => this.logger.debug(`Mi Home region ${region} not read:`, errorText(error))),
+        listCameras(cloud, (region, error) => {
+          unread.set(region, errorText(error));
+          this.logger.debug(`Mi Home region ${region} not read:`, errorText(error));
+        }),
       );
+      this.unreadRegions = unread;
       await this.checkCameras(cameras);
       // signed out while the list was read: its cameras are not offered or adopted any more
       if (signOuts !== this.signOuts) throw new XiaomiAuthError(NOT_SIGNED_IN);
@@ -443,6 +450,11 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
       this.refreshCameras().catch((error) => this.logger.debug('Could not read the device list again:', errorText(error)));
     }
     const camera = this.cameras.get(did);
+    // the region of the camera may be the one that did not answer: that is the reason, not a camera taken off the account
+    if (!camera && this.unreadRegions.size)
+      throw new Error(
+        `Camera ${did} is not in what Mi Home answered: ${[...this.unreadRegions].map(([region, error]) => `Mi Home region ${region} not read (${error})`).join('; ')}`,
+      );
     if (!camera) throw new Error(`The Mi account has no camera ${did} anymore`);
     return camera;
   }
