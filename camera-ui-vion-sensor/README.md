@@ -41,7 +41,7 @@ Three quick power-ons in a row (each shorter than 10 seconds) also reset the boa
 
 ## Boards with the ESPectre firmware
 
-A board can run [ESPectre](https://github.com/francescopace/espectre) (by Francesco Pace, free software under GPLv3)
+A board can run ESPectre (by Francesco Pace, free software under GPLv3)
 instead of the VION Sensor firmware: its official release, as is. ESPectre finds motion with a statistical detector or
 with a small neural network trained by its authors. This plugin only talks to the board over the network.
 

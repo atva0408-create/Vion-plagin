@@ -23,5 +23,8 @@
   "Visits, their snapshots and voice messages are removed after this. The video stays as long as the recorder keeps it.": "Визиты, их снимки и голосовые сообщения удаляются после этого срока. Видео живёт по сроку записи NVR.",
   "Archive": "Архив",
   "Assistant": "Ассистент",
-  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "Агент просит ассистента составлять фразы. Без него агент говорит готовыми фразами."
+  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "Агент просит ассистента составлять фразы. Без него агент говорит готовыми фразами.",
+  "SIP port": "Порт SIP",
+  "Panels that call over SIP (RUBITEK path B) call this UDP port directly. Only the panels added here are answered; never forward it to the internet.": "Панели, которые звонят по SIP (RUBITEK, путь B), звонят на этот UDP-порт напрямую. Ответ получают только панели, добавленные здесь; не пробрасывайте этот порт в интернет.",
+  "Panels": "Панели"
 }

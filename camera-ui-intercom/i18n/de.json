@@ -23,5 +23,8 @@
   "Visits, their snapshots and voice messages are removed after this. The video stays as long as the recorder keeps it.": "Besuche, ihre Standbilder und Sprachnachrichten werden danach gelöscht. Das Video bleibt so lange, wie die Aufzeichnung es behält.",
   "Archive": "Archiv",
   "Assistant": "Assistent",
-  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "Der Agent lässt seine Sätze vom Assistenten schreiben. Ohne ihn spricht er mit vorbereiteten Sätzen."
+  "The agent asks the assistant to write its phrases. Without it the agent speaks from ready phrases.": "Der Agent lässt seine Sätze vom Assistenten schreiben. Ohne ihn spricht er mit vorbereiteten Sätzen.",
+  "SIP port": "SIP-Port",
+  "Panels that call over SIP (RUBITEK path B) call this UDP port directly. Only the panels added here are answered; never forward it to the internet.": "Türstationen, die über SIP anrufen (RUBITEK, Weg B), rufen diesen UDP-Port direkt an. Angenommen werden nur die hier hinzugefügten Türstationen; leiten Sie ihn nie ins Internet weiter.",
+  "Panels": "Türstationen"
 }
