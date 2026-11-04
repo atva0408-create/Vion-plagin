@@ -17,11 +17,12 @@
     "publish:alpha": "npm i --save --force && npm run bundle && cui publish --alpha",
     "publish:beta": "npm i --save --force && npm run bundle && cui publish --beta",
     "publish:latest": "npm i --save --force && npm run bundle && cui publish --latest",
+    "test": "npx --yes tsx spec/mail-size.spec.ts",
     "update": "updates -M npm,pypi,go,cargo,docker,make --update ./"
   },
   "dependencies": {
-    "mailparser": "^3.9.28",
-    "smtp-server": "^3.19.13"
+    "mailparser": "^3.14.1",
+    "smtp-server": "^3.21.3"
   },
   "devDependencies": {
     "@camera.ui/cli": "^0.0.113",
