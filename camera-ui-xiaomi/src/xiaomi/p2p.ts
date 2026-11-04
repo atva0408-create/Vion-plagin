@@ -197,7 +197,8 @@ export class P2pConnections {
     return `${this.epoch}:${this.versions.get(did) ?? 0}`;
   }
 
-  public async open(did: string, credentials: RelayCredentials, token = this.token(did)): Promise<string> {
+  /** `deadline` (ms since the epoch): the handshake gives up by then instead of after its own 25 s. */
+  public async open(did: string, credentials: RelayCredentials, token = this.token(did), deadline?: number): Promise<string> {
     if (token !== this.token(did)) throw new Error('CS2 P2P: connection cancelled');
     const sessions = this.active.get(did) ?? new Set();
     // Probes and players can request fresh URLs concurrently. Bound unused sessions without sharing auth keys.
@@ -210,7 +211,7 @@ export class P2pConnections {
       if (!sessions.size && this.active.get(did) === sessions) this.active.delete(did);
     };
     try {
-      const bridge = await P2pBridge.open(credentials, { signal: session.abort.signal });
+      const bridge = await P2pBridge.open(credentials, { signal: session.abort.signal, timeoutMs: deadline === undefined ? undefined : Math.max(1, deadline - Date.now()) });
       session.bridge = bridge;
       bridge.onClose = remove;
       bridge.onUnread = (channel) => this.say?.(`CS2 P2P ${did}: the camera sends on channel ${channel}, which go2rtc does not read; acknowledged here`);

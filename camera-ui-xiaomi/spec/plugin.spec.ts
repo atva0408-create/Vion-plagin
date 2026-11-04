@@ -914,6 +914,34 @@ test('removing a camera while its PTZ sensor is being registered leaves no stale
   await h.shutdown();
 });
 
+/** A camera seen only through Mi Home: no address on this network, keys of a CS2 relay. */
+function remoteScenario(): Scenario {
+  return scenario({
+    devices: { ru: [{ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '', isOnline: true }], cn: [] },
+    vendors: { '1001': { vendor: { vendor: 4, vendor_params: { p2p_id: 'ABCDEF-123456-GHIJK', init_string: 'EBGDEOBOKGICGAIAFFGN' } }, public_key: 'dd'.repeat(32), sign: 'sig' } },
+  });
+}
+
+test('the relay of a remote camera gets what is left of 25 s: the address, or why not, comes back within the 30 s VION waits', async () => {
+  globalThis.fetch = fakeXiaomi(remoteScenario()).fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const { camera, stream } = device();
+  await h.plugin.onCameraAdded(camera);
+  const asked: (number | undefined)[] = [];
+  const p2p = (h.plugin as unknown as { p2p: { open: (did: string, credentials: unknown, token: string, deadline?: number) => Promise<string> } }).p2p;
+  p2p.open = async (_did, _credentials, _token, deadline) => {
+    asked.push(deadline);
+    throw new Error('CS2 P2P: Xiaomi did not return a relay; the camera may be offline');
+  };
+  const started = Date.now();
+  await assert.rejects(stream(), /CS2 P2P: Xiaomi did not return a relay/);
+  assert.equal(asked.length, 1);
+  assert.equal(typeof asked[0], 'number', 'the relay was given no deadline: its 25 s come on top of the keys from Mi Home');
+  assert.ok(asked[0]! > started && asked[0]! <= started + 25_000, `deadline ${asked[0]! - started} ms after the start`);
+  await h.shutdown();
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

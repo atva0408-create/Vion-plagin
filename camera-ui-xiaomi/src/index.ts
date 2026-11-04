@@ -50,6 +50,13 @@ interface PendingLogin {
   field: string;
 }
 
+/**
+ * VION waits 30 s for the address of a stream (its RPC limit): an answer found later reaches nobody, and the reason a
+ * remote connection failed was lost with it. The whole search (the camera, the keys from Mi Home, up to 15 s, the
+ * relay's handshake, 25 s of its own) keeps within this, the handshake taking what is left.
+ */
+const STREAM_URL_BUDGET_MS = 25_000;
+
 export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements DiscoveryProvider {
   private cloud?: XiaomiCloud;
   private signingIn?: Promise<XiaomiCloud>;
@@ -368,6 +375,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   /** The address of one connection to the camera, with keys made for it. */
   private async streamUrl(did: string, mode: ConnectionMode = 'auto'): Promise<string> {
+    const deadline = Date.now() + STREAM_URL_BUDGET_MS;
     const token = this.p2p.token(did);
     const camera = await this.knownCamera(did);
     // said at once: the engine tries a camera again and again, and each try would ask the cloud for keys it cannot use
@@ -377,7 +385,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const url = await this.withSession((cloud) =>
       cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error)), {
         mode,
-        openRelay: (credentials) => this.p2p.open(did, credentials, token),
+        openRelay: (credentials) => this.p2p.open(did, credentials, token, deadline),
       }),
     );
     if (token !== this.p2p.token(did)) throw new Error('The Xiaomi connection was cancelled');
