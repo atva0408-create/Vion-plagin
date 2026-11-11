@@ -1,3 +1,7 @@
+## [2.0.8]
+
+- Live-Ansicht und Gegensprechen laufen mit VIONs eigenem Build der Streaming-Bibliothek (@vionvision/rtsp 1.0.7, derselbe Code wie bisher): nichts davon kommt mehr aus den Paketen des Autors
+
 ## [2.0.7]
 
 - Der Name wird VION geschrieben

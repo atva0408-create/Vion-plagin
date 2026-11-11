@@ -1,7 +1,7 @@
 {
   "displayName": "Eufy",
   "name": "@vionvision/camera-ui-eufy",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "Подключает камеры, дверные звонки, базы HomeBase и датчики Eufy к VION: поиск устройств, прямой эфир, двусторонний звук, события обнаружения, управление камерами и датчики Eufy.",
   "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@mega-yfue/eufy-sdk": "file:../externals/eufy-sdk",
-    "@seydx/rtsp": "^1.0.7"
+    "@seydx/rtsp": "npm:@vionvision/rtsp@1.0.7"
   },
   "devDependencies": {
     "@camera.ui/cli": "npm:@vionvision/cli@0.0.113",
@@ -34,6 +34,7 @@
     "cross-env": "^10.1.0",
     "eslint": "9.39.2",
     "globals": "^17.12.0",
+    "node-av": "npm:@vionvision/node-av@6.2.0-beta.24",
     "prettier": "^3.9.9",
     "rimraf": "^6.1.3",
     "tsx": "^4.23.15",

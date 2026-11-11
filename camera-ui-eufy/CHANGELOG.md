@@ -1,3 +1,7 @@
+## [2.0.8]
+
+- The live view and two-way audio run on VION's own build of the streaming library (@vionvision/rtsp 1.0.7, the same code as before): nothing of it comes from the author's packages any more
+
 ## [2.0.7]
 
 - The name is written VION
