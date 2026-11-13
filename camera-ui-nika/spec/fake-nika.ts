@@ -80,7 +80,17 @@ export class FakeNika {
       if (framer) this.sessionSend = undefined;
     });
     socket.on('error', () => undefined);
-    plain({ t: 'hello', proto: 1, id: this.id, name: this.options.name ?? 'Ника', room: this.options.room ?? 'Детская', ver: 'test', lang: this.options.lang ?? 'ru', tz: this.options.tz ?? 'Europe/Moscow', nonce });
+    plain({
+      t: 'hello',
+      proto: 1,
+      id: this.id,
+      name: this.options.name ?? 'Ника',
+      room: this.options.room ?? 'Детская',
+      ver: 'test',
+      lang: this.options.lang ?? 'ru',
+      tz: this.options.tz ?? 'Europe/Moscow',
+      nonce,
+    });
     socket.on('data', (chunk: Buffer) => {
       for (const line of reader.push(chunk)) {
         if (framer) {

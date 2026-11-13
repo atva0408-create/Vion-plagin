@@ -18,7 +18,7 @@ const port = 18796;
 const out: string[] = [];
 const child = spawn(python, [harness, join(mkdtempSync(join(tmpdir(), 'nika-')), 'state.json'), String(port), 'Ника', 'Проверка'], {
   cwd: nikaDir,
-  env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+  env: { ...process.env, PYTHONIOENCODING: 'utf-8', HARNESS_STDIN: '1' },
 });
 child.stdout.setEncoding('utf8');
 let rest = '';
@@ -36,7 +36,7 @@ child.stderr.on('data', (chunk: string) => process.stderr.write(`  nika! ${chunk
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(condition: () => boolean, what: string, ms = 10_000): Promise<void> {
-  for (const end = Date.now() + ms; !condition() && Date.now() < end; ) await sleep(20);
+  for (const end = Date.now() + ms; !condition() && Date.now() < end;) await sleep(20);
   assert.ok(condition(), `${what} did not come within ${ms} ms`);
 }
 
@@ -73,7 +73,9 @@ try {
     address: async () => ({ host: found.host, port: found.port }),
     offer: () => ({
       t: 'offer',
-      commands: [{ name: 'screen_time_status', description: 'Screen time now.', parameters: { type: 'object', properties: { child: { type: 'string' } } }, grant: false }],
+      commands: [
+        { name: 'screen_time_status', description: 'Screen time now.', parameters: { type: 'object', properties: { child: { type: 'string' } } }, grant: false },
+      ],
     }),
     onCall: async (_link, call): Promise<CallResult> => {
       calls.push(call);
@@ -93,7 +95,10 @@ try {
 
   child.stdin.write('call vion__screen_time_status {"child": "Сыночка"}\n');
   await until(() => out.some((line) => line.startsWith('RESULT:')), 'her call answered');
-  assert.deepEqual(calls.map((call) => [call.name, call.args]), [['screen_time_status', { child: 'Сыночка' }]]);
+  assert.deepEqual(
+    calls.map((call) => [call.name, call.args]),
+    [['screen_time_status', { child: 'Сыночка' }]],
+  );
   assert.equal(JSON.parse(out.find((line) => line.startsWith('RESULT:'))!.slice(8)).text, 'Сыночка: сегодня 42 минуты');
 
   link.send({ t: 'decided', request: 'r1', approved: true, text: 'Разрешили: Сыночка: ещё 60 минут.' });

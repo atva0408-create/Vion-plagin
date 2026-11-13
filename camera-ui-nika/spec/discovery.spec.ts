@@ -66,7 +66,13 @@ const make = () => {
   const mdns = new FakeMdns();
   const logs: string[] = [];
   let changes = 0;
-  const discovery = new Discovery({ log: (line) => logs.push(line), now: () => clock, open: () => mdns as unknown as MulticastDns, onChange: () => (changes += 1), nets: () => BENCH });
+  const discovery = new Discovery({
+    log: (line) => logs.push(line),
+    now: () => clock,
+    open: () => mdns as unknown as MulticastDns,
+    onChange: () => (changes += 1),
+    nets: () => BENCH,
+  });
   discovery.start();
   return { discovery, mdns, logs, changes: () => changes };
 };
@@ -95,7 +101,10 @@ const make = () => {
   ]);
   discovery.onPacket({ type: 'response', answers: [{ name: INSTANCE, type: 'SRV', ttl: 120, data: { port: 9000, target: 'Nika-Host.local' } }] });
   discovery.onPacket({ type: 'response', answers: [{ name: INSTANCE, type: 'TXT', ttl: 120, data: txt({ id: 'n2', name: 'Ника' }) }] });
-  assert.ok(mdns.asked.some((question) => question.name === 'nika-host.local' && question.type === 'A'), 'the address of the host is asked for');
+  assert.ok(
+    mdns.asked.some((question) => question.name === 'nika-host.local' && question.type === 'A'),
+    'the address of the host is asked for',
+  );
   assert.deepEqual(discovery.list(), [], 'no address yet');
   discovery.onPacket({ type: 'response', answers: [{ name: 'Nika-Host.local', type: 'A', ttl: 120, data: '10.0.0.7' }] });
   assert.equal(discovery.get('n2')?.host, '10.0.0.7');

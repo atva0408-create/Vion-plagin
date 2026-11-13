@@ -191,7 +191,9 @@ export async function runCommand(host: CommandHost, name: string, args: Record<s
           .map((scenario) => ({ child: scenario.childName ?? '', camera: camera.camera ?? '', enabled: scenario.enabled !== false, now: scenario.now ?? '' })),
       );
       if (!children.length) return { ok: false, error: t.noScenario };
-      return { ok: true, text: children.map((c) => `${c.child}: ${c.enabled ? c.now : '—'}`).join('\n'), data: children };
+      // VOICE's line begins with the child's name («Сыночка: Сегодня: 21 мин…», the bench): said once
+      const line = (c: { child: string; enabled: boolean; now: string }) => (c.enabled && c.now.startsWith(c.child) ? c.now : `${c.child}: ${c.enabled ? c.now : '—'}`);
+      return { ok: true, text: children.map(line).join('\n'), data: children };
     }
     case 'screen_time_report': {
       const answer = await call('voice_report', args);

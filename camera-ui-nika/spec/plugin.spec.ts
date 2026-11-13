@@ -25,7 +25,7 @@ import type { Message } from '../src/protocol.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(condition: () => boolean, what: string, ms = 5_000): Promise<void> {
-  for (const end = Date.now() + ms; !condition() && Date.now() < end; ) await sleep(10);
+  for (const end = Date.now() + ms; !condition() && Date.now() < end;) await sleep(10);
   assert.ok(condition(), `${what} did not come within ${ms} ms`);
 }
 
@@ -41,9 +41,14 @@ function fakeVoice() {
     async callAssistantTool(name: string, input: Record<string, unknown>): Promise<AssistantToolResult> {
       asked.push({ name, input });
       if (name === 'voice_status') {
-        return { content: { cameras: [{ camera: 'Xiaomi C300', screenTime: [{ childName: 'Сыночка', enabled: true, now: 'сегодня 42 мин, перерыв через 3 мин' }] }] } };
+        return {
+          content: {
+            cameras: [{ camera: 'Xiaomi C300', screenTime: [{ childName: 'Сыночка', enabled: true, now: 'Сыночка: Сегодня: 42 мин. Сейчас: за компьютером' }] }],
+          },
+        };
       }
-      if (name === 'voice_report') return input.child === 'Никто' ? { error: 'No screen-time scenario for "Никто".' } : { content: { timezone: 'Europe/Moscow', reports: [] } };
+      if (name === 'voice_report')
+        return input.child === 'Никто' ? { error: 'No screen-time scenario for "Никто".' } : { content: { timezone: 'Europe/Moscow', reports: [] } };
       if (name === 'voice_extend') return { content: { done: true, camera: 'Xiaomi C300', now: 'можно ещё 60 мин' } };
       return { error: `Unknown tool ${name}` };
     },
@@ -120,10 +125,22 @@ async function call(nika: FakeNika, name: string, args: Record<string, unknown>,
   assert.equal(parseAddress('http://x'), undefined);
   assert.equal(parseAddress('1.2.3.4:70000'), undefined);
   assert.equal(parseAddress(''), undefined);
-  assert.deepEqual(
-    [1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111, 112, 240].map(ruMinutes),
-    ['1 минута', '2 минуты', '4 минуты', '5 минут', '11 минут', '12 минут', '14 минут', '21 минута', '22 минуты', '25 минут', '101 минута', '111 минут', '112 минут', '240 минут'],
-  );
+  assert.deepEqual([1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111, 112, 240].map(ruMinutes), [
+    '1 минута',
+    '2 минуты',
+    '4 минуты',
+    '5 минут',
+    '11 минут',
+    '12 минут',
+    '14 минут',
+    '21 минута',
+    '22 минуты',
+    '25 минут',
+    '101 минута',
+    '111 минут',
+    '112 минут',
+    '240 минут',
+  ]);
 }
 
 const nika = new FakeNika({ tries: 3 });
@@ -179,7 +196,11 @@ const deviceId = `nika:${nika.id}`;
   assert.equal(await plugin.getDevice('nika:other'), null);
   await assert.rejects(plugin.registerDevice(), /Connect NIKA/);
 
-  const said = (await plugin.sendNotification([deviceId, 'nika:other'], { title: 'Сыночка не ушёл на перерыв.', body: 'Играет 55 мин!', severity: 'warn' as never })) as unknown;
+  const said = (await plugin.sendNotification([deviceId, 'nika:other'], {
+    title: 'Сыночка не ушёл на перерыв.',
+    body: 'Играет 55 мин!',
+    severity: 'warn' as never,
+  })) as unknown;
   assert.deepEqual(said, [
     { deviceId, ok: true },
     { deviceId: 'nika:other', ok: false, error: 'no such NIKA' },
@@ -204,7 +225,8 @@ const deviceId = `nika:${nika.id}`;
 {
   const status = await call(nika, 'screen_time_status', { child: 'сыночка' });
   assert.equal(status.ok, true);
-  assert.equal(status.text, 'Сыночка: сегодня 42 мин, перерыв через 3 мин');
+  // VOICE's own line begins with the name (seen on the bench): not said twice
+  assert.equal(status.text, 'Сыночка: Сегодня: 42 мин. Сейчас: за компьютером');
   const nobody = await call(nika, 'screen_time_status', { child: 'Маша' });
   assert.deepEqual([nobody.ok, nobody.error], [false, 'В VOICE нет сценария экранного времени для этого ребёнка.']);
   const report = await call(nika, 'screen_time_report', { child: 'Сыночка', days: 2 });

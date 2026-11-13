@@ -16,7 +16,7 @@ const VION = 'vion-test';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function until(condition: () => boolean, what: string, ms = 5_000): Promise<void> {
-  for (const end = Date.now() + ms; !condition() && Date.now() < end; ) await sleep(10);
+  for (const end = Date.now() + ms; !condition() && Date.now() < end;) await sleep(10);
   assert.ok(condition(), `${what} did not come within ${ms} ms`);
 }
 
