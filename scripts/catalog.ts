@@ -89,8 +89,9 @@ const EXTERNAL_PLUGINS: Record<string, CatalogEntry> = {
 
 // Not in the registry yet, so not in the store: apple-llm is built on macOS only; the intercom waits for the server's
 // /api/intercom routes and for its check on a panel. (VOICE is in the store since 0.5.0: its Russian speech packs are
-// on the models mirror; the English and German voices and whisper are not there yet.)
-const DRAFT_PLUGINS = new Set<string>(['camera-ui-apple-llm', 'camera-ui-intercom']);
+// on the models mirror; the English and German voices and whisper are not there yet.) NIKA waits for her own side
+// (core/vion_link.py) on the speakers and a check with a real one.
+const DRAFT_PLUGINS = new Set<string>(['camera-ui-apple-llm', 'camera-ui-intercom', 'camera-ui-nika']);
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif']);
 
