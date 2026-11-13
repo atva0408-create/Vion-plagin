@@ -99,6 +99,11 @@ interface RetentionPass {
 type ExportQuality = 'best' | 'smallest';
 
 const RETENTION_INTERVAL_MS = 5 * 60_000;
+/**
+ * The host's ffmpeg: how long what needs it (H.264, exports) waits at the start before going on with another one, and
+ * how long after a refused ask it is asked again. An object, not constants: the specs shorten them.
+ */
+export const FFMPEG_WAIT = { firstMs: 15_000, retryMs: [5_000, 15_000, 30_000, 60_000] };
 /** A recorded file that could not be deleted is tried again this long after, not at every pass: a folder of them held every pass up. */
 const UNDELETABLE_RETRY_MS = 3_600_000;
 /** This many deletions refused in a row end those of a pass (by days, for room): a read-only or failing disk refuses every one. */
@@ -445,6 +450,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private ffmpegPath = 'ffmpeg';
   /** Found at the first playback that needs it. */
   private h264Encoder?: Promise<H264Encoder>;
+  /** the ffmpeg the encoder was looked for with */
+  private h264EncoderFor?: string;
   /** Settles when the host's ffmpeg is known (or not coming): the encoder is tried with the ffmpeg that will make it. */
   private ffmpegFound: Promise<void> = Promise.resolve();
   private probeH264Encoder: (ffmpegPath: string) => Promise<H264Encoder> = (ffmpegPath) => findH264Encoder(ffmpegPath);
@@ -956,15 +963,52 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     );
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
-    this.ffmpegFound = Promise.race([this.api.coreManager.getFFmpegPath(), new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 15_000))])
-      .then((path) => {
-        if (path) {
-          this.ffmpegPath = path;
-          for (const c of this.cameras.values()) for (const r of c.recorders.values()) r.update({ ffmpegPath: path });
-        }
-      })
-      .catch(() => undefined);
+    this.ffmpegFound = this.findHostFfmpeg();
     this.markReady();
+  }
+
+  /**
+   * Asks the host for its ffmpeg until it answers. What needs it waits FFMPEG_WAIT.firstMs, then goes on with the one it
+   * has; the answer is taken whenever it comes. The server answers while it starts itself: on the bench's cold boot it
+   * took longer than the wait, the late answer was thrown away and the recordings ran on /usr/bin/ffmpeg until a restart.
+   */
+  private findHostFfmpeg(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const wait = setTimeout(() => {
+        this.logger.warn(`The ffmpeg of VION did not answer in ${FFMPEG_WAIT.firstMs / 1000} s: ${this.ffmpegPath} is used until it does`);
+        resolve();
+      }, FFMPEG_WAIT.firstMs);
+      wait.unref?.();
+      const ask = (attempt: number) => {
+        if (this.stopping) return;
+        this.api.coreManager.getFFmpegPath().then(
+          (path) => {
+            clearTimeout(wait);
+            if (path && path !== this.ffmpegPath) this.useFfmpeg(path);
+            resolve();
+          },
+          (error: Error) => {
+            const retryMs = FFMPEG_WAIT.retryMs[Math.min(attempt, FFMPEG_WAIT.retryMs.length - 1)];
+            this.logger.warn(`The ffmpeg of VION was not given (${error.message}): asked again in ${retryMs / 1000} s`);
+            setTimeout(() => ask(attempt + 1), retryMs).unref?.();
+          },
+        );
+      };
+      ask(0);
+    });
+  }
+
+  private useFfmpeg(path: string): void {
+    const before = this.ffmpegPath;
+    this.ffmpegPath = path;
+    for (const c of this.cameras.values()) for (const r of c.recorders.values()) r.update({ ffmpegPath: path });
+    if (this.h264Encoder && this.h264EncoderFor !== undefined && this.h264EncoderFor !== path) {
+      // found by an encode with the other ffmpeg: this one may encode otherwise (a hardware encoder). One still waiting
+      // for the answer is tried with this one anyway
+      this.h264Encoder = undefined;
+      this.h264EncoderFor = undefined;
+      this.logger.log(`ffmpeg of VION came late (${path}, was ${before}): the H.264 encoder is looked for again`);
+    }
   }
 
   private async start(): Promise<void> {
@@ -1850,7 +1894,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private h264(): Promise<{ ffmpegPath: string; encoder: H264Encoder }> {
     // tried with the host's ffmpeg: one asked for before it came used another (on PATH, or none) and kept libx264 for good
     this.h264Encoder ??= this.ffmpegFound
-      .then(() => this.probeH264Encoder(this.ffmpegPath))
+      .then(() => {
+        this.h264EncoderFor = this.ffmpegPath;
+        return this.probeH264Encoder(this.ffmpegPath);
+      })
       .then((encoder) => {
         this.logger.log(`Recordings of H.265 cameras are made H.264 for browsers without H.265 by ${encoder.name}`);
         return encoder;

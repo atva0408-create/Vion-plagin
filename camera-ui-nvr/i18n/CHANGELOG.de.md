@@ -1,3 +1,7 @@
+## [0.25.2]
+
+- Das ffmpeg von VION wird übernommen, wann immer es antwortet: der Recorder fragte einmal und wartete 15 s, und beim Kaltstart der Maschine (der Server startet noch) kam die Antwort später, sodass Aufnahmen und Exporte bis zu einem Neustart über das ffmpeg des Systems liefen. Eine abgelehnte Anfrage wird wiederholt und im Protokoll genannt; der H.264-Encoder, der inzwischen mit dem anderen ffmpeg gefunden wurde, wird neu gesucht
+
 ## [0.25.1]
 
 - Die Bereinigung des Archivs hält nicht mehr an einer Aufnahmedatei an, die sie nicht löschen kann (fehlende Rechte, ein defekter Sektor): die Datei behält ihre Zeile, wird eine Stunde später erneut versucht, einmal im Protokoll und in den Systemereignissen genannt und zählt nicht zum Kontingent: Platz schaffen kann die Aufnahme mit ihr nicht. Gezählt ließen solche Dateien über dem Kontingent den Schutz jede Aufnahme jeder Kamera löschen. Der Schutz des freien Speichers löscht nur, was den Platz schaffen kann, und pausiert sonst die Aufnahme; zwanzig Weigerungen nacheinander (eine schreibgeschützte Platte) beenden das Löschen eines Durchlaufs. Eine solche Datei hielt das Löschen nach Tagen, das Kontingent und den Schutz des freien Speichers für immer an, und die Platte lief voll. Ein Durchlauf startet nicht über einem laufenden, und auf einer Platte, die ihre Größe nicht nennt, gilt der Schutz des freien Speichers nicht: dort löschte er bis zu 10 000 der ältesten Dateien je Durchlauf

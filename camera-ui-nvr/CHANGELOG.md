@@ -1,3 +1,7 @@
+## [0.25.2]
+
+- The ffmpeg of VION is taken when it answers, however late: the recorder asked for it once and waited 15 s, and on a cold start of the machine (the server still starting) it answered later, so the recordings and exports ran on the ffmpeg of the system until a restart. An ask that is refused is asked again and said in the log; the H.264 encoder found meanwhile with the other ffmpeg is looked for again
+
 ## [0.25.1]
 
 - The retention goes on past a recorded file it cannot delete (its rights, a bad sector): the file keeps its row and is tried again an hour later, told once in the log and in the events of the system, and is out of the quota: the recorder cannot make room with it. Counted, files stuck over the quota made the guard delete every recording of every camera. The free-space guard deletes only what can make the room and pauses the recording when nothing can; twenty refusals in a row (a read-only disk) end the deletions of a pass. One such file stopped the deletion by days, the quota and the free-space guard for good, and the disk filled up. A pass is not started over a running one, and a disk that tells no size has no free share to keep: the guard deleted up to 10 000 of the oldest files at every pass there
