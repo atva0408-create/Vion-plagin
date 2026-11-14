@@ -212,6 +212,14 @@ function planOf(store: Store, run: () => unknown, values: number[] = [1]): strin
     store.episodesEndingAfter(6000).map((row) => row.id),
     ['noon', 'evening'],
   );
+  // in the order of their starts, as the candidates are restored: one that began before the others and ends after
+  // them comes first (by their ends alone it came last)
+  episode('long', 4000, 9900, ['yard']);
+  assert.deepEqual(
+    store.episodesEndingAfter(6000).map((row) => row.id),
+    ['long', 'noon', 'evening'],
+  );
+  store.deleteEpisode('long');
   const open = planOf(store, () => store.episodesEndingAfter(6000));
   assert.match(open, /SEARCH episodes USING INDEX episodes_end \(end_ms>\?\)/, open);
   store.close();
