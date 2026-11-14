@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { join, posix, relative, sep, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import { inPortions } from './portions.js';
+
 import type { StatementSync } from 'node:sqlite';
 import type { VideoCodec } from './media/ts-demux.js';
 import type { RecordedEvent, StoredCrossing } from './types.js';
@@ -406,9 +408,21 @@ export class Store {
     }[];
   }
 
-  /** The paths of the segments a page at a time, by id: what the look for files without a row reads (index.ts). */
-  public segmentPaths(afterId: number, limit: number): { id: number; path: string }[] {
-    return this.db.prepare('SELECT id, path FROM segments WHERE id > ? ORDER BY id LIMIT ?').all(afterId, limit) as unknown as { id: number; path: string }[];
+  /**
+   * The path of every segment, as stored, by id: what the look for files without a row reads (index.ts). A portion at
+   * a time, each ended by its time (portions.ts): 5000 rows a portion were 1000 pages of the bench's database, seconds
+   * of a cold hard disk with the recorder standing.
+   */
+  public eachSegmentPath(take: (path: string) => void, now?: () => number): Promise<void> {
+    const select = this.db.prepare('SELECT id, path FROM segments WHERE id > ? ORDER BY id LIMIT ?');
+    return inPortions(
+      (after, limit) => select.iterate(after, limit) as Iterable<{ id: number; path: string }>,
+      (row) => {
+        take(row.path);
+        return Number(row.id);
+      },
+      now,
+    );
   }
 
   public deleteSegment(id: number): void {

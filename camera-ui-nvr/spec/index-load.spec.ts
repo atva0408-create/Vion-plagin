@@ -6,7 +6,8 @@
 // Run: npx tsx spec/index-load.spec.ts
 import assert from 'node:assert/strict';
 
-import { loadIndexes, PORTION_MAX, PORTION_MS, VectorIndex } from '../src/vector-index.js';
+import { PORTION_MAX, PORTION_MS } from '../src/portions.js';
+import { loadIndexes, VectorIndex } from '../src/vector-index.js';
 
 import type { DatabaseSync } from 'node:sqlite';
 

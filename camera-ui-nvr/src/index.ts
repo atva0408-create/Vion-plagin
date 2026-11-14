@@ -2556,14 +2556,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     // the rows read after the files: a file and its row made between the two are both seen
     const known = new Set<string>();
     let rows = 0;
-    for (let after = 0; ;) {
-      const page = this.store.segmentPaths(after, 5000);
-      if (!page.length) break;
-      for (const row of page) known.add(archivePlace(row.path));
-      rows += page.length;
-      after = page.at(-1)!.id;
-      await breathe();
-    }
+    await this.store.eachSegmentPath((path) => {
+      known.add(archivePlace(path));
+      rows++;
+    });
     for (const c of this.cameras.values()) {
       for (const r of c.recorders.values()) {
         const live = r.liveSegmentId === undefined ? undefined : this.store.segment(r.liveSegmentId);
