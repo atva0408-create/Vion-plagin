@@ -47,7 +47,10 @@ async function turnsDuring(work: () => Promise<void>): Promise<number> {
   // a table that ends at a whole portion is asked once more, and that says it ended
   const whole = Array.from({ length: PORTION_MAX }, (_, i) => i + 1);
   let asks = 0;
-  await inPortions((after, limit) => (asks++, whole.slice(after, after + limit)), (row) => row);
+  await inPortions(
+    (after, limit) => (asks++, whole.slice(after, after + limit)),
+    (row) => row,
+  );
   assert.equal(asks, 2);
 }
 
@@ -76,6 +79,64 @@ async function turnsDuring(work: () => Promise<void>): Promise<number> {
   assert.deepEqual(taken, rows);
   assert.ok(Math.max(...portions) <= PORTION_MS + 6, `the longest portion held the thread ${Math.max(...portions)} ms`);
   assert.ok(turns >= portions.length - 1, `the rest of the process got ${turns} turns between ${portions.length} portions`);
+}
+
+// ---- reads that run at once take turns: the thread is held one portion at a time, not one of each in a row. The
+// vectors of both searches and the paths of the files are read at a start together, and what waits between two
+// portions is the video of every camera
+{
+  let clock = 0;
+  const rows = Array.from({ length: 300 }, (_, i) => i + 1);
+  function* slow(after: number, limit: number) {
+    for (const row of rows.slice(after, after + limit)) {
+      clock += 6;
+      yield row;
+    }
+  }
+  // what the rest of the process sees: how far the clock went between two of its turns
+  const holds: number[] = [];
+  let watching = true;
+  const watcher = (async () => {
+    let last = clock;
+    while (watching) {
+      await new Promise((resolve) => setImmediate(resolve));
+      holds.push(clock - last);
+      last = clock;
+    }
+  })();
+  const taken: number[][] = [[], [], []];
+  await Promise.all(
+    taken.map((list) =>
+      inPortions(
+        slow,
+        (row) => (list.push(row), row),
+        () => clock,
+      ),
+    ),
+  );
+  watching = false;
+  await watcher;
+  for (const list of taken) assert.deepEqual(list, rows, 'each read took every row once');
+  const longest = Math.max(...holds);
+  assert.ok(longest <= PORTION_MS + 6, `three reads at once held the thread ${longest} ms between two turns of the rest`);
+}
+
+// ---- a read that fails does not stop the ones waiting behind it
+{
+  const failing = inPortions(
+    () => {
+      throw new Error('the disk is gone');
+    },
+    (row: number) => row,
+  );
+  const next: number[] = [];
+  const after = inPortions(
+    (from, limit) => [1, 2, 3].slice(from, from + limit),
+    (row) => (next.push(row), row),
+  );
+  await assert.rejects(failing, /the disk is gone/);
+  await after;
+  assert.deepEqual(next, [1, 2, 3]);
 }
 
 // ---- the paths of the recorded files, for the look for files without a row: read so too
@@ -117,7 +178,12 @@ async function turnsDuring(work: () => Promise<void>): Promise<number> {
   assert.ok(turns >= COUNT / 10, `the recorder got ${turns} turns while ${COUNT} rows were read from a slow disk`);
 
   // a fast disk: few portions, the read is not cut into thousands of steps
-  const fast = await turnsDuring(() => store.eachSegmentPath(() => undefined, () => 0));
+  const fast = await turnsDuring(() =>
+    store.eachSegmentPath(
+      () => undefined,
+      () => 0,
+    ),
+  );
   assert.ok(fast <= 3, `${fast} turns for ${COUNT} rows that took no time`);
   store.close();
 }
