@@ -1,3 +1,11 @@
+## [0.25.3]
+
+- The recorder starts at once: the vectors of the searches (by description, by a person) are read after its launch and no longer while it is made. The server waits for that with its cameras, and on a machine with the database on a hard disk nothing was recorded for 2 min 41 s after every start. A search that comes before they are read reads them itself, as before
+- Reading many rows no longer holds the recorder, which the video of every camera goes through: a portion of rows ends when its time is up (40 ms), whatever the disk does, for the vectors and for the look for recorded files without a row. A portion was 5000 rows: 30 s of a cold hard disk
+- The size of the archive, summed at every pass of the retention and for the storage page, comes from an index and not from every recorded file: the first pass after a start read them all from the disk with the recorder standing. The first start after the update builds the index, once
+- The episodes still open are read by their end, not all of them
+- The line of the start in the log says how long the database took to open
+
 ## [0.25.2]
 
 - The ffmpeg of VION is taken when it answers, however late: the recorder asked for it once and waited 15 s, and on a cold start of the machine (the server still starting) it answered later, so the recordings and exports ran on the ffmpeg of the system until a restart. An ask that is refused is asked again and said in the log; the H.264 encoder found meanwhile with the other ffmpeg is looked for again
