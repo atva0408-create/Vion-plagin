@@ -11,8 +11,13 @@ import { fromBlob } from './vectors.js';
 
 import type { DatabaseSync } from 'node:sqlite';
 
-/** The rows a load reads at a time, giving way to the recorder in between. */
-const PORTION = 5000;
+/** The most rows a load reads before it gives way to the recorder. */
+export const PORTION_MAX = 5000;
+/**
+ * The longest a portion of a load holds the recorder's thread: the read is synchronous, and on a disk that seeks for
+ * every row (the bench: a database three quarters free pages, on a hard disk) 5000 rows took 30 s.
+ */
+export const PORTION_MS = 40;
 /** The vectors a search scores before it gives way to the recorder (a few milliseconds of work). */
 const SCORE_CHUNK = 8192;
 /** The score histogram's bins over -1..1 for the cut of the best k: no sort of a million numbers. */
@@ -26,16 +31,26 @@ export interface IndexFilter {
 
 /**
  * Fills `indexes` (model → index) with the vectors of a table, a portion of rows at a time in rowid order, giving way
- * between portions: 400 000 vectors took 8 s to read, and the recorder must not stop for that. The callers keep the
- * indexes in step meanwhile: a row written during the load has a higher rowid and is read by a later portion (added
- * twice it is replaced), a row deleted is no longer in the table when a search scores its candidates.
+ * between portions: 400 000 vectors took 8 s to read, and the recorder must not stop for that. A portion ends at its
+ * most rows or when its time is up, whichever comes first: the rows are read one by one, so a disk that turns slow in
+ * the middle of a portion ends it there. The callers keep the indexes in step meanwhile: a row written during the
+ * load has a higher rowid and is read by a later portion (added twice it is replaced), a row deleted is no longer in
+ * the table when a search scores its candidates.
  */
-export async function loadIndexes(db: DatabaseSync, table: 'clip_vectors' | 'person_vectors', indexes: Map<string, VectorIndex>): Promise<void> {
+export async function loadIndexes(
+  db: DatabaseSync,
+  table: 'clip_vectors' | 'person_vectors',
+  indexes: Map<string, VectorIndex>,
+  now: () => number = () => performance.now(),
+): Promise<void> {
   const select = db.prepare(`SELECT rowid AS id, model, camera_id, ts, vec FROM ${table} WHERE rowid > ? ORDER BY rowid LIMIT ?`);
   let after = 0;
   for (;;) {
-    const rows = select.all(after, PORTION) as { id: number | bigint; model: string; camera_id: string; ts: number; vec: Uint8Array }[];
-    for (const r of rows) {
+    const started = now();
+    let read = 0;
+    let inTime = true;
+    // leaving the loop ends the statement (the iterator is returned): the next portion asks anew from `after`
+    for (const r of select.iterate(after, PORTION_MAX) as Iterable<{ id: number | bigint; model: string; camera_id: string; ts: number; vec: Uint8Array }>) {
       const vec = fromBlob(r.vec);
       let index = indexes.get(r.model);
       if (!index) {
@@ -43,9 +58,15 @@ export async function loadIndexes(db: DatabaseSync, table: 'clip_vectors' | 'per
         indexes.set(r.model, index);
       }
       index.add(Number(r.id), vec, r.ts, r.camera_id);
+      after = Number(r.id);
+      read++;
+      if (now() - started >= PORTION_MS) {
+        inTime = false;
+        break;
+      }
     }
-    if (rows.length < PORTION) return;
-    after = Number(rows[rows.length - 1].id);
+    // fewer rows than asked for, and not because the time was up: the table has no more
+    if (inTime && read < PORTION_MAX) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
 }
