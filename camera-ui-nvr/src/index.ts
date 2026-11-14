@@ -454,6 +454,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private h264EncoderFor?: string;
   /** Settles when the host's ffmpeg is known (or not coming): the encoder is tried with the ffmpeg that will make it. */
   private ffmpegFound: Promise<void> = Promise.resolve();
+  /** How long the database took to open while the plugin was made: the server waits for that with its cameras. */
+  private openedMs = 0;
   private probeH264Encoder: (ffmpegPath: string) => Promise<H264Encoder> = (ffmpegPath) => findH264Encoder(ffmpegPath);
   private readonly cameras = new Map<string, ManagedCamera>();
   private retentionTimer: NodeJS.Timeout | undefined;
@@ -920,6 +922,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   private init(): void {
+    const began = performance.now();
     mkdirSync(this.recordingsDir, { recursive: true });
     this.keepVideoOutOfBackups();
     this.store = new Store(join(this.dataDir, 'nvr.db'), this.recordingsDir);
@@ -959,6 +962,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.ffmpegPath = process.env.CAMERAUI_FFMPEG_PATH ?? 'ffmpeg';
     // the host's bundled ffmpeg (fallback input and exports); never block startup on it
     this.ffmpegFound = this.findHostFfmpeg();
+    this.openedMs = performance.now() - began;
     this.markReady();
   }
 
@@ -1028,7 +1032,9 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     }
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
     this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
-    this.logger.log(`VION NVR ready (ffmpeg: ${this.ffmpegPath})`);
+    // the time is said at every start: 2 min 41 s passed on the bench between «Plugin ready» and «Plugin started» with
+    // nothing in the log to say where (2026-11-14)
+    this.logger.log(`VION NVR ready (ffmpeg: ${this.ffmpegPath}; its database opened in ${round2(this.openedMs / 1000)} s)`);
   }
 
   /** Once: «нет» out of the types of the events recorded before, a batch at a time between the other work. */

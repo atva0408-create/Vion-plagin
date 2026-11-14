@@ -73,7 +73,7 @@ function plugin(dir: string) {
 
 // ---- the vectors of the searches are not read while the plugin is made: the server waits for that with its cameras
 {
-  const { internals, launched, stop } = plugin(recorded(300, 40));
+  const { internals, lines, launched, stop } = plugin(recorded(300, 40));
   assert.equal(internals.semantic.warming, undefined, 'no vector of the search by description is read in the constructor');
   assert.equal(internals.people.warming, undefined, 'none of the people search either');
   assert.equal(internals.semantic.indexes.size, 0);
@@ -85,6 +85,11 @@ function plugin(dir: string) {
   assert.equal(internals.semantic.warmed, true);
   assert.equal(internals.semantic.indexes.get('clip-test')?.count, 300);
   assert.equal(internals.people.indexes.get('reid-test')?.count, 40);
+  // what the server waited for with its cameras is said once a start: a slow one is then seen in the log, with its
+  // time, and not guessed from the gap between «Plugin ready» and «Plugin started»
+  const ready = lines.filter((line) => line.includes('VION NVR ready'));
+  assert.equal(ready.length, 1, lines.join('\n'));
+  assert.match(ready[0], /^log: VION NVR ready \(ffmpeg: [^;]+; its database opened in \d+(\.\d+)? s\)$/);
   await stop();
 }
 
