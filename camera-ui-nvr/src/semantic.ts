@@ -148,10 +148,15 @@ export class SemanticIndex {
     return this.warming;
   }
 
-  /** The index a new vector of a model goes to; none while a model's vectors are still to be read (they will be). */
-  private indexFor(model: string, dim: number): VectorIndex | undefined {
+  /**
+   * The index a new vector of a model goes to, made when the model has none yet — also while the vectors of the table
+   * are still being read. It was left to the read then, which goes by rowid, and a table gives the rowid of a deleted
+   * last row out again: a vector filed under a rowid the read was past, of a model the table did not have, was in no
+   * index until a restart. A row the read meets again replaces itself in the index.
+   */
+  private indexFor(model: string, dim: number): VectorIndex {
     let index = this.indexes.get(model);
-    if (!index && this.warmed) {
+    if (!index) {
       index = new VectorIndex(dim);
       this.indexes.set(model, index);
     }
