@@ -144,6 +144,8 @@ export class Store {
         data TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS episodes_time ON episodes (start_ms);
+      -- the episodes still open, read while the recorder is made (episodesEndingAfter): the few latest, not all of them
+      CREATE INDEX IF NOT EXISTS episodes_end ON episodes (end_ms);
       CREATE TABLE IF NOT EXISTS episode_members (
         episode_id TEXT NOT NULL,
         event_id TEXT NOT NULL,
@@ -775,7 +777,10 @@ export class Store {
 
   /** Episodes ending at or after `sinceMs` (the ones still open when the NVR restarted). */
   public episodesEndingAfter(sinceMs: number): EpisodeRow[] {
-    return this.db.prepare('SELECT * FROM episodes WHERE end_ms >= ? ORDER BY start_ms').all(sinceMs) as unknown as EpisodeRow[];
+    // put in order here: asked ORDER BY start_ms, SQLite walks every episode along the index of the starts instead of
+    // taking the latest few by their ends
+    const rows = this.db.prepare('SELECT * FROM episodes WHERE end_ms >= ?').all(sinceMs) as unknown as EpisodeRow[];
+    return rows.sort((a, b) => a.start_ms - b.start_ms);
   }
 
   public episodeIdsOfEvents(eventIds: string[]): string[] {

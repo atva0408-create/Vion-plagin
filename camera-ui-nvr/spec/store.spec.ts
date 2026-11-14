@@ -206,6 +206,14 @@ function planOf(store: Store, run: () => unknown, values: number[] = [1]): strin
   assert.equal(store.episodeCount({ fromMs: 6001, toMs: Number.MAX_SAFE_INTEGER, cameraIds: ['gate'] }), 1);
   // the list and the count agree on what a range holds
   assert.equal(store.episodeCount({ fromMs: 2000, toMs: 5000 }), store.episodes({ fromMs: 2000, toMs: 5000, limit: 100 }).length);
+  // the episodes still open are read while the recorder is made, and the server waits for that with its cameras: the
+  // latest ones by an index, not every episode there ever was
+  assert.deepEqual(
+    store.episodesEndingAfter(6000).map((row) => row.id),
+    ['noon', 'evening'],
+  );
+  const open = planOf(store, () => store.episodesEndingAfter(6000));
+  assert.match(open, /SEARCH episodes USING INDEX episodes_end \(end_ms>\?\)/, open);
   store.close();
 }
 
