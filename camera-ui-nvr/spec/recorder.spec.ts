@@ -536,10 +536,13 @@ Date.now = realNow;
 {
   // a go2rtc of three cameras: one with sound, one without, one whose probe fails
   const seen: string[] = [];
+  /** what each camera's MPEG-TS was asked with: the kinds of media the request names */
+  const kinds = new Map<string, string>();
   const server = createServer((req, res) => {
     const url = new URL(req.url!, 'http://x');
     const src = url.searchParams.get('src') ?? '';
     seen.push(`${url.pathname} ${src}`);
+    if (url.pathname === '/api/stream.ts') kinds.set(src, ['video', 'audio'].filter((kind) => url.searchParams.has(kind)).join('+'));
     if (url.pathname === '/api/streams') {
       if (src === 'broken') {
         res.writeHead(500).end();
@@ -598,14 +601,19 @@ Date.now = realNow;
   const xiaomi = start('xiaomi', true);
   assert.ok(await waitFor(xiaomi.ffmpeg), JSON.stringify(xiaomi.logs));
   assert.ok(!seen.includes('/api/stream.ts xiaomi'), seen.join(', '));
-  // go2rtc does not say: the video is recorded, without sound
+  // go2rtc does not say (it did not answer in time, the camera was still connecting): the MPEG-TS is recorded, with
+  // the sound go2rtc puts in it. The sound is asked for by name: go2rtc gives a reader that names the video alone the
+  // video alone (so that nothing makes AAC for a reader that drops it), and this recording would be silent, unsaid
   const broken = start('broken', true);
   assert.ok(await waitFor(() => seen.includes('/api/stream.ts broken')), seen.join(', '));
   assert.equal(broken.ffmpeg(), false);
-  // sound off: no question at all
+  assert.equal(kinds.get('broken'), 'video+audio');
+  assert.equal(kinds.get('dahua'), 'video+audio', 'the same when go2rtc saw no sound: a sound that comes later is recorded');
+  // sound off: no question at all, and the video alone
   const quiet = start('quiet', false);
   assert.ok(await waitFor(() => seen.includes('/api/stream.ts quiet')));
   assert.ok(!seen.includes('/api/streams quiet'));
+  assert.equal(kinds.get('quiet'), 'video');
 
   // the stream of a camera that does not answer: its first end is a warning, the try 2 s later only a debug line
   const down = start('down', false);

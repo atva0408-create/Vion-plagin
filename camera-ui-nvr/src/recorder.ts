@@ -295,7 +295,7 @@ export class Recorder {
       return;
     }
     if (audio && this.opts.audioUrl) this.runFfmpeg(ffmpegArgs(this.opts, true));
-    else this.fetchTs(tsUrl);
+    else this.fetchTs(withSound(tsUrl));
   }
 
   private runFfmpeg(args: string[]): void {
@@ -808,6 +808,22 @@ export function ffmpegArgs(opts: Pick<RecorderOptions, 'rtspUrl' | 'tsUrl' | 'au
       : ['-c', 'copy', '-an']),
     ...output,
   ];
+}
+
+/**
+ * The MPEG-TS address asked for its sound too. go2rtc gives a reader that names the video alone («&video=all», the
+ * address the recorder is given) the video alone, so that no source is started to make AAC for a reader that drops
+ * it. With sound on and the stream read here without ffmpeg (go2rtc did not say whether the camera sends sound, or
+ * saw none), the sound in the MPEG-TS is what gets recorded: it has to be asked for by name.
+ */
+export function withSound(tsUrl: string): string {
+  try {
+    const url = new URL(tsUrl);
+    url.searchParams.set('audio', 'all');
+    return url.toString();
+  } catch {
+    return tsUrl;
+  }
 }
 
 /** go2rtc's probe of the stream behind its MPEG-TS address: what the stream's sources send. */
