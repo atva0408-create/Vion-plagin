@@ -1028,7 +1028,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
       ['search by description', this.semantic],
       ['people search', this.people],
     ] as const) {
-      index.warm().catch((error: Error) => this.logger.warn(`The vectors of the ${name} were not read, the next search tries again: ${error.message}`));
+      index.warm().catch((error: Error) => {
+        // a stop closes the database under the read: not a failure to tell of
+        if (!this.stopping) this.logger.warn(`The vectors of the ${name} were not read, the next search tries again: ${error.message}`);
+      });
     }
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
     this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
@@ -2534,7 +2537,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     try {
       await this.sweepOrphansNow();
     } catch (error) {
-      this.logger.warn(`The recorded files without a row were not looked for, the next look tries again: ${(error as Error).message}`);
+      // a stop closes the database under the look: not a failure to tell of
+      if (!this.stopping) this.logger.warn(`The recorded files without a row were not looked for, the next look tries again: ${(error as Error).message}`);
     } finally {
       this.sweeping = false;
     }

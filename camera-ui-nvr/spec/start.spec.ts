@@ -32,10 +32,14 @@ function recorded(clip: number, people: number): string {
   const store = new Store(join(dir, 'nvr.db'), join(dir, 'recordings'));
   new SemanticIndex(store.sql);
   new PersonIndex(store.sql);
+  // of the last hours: the retention of a start deletes the people of long ago, and would before they are read
+  const recent = Date.now() - 3 * 3_600_000;
+  store.sql.exec('BEGIN');
   const addClip = store.sql.prepare('INSERT INTO clip_vectors (event_id, seg, attr, camera_id, ts, label, model, vec) VALUES (?, 0, 0, ?, ?, ?, ?, ?)');
-  for (let i = 1; i <= clip; i++) addClip.run(`e${i}`, 'cam1', 1000 + i, 'person', 'clip-test', vec(i, 16));
+  for (let i = 1; i <= clip; i++) addClip.run(`e${i}`, 'cam1', recent + i, 'person', 'clip-test', vec(i, 16));
   const addPerson = store.sql.prepare('INSERT INTO person_vectors (event_id, seg, track_id, camera_id, ts, model, vec) VALUES (?, 0, ?, ?, ?, ?, ?)');
-  for (let i = 1; i <= people; i++) addPerson.run(`e${i}`, i, 'cam1', 1000 + i, 'reid-test', vec(i, 8));
+  for (let i = 1; i <= people; i++) addPerson.run(`e${i}`, i, 'cam1', recent + i, 'reid-test', vec(i, 8));
+  store.sql.exec('COMMIT');
   store.close();
   return dir;
 }
@@ -96,7 +100,9 @@ function plugin(dir: string) {
 // ---- a search before the launch is over reads them itself and waits: nothing is found «not yet»
 {
   const { internals, stop } = plugin(recorded(120, 0));
-  const search = internals.semantic as unknown as { search(queries: { embedding: number[]; embeddingModel: string; scoreBand: [number, number] }[], limit: number): Promise<{ eventId: string }[]> };
+  const search = internals.semantic as unknown as {
+    search(queries: { embedding: number[]; embeddingModel: string; scoreBand: [number, number] }[], limit: number): Promise<{ eventId: string }[]>;
+  };
   const query = Array.from(new Float32Array(vec(7, 16).buffer));
   // the band of the scores is the whole cosine here: the vector asked with scores 1, the others less
   const found = await search.search([{ embedding: query, embeddingModel: 'clip-test', scoreBand: [0, 1] }], 3);
@@ -105,5 +111,20 @@ function plugin(dir: string) {
   await stop();
 }
 
-console.log('start.spec: the vectors are read after the launch, a search before it reads them itself OK');
+// ---- stopped while the vectors are read (a restart moments after a start): the database closes under the reads, and
+// that is no failure to tell anybody of
+{
+  const { internals, lines, launched, stop } = plugin(recorded(12_000, 6_000));
+  launched();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(internals.semantic.warmed, false, 'the check itself: the read is still going on');
+  await stop();
+  // what was still reading ends by itself, a few turns later
+  for (let i = 0; i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const told = lines.filter((line) => /^(warn|error): /.test(line));
+  assert.deepEqual(told, [], 'nothing is said of reads that a stop ended');
+}
+
+console.log('start.spec: the vectors are read after the launch, a search before it reads them itself, a stop ends them quietly OK');
 process.exit(0);
