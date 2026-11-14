@@ -1,10 +1,11 @@
 ## [0.25.3]
 
 - Der Recorder startet sofort: die Vektoren der Suchen (nach Beschreibung, nach einer Person) werden nach dem Start gelesen und nicht mehr währenddessen. Der Server wartet darauf, bevor er die Kameras übergibt, und auf einem Rechner mit der Datenbank auf einer Festplatte wurde nach jedem Start 2 min 41 s lang nichts aufgenommen. Eine Suche, die früher kommt, liest sie selbst, wie bisher
-- Das Lesen vieler Zeilen hält den Recorder nicht mehr an, durch den das Video aller Kameras läuft: eine Portion endet nach ihrer Zeit (40 ms), was immer die Platte tut – für die Vektoren und für die Suche nach Aufnahmedateien ohne Zeile. Eine Portion waren 5000 Zeilen: 30 s auf einer kalten Festplatte
-- Die Größe des Archivs, bei jedem Durchlauf der Bereinigung und für die Speicherseite summiert, kommt aus einem Index und nicht aus den Zeilen aller Aufnahmedateien: der erste Durchlauf nach einem Start las sie alle von der Platte, und der Recorder stand so lange. Beim ersten Start nach dem Update wird der Index einmal aufgebaut
+- Das Lesen vieler Zeilen hält den Recorder nicht mehr an, durch den das Video aller Kameras läuft: eine Portion endet nach ihrer Zeit (40 ms), was immer die Platte tut – für die Vektoren und für die Suche nach Aufnahmedateien ohne Zeile, und solche Lesevorgänge laufen nacheinander, nicht zugleich. Eine Portion waren 5000 Zeilen: 30 s auf einer kalten Festplatte
+- Die Größe des Archivs, bei jedem Durchlauf der Bereinigung und für die Speicherseite summiert, kommt aus einem Index und nicht aus den Zeilen aller Aufnahmedateien: der erste Durchlauf nach einem Start las sie alle von der Platte, und der Recorder stand so lange. Beim ersten Start nach dem Update wird der Index einmal aufgebaut: dafür werden während des Starts die Zeilen der Aufnahmedateien gelesen, auf einer Festplatte bis zu einer Minute, der schnelle Start zeigt sich also ab dem zweiten
 - Die noch offenen Episoden werden nach ihrem Ende gelesen, nicht alle
 - Die Zeile des Starts im Protokoll nennt, wie lange das Öffnen der Datenbank dauerte
+- Ein Vektor eines neuen Modells, abgelegt, während die Vektoren nach einem Start noch gelesen wurden, konnte bis zu einem Neustart in der Suche fehlen; ein Neustart kurz nach einem Start schreibt keine Warnungen mehr über die Lesevorgänge, die er beendet hat
 
 ## [0.25.2]
 

@@ -1,10 +1,11 @@
 ## [0.25.3]
 
 - The recorder starts at once: the vectors of the searches (by description, by a person) are read after its launch and no longer while it is made. The server waits for that with its cameras, and on a machine with the database on a hard disk nothing was recorded for 2 min 41 s after every start. A search that comes before they are read reads them itself, as before
-- Reading many rows no longer holds the recorder, which the video of every camera goes through: a portion of rows ends when its time is up (40 ms), whatever the disk does, for the vectors and for the look for recorded files without a row. A portion was 5000 rows: 30 s of a cold hard disk
-- The size of the archive, summed at every pass of the retention and for the storage page, comes from an index and not from every recorded file: the first pass after a start read them all from the disk with the recorder standing. The first start after the update builds the index, once
+- Reading many rows no longer holds the recorder, which the video of every camera goes through: a portion of rows ends when its time is up (40 ms), whatever the disk does, for the vectors and for the look for recorded files without a row, and such reads go one after the other, not together. A portion was 5000 rows: 30 s of a cold hard disk
+- The size of the archive, summed at every pass of the retention and for the storage page, comes from an index and not from every recorded file: the first pass after a start read them all from the disk with the recorder standing. The first start after the update builds the index, once: it reads the recorded files for that while the recorder is made, up to a minute on a hard disk, so the quick start shows from the second one on
 - The episodes still open are read by their end, not all of them
 - The line of the start in the log says how long the database took to open
+- A vector of a new model filed while the vectors were still being read at a start could stay out of the search until a restart; a restart moments after a start no longer writes warnings about the reads it ended
 
 ## [0.25.2]
 
