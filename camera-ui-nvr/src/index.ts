@@ -926,15 +926,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.instanceId = this.store.meta('instance_id') ?? randomUUID();
     this.store.setMeta('instance_id', this.instanceId);
     this.tracesClearedTo = clearedTo(this.store.meta(TRACES_CLEARED_KEY));
+    // their vectors are read after the launch (start): read here, the first portion ran in the constructor, and the
+    // server waits for that with its cameras, so nothing was recorded meanwhile (30 s on the bench's hard disk)
     this.semantic = new SemanticIndex(this.store.sql);
     this.people = new PersonIndex(this.store.sql);
-    // read into memory in the background, a portion at a time: the first search waits for it, the recording does not
-    for (const [name, index] of [
-      ['search by description', this.semantic],
-      ['people search', this.people],
-    ] as const) {
-      index.warm().catch((error: Error) => this.logger.warn(`The vectors of the ${name} were not read, the next search tries again: ${error.message}`));
-    }
     this.faces = new FaceStore(this.store.sql, join(this.dataDir, 'faces'));
     this.describer = new EventDescriber(this.store.sql, {
       ask: (request) => this.api.coreManager.assistantAsk(request),
@@ -1023,6 +1018,14 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     void this.sweepOrphans();
     void this.dropNoAnswerTypes();
     void this.endSegmentsAtLastFrame();
+    // read into memory in the background, a portion at a time: a search that comes first reads them itself and waits
+    // for them, the recording does not
+    for (const [name, index] of [
+      ['search by description', this.semantic],
+      ['people search', this.people],
+    ] as const) {
+      index.warm().catch((error: Error) => this.logger.warn(`The vectors of the ${name} were not read, the next search tries again: ${error.message}`));
+    }
     // the engines for the choice of the search in pictures, before anyone searched; a failure is read again by a search
     this.pluginProxyEntries('ClipDetection').catch((error: Error) => this.logger.debug(`The engines with CLIP were not listed yet: ${error.message}`));
     this.logger.log(`VION NVR ready (ffmpeg: ${this.ffmpegPath})`);
