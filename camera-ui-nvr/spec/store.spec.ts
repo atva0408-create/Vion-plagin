@@ -87,7 +87,7 @@ const segment = (camera: string, startUs: number, bytes = 1000) => ({
 });
 
 /** The plan SQLite makes for the statement `run` sends to the database. */
-function planOf(store: Store, run: () => unknown): string {
+function planOf(store: Store, run: () => unknown, values: number[] = [1]): string {
   const db = store.sql;
   const prepare = db.prepare.bind(db);
   let sql = '';
@@ -97,7 +97,7 @@ function planOf(store: Store, run: () => unknown): string {
   } finally {
     db.prepare = prepare;
   }
-  return (prepare(`EXPLAIN QUERY PLAN ${sql}`).all(1) as { detail: string }[]).map((row) => row.detail).join(' | ');
+  return (prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...values) as { detail: string }[]).map((row) => row.detail).join(' | ');
 }
 
 {
@@ -150,8 +150,36 @@ function planOf(store: Store, run: () => unknown): string {
   assert.match(reaching, /USING COVERING INDEX segments_camera_span/, reaching);
   assert.equal(store.hasSegments('c', 'high', 3, 4), false);
   assert.equal(store.hasSegments('c', 'high', 2, 4), true);
+  // and the index its archive is summed from
+  assert.match(
+    planOf(store, () => store.totalBytes(), []),
+    /USING COVERING INDEX segments_camera_sum/,
+  );
+  assert.equal(store.totalBytes(), 2);
   store.close();
   new Store(path).close(); // opening again must not fail on the index that now exists
+}
+{
+  // The size of the archive is summed by the retention at every pass (5 min) and for the storage page: from an index
+  // alone. Read from the rows (each with its keyframes: 2400 pages for the bench's 11 600 files, 2026-11-14) the first
+  // pass after a start on a cold hard disk held the recorder for as long as that read took, and the video of every
+  // camera goes through its thread.
+  const store = new Store(join(dir, 'sums.db'));
+  const ids: number[] = [];
+  for (let i = 0; i < 40; i++) ids.push(store.addSegment(segment(`cam${i % 4}`, (i + 1) * 60_000_000, 1000 + i)));
+  assert.equal(store.totalBytes(), 40 * 1000 + (39 * 40) / 2);
+  const total = planOf(store, () => store.totalBytes(), []);
+  assert.match(total, /SCAN segments USING COVERING INDEX segments_camera_sum/, total);
+  const cam1 = () => ({ ...store.cameraStats().find((row) => row.camera_id === 'cam1') });
+  assert.deepEqual(cam1(), { camera_id: 'cam1', bytes: 10_190, count: 10, oldest: 2 * 60_000_000, newest: 39 * 60_000_000 });
+  const cameras = planOf(store, () => store.cameraStats(), []);
+  assert.match(cameras, /SCAN segments USING COVERING INDEX segments_camera_sum/, cameras);
+  // a file is in its row while it is written, and the row follows it: summed as it is now, and not once it is deleted
+  store.updateSegment(ids[1], 3 * 60_000_000 + 5, 5001, '[]');
+  store.deleteSegment(ids[37]);
+  assert.deepEqual(cam1(), { camera_id: 'cam1', bytes: 10_190 - 1001 + 5001 - 1037, count: 9, oldest: 2 * 60_000_000, newest: 35 * 60_000_000 });
+  assert.equal(store.totalBytes(), 40 * 1000 + (39 * 40) / 2 - 1001 + 5001 - 1037);
+  store.close();
 }
 
 // ------------------------------------------------------------------ episodes

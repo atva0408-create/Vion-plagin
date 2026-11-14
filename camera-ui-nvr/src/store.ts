@@ -109,6 +109,10 @@ export class Store {
       -- earlier file, and read from the rows (each with its keyframes) on a cold HDD it held the recorder a minute
       CREATE INDEX IF NOT EXISTS segments_camera_span ON segments (camera_id, role, start_us, end_us);
       CREATE INDEX IF NOT EXISTS segments_time ON segments (start_us);
+      -- the size of the archive and of each camera's part, from the index alone: the retention sums it at every pass and
+      -- the storage page asks for it. Summed from the rows, the first pass after a start read every one of them from a
+      -- cold disk, and the recorder (the video goes through its thread) stood as long as that took
+      CREATE INDEX IF NOT EXISTS segments_camera_sum ON segments (camera_id, start_us, end_us, bytes);
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
         camera_id TEXT NOT NULL,
