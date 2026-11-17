@@ -24,7 +24,7 @@ export interface Scenario {
   verify?: boolean;
   /** devices per region, as the device list gives them */
   devices: Record<string, Record<string, unknown>[]>;
-  /** answers of miss_get_vendor per did; an Error is sent back as the API's error */
+  /** answers of miss_get_vendor per did, or per `region:did` first; an Error is sent back as the API's error */
   vendors?: Record<string, Record<string, unknown> | Error>;
   devicepass?: Record<string, Record<string, unknown>>;
   /** passTokens the account accepts */
@@ -101,7 +101,7 @@ export function fakeXiaomi(scenario: Scenario): { fetch: typeof fetch; calls: Ca
       if (!list) return new Response('region down', { status: 502 });
       result = { list, has_more: false };
     } else if (path === '/v2/device/miss_get_vendor') {
-      const answer = scenario.vendors?.[String(parsed.did)];
+      const answer = scenario.vendors?.[`${region}:${String(parsed.did)}`] ?? scenario.vendors?.[String(parsed.did)];
       if (answer instanceof Error) error = answer.message;
       else result = answer;
     } else if (path === '/device/devicepass') {

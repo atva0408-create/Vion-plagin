@@ -308,6 +308,66 @@ test('offline cameras, missing relay credentials and unsupported remote vendors 
   await assert.rejects(cameraStreamUrl(vendor(1), camera(), 'default', undefined, undefined, options), /CS2 cameras only/);
 });
 
+// A camera can be on the device lists of two regions (bench 2026-11-17: the C300 on an earlier region's list as well
+// as on the one the Mi Home app uses). The first region of REGIONS was taken, and its cloud answered «no p2pid
+// allocated, please reboot device» at every connection while the app, asking its own region, showed the camera.
+const twoRegions = (vendorOf: (region: string) => unknown) =>
+  stubCloud(({ region, path }) => {
+    if (path === '/v2/home/device_list_page') {
+      if (region === 'de') return { list: [{ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '192.168.1.50', isOnline: false }] };
+      if (region === 'ru') return { list: [{ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '192.168.1.50', isOnline: true }] };
+      return { list: [] };
+    }
+    const answer = vendorOf(region);
+    if (answer instanceof Error) throw answer;
+    return answer;
+  });
+
+test('a camera on the lists of two regions is listed once, with both, the one that has it online first', async () => {
+  const { cloud } = twoRegions(() => ({}));
+  const { cameras } = await listCameras(cloud);
+  assert.equal(cameras.length, 1);
+  assert.deepEqual(cameras[0]!.regions, ['ru', 'de']);
+  assert.equal(cameras[0]!.region, 'ru');
+  assert.equal(cameras[0]!.online, true);
+});
+
+test('a camera of one region that gives no keys says which region answered what', async () => {
+  const { cloud } = stubCloud(() => {
+    throw new Error('Xiaomi: no p2pid allocated, please reboot device');
+  });
+  await assert.rejects(cameraStreamUrl(cloud, camera({ region: 'de' })), /region de: Xiaomi: no p2pid allocated/);
+});
+
+test('its keys come from the region that gives them; the one that refuses is passed over', async () => {
+  const { cloud, asked } = twoRegions((region) =>
+    region === 'ru' ? { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd', sign: 'from-ru' } : new Error('Xiaomi: no p2pid allocated, please reboot device'),
+  );
+  const { cameras } = await listCameras(cloud);
+  // the list as a region that could not be read leaves it: the refusing region first
+  const hall = { ...cameras[0]!, region: 'de' as const, regions: ['de' as const, 'ru' as const] };
+  const url = new URL(await cameraStreamUrl(cloud, hall));
+  assert.equal(url.searchParams.get('sign'), 'from-ru');
+  assert.deepEqual(
+    asked.filter((one) => one.path === '/v2/device/miss_get_vendor').map((one) => one.region),
+    ['de', 'ru'],
+  );
+  // the region that gave the keys is asked first next time
+  assert.equal(hall.region, 'ru');
+  await checkPlayable(cloud, hall);
+  assert.equal(asked.filter((one) => one.path === '/v2/device/miss_get_vendor').at(-1)!.region, 'ru');
+});
+
+test('when no region gives the keys, the error names each region and its answer', async () => {
+  const { cloud } = twoRegions((region) => new Error(region === 'ru' ? 'fetch failed: Connect Timeout Error' : 'Xiaomi: no p2pid allocated, please reboot device'));
+  const { cameras } = await listCameras(cloud);
+  await assert.rejects(cameraStreamUrl(cloud, cameras[0]!), (error: Error) => {
+    assert.match(error.message, /region ru: fetch failed: Connect Timeout Error/);
+    assert.match(error.message, /region de: Xiaomi: no p2pid allocated, please reboot device/);
+    return true;
+  });
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

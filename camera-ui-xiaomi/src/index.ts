@@ -50,6 +50,13 @@ interface PendingLogin {
   field: string;
 }
 
+/**
+ * VION waits 30 s for the address of a stream (its RPC limit): an answer found later reaches nobody, and the reason a
+ * remote connection failed was lost with it. The whole search (the camera, the keys from Mi Home, up to 15 s, the
+ * relay's handshake, 25 s of its own) keeps within this, the handshake taking what is left.
+ */
+const STREAM_URL_BUDGET_MS = 25_000;
+
 export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements DiscoveryProvider {
   private cloud?: XiaomiCloud;
   private signingIn?: Promise<XiaomiCloud>;
@@ -67,6 +74,8 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   /** Cameras the cloud connects over a vendor VION plays: it is not asked about them again. */
   private playable = new Set<string>();
   private camerasReadAt = 0;
+  /** the regions of Mi Home the last reading of the list could not read, with why: a camera there is unknown, not gone */
+  private unreadRegions = new Map<string, string>();
   private refreshing?: Promise<void>;
   private refreshTimer?: NodeJS.Timeout;
 
@@ -304,15 +313,30 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
   private async refreshCameras(): Promise<void> {
     this.refreshing ??= (async () => {
       const signOuts = this.signOuts;
+      const unread = new Map<string, string>();
       const { cameras, complete } = await this.withSession((cloud) =>
-        listCameras(cloud, (region, error) => this.logger.debug(`Mi Home region ${region} not read:`, errorText(error))),
+        listCameras(cloud, (region, error) => {
+          unread.set(region, errorText(error));
+          this.logger.debug(`Mi Home region ${region} not read:`, errorText(error));
+        }),
       );
+      this.unreadRegions = unread;
       await this.checkCameras(cameras);
       // signed out while the list was read: its cameras are not offered or adopted any more
       if (signOuts !== this.signOuts) throw new XiaomiAuthError(NOT_SIGNED_IN);
       // a camera removed from the account is no longer offered; when a region could not be read, nothing is dropped
       if (complete) this.cameras.clear();
-      for (const camera of cameras) this.cameras.set(camera.did, camera);
+      for (const camera of cameras) {
+        const before = this.cameras.get(camera.did);
+        // a region not read this time still has the camera: the one that gave its keys stays first (a network that
+        // lets the list of a region through only now and then must not leave the camera to a region without its keys)
+        if (!complete && before) {
+          const regions = [before.region, ...(before.regions ?? []), ...(camera.regions ?? [camera.region])];
+          camera.regions = [...new Set(regions)];
+          camera.region = camera.regions[0]!;
+        }
+        this.cameras.set(camera.did, camera);
+      }
       this.camerasReadAt = Date.now();
       this.logger.debug(`Mi Home cameras: ${cameras.length}`);
 
@@ -368,6 +392,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
 
   /** The address of one connection to the camera, with keys made for it. */
   private async streamUrl(did: string, mode: ConnectionMode = 'auto'): Promise<string> {
+    const deadline = Date.now() + STREAM_URL_BUDGET_MS;
     const token = this.p2p.token(did);
     const camera = await this.knownCamera(did);
     // said at once: the engine tries a camera again and again, and each try would ask the cloud for keys it cannot use
@@ -377,7 +402,7 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
     const url = await this.withSession((cloud) =>
       cameraStreamUrl(cloud, camera, quality, undefined, (error) => this.logger.warn(`Could not wake up ${camera.name}, connecting all the same:`, errorText(error)), {
         mode,
-        openRelay: (credentials) => this.p2p.open(did, credentials, token),
+        openRelay: (credentials) => this.p2p.open(did, credentials, token, deadline),
       }),
     );
     if (token !== this.p2p.token(did)) throw new Error('The Xiaomi connection was cancelled');
@@ -435,6 +460,11 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
       this.refreshCameras().catch((error) => this.logger.debug('Could not read the device list again:', errorText(error)));
     }
     const camera = this.cameras.get(did);
+    // the region of the camera may be the one that did not answer: that is the reason, not a camera taken off the account
+    if (!camera && this.unreadRegions.size)
+      throw new Error(
+        `Camera ${did} is not in what Mi Home answered: ${[...this.unreadRegions].map(([region, error]) => `Mi Home region ${region} not read (${error})`).join('; ')}`,
+      );
     if (!camera) throw new Error(`The Mi account has no camera ${did} anymore`);
     return camera;
   }

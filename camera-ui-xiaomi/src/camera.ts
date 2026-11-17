@@ -17,6 +17,9 @@ export const PTZ_KEY = 'ptz';
 /** The focus of a camera with a zoom lens, next to the switch: shown only for a camera that has one. */
 export const FOCUS_KEYS = { near: 'focusNear', far: 'focusFar', auto: 'focusAuto' } as const;
 
+/** A reason a connection failed is said again after this long, while it lasts. */
+const FAILURE_REPEAT_MS = 10 * 60_000;
+
 /** What the lens of a camera does; asked when pan and tilt are switched on. */
 export type LensOf = (nativeId: string) => Promise<Lens>;
 
@@ -31,6 +34,8 @@ export class Camera implements StreamingInterface {
   /** switching on reads the lens first: a second switch waits for the first instead of adding a second control */
   private ptzChange: Promise<void> = Promise.resolve();
   private disposed = false;
+  /** the last reason a connection failed and when the log said it: the engine asks again every few seconds */
+  private lastFailure?: { reason: string; at: number };
 
   constructor(
     public readonly device: CameraDevice,
@@ -76,7 +81,19 @@ export class Camera implements StreamingInterface {
   public async streamUrl(_sourceId: string): Promise<string> {
     if (this.disposed) throw new Error('The Xiaomi camera has been released');
     if (!this.device.nativeId) throw new Error(`Camera ${this.device.name} has no Xiaomi device id`);
-    const url = await this.resolve(this.device.nativeId, this.connectionMode());
+    let url: string;
+    try {
+      url = await this.resolve(this.device.nativeId, this.connectionMode());
+    } catch (error) {
+      // the stream engine shows only that the video does not come: the reason is said here, once while it lasts
+      const reason = errorText(error);
+      if (this.lastFailure?.reason !== reason || Date.now() - this.lastFailure.at >= FAILURE_REPEAT_MS) {
+        this.device.logger.warn(`Could not connect to ${this.device.name}:`, reason);
+        this.lastFailure = { reason, at: Date.now() };
+      }
+      throw error;
+    }
+    this.lastFailure = undefined;
     if (this.disposed) throw new Error('The Xiaomi camera has been released');
     return url;
   }

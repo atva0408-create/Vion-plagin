@@ -305,6 +305,35 @@ test('releasing a failed PTZ bridge preserves video and frees that connection sl
   }
 });
 
+test('a deadline of the connection reaches the handshake as what is left of it, and a silent rendezvous gives up by then', async () => {
+  const original = P2pBridge.open;
+  const seen: (number | undefined)[] = [];
+  P2pBridge.open = async (_credentials, options = {}) => {
+    seen.push(options.timeoutMs);
+    throw new Error('CS2 P2P: Xiaomi did not return a relay; the camera may be offline');
+  };
+  const owner = new P2pConnections();
+  try {
+    await assert.rejects(owner.open('cam', { uid: UID, init: INIT }, owner.token('cam'), Date.now() + 300), /did not return a relay/);
+    assert.ok(seen[0] !== undefined && seen[0] > 0 && seen[0] <= 300, `timeoutMs ${seen[0]}`);
+    await assert.rejects(owner.open('cam', { uid: UID, init: INIT }));
+    assert.equal(seen[1], undefined, 'without a deadline the handshake keeps its own');
+  } finally {
+    owner.close();
+    P2pBridge.open = original;
+  }
+  // the handshake itself: a rendezvous that never answers gives up at the time it was given, with its reason
+  const blackhole = createSocket('udp4');
+  await bind(blackhole, '127.0.0.1');
+  const started = Date.now();
+  try {
+    await assert.rejects(RelayConnection.connect({ uid: UID, init: INIT }, { serverPort: blackhole.address().port, timeoutMs: 400 }), /Xiaomi did not return a relay/);
+    assert.ok(Date.now() - started < 1500, `gave up after ${Date.now() - started} ms`);
+  } finally {
+    blackhole.close();
+  }
+});
+
 let failed = 0;
 for (const [name, run] of tests) {
   try {

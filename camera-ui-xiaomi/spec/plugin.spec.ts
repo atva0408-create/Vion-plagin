@@ -501,6 +501,32 @@ test('cameras handed over after the start get their stream at once', async () =>
   await h.shutdown();
 });
 
+// The C300 of the bench (2026-11-17): on the list of an earlier region as well as on its own, whose list the network
+// let through only now and then. The earlier region answered «no p2pid allocated» at every connection.
+test('a camera on the lists of two regions streams with the keys of its own, also while its own list cannot be read', async () => {
+  const hall = (online: boolean) => ({ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '192.168.1.50', isOnline: online });
+  const twoRegions = (ruListed: boolean) =>
+    scenario({
+      devices: { cn: [], de: [hall(false)], ...(ruListed ? { ru: [hall(true)] } : {}) },
+      vendors: {
+        'de:1001': new Error('no p2pid allocated, please reboot device'),
+        'ru:1001': { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd'.repeat(32), sign: 'from-ru' },
+      },
+    });
+  globalThis.fetch = fakeXiaomi(twoRegions(true)).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  await h.launch();
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  assert.equal(new URL(await stream()).searchParams.get('sign'), 'from-ru');
+
+  // its own region's list is not read this time: the camera keeps that region, its keys are asked there first
+  globalThis.fetch = fakeXiaomi(twoRegions(false)).fetch;
+  await (h.plugin as unknown as { refreshCameras(): Promise<void> }).refreshCameras();
+  assert.equal(new URL(await stream()).searchParams.get('sign'), 'from-ru');
+  await h.shutdown();
+});
+
 test('a camera removed from the account is no longer offered, unless a region could not be read', async () => {
   globalThis.fetch = fakeXiaomi(scenario()).fetch;
   const h = host({ userId: '42', passToken: 'PT1' });
@@ -911,6 +937,81 @@ test('removing a camera while its PTZ sensor is being registered leaves no stale
   finish();
   await change;
   assert.equal(hall.sensors.length, 0);
+  await h.shutdown();
+});
+
+/** A camera seen only through Mi Home: no address on this network, keys of a CS2 relay. */
+function remoteScenario(): Scenario {
+  return scenario({
+    devices: { ru: [{ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '', isOnline: true }], cn: [] },
+    vendors: { '1001': { vendor: { vendor: 4, vendor_params: { p2p_id: 'ABCDEF-123456-GHIJK', init_string: 'EBGDEOBOKGICGAIAFFGN' } }, public_key: 'dd'.repeat(32), sign: 'sig' } },
+  });
+}
+
+test('the relay of a remote camera gets what is left of 25 s: the address, or why not, comes back within the 30 s VION waits', async () => {
+  globalThis.fetch = fakeXiaomi(remoteScenario()).fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const { camera, stream } = device();
+  await h.plugin.onCameraAdded(camera);
+  const asked: (number | undefined)[] = [];
+  const p2p = (h.plugin as unknown as { p2p: { open: (did: string, credentials: unknown, token: string, deadline?: number) => Promise<string> } }).p2p;
+  p2p.open = async (_did, _credentials, _token, deadline) => {
+    asked.push(deadline);
+    throw new Error('CS2 P2P: Xiaomi did not return a relay; the camera may be offline');
+  };
+  const started = Date.now();
+  await assert.rejects(stream(), /CS2 P2P: Xiaomi did not return a relay/);
+  assert.equal(asked.length, 1);
+  assert.equal(typeof asked[0], 'number', 'the relay was given no deadline: its 25 s come on top of the keys from Mi Home');
+  assert.ok(asked[0]! > started && asked[0]! <= started + 25_000, `deadline ${asked[0]! - started} ms after the start`);
+  await h.shutdown();
+});
+
+test('a camera that cannot be reached says why in its log, once per reason, not at every try of the engine', async () => {
+  globalThis.fetch = fakeXiaomi(remoteScenario()).fetch;
+  const h = host();
+  await h.submit({ username: 'user@example.com', password: PASSWORD });
+  const { lines, logger } = recorder();
+  const { camera, stream } = device('1001', {}, logger);
+  await h.plugin.onCameraAdded(camera);
+  let reason = 'CS2 P2P: Xiaomi did not return a relay; the camera may be offline';
+  const p2p = (h.plugin as unknown as { p2p: { open: () => Promise<string> } }).p2p;
+  p2p.open = async () => {
+    throw new Error(reason);
+  };
+  for (let i = 0; i < 3; i++) await assert.rejects(stream());
+  assert.equal((lines.warn ?? []).length, 1, `said ${(lines.warn ?? []).length} times: ${JSON.stringify(lines.warn)}`);
+  assert.match(lines.warn![0]!, /Hall/);
+  assert.match(lines.warn![0]!, /Xiaomi did not return a relay; the camera may be offline/);
+  reason = 'CS2 P2P: The camera did not join the Xiaomi relay; check its connection in Mi Home';
+  await assert.rejects(stream());
+  assert.equal(lines.warn!.length, 2, 'another reason was not said');
+  assert.match(lines.warn![1]!, /did not join the Xiaomi relay/);
+  await h.shutdown();
+});
+
+test('a camera whose region of Mi Home could not be read says so, not that the account has it no more', async () => {
+  const fake = fakeXiaomi(scenario());
+  globalThis.fetch = fake.fetch;
+  const first = host();
+  await first.submit({ username: 'user@example.com', password: PASSWORD });
+  const values = first.values;
+  await first.shutdown();
+  // the plugin starts again with the token kept, and the region of the camera does not answer
+  const down = fakeXiaomi(scenario({ devices: { cn: [] } }));
+  globalThis.fetch = down.fetch;
+  const h = host(values);
+  await h.launch();
+  const { camera, stream } = device();
+  await h.plugin.onCameraAdded(camera);
+  const error = await stream().then(
+    () => undefined,
+    (e: Error) => e,
+  );
+  assert.ok(error, 'the camera opened with its region down');
+  assert.doesNotMatch(error.message, /has no camera/, 'a region not read is said to be a camera removed');
+  assert.match(error.message, /Mi Home region ru/);
   await h.shutdown();
 });
 

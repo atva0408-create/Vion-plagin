@@ -1,3 +1,13 @@
+## [0.4.4]
+
+- A camera that is on the device lists of two regions of Mi Home connects again. The plugin took the first region of its list and asked only it for the keys of each connection; that region answered «no p2pid allocated, please reboot device» while the Mi Home app, asking the camera's own region, showed it. The keys are now asked in each region that lists the camera, the one that has it online first, and the region that gave them is asked first from then on, also while its device list cannot be read. When no region gives them, the camera's log names each region and its answer.
+
+## [0.4.3]
+
+- A camera in another network that cannot be reached now says why. The plugin kept looking for a Xiaomi relay for 25 s after the keys from Mi Home (up to 15 s more) while VION waits 30 s for the address of a stream: the reason, such as «Xiaomi did not return a relay; the camera may be offline», came too late and reached nobody. The search now keeps within 25 s in all.
+- The camera's log says the reason a connection failed, once and again after 10 minutes while it lasts, and at once when it changes; the stream engine's retries every few seconds do not repeat it.
+- When a region of Mi Home does not answer, a camera of it says that region could not be read, not that the Mi account has the camera no more.
+
 ## [0.4.2]
 
 - A camera behind a Xiaomi P2P relay keeps its video while you talk through it. The bridge to go2rtc dropped the camera's frames on channels go2rtc does not read (the speaker's among them) without acknowledging them, so the camera kept sending them again; its video stopped seconds after talk started. They are acknowledged now, and the plugin log says once per connection on which channel the camera sent them.
