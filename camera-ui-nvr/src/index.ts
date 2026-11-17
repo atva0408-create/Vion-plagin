@@ -191,7 +191,19 @@ interface ManagedCamera {
   overLimit?: boolean;
 }
 
-/** Plan limits from the host (VION Cloud plan or local defaults); 0 = unlimited. */
+/**
+ * The cameras that record when the host gives no number, or gives 0: the free level of VION (docs/LICENSING_TZ.md of
+ * VIONN-, stage 2). 0 meant «every camera» before the licences; a server of 2.7 says 256 for «no limit» and never 0.
+ */
+export const FREE_CAMERAS = 2;
+
+/** The cameras that record by the host's limits: its number, or the free level when it is unknown or 0. */
+export function recordingCap(entitlements: { nvr: { maxCameras: number } } | undefined): number {
+  const n = entitlements?.nvr.maxCameras;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : FREE_CAMERAS;
+}
+
+/** Plan limits from the host (VION Cloud plan, a licence or local defaults); retention 0 = no limit of days. */
 interface Entitlements {
   source: 'cloud' | 'local';
   plan: { id: string; name: string };
@@ -477,7 +489,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private orphans: { path: string; bytes: number; mtimeMs: number }[] = [];
   private orphanBytes = 0;
   private entitlementsTimer: NodeJS.Timeout | undefined;
-  /** Unknown until the host answers (older hosts without the call: no limits). */
+  /** Unknown until the host answers: the free level of cameras until then (older hosts without the call too). */
   private entitlements: Entitlements | undefined;
   private instanceId = '';
   private paused = false;
@@ -834,8 +846,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private planSummary(): string {
     const e = this.entitlements;
-    if (!e) return 'без ограничений';
-    const cams = e.nvr.maxCameras > 0 ? `до ${e.nvr.maxCameras} камер с записью` : 'запись со всех камер';
+    if (!e) return `сервер не сообщил лимит: до ${FREE_CAMERAS} камер с записью`;
+    const cams = `до ${recordingCap(e)} камер с записью`;
     const days = e.nvr.retentionDays > 0 ? `архив до ${e.nvr.retentionDays} дн.` : 'архив без ограничения срока';
     return e.source === 'cloud' ? `VION Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к VION Cloud: ${cams}, ${days}`;
   }
@@ -865,7 +877,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return {
       source: e?.source ?? 'none',
       planName: e?.plan.name ?? '',
-      maxCameras: e?.nvr.maxCameras ?? 0,
+      maxCameras: recordingCap(e),
       retentionDays: e?.nvr.retentionDays ?? 0,
       recording: wanting.filter((id) => licensed.has(id)),
       overLimit: wanting.filter((id) => !licensed.has(id)),
@@ -878,8 +890,8 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const order = (JSON.parse(this.store.meta('record_order') ?? '[]') as string[]).filter((id) => wanting.includes(id));
     for (const id of wanting) if (!order.includes(id)) order.push(id);
     this.store.setMeta('record_order', JSON.stringify(order));
-    const max = this.entitlements?.nvr.maxCameras ?? 0;
-    return new Set(max > 0 ? order.slice(0, max) : order);
+    // unknown or 0: the free level, never every camera
+    return new Set(order.slice(0, recordingCap(this.entitlements)));
   }
 
   private syncAll(): void {
