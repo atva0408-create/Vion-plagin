@@ -501,6 +501,32 @@ test('cameras handed over after the start get their stream at once', async () =>
   await h.shutdown();
 });
 
+// The C300 of the bench (2026-11-17): on the list of an earlier region as well as on its own, whose list the network
+// let through only now and then. The earlier region answered «no p2pid allocated» at every connection.
+test('a camera on the lists of two regions streams with the keys of its own, also while its own list cannot be read', async () => {
+  const hall = (online: boolean) => ({ did: '1001', name: 'Hall', model: 'chuangmi.camera.039a01', localip: '192.168.1.50', isOnline: online });
+  const twoRegions = (ruListed: boolean) =>
+    scenario({
+      devices: { cn: [], de: [hall(false)], ...(ruListed ? { ru: [hall(true)] } : {}) },
+      vendors: {
+        'de:1001': new Error('no p2pid allocated, please reboot device'),
+        'ru:1001': { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd'.repeat(32), sign: 'from-ru' },
+      },
+    });
+  globalThis.fetch = fakeXiaomi(twoRegions(true)).fetch;
+  const h = host({ userId: '42', passToken: 'PT1' });
+  await h.launch();
+  const { camera, stream } = device();
+  await h.plugin.configureCameras([camera]);
+  assert.equal(new URL(await stream()).searchParams.get('sign'), 'from-ru');
+
+  // its own region's list is not read this time: the camera keeps that region, its keys are asked there first
+  globalThis.fetch = fakeXiaomi(twoRegions(false)).fetch;
+  await (h.plugin as unknown as { refreshCameras(): Promise<void> }).refreshCameras();
+  assert.equal(new URL(await stream()).searchParams.get('sign'), 'from-ru');
+  await h.shutdown();
+});
+
 test('a camera removed from the account is no longer offered, unless a region could not be read', async () => {
   globalThis.fetch = fakeXiaomi(scenario()).fetch;
   const h = host({ userId: '42', passToken: 'PT1' });

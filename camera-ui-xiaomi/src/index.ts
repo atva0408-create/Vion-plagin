@@ -326,7 +326,17 @@ export default class XiaomiPlugin extends BasePlugin<XiaomiConfig> implements Di
       if (signOuts !== this.signOuts) throw new XiaomiAuthError(NOT_SIGNED_IN);
       // a camera removed from the account is no longer offered; when a region could not be read, nothing is dropped
       if (complete) this.cameras.clear();
-      for (const camera of cameras) this.cameras.set(camera.did, camera);
+      for (const camera of cameras) {
+        const before = this.cameras.get(camera.did);
+        // a region not read this time still has the camera: the one that gave its keys stays first (a network that
+        // lets the list of a region through only now and then must not leave the camera to a region without its keys)
+        if (!complete && before) {
+          const regions = [before.region, ...(before.regions ?? []), ...(camera.regions ?? [camera.region])];
+          camera.regions = [...new Set(regions)];
+          camera.region = camera.regions[0]!;
+        }
+        this.cameras.set(camera.did, camera);
+      }
       this.camerasReadAt = Date.now();
       this.logger.debug(`Mi Home cameras: ${cameras.length}`);
 

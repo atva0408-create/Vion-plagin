@@ -17,7 +17,13 @@ export interface XiaomiCamera {
   ip: string;
   mac?: string;
   online?: boolean;
+  /** the region its keys are asked in first: the one whose list has it online, then the one that last gave them */
   region: Region;
+  /**
+   * Every region whose device list has the camera, `region` first. A camera can be on the lists of two regions, and
+   * only one of them has its P2P keys: the other answers «no p2pid allocated, please reboot device».
+   */
+  regions?: Region[];
   /** the MIoT spec of the device (urn:miot-spec-v2:device:camera:…), when the list names it */
   specType?: string;
 }
@@ -73,18 +79,23 @@ async function camerasOfRegion(cloud: XiaomiCloud, region: Region): Promise<Xiao
  */
 export async function listCameras(cloud: XiaomiCloud, onRegionError?: (region: Region, error: Error) => void): Promise<{ cameras: XiaomiCamera[]; complete: boolean }> {
   const results = await Promise.allSettled(REGIONS.map((region) => camerasOfRegion(cloud, region)));
-  const cameras = new Map<string, XiaomiCamera>();
+  const listed = new Map<string, XiaomiCamera[]>();
   let failed = 0;
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') {
-      for (const camera of result.value) if (!cameras.has(camera.did)) cameras.set(camera.did, camera);
+      for (const camera of result.value) listed.set(camera.did, [...(listed.get(camera.did) ?? []), camera]);
     } else {
       failed++;
       onRegionError?.(REGIONS[i], result.reason as Error);
     }
   });
   if (failed === REGIONS.length) throw (results[0] as PromiseRejectedResult).reason as Error;
-  return { cameras: [...cameras.values()], complete: failed === 0 };
+  // a camera on the lists of several regions: once, as the region that has it online lists it, with all its regions
+  const cameras = [...listed.values()].map((entries) => {
+    const ordered = [...entries.filter((entry) => entry.online === true), ...entries.filter((entry) => entry.online !== true)];
+    return { ...ordered[0], regions: ordered.map((entry) => entry.region) };
+  });
+  return { cameras, complete: failed === 0 };
 }
 
 /**
@@ -106,10 +117,10 @@ export class UnplayableCameraError extends Error {
 }
 
 /** Keys of the newer protocol (miss): the cloud names the P2P vendor of the camera and signs a fresh key of ours. */
-async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Record<string, string>> {
+async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera, region: Region = camera.region): Promise<Record<string, string>> {
   const { publicKey, privateKey } = generateKeyPair();
   const params = JSON.stringify({ app_pubkey: publicKey, did: camera.did, support_vendors: 'TUTK_CS2_MTP' });
-  const result = (await cloud.request(camera.region, '/v2/device/miss_get_vendor', params)) as {
+  const result = (await cloud.request(region, '/v2/device/miss_get_vendor', params)) as {
     vendor?: { vendor?: number; vendor_params?: { p2p_id?: string; init_string?: string } };
     public_key?: string;
     sign?: string;
@@ -135,10 +146,10 @@ async function missParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Rec
 }
 
 /** Keys of the older protocol: a device password, or a signed key of ours. */
-async function legacyParams(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<Record<string, string>> {
+async function legacyParams(cloud: XiaomiCloud, camera: XiaomiCamera, region: Region = camera.region): Promise<Record<string, string>> {
   const { publicKey, privateKey } = generateKeyPair();
   const params = JSON.stringify({ did: camera.did, toSignAppData: publicKey });
-  const result = (await cloud.request(camera.region, '/device/devicepass', params)) as {
+  const result = (await cloud.request(region, '/device/devicepass', params)) as {
     p2p_id?: string;
     password?: string;
     p2p_dev_public_key?: string;
@@ -178,16 +189,53 @@ function isOlderProtocol(error: unknown): boolean {
 }
 
 /**
+ * Asks the cloud about `camera` in each region whose list has it, `region` first, until one answers. The region that
+ * answers comes first from then on. An answer that names the camera (a vendor VION cannot play) is the answer; when
+ * no region answers, one region's error as it is, of several each region with its own.
+ */
+async function inItsRegion<T>(camera: XiaomiCamera, ask: (region: Region) => Promise<T>): Promise<T> {
+  const regions = [camera.region, ...(camera.regions ?? []).filter((region) => region !== camera.region)];
+  const failures: { region: Region; error: Error }[] = [];
+  for (const region of regions) {
+    try {
+      const answer = await ask(region);
+      camera.region = region;
+      camera.regions = [region, ...regions.filter((other) => other !== region)];
+      return answer;
+    } catch (error) {
+      if (error instanceof UnplayableCameraError) throw error;
+      failures.push({ region, error: error as Error });
+    }
+  }
+  if (failures.length === 1) throw failures[0].error;
+  throw new Error(`Mi Home gave no keys for ${camera.name}: ${failures.map(({ region, error }) => `region ${region}: ${error.message}`).join('; ')}`);
+}
+
+/** Keys of the protocol of the camera, asked in `region`: the newer one, or the older for a camera that has only it. */
+async function keysIn(cloud: XiaomiCloud, camera: XiaomiCamera, region: Region): Promise<Record<string, string>> {
+  if (LEGACY_MODELS.has(camera.model)) return legacyParams(cloud, camera, region);
+  try {
+    return await missParams(cloud, camera, region);
+  } catch (error) {
+    // a camera of the older protocol that is not on the list
+    if (!isOlderProtocol(error)) throw error;
+    return legacyParams(cloud, camera, region);
+  }
+}
+
+/**
  * Whether VION can play the camera, asked the way a connection asks: throws UnplayableCameraError when the cloud
  * connects it over a P2P vendor the stream engine refuses. A camera of the older protocol plays.
  */
 export async function checkPlayable(cloud: XiaomiCloud, camera: XiaomiCamera): Promise<void> {
   if (LEGACY_MODELS.has(camera.model)) return;
-  try {
-    await missParams(cloud, camera);
-  } catch (error) {
-    if (!isOlderProtocol(error)) throw error;
-  }
+  await inItsRegion(camera, async (region) => {
+    try {
+      await missParams(cloud, camera, region);
+    } catch (error) {
+      if (!isOlderProtocol(error)) throw error;
+    }
+  });
 }
 
 /** Door viewers and battery cameras sleep: they are woken up before a connection. */
@@ -213,18 +261,7 @@ export async function cameraStreamUrl(
 
   if (camera.model.includes('.cateye.')) await wakeUp(cloud, camera).catch((error: Error) => onWakeUpError?.(error));
 
-  let params: Record<string, string>;
-  if (LEGACY_MODELS.has(camera.model)) {
-    params = await legacyParams(cloud, camera);
-  } else {
-    try {
-      params = await missParams(cloud, camera);
-    } catch (error) {
-      // a camera of the older protocol that is not on the list
-      if (!isOlderProtocol(error)) throw error;
-      params = await legacyParams(cloud, camera);
-    }
-  }
+  const params = await inItsRegion(camera, (region) => keysIn(cloud, camera, region));
 
   const host = await connectionHost(camera, params, connection);
   // Rendezvous credentials are used by the bridge, never placed in a logged or persisted stream URL.
@@ -265,7 +302,7 @@ export async function connectionHost(camera: XiaomiCamera, params: Record<string
 export async function motorKeys(cloud: XiaomiCloud, camera: XiaomiCamera, mode: ConnectionMode = 'lan'): Promise<SessionKeys> {
   if (!camera.ip && mode === 'lan') throw new Error(`Xiaomi reports no local address for ${camera.name}: is it switched on and in the same network as the server?`);
   if (LEGACY_MODELS.has(camera.model)) throw new Error(`${camera.name} (${camera.model}) uses the older protocol, which the plugin cannot turn`);
-  const params = await missParams(cloud, camera);
+  const params = await inItsRegion(camera, (region) => missParams(cloud, camera, region));
   if (params.vendor !== 'cs2') {
     throw new Error(`${camera.name} (${camera.model}) connects over ${VENDOR_LABELS[params.vendor] ?? params.vendor}: the plugin turns cameras over CS2 only`);
   }

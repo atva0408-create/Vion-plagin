@@ -1,3 +1,7 @@
+## [0.4.4]
+
+- A camera that is on the device lists of two regions of Mi Home connects again. The plugin took the first region of its list and asked only it for the keys of each connection; that region answered «no p2pid allocated, please reboot device» while the Mi Home app, asking the camera's own region, showed it. The keys are now asked in each region that lists the camera, the one that has it online first, and the region that gave them is asked first from then on, also while its device list cannot be read. When no region gives them, the camera's log names each region and its answer.
+
 ## [0.4.3]
 
 - A camera in another network that cannot be reached now says why. The plugin kept looking for a Xiaomi relay for 25 s after the keys from Mi Home (up to 15 s more) while VION waits 30 s for the address of a stream: the reason, such as «Xiaomi did not return a relay; the camera may be offline», came too late and reached nobody. The search now keeps within 25 s in all.
