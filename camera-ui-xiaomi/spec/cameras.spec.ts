@@ -332,6 +332,13 @@ test('a camera on the lists of two regions is listed once, with both, the one th
   assert.equal(cameras[0]!.online, true);
 });
 
+test('a camera of one region that gives no keys says which region answered what', async () => {
+  const { cloud } = stubCloud(() => {
+    throw new Error('Xiaomi: no p2pid allocated, please reboot device');
+  });
+  await assert.rejects(cameraStreamUrl(cloud, camera({ region: 'de' })), /region de: Xiaomi: no p2pid allocated/);
+});
+
 test('its keys come from the region that gives them; the one that refuses is passed over', async () => {
   const { cloud, asked } = twoRegions((region) =>
     region === 'ru' ? { vendor: { vendor: 4, vendor_params: {} }, public_key: 'dd', sign: 'from-ru' } : new Error('Xiaomi: no p2pid allocated, please reboot device'),

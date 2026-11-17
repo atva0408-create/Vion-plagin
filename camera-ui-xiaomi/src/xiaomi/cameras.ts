@@ -1,4 +1,4 @@
-import { REGIONS } from './cloud.js';
+import { REGIONS, XiaomiAuthError } from './cloud.js';
 import { generateKeyPair } from './keys.js';
 import { reachableLocally } from './p2p.js';
 import { nonEmpty } from './text.js';
@@ -207,7 +207,10 @@ async function inItsRegion<T>(camera: XiaomiCamera, ask: (region: Region) => Pro
       failures.push({ region, error: error as Error });
     }
   }
-  if (failures.length === 1) throw failures[0].error;
+  // a sign-in Xiaomi no longer takes is said as it is: the plugin asks for a new one by its kind
+  const signIn = failures.find(({ error }) => error instanceof XiaomiAuthError);
+  if (signIn) throw signIn.error;
+  // the region goes with each answer, one region or several: «no p2pid allocated» alone did not say whose list it was
   throw new Error(`Mi Home gave no keys for ${camera.name}: ${failures.map(({ region, error }) => `region ${region}: ${error.message}`).join('; ')}`);
 }
 
