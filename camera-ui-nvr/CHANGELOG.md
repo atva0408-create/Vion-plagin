@@ -1,3 +1,9 @@
+## Unreleased
+
+- A limit of 0 cameras, or none the server has told yet, records at the free level of VION: two cameras, in the order recording was turned on. It recorded every camera, so a server that lost its limits, or a value of 0 put in its settings, lifted the limit altogether. A server of VION 2.7 says 256 for a plan or licence without a limit and never 0; install this version after the server (and VION Cloud) that do, or subscribers of an unlimited plan on an older server record two cameras
+- Until the server's first limit, or 120 s of waiting for it (a server with an old cache of its plan waits up to 30 s for the plan and 30 s for its list before it answers), nothing is cut: the cameras come before the first answer at every start, and the recorder took «no answer yet» for the free level, so the cameras from the third on did not record and «tariff limit» events poured out at every restart. A server that never answers records at the free level after the wait
+- Needs VION 2.7.0 or later (`engines`). The store installs it on an older server all the same (the requirement is a warning, «update all» does not read it): there the recorder sees the server's version and takes its 0 for «no limit» as before, not for the free level
+
 ## [0.25.3]
 
 - The recorder starts at once: the vectors of the searches (by description, by a person) are read after its launch and no longer while it is made. The server waits for that with its cameras, and on a machine with the database on a hard disk nothing was recorded for 2 min 41 s after every start. A search that comes before they are read reads them itself, as before

@@ -30,10 +30,18 @@ const api = {
   once: noop,
   emit: noop,
   notificationManager: { publish: async () => undefined },
-  coreManager: { assistantAccess: async () => ({ allowed: false }), getFFmpegPath: () => new Promise<string>(noop), getPluginsByInterface: async () => [] },
+  coreManager: {
+    assistantAccess: async () => ({ allowed: false }),
+    getFFmpegPath: () => new Promise<string>(noop),
+    getPluginsByInterface: async () => [],
+    // more cameras than the free level record here: a host without a limit of cameras says 256 (plan.spec.ts)
+    getEntitlements: async () => ({ source: 'local', plan: { id: 'test', name: 'Test' }, nvr: { maxCameras: 256, retentionDays: 0 } }),
+  },
 };
 const storage = { values: { quotaGB: 1, minFreePercent: 3 } as Record<string, unknown>, getValue: async () => undefined, setValue: async () => undefined };
 const nvr = new VionNvr({ log: noop, warn: noop, error: console.error, debug: noop, attention: noop, trace: noop } as never, api as never, storage as never);
+// the host's limit read, as the recorder's start reads it: more than the free level of cameras record here
+await nvr.reloadEntitlements();
 const internals = nvr as unknown as { cameras: Map<string, unknown>; store: Store; enforceRetention(): Promise<void> };
 const store = internals.store;
 
