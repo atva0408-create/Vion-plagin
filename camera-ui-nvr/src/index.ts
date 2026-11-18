@@ -507,8 +507,11 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
    */
   private limitSettled = false;
   private limitWait: NodeJS.Timeout | undefined;
-  /** How long the first answer of the host's limit is waited for before the free level holds. */
-  static firstLimitWaitMs = 60_000;
+  /**
+   * How long the first answer of the host's limit is waited for before the free level holds: a server with an old cache
+   * of its plan waits for the plan and for its list of what it may run, up to 30 s each, before it answers.
+   */
+  static firstLimitWaitMs = 120_000;
   /** A server known to be older than the licences: its 0 cameras is «no limit» (recordingCap). */
   private readonly zeroIsNoLimit = (() => {
     const version = serverVersion(process.argv[1]);

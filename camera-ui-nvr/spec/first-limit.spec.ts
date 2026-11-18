@@ -42,6 +42,9 @@ function recorder(getEntitlements: () => Promise<unknown>) {
 }
 const limitEvents = async (nvr: VionNvr) => (await nvr.getSystemEvents(undefined as never, {} as never)).events.filter((e) => e.type === 'license');
 
+// the server with an old cache of its plan waits for the plan and for the list of what it may run, up to 30 s each
+// (server/src/remote/api/instance.ts of VIONN-), and its answer can come later than 60 s: the default wait covers it
+assert.ok(VionNvr.firstLimitWaitMs >= 120_000, `the first limit is waited for long enough: ${VionNvr.firstLimitWaitMs} ms`);
 VionNvr.firstLimitWaitMs = 300;
 
 // ------------------------------------------------------------------ the answer comes after the cameras
