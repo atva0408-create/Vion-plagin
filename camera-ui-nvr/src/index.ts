@@ -197,9 +197,19 @@ interface ManagedCamera {
  */
 export const FREE_CAMERAS = 2;
 
-/** The cameras that record by the host's limits: its number, or the free level when it is unknown or 0. */
-export function recordingCap(entitlements: { nvr: { maxCameras: number } } | undefined): number {
+/** The first VION server that says 256 for «no limit» and never 0 (the licences of VIONN-). */
+export const LIMITS_WITHOUT_ZERO = '2.7.0';
+/** The most cameras a server of the licences gives: what an older server's 0 («no limit») records. */
+const NO_LIMIT_CAMERAS = 256;
+
+/**
+ * The cameras that record by the host's limits: its number, or the free level when it is unknown or 0. On a server
+ * known to be older than LIMITS_WITHOUT_ZERO, 0 is «no limit», as it said: the store installs this plugin there all the
+ * same (its requirement is a warning), and paying owners would record two cameras.
+ */
+export function recordingCap(entitlements: { nvr: { maxCameras: number } } | undefined, zeroIsNoLimit = false): number {
   const n = entitlements?.nvr.maxCameras;
+  if (zeroIsNoLimit && n === 0) return NO_LIMIT_CAMERAS;
   return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : FREE_CAMERAS;
 }
 
@@ -491,6 +501,20 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private entitlementsTimer: NodeJS.Timeout | undefined;
   /** Unknown until the host answers: the free level of cameras until then (older hosts without the call too). */
   private entitlements: Entitlements | undefined;
+  /**
+   * Whether the host's limit holds: its first answer came, or the wait for it is over (then the free level). Until then
+   * nothing is cut: configureCameras comes before the first answer, and «no answer yet» cut every restart to 2 cameras.
+   */
+  private limitSettled = false;
+  private limitWait: NodeJS.Timeout | undefined;
+  /** How long the first answer of the host's limit is waited for before the free level holds. */
+  static firstLimitWaitMs = 60_000;
+  /** A server known to be older than the licences: its 0 cameras is «no limit» (recordingCap). */
+  private readonly zeroIsNoLimit = (() => {
+    const version = serverVersion(process.argv[1]);
+    return version !== undefined && !versionAtLeast(version, LIMITS_WITHOUT_ZERO);
+  })();
+
   private instanceId = '';
   private paused = false;
   private ready: Promise<void>;
@@ -830,12 +854,18 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
 
   private async refreshEntitlements(): Promise<void> {
     const core = this.api.coreManager as unknown as { getEntitlements?: () => Promise<Entitlements> };
-    if (typeof core.getEntitlements !== 'function') return;
+    if (typeof core.getEntitlements !== 'function') {
+      this.limitSettled = true;
+      return;
+    }
     try {
       const next = await core.getEntitlements();
       const changed = JSON.stringify(next) !== JSON.stringify(this.entitlements);
+      const first = !this.limitSettled;
       this.entitlements = next;
-      if (changed) {
+      this.limitSettled = true;
+      clearTimeout(this.limitWait);
+      if (changed || first) {
         this.logger.log(`Plan: ${this.planSummary()}`);
         this.syncAll();
       }
@@ -847,7 +877,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   private planSummary(): string {
     const e = this.entitlements;
     if (!e) return `сервер не сообщил лимит: до ${FREE_CAMERAS} камер с записью`;
-    const cams = `до ${recordingCap(e)} камер с записью`;
+    const cams = `до ${recordingCap(e, this.zeroIsNoLimit)} камер с записью`;
     const days = e.nvr.retentionDays > 0 ? `архив до ${e.nvr.retentionDays} дн.` : 'архив без ограничения срока';
     return e.source === 'cloud' ? `VION Cloud · ${e.plan.name}: ${cams}, ${days}` : `Сервер не привязан к VION Cloud: ${cams}, ${days}`;
   }
@@ -877,7 +907,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     return {
       source: e?.source ?? 'none',
       planName: e?.plan.name ?? '',
-      maxCameras: recordingCap(e),
+      maxCameras: recordingCap(e, this.zeroIsNoLimit),
       retentionDays: e?.nvr.retentionDays ?? 0,
       recording: wanting.filter((id) => licensed.has(id)),
       overLimit: wanting.filter((id) => !licensed.has(id)),
@@ -890,8 +920,10 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     const order = (JSON.parse(this.store.meta('record_order') ?? '[]') as string[]).filter((id) => wanting.includes(id));
     for (const id of wanting) if (!order.includes(id)) order.push(id);
     this.store.setMeta('record_order', JSON.stringify(order));
+    // the host's first limit not known yet (and not waited out): nothing is cut
+    if (!this.limitSettled) return new Set(order);
     // unknown or 0: the free level, never every camera
-    return new Set(order.slice(0, recordingCap(this.entitlements)));
+    return new Set(order.slice(0, recordingCap(this.entitlements, this.zeroIsNoLimit)));
   }
 
   private syncAll(): void {
@@ -1023,6 +1055,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   private async start(): Promise<void> {
+    this.waitFirstLimit();
     void this.refreshEntitlements();
     this.entitlementsTimer = setInterval(() => void this.refreshEntitlements(), ENTITLEMENTS_INTERVAL_MS);
     this.retentionTimer = setInterval(() => void this.enforceRetention(), RETENTION_INTERVAL_MS);
@@ -1117,6 +1150,7 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
     this.describer?.stop();
     clearInterval(this.retentionTimer);
     clearInterval(this.entitlementsTimer);
+    clearTimeout(this.limitWait);
     clearInterval(this.episodeTimer);
     clearInterval(this.staleTimer);
     clearInterval(this.clipAutoTimer);
@@ -1132,7 +1166,27 @@ export default class VionNvr extends BasePlugin<PluginStorageValues> {
   }
 
   public async configureCameras(cameras: CameraDevice[]): Promise<void> {
+    // the host's limit is asked now; until it answers, or the wait is over, nothing is cut
+    this.waitFirstLimit();
+    void this.refreshEntitlements();
     for (const camera of cameras) await this.onCameraAdded(camera);
+  }
+
+  /** Starts the wait for the host's first limit, once: when it is over without an answer, the free level holds. */
+  private waitFirstLimit(): void {
+    if (this.limitSettled || this.limitWait) return;
+    const core = this.api.coreManager as unknown as { getEntitlements?: unknown };
+    if (typeof core.getEntitlements !== 'function') {
+      this.limitSettled = true;
+      return;
+    }
+    this.limitWait = setTimeout(() => {
+      if (this.limitSettled) return;
+      this.limitSettled = true;
+      this.logger.warn(`The server gave no limit of recording in ${Math.round(VionNvr.firstLimitWaitMs / 1000)} s: ${this.planSummary()}`);
+      this.syncAll();
+    }, VionNvr.firstLimitWaitMs);
+    this.limitWait.unref?.();
   }
 
   public onCameraAdded(camera: CameraDevice): Promise<void> {

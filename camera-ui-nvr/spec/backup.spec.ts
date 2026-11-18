@@ -200,8 +200,9 @@ function backedUp(root: string): string[] {
 
 {
   // A server before VION 2.6.48 restores a backup by replacing the whole storage of the plugins, so the recorder leaves
-  // nothing out there (above). It does not ask for 2.6.48 in its requirements: the store only warns, «update all» does
-  // not even look, and the rest of this release (retention, exports, recorders) must reach the older servers too
+  // nothing out there (above). Its requirement is VION 2.7.0, the first server of the licences, which says 256 and never
+  // 0 for «no limit» (the review of 2026-11-18). The store only warns, «update all» does not even look: on an older
+  // server the recorder looks itself, and there 0 stays «no limit» (first-limit.spec.ts)
   const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { engines: Record<string, string> };
   const lock = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package-lock.json'), 'utf8')) as {
     packages: Record<string, { engines?: Record<string, string> }>;
@@ -215,12 +216,12 @@ function backedUp(root: string): string[] {
     for (let i = 0; i < 3; i++) if (v[i] !== lowest[i]) return v[i] > lowest[i];
     return true;
   };
-  assert.equal(allows('2.6.47'), true, `an older server takes this release without a warning: ${range}`);
-  assert.equal(allows('2.2.8'), true, range);
+  assert.equal(allows('2.7.0'), true, `the server of the licences takes this release: ${range}`);
+  assert.equal(allows('2.6.49'), false, `an older server is warned: ${range}`);
   assert.equal(lock.packages[''].engines?.['camera.ui'], range, 'the lockfile says the same');
 }
 
 console.log(
-  'backup.spec: recordings and exports left out of the server backup, marked at the start of an older install too; database and pictures kept; only on VION 2.6.48 and later, its own marker taken away on an older or unknown one — ok',
+  'backup.spec: recordings and exports left out of the server backup, marked at the start of an older install too; database and pictures kept; only on VION 2.6.48 and later, its own marker taken away on an older or unknown one; it asks for VION 2.7.0 — ok',
 );
 process.exit(0);
