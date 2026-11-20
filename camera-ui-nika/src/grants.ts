@@ -148,17 +148,20 @@ export class Grants {
     const t = texts(grant.lang);
     const base = { nika: grant.nikaName, summary: grant.summary, by, ...(grant.speaker ? { speaker: grant.speaker } : {}) };
     let text: string;
+    let data: unknown;
     if (approved) {
       const result = await this.host.run(grant.command, grant.args, grant.lang).catch((error: Error): CallResult => ({ ok: false, error: error.message }));
       // what VOICE says of the time now, after «allowed: …» (its «done: …» would say the same thing twice)
       const now = (result.data as { now?: unknown } | undefined)?.now;
       text = result.ok ? `${t.approved(grant.summary)}${typeof now === 'string' && now ? ` ${now}` : ''}` : t.failed(grant.summary, result.error ?? '');
+      // what was done comes with the decision: a care task made is read from it, not looked for by its name
+      if (result.ok) data = result.data;
       await this.note({ ...base, outcome: result.ok ? 'approved' : 'failed', ...(result.ok ? {} : { detail: result.error }) });
     } else {
       text = t.declined(grant.summary);
       await this.note({ ...base, outcome: 'declined' });
     }
-    if (!this.host.tell(grant.nikaId, { t: 'decided', request: grant.id, approved, text })) {
+    if (!this.host.tell(grant.nikaId, { t: 'decided', request: grant.id, approved, text, ...(data !== undefined ? { data } : {}) })) {
       this.host.log(`NIKA ${grant.nikaName} is not connected: she was not told «${text}»`);
     }
     return { ok: true, text };

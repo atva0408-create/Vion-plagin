@@ -3,7 +3,8 @@
 // requests, switched off, not connected), what she asks for (read at once; more time asked of a parent who allows or
 // refuses on the page or in the chat, or nobody answers; given at once in «direct»; a command switched off; wrong
 // arguments; VOICE missing), «until 23:00» in the home's time zone, a restart keeping it all, she forgetting this VION,
-// and disconnecting.
+// and disconnecting. Care: its commands answered by the core, the changing ones asked of a parent, a server from
+// before care, what a care task came to know sent on to her (and to one that just connected), an alarm not said twice.
 // Run: npx tsx spec/plugin.spec.ts
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -20,6 +21,7 @@ import { ruMinutes } from '../src/texts.js';
 
 import type { AssistantToolResult, JsonSchema, Notification } from '@camera.ui/sdk';
 import type { MdnsPacket, MulticastDns } from 'multicast-dns';
+import type { CareAnswer, CareRequest } from '../src/care.js';
 import type { VoicePort } from '../src/commands.js';
 import type { Message } from '../src/protocol.js';
 
@@ -56,6 +58,22 @@ function fakeVoice() {
   return { port, asked };
 }
 
+/** The care of the core (care/link.ts of the server): answers as it does, keeps what was asked, tells its events. */
+function fakeCare() {
+  const asked: CareRequest[] = [];
+  const listeners = new Set<(event: { type?: string; data?: unknown }) => void>();
+  const task = { id: 'c3f1a2b4d5e6', name: 'Артёмка — Детская', child: 'Артёмка', camera: 'Детская', answers: { activity: { value: 'at_computer', label: 'за компьютером' } }, alarms: [] };
+  const port = async (request: CareRequest): Promise<CareAnswer> => {
+    asked.push(request);
+    if (request.action === 'status') return { ok: true, data: { tasks: [task], at: '2026-11-20T15:00:00+03:00' }, text: 'Артёмка: за компьютером.' };
+    if (request.action === 'look') return request.args?.child === 'Виолетта' ? { ok: false, code: 'unknown_subject', message: 'No care task looks after "Виолетта"' } : { ok: false, code: 'no_view', message: 'Too dark to see the room' };
+    if (request.action === 'set') return { ok: true, data: { task }, text: 'Задача «Артёмка — Детская» создана.' };
+    if (request.action === 'remove') return { ok: true, data: { id: task.id, name: task.name }, text: 'Задача «Артёмка — Детская» удалена.' };
+    return { ok: true, data: {} };
+  };
+  return { port, asked, listeners, task, emit: (data: Record<string, unknown>) => listeners.forEach((listener) => listener({ type: 'careChanged', data })) };
+}
+
 class TestPlugin extends NikaPlugin {
   voicePort?: VoicePort;
   protected createDiscovery(): Discovery {
@@ -87,14 +105,24 @@ function host(values: Record<string, unknown> = {}) {
   };
   const published: Notification[] = [];
   const voice = fakeVoice();
+  const care = fakeCare();
   const api = {
     on: () => api,
     notificationManager: { publish: async (n: Notification) => void published.push(n) },
-    coreManager: { connectToPlugin: async () => undefined },
+    coreManager: {
+      connectToPlugin: async () => undefined,
+      care: care.port as typeof care.port | undefined,
+      onEvent: {
+        subscribe(next: (event: { type?: string; data?: unknown }) => void) {
+          care.listeners.add(next);
+          return { unsubscribe: () => void care.listeners.delete(next) };
+        },
+      },
+    },
   };
   const plugin = new TestPlugin(logger as never, api as never, storage as never);
   plugin.voicePort = voice.port;
-  return { plugin, values, lines, published, voice };
+  return { plugin, values, lines, published, voice, care, core: api.coreManager };
 }
 
 const field = (plugin: NikaPlugin, key: string) => plugin.storageSchema.find((schema) => schema.key === key) as JsonSchema & Record<string, any>;
@@ -181,6 +209,12 @@ assert.match(await field(plugin, 'status').onGet(), /ещё не подключ�
       ['screen_time_report', false],
       ['screen_time_extend', true],
       ['screen_time_until', true],
+      ['care_overview', false],
+      ['care_status', false],
+      ['care_look', false],
+      ['care_report', false],
+      ['care_set', true],
+      ['care_remove', true],
     ],
   );
   assert.match(await field(plugin, 'status').onGet(), /Подключены:\n• Ника — Детская: на связи с/);
@@ -405,6 +439,88 @@ const deviceId = `nika:${nika.id}`;
   assert.ok(thirdLines.some((line) => /no longer knows this VION/.test(line)));
   third.stop();
   await forgetful.close();
+}
+
+// ---- care: read and looked at once; made and deleted only with a parent; a server from before care; the events
+{
+  const token = 'c'.repeat(64);
+  const carer = new FakeNika({ id: 'nika-care', tokens: new Map([['v3', token]]) });
+  await carer.listen();
+  const values3: Record<string, unknown> = {
+    _vionId: 'v3',
+    _paired: [{ id: 'nika-care', name: 'Ника', room: 'Детская', token, host: '127.0.0.1', port: carer.port, manual: true, speaks: true, pairedAt: 1 }],
+  };
+  const { plugin: fourth, published: told, care, core } = host(values3);
+  await fourth.start();
+  await until(() => carer.online, 'the link');
+  const cares = () => carer.got.filter((message) => message.t === 'care');
+  // she just connected: what every care task knows comes to her, once
+  await until(() => cares().length === 1, 'the care tasks');
+  assert.deepEqual(cares(), [{ t: 'care', kind: 'snapshot', at: '2026-11-20T15:00:00+03:00', task: care.task }]);
+
+  const status = await call(carer, 'care_status', { child: 'Артёмка' });
+  assert.deepEqual([status.ok, status.text], [true, 'Артёмка: за компьютером.']);
+  assert.deepEqual((status.data as { tasks: unknown[] }).tasks, [care.task]);
+  assert.deepEqual(care.asked[care.asked.length - 1], { action: 'status', args: { child: 'Артёмка' }, language: 'ru' });
+  // what is wrong comes as a code a scenario can act on, with the words of VION
+  const dark = await call(carer, 'care_look', { task: care.task.id, questions: ['in_bed'] });
+  assert.deepEqual([dark.ok, dark.code, dark.error], [false, 'no_view', 'Too dark to see the room']);
+  assert.equal((await call(carer, 'care_look', { child: 'Виолетта' })).code, 'unknown_subject');
+
+  // a task is made with the word of a parent: asked, the parents told, then done as it was asked
+  const before = care.asked.length;
+  const wanted = { child: 'Артёмка', camera: 'Детская', questions: ['activity'], windows: [{ from: '14:00', to: '21:30', everySeconds: 120 }] };
+  const made = await call(carer, 'care_set', wanted, 'Папа');
+  assert.deepEqual([made.ok, made.pending], [true, true]);
+  assert.match(String(made.text), /присмотр за Артёмка по камере «Детская»/);
+  assert.equal(care.asked.length, before, 'nothing is set before a parent allows it');
+  assert.equal(told.length, 1);
+  assert.match(told[0].body ?? '', /^Ника — Детская \(просит Папа\): присмотр за Артёмка по камере «Детская»\. Ответьте в VION/);
+  const [pending] = fourth.grantsOf.pending;
+  assert.equal((await click(fourth, 'answer', { request: pending.id, decision: 'allow' }))?.toast?.type, 'success');
+  assert.deepEqual(care.asked.slice(before), [{ action: 'set', args: wanted, language: 'ru' }]);
+  await until(() => decided(carer).length === 1, 'the decision');
+  // the decision brings the task that was made: she does not look for it by its name
+  assert.deepEqual(decided(carer)[0], { t: 'decided', request: pending.id, approved: true, text: 'Разрешили: присмотр за Артёмка по камере «Детская».', data: { task: care.task } });
+  // what cannot be asked of a parent at all is refused before anybody is asked
+  assert.match(String((await call(carer, 'care_set', { child: 'Артёмка' })).error), /имя ребёнка и камера/);
+  assert.match(String((await call(carer, 'care_remove', {})).error), /назвать задачу/);
+  assert.equal(fourth.grantsOf.pending.length, 0);
+  // switched off and deleted: each asked in its own words, and nothing done when the parent refuses
+  assert.match(String((await call(carer, 'care_set', { task: 'Артёмка — Детская', enabled: false })).text), /выключить присмотр «Артёмка — Детская»/);
+  assert.match(String((await call(carer, 'care_set', { task: 'Артёмка — Детская', windows: [] })).text), /изменить присмотр «Артёмка — Детская»/);
+  assert.match(String((await call(carer, 'care_remove', { task: 'Артёмка — Детская' })).text), /удалить присмотр «Артёмка — Детская»/);
+  for (const waiting of [...fourth.grantsOf.pending]) await click(fourth, 'answer', { request: waiting.id, decision: 'refuse' });
+  await until(() => decided(carer).length === 4, 'the refusals');
+  assert.equal(care.asked.length, before + 1, 'refused: nothing changed');
+
+  // what a task came to know goes on to her as it came, as a `care` message; other events of the core are not hers
+  const alarm = { kind: 'alarm', at: '2026-11-20T16:00:00+03:00', task: care.task, alarm: { id: 'a1', text: 'Артёмка больше часа за компьютером', level: 'warn', question: 'activity', value: 'at_computer', minutes: 61 } };
+  care.emit(alarm);
+  care.listeners.forEach((listener) => listener({ type: 'pluginStatusChanged', data: { pluginName: 'x', running: true } }));
+  await until(() => cares().length === 2, 'the alarm');
+  await sleep(100);
+  assert.deepEqual(cares().slice(1), [{ t: 'care', ...alarm }]);
+  // the notice of VION of that alarm is not said as well: she has it already, with what her scenario needs
+  assert.deepEqual(await fourth.sendNotification(['nika:nika-care', 'nika:other'], { title: care.task.name, body: alarm.alarm.text, tag: `care:${care.task.id}:a1:1795000000` }), [
+    { deviceId: 'nika:nika-care', ok: true },
+    { deviceId: 'nika:other', ok: false, error: 'NIKA is not connected' },
+  ]);
+  await sleep(100);
+  assert.equal(carer.got.filter((message) => message.t === 'notify').length, 0);
+  // another notice is said as before
+  await fourth.sendNotification(['nika:nika-care'], { title: 'Кто-то у двери' });
+  await until(() => carer.got.some((message) => message.t === 'notify'), 'a notice said');
+
+  // a VION server from before care: the command says the server has to be updated
+  core.care = undefined;
+  const old = await call(carer, 'care_status', {});
+  assert.deepEqual([old.ok, old.code], [false, 'model_unavailable']);
+  assert.match(String(old.error), /нужно обновить/);
+  // stopped: the events of the core are let go
+  fourth.stop();
+  assert.equal(care.listeners.size, 0);
+  await carer.close();
 }
 
 assert.ok(!lines.some((line) => line.includes(String(values._vionId)) && /[0-9a-f]{64}/.test(line)), 'no token in a log line');

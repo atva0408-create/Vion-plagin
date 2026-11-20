@@ -24,8 +24,12 @@
  *   VION → NIKA  offer {commands: [{name, description, parameters, grant}]}  what NIKA may ask VION to do
  *                notify {id, title, body?, text, severity, tag?} → ack {id, ok, error?}  a notice of VION to say: `text`
  *                say {id, text} → ack {id, ok, error?}
- *                result {id, ok, text?, data?, error?, pending?}  the answer to a call
- *                decided {request, approved, text}  a call that waited for a parent's confirmation was answered
+ *                result {id, ok, text?, data?, error?, code?, pending?}  the answer to a call
+ *                decided {request, approved, text, data?}  a call that waited for a parent's confirmation was answered;
+ *                  `data` is what the call gave when it was allowed and done (a care task made)
+ *                care {kind, at, task, changed?, alarm?}  a care task of VION (docs/NIKA_CARE.md of the server): `snapshot`
+ *                  for each task when the session opens, `state` when a confirmed answer changed, `alarm`, `alarm_end`,
+ *                  `removed`. No answer is expected; a NIKA from before care leaves it unanswered, as any unknown type
  *                unpair {}  VION forgets NIKA: NIKA forgets the token too
  *   NIKA → VION  call {id, name, args, speaker?}
  *                forgot {}  NIKA was disconnected from this VION on her side (she forgot the token)

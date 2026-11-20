@@ -1,7 +1,7 @@
 {
   "displayName": "NIKA",
   "name": "@vionvision/camera-ui-nika",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Связь VION с голосовым помощником NIKA: находит NIKA в домашней сети, подключает её по коду, который она произносит, говорит её голосом тревоги VION и выполняет её команды — например, «разреши ещё час» — с подтверждением родителя.",
   "author": "VION (https://vionvision.tech)",
   "main": "./bundle/dist/index.js",

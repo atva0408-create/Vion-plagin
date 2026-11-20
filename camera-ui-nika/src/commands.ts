@@ -6,10 +6,12 @@
  *
  * Screen time is VOICE's: the commands call VOICE's own assistant tools, with the same checks as its page and chat.
  */
+import { CARE_COMMANDS, careArgs, careSummary, isCareCommand, runCare } from './care.js';
 import { str } from './protocol.js';
 import { texts } from './texts.js';
 
 import type { AssistantToolContext, AssistantToolResult } from '@camera.ui/sdk';
+import type { CarePort } from './care.js';
 import type { CallResult } from './link.js';
 import type { Lang } from './texts.js';
 
@@ -80,6 +82,7 @@ export const COMMANDS: CommandSpec[] = [
     },
     grant: true,
   },
+  ...CARE_COMMANDS,
 ];
 
 export const COMMAND_NAMES = COMMANDS.map((command) => command.name);
@@ -95,6 +98,8 @@ export interface VoicePort {
 
 export interface CommandHost {
   voice(): Promise<VoicePort | undefined>;
+  /** the care of VION (care.ts); none on a host that has none (the specs of the screen time) */
+  care?: CarePort;
   now?: () => number;
 }
 
@@ -104,6 +109,7 @@ function text(value: unknown): string | undefined {
 
 /** The arguments as the command takes them, or what is wrong with them. */
 export function checkArgs(name: string, args: Record<string, unknown>, lang: Lang): { args: Record<string, unknown> } | { error: string } {
+  if (isCareCommand(name)) return careArgs(name, args, lang);
   const t = texts(lang);
   const child = text(args.child);
   switch (name) {
@@ -138,6 +144,7 @@ export function checkArgs(name: string, args: Record<string, unknown>, lang: Lan
 
 /** What a granting command gives, in a few words, for NIKA to say and a parent to read. */
 export function summaryOf(name: string, args: Record<string, unknown>, lang: Lang): string {
+  if (isCareCommand(name)) return careSummary(name, args, lang);
   const t = texts(lang);
   const child = str(args.child);
   if (name === 'screen_time_extend') {
@@ -169,6 +176,7 @@ async function voiceTool(host: CommandHost, tool: string, input: Record<string, 
 
 /** Runs a command whose arguments checkArgs passed. */
 export async function runCommand(host: CommandHost, name: string, args: Record<string, unknown>, lang: Lang): Promise<CallResult> {
+  if (isCareCommand(name)) return runCare(host.care, name, args, lang);
   const t = texts(lang);
   const call = async (tool: string, input: Record<string, unknown>): Promise<AssistantToolResult | CallResult> => {
     const answer = await voiceTool(host, tool, input, lang);

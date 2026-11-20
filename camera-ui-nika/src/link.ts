@@ -56,6 +56,8 @@ export interface CallResult {
   text?: string;
   data?: unknown;
   error?: string;
+  /** why it failed, as a word a scenario of NIKA can act on (care: no_view, camera_offline, unknown_subject…) */
+  code?: string;
   pending?: boolean;
 }
 

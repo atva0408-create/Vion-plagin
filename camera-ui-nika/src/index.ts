@@ -26,7 +26,8 @@ import type {
   NotifierInterface,
   PluginAPI,
 } from '@camera.ui/sdk';
-import type { VoicePort } from './commands.js';
+import type { CareAnswer, CareRequest } from './care.js';
+import type { CommandHost, VoicePort } from './commands.js';
 import type { GrantMode, JournalEntry, PendingGrant } from './grants.js';
 import type { Address, Call, CallResult, LinkHost, PairedNika } from './link.js';
 import type { Message } from './protocol.js';
@@ -78,13 +79,16 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
   private pairingManual = false;
   /** where each NIKA was last heard, for the log */
   private heardAt = new Map<string, string>();
+  /** which NIKA was connected at the last change of her link, to tell a new connection from news of an old one */
+  private wasOnline = new Map<string, boolean>();
+  private careEvents?: { unsubscribe(): void };
 
   constructor(logger: LoggerService, api: PluginAPI, storage: DeviceStorage<StorageValues>) {
     super(logger, api, storage);
     this.discovery = this.createDiscovery();
     this.grants = new Grants({
       mode: () => this.grantMode(),
-      run: (command, args, lang) => runCommand({ voice: () => this.voice() }, command, args, lang),
+      run: (command, args, lang) => runCommand(this.commandHost(), command, args, lang),
       publish: (notification) => this.api.notificationManager.publish(notification),
       tell: (nikaId, message) => this.tell(nikaId, message),
       save: async (pending, journal) => {
@@ -107,6 +111,47 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
   protected async voice(): Promise<VoicePort | undefined> {
     const voice = (await this.api.coreManager.connectToPlugin(VOICE_PLUGIN).catch(() => undefined)) as Partial<VoicePort> | undefined;
     return typeof voice?.callAssistantTool === 'function' ? (voice as VoicePort) : undefined;
+  }
+
+  /** What the commands reach: VOICE for the screen time, the core for care. */
+  private commandHost(): CommandHost {
+    return { voice: () => this.voice(), care: (request) => this.care(request) };
+  }
+
+  /**
+   * The care of VION over the core manager (care/link.ts of the server). Not in the SDK yet: called untyped; a server
+   * from before care has no such call, and the command says the server has to be updated.
+   */
+  protected async care(request: CareRequest): Promise<CareAnswer | undefined> {
+    const core = this.api.coreManager as unknown as { care?: (request: CareRequest) => Promise<CareAnswer> };
+    return typeof core.care === 'function' ? core.care(request) : undefined;
+  }
+
+  /** A care task came to know something (the event `careChanged` of the core): every NIKA that is connected is told. */
+  public onCareChanged(message: Record<string, unknown>): void {
+    for (const link of this.links.values()) {
+      if (!link.online) continue;
+      try {
+        link.send({ ...message, t: 'care' });
+      } catch (error) {
+        this.logger.warn(`NIKA ${link.nika.name}: a care message was not sent: ${(error as Error).message}`);
+      }
+    }
+  }
+
+  /** A NIKA that just connected is told what every care task knows: she was not there when it changed. */
+  private async sendCareSnapshots(link: NikaLink): Promise<void> {
+    const answer = await this.care({ action: 'status' }).catch(() => undefined);
+    if (!answer?.ok || !link.online) return;
+    const { tasks, at } = answer.data as { tasks?: unknown[]; at?: string };
+    for (const task of tasks ?? []) {
+      try {
+        link.send({ t: 'care', kind: 'snapshot', at: at ?? new Date().toISOString(), task });
+      } catch (error) {
+        this.logger.warn(`NIKA ${link.nika.name}: the care tasks were not sent: ${(error as Error).message}`);
+        return;
+      }
+    }
   }
 
   // ---- settings page ------------------------------------------------------------------------------------------------
@@ -160,6 +205,12 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
           screen_time_report: 'Screen time report',
           screen_time_extend: 'Give more time (minutes, skip a break)',
           screen_time_until: 'Allow until a time',
+          care_overview: 'Care: cameras, models and questions',
+          care_status: 'Care: what the tasks know now',
+          care_look: 'Care: look now',
+          care_report: 'Care: the report of a day',
+          care_set: 'Care: make or change a task',
+          care_remove: 'Care: delete a task',
         },
         multiple: true,
         defaultValue: COMMAND_NAMES,
@@ -254,6 +305,12 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
     this.grants.pending = [...(this.storage.values._pending ?? [])];
     this.grants.journal = [...(this.storage.values._journal ?? [])];
     this.discovery.start();
+    // the events of the core; a host without them (an old server, the specs) has no care to tell of
+    const events = (this.api.coreManager as unknown as { onEvent?: { subscribe?(next: (event: { type?: string; data?: unknown }) => void): { unsubscribe(): void } } })
+      .onEvent;
+    this.careEvents = events?.subscribe?.((event) => {
+      if (event?.type === 'careChanged' && event.data && typeof event.data === 'object') this.onCareChanged(event.data as Record<string, unknown>);
+    });
     for (const nika of this.paired()) this.link(nika);
     this.expireTimer = setInterval(() => void this.grants.expire(), EXPIRE_EVERY_MS);
     const count = this.paired().length;
@@ -266,6 +323,9 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
     this.expireTimer = undefined;
     this.pairing?.close();
     this.pairing = undefined;
+    this.careEvents?.unsubscribe();
+    this.careEvents = undefined;
+    this.wasOnline.clear();
     for (const link of this.links.values()) link.stop();
     this.links.clear();
     this.discovery.stop();
@@ -286,7 +346,13 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
       address: (nika) => this.addressOf(nika),
       offer: () => this.offer(),
       onCall: (link, call) => this.onCall(link.nika, langOf(link.hello?.lang ?? link.nika.lang), call),
-      onChange: (link) => void this.remember(link),
+      onChange: (link) => {
+        void this.remember(link);
+        // once per connection: `onChange` comes again when she says something new of herself
+        const online = link.online;
+        if (online && !this.wasOnline.get(link.nika.id)) void this.sendCareSnapshots(link);
+        this.wasOnline.set(link.nika.id, online);
+      },
       onForgotten: (link) => void this.forgotten(link.nika),
     };
   }
@@ -379,7 +445,7 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
     const checked = checkArgs(command.name, call.args, lang);
     if ('error' in checked) return { ok: false, error: checked.error };
     if (command.grant) return this.grants.request({ id: nika.id, name: nikaLabel(nika), lang }, command.name, checked.args, call.speaker);
-    return runCommand({ voice: () => this.voice() }, command.name, checked.args, lang);
+    return runCommand(this.commandHost(), command.name, checked.args, lang);
   }
 
   // ---- connecting ---------------------------------------------------------------------------------------------------
@@ -658,6 +724,15 @@ export default class NikaPlugin extends ServicePlugin<StorageValues> implements 
     // a silent notification is for a phone's screen; NIKA's own requests to the parents are for the parents' phones,
     // not for the room she asks in: neither is a word to say, and nothing failed
     if (n.silent || !text || (n.tag ?? '').startsWith('nika:')) return answered(deviceIds.map((deviceId) => ({ deviceId, ok: true })));
+    // a care alarm reached every connected NIKA as a `care` message already, with what her scenario needs to act on it:
+    // said here as well it would sound twice. One that is not connected got nothing, and VION is told so
+    if ((n.tag ?? '').startsWith('care:')) {
+      return answered(
+        deviceIds.map((deviceId) =>
+          this.links.get(deviceId.slice(DEVICE_PREFIX.length))?.online ? { deviceId, ok: true } : { deviceId, ok: false, error: 'NIKA is not connected' },
+        ),
+      );
+    }
     const deliveries = await Promise.all(
       deviceIds.map(async (deviceId): Promise<NikaDelivery> => {
         const id = deviceId.startsWith(DEVICE_PREFIX) ? deviceId.slice(DEVICE_PREFIX.length) : '';

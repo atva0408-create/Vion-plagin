@@ -32,6 +32,13 @@ interface Texts {
   untilTooFar: string;
   untilNow: string;
   childRequired: string;
+  careWatch(child: string, camera: string): string;
+  careChange(task: string): string;
+  careOff(task: string): string;
+  careRemove(task: string): string;
+  careNeeds: string;
+  careTaskRequired: string;
+  careOld: string;
 }
 
 /** «1 минута», «2 минуты», «5 минут», «21 минута»: NIKA says it, an abbreviation would be read out letter by letter. */
@@ -66,6 +73,13 @@ const RU: Texts = {
   untilTooFar: 'не больше 4 часов от текущего времени',
   untilNow: 'это время уже наступило',
   childRequired: 'нужно имя ребёнка',
+  careWatch: (child, camera) => `присмотр за ${child} по камере «${camera}»`,
+  careChange: (task) => `изменить присмотр «${task}»`,
+  careOff: (task) => `выключить присмотр «${task}»`,
+  careRemove: (task) => `удалить присмотр «${task}»`,
+  careNeeds: 'нужны имя ребёнка и камера',
+  careTaskRequired: 'нужно назвать задачу присмотра',
+  careOld: 'Этот сервер VION ещё не умеет присмотр: его нужно обновить.',
 };
 
 const EN: Texts = {
@@ -92,6 +106,13 @@ const EN: Texts = {
   untilTooFar: 'at most 4 hours from now',
   untilNow: 'that time has come already',
   childRequired: 'the name of the child is needed',
+  careWatch: (child, camera) => `looking after ${child} with the camera «${camera}»`,
+  careChange: (task) => `change the care task «${task}»`,
+  careOff: (task) => `switch the care task «${task}» off`,
+  careRemove: (task) => `delete the care task «${task}»`,
+  careNeeds: 'the name of the child and the camera are needed',
+  careTaskRequired: 'the care task must be named',
+  careOld: 'This VION server cannot look after yet: it has to be updated.',
 };
 
 const DE: Texts = {
@@ -118,6 +139,13 @@ const DE: Texts = {
   untilTooFar: 'höchstens 4 Stunden ab jetzt',
   untilNow: 'diese Uhrzeit ist schon vorbei',
   childRequired: 'der Name des Kindes fehlt',
+  careWatch: (child, camera) => `Aufsicht über ${child} mit der Kamera «${camera}»`,
+  careChange: (task) => `die Aufsicht «${task}» ändern`,
+  careOff: (task) => `die Aufsicht «${task}» ausschalten`,
+  careRemove: (task) => `die Aufsicht «${task}» löschen`,
+  careNeeds: 'der Name des Kindes und die Kamera fehlen',
+  careTaskRequired: 'die Aufsichtsaufgabe muss genannt werden',
+  careOld: 'Dieser VION-Server kann noch keine Aufsicht: Er muss aktualisiert werden.',
 };
 
 export function texts(lang: Lang): Texts {
