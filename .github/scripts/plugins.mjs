@@ -5,6 +5,7 @@ export const NODE = {
   'camera-ui-eufy': 'externals/eufy-sdk',
   'camera-ui-apple-llm': '',
   'camera-ui-homeassistant': '',
+  'camera-ui-nvr': '',
   'camera-ui-pamdiff': '',
   'camera-ui-rust-motion': '',
   'camera-ui-smtp': '',

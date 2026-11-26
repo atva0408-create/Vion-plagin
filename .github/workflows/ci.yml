@@ -50,6 +50,7 @@ jobs:
             camera-ui-apple-llm: ['camera-ui-apple-llm/**']
             camera-ui-homeassistant: ['camera-ui-homeassistant/**']
             camera-ui-homekit: ['camera-ui-homekit/**']
+            camera-ui-nvr: ['camera-ui-nvr/**']
             camera-ui-onvif: ['camera-ui-onvif/**']
             camera-ui-ring: ['camera-ui-ring/**']
             camera-ui-pamdiff: ['camera-ui-pamdiff/**']
