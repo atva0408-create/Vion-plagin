@@ -1,0 +1,138 @@
+{
+  "doorbell-ring-notify": {
+    "title": "Doorbell ring notification",
+    "description": "Sends a critical notification when the selected doorbell sensor rings. Works with real doorbells and virtual doorbell sensors.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "doorbell",
+      "sensor",
+      "notification"
+    ],
+    "requiredPlugins": [],
+    "requiredInputs": [
+      {
+        "type": "sensor",
+        "count": 1
+      },
+      {
+        "type": "notification-targets"
+      }
+    ],
+    "blueprint": "blueprints/doorbell-ring-notify.blueprint.json"
+  },
+  "front-door-person-alert": {
+    "title": "Front door person alert",
+    "description": "Sends a notification whenever a person is detected on the selected camera.",
+    "category": "detection",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "detection",
+      "doorbell",
+      "person"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      },
+      {
+        "type": "notification-targets"
+      }
+    ],
+    "blueprint": "blueprints/front-door-person-alert.blueprint.json"
+  },
+  "motion-night-snapshot-notify": {
+    "title": "Motion at night, snapshot and notify",
+    "description": "During night hours, captures a fresh snapshot on motion and sends it as a notification.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "motion",
+      "night",
+      "snapshot"
+    ],
+    "requiredPlugins": [],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      },
+      {
+        "type": "notification-targets"
+      }
+    ],
+    "blueprint": "blueprints/motion-night-snapshot-notify.blueprint.json"
+  },
+  "mqtt-doorbell": {
+    "title": "MQTT doorbell",
+    "description": "Rings a doorbell sensor when a matching MQTT message arrives, e.g. from a Shelly, Tasmota or Zigbee2MQTT device. The trigger matches a value inside the JSON payload, so on/off devices ring exactly once per press. Works great with a virtual doorbell sensor. Requires MQTT to be enabled in the settings.",
+    "category": "mqtt",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "doorbell",
+      "mqtt",
+      "virtual-sensor"
+    ],
+    "requiredPlugins": [],
+    "requiredInputs": [
+      {
+        "type": "sensor",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/mqtt-doorbell.blueprint.json"
+  },
+  "person-detected-notifier-plugin": {
+    "title": "Person detected, snapshot to notifier",
+    "description": "When a person is detected, captures a fresh snapshot and sends it to the selected notification targets, e.g. push devices, email (SMTP plugin) or a messenger provided by a notifier plugin.",
+    "category": "notification",
+    "author": "ViON",
+    "featured": false,
+    "tags": [
+      "detection",
+      "person",
+      "plugin"
+    ],
+    "requiredPlugins": [
+      "ObjectDetection"
+    ],
+    "requiredInputs": [
+      {
+        "type": "camera",
+        "count": 1
+      },
+      {
+        "type": "notification-targets"
+      }
+    ],
+    "blueprint": "blueprints/person-detected-notifier-plugin.blueprint.json"
+  },
+  "webhook-doorbell": {
+    "title": "Webhook doorbell",
+    "description": "Rings a doorbell sensor whenever the webhook is called, e.g. by a smart button or a third-party system. Works great with a virtual doorbell sensor.",
+    "category": "webhook",
+    "author": "ViON",
+    "featured": true,
+    "tags": [
+      "doorbell",
+      "webhook",
+      "virtual-sensor"
+    ],
+    "requiredPlugins": [],
+    "requiredInputs": [
+      {
+        "type": "sensor",
+        "count": 1
+      }
+    ],
+    "blueprint": "blueprints/webhook-doorbell.blueprint.json"
+  }
+}

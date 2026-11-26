@@ -14,6 +14,14 @@ Detection backends (ONNX, OpenVINO, NCNN, CoreML, Coral, YAMNet) download their 
 They come from the ViON mirror `https://models.vionvision.tech` (see `deploy/models-mirror` in the VIONN- repo);
 set `VION_MODELS_HOST` to use another mirror. The path layout is `/<version>/<backend>/...`, identical to the upstream host.
 
+## Store catalogs
+
+The ViON server reads its store catalogs from this repository's `main` branch:
+
+- `catalog.json`, `verified.json`, `blocklist.json` — plugin store (`VION_PLUGIN_REGISTRY_URL`);
+- `automations/catalog.json` and `automations/blueprints/` — automation templates (`VION_AUTOMATION_REGISTRY_URL`).
+  The templates come from [camera.ui automations](https://github.com/cameraui/automations) (MIT).
+
 ## Upstream
 
 Based on [camera.ui plugins](https://github.com/cameraui/plugins) by seydx (MIT), used with the author's permission.
